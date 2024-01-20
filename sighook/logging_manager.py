@@ -1,0 +1,99 @@
+import logging
+import os
+from logging.handlers import TimedRotatingFileHandler
+import platform
+from datetime import datetime
+
+from dotenv import load_dotenv
+
+
+class CustomFormatter(logging.Formatter):
+    grey = "\x1b[38;21m"
+    yellow = "\x1b[33;21m"
+    green = "\x1b[32;21m"
+    red = "\x1b[31;21m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+
+    FORMATS = {
+        logging.DEBUG: grey + format + reset,
+        logging.INFO: grey + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: red + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno, self.format)
+        formatter = logging.Formatter(log_fmt, "%Y-%m-%d %H:%M:%S")
+        return formatter.format(record)
+
+
+class LoggerManager:
+    """ This class handles the logging of errors and messages.  It is used by the other classes to log errors and
+    messages to the console and to log files."""
+
+    _instance = None
+    _is_initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(LoggerManager, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, log_dir=None):
+        if not self._is_initialized:
+            self.sighook_logger = None
+            self.log_dir = log_dir if log_dir else os.getenv('SENDER_ERROR_LOG_DIR', 'logs')
+            self.setup_logging()
+            self._is_initialized = True
+
+
+    def setup_logging(self):
+        """ This method sets up the logging for the TradeBot.  It creates the log directory if it does not exist and
+        creates the log files.  It also sets up the logging for the Flask server."""
+
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        current_platform = platform.system()
+
+        sighook_log_dir = os.path.join(self.log_dir, 'sighook_logs')
+        if not os.path.exists(sighook_log_dir):
+            os.makedirs(sighook_log_dir)
+
+        sighook_log_filename = f"sighook.log.{current_platform}.{current_date}"
+        log_file_path = os.path.join(sighook_log_dir, sighook_log_filename)
+        constant_log_file_path = os.path.join(sighook_log_dir, "sighook.log")
+
+        self.sighook_logger = self.get_logger('sighook_logger', log_file_path, constant_log_file_path)
+
+    @staticmethod
+    def get_logger(name, log_file_path, constant_log_file_path):
+        log_level_str = os.getenv('LOG_LEVEL', 'INFO')
+        log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+
+        logger = logging.getLogger(name)
+        logger.setLevel(log_level)
+
+        if not logger.handlers:
+            # Handler for console output
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(CustomFormatter())
+            console_handler.setLevel(log_level)  # Use the dynamic log level
+            logger.addHandler(console_handler)
+
+            # File handler for rotating logs
+            timed_file_handler = TimedRotatingFileHandler(log_file_path, when="midnight", interval=1, backupCount=2)
+            file_formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)")
+            timed_file_handler.setFormatter(file_formatter)
+            timed_file_handler.setLevel(log_level)  # Use the dynamic log level
+            logger.addHandler(timed_file_handler)
+
+            # File handler for constant log file
+            constant_file_handler = logging.FileHandler(constant_log_file_path)
+            constant_file_handler.setFormatter(file_formatter)
+            constant_file_handler.setLevel(log_level)  # Use the dynamic log level
+            logger.addHandler(constant_file_handler)
+
+        return logger

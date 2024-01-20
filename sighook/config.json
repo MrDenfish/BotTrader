@@ -1,0 +1,28 @@
+{
+  "docker": {
+    "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "ACTIVE_TRADE_DIR": "data/profit_data",
+    "PORTFOLIO_DIR": "data/portfolio_data",
+    "PROFIT_DIR": "data/profit_data"
+  },
+  "Manny": {
+    "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "ACTIVE_TRADE_DIR": "data/profit_data",
+    "PORTFOLIO_DIR": "data/portfolio_data",
+    "PROFIT_DIR": "data/profit_data"
+  },
+  "moe": {
+    "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "ACTIVE_TRADE_DIR": "data/profit_data",
+    "PORTFOLIO_DIR": "data/portfolio_data",
+    "PROFIT_DIR": "data/profit_data"
+  },
+  "do_server": {
+    "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "ACTIVE_TRADE_DIR": "data/profit_data",
+    "PORTFOLIO_DIR": "data/portfolio_data",
+    "PROFIT_DIR": "data/profit_data"
+  }
+}
+
+

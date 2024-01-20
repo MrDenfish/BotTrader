@@ -1,0 +1,40 @@
+
+version: '3.7'
+
+services:
+  sighook:
+    build:
+      context: ../sighook
+    env_file:
+      - .env_sighook  # Adjusted path to the .env file
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/data:/data
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/logs/signal_logs:/logs/signal_logs
+    ports:
+      - "5001:5001"
+    networks:
+      traderbot_network:
+        ipv4_address: 172.24.2.2
+
+  webhook:
+    build:
+      context: ../webhook
+    env_file:
+      - .env_webhook  # Adjusted path to the .env file
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0.0/data:/data
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/logs/listener_logs:/logs/listener_logs
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/logs/flask_logs:/logs/flask_logs
+    ports:
+      - "80:80"
+    networks:
+      traderbot_network:
+        ipv4_address: 172.24.2.3
+
+networks:
+  traderbot_network:
+      driver: bridge
+      ipam:
+        driver: default
+        config:
+          - subnet: "172.24.2.1/29"
