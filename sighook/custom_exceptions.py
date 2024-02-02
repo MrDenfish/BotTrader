@@ -2,9 +2,10 @@
 import functools
 import re
 import time
+import asyncio
+import traceback
 
-from requests.exceptions import ConnectionError, Timeout
-
+from ccxt.base.errors import RequestTimeout
 from ccxt import ExchangeError  # Import the specific CCXT
 # AuthenticationError
 
@@ -14,7 +15,7 @@ class ApiExceptions:
         self.log_manager = logmanager
         self.alert_system = alerts
 
-    def ccxt_api_call(self, func, *args, **kwargs):
+    async def ccxt_api_call(self, func, *args, **kwargs):
         """
         Wrapper function for CCXT api(Coinbase Cloud) calls.
 
@@ -28,38 +29,35 @@ class ApiExceptions:
         """
         retries = 3
         backoff_factor = 0.3
-        rate_limit_wait = 1  # seconds to wait when rate limit is hit
+        rate_limit_wait = 1  # seconds
+
         for attempt in range(retries):
             try:
-                return func(*args, **kwargs)
+                return await func(*args, **kwargs)
 
             except ExchangeError as ex:
-                # Check if the error message contains 'Rate limit exceeded'
                 if 'Rate limit exceeded' in str(ex):
-                    wait_time = min(rate_limit_wait * (2 ** attempt), rate_limit_wait)  # Adjust max_wait_time as needed
-                    self.log_manager.sighook_logger.error(
-                        f'Rate limit exceeded in {func.__name__}: {ex}: Retrying in {wait_time} seconds...')
-                    time.sleep(wait_time)  # Wait before retrying
+                    max_wait_time = 60  # Maximum wait time of 60 seconds
+                    wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
+                    self.log_manager.sighook_logger.error(f'Rate limit exceeded: Retrying in {wait_time} seconds...')
+                    await asyncio.sleep(wait_time)  # Use the calculated wait_time here
                 else:
                     self.log_manager.sighook_logger.error(f'Exchange error: {ex}')
-            except (ConnectionError, Timeout, UnauthorizedError) as e:
-                self.log_manager.sighook_logger.error(f'{e.__class__.__name__} error: {e}')
-                time.sleep(backoff_factor * (2 ** attempt))
-
-            except CoinbaseAPIError as ez:
-                error_message = str(ez)
-                return ez, func.__name__
-
-            except Exception as ex:
-                if 'list index out of range' not in str(ex):
-                    print(f'Error in {func}: {ex}')
-
-                # Check if it's a data-related error (adjust as needed)
-                if isinstance(ex, (IndexError, DataUnavailableException)):
-                    return ex  # Return None immediately for data-related errors
-                self.log_manager.sighook_logger.error(f'Error in {func.__name__} with symbol {args[0]}: {ex}')
-                # For other exceptions, retry
-                time.sleep(backoff_factor * (2 ** attempt))
+            except asyncio.TimeoutError as e:
+                # Handle timeout specifically
+                self.log_manager.sighook_logger.error(f"Timeout occurred: {e}")
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+            except IndexError as e:
+                self.log_manager.sighook_logger.info(f'Index error Trading is unavailable for {args}: {e}')
+                # Add more specific logging or handling here
+                return None
+            except RequestTimeout as timeout_error:
+                self.log_manager.sighook_logger.error(f'Request timeout error: {timeout_error}')
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+            except Exception as e:
+                error_details = traceback.format_exc()
+                self.log_manager.sighook_logger.error(f"Error in API call: {e}\nDetails: {error_details}")
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
         return None
 
     def handle_general_error(self, ex, func):

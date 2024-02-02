@@ -1,33 +1,39 @@
 """should execute orders based on instructions from TradingStrategy but should not directly depend on the strategy logic"""
 from decimal import Decimal
 
+import pandas as pd
+
 
 class OrderManager:
-    def __init__(self, trading_strategy, exchange, webhook, utility, coms, logmanager, ccxt_api):
+    def __init__(self, trading_strategy, exchange, webhook, utility, alerts, logmanager, ccxt_api, config):
         self.trading_strategy = trading_strategy
         self.exchange = exchange
         self.webhook = webhook
-        self.coms = coms
+        self.alerts = alerts
         self.log_manager = logmanager
         self.ccxt_exceptions = ccxt_api
         self.utility = utility
+        self._version = config.program_version
         self.ticker_cache = None
+        self.market_cache = None
         self.start_time = None
         self.web_url = None
         self.current_holdings = None
 
-    def set_trade_parameters(self, start_time, ticker_cache, web_url, hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache,  web_url, hist_holdings):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
+        self.market_cache = market_cache
         self.web_url = web_url
         self.current_holdings = hist_holdings
 
-    def get_open_orders(self, old_portfolio, usd_pairs, fetch_all=True):
+    @property
+    def version(self):
+        return self._version
+    async def get_open_orders(self, old_portfolio, usd_pairs, fetch_all=True):
         """ Fetch open orders for ALL USD paired coins  and process the data to determine if the order should be
         cancelled."""
 
-        # orders = []
-        coin_balance = []
         try:
             symbols_to_check = []
             if fetch_all:
@@ -42,91 +48,111 @@ class OrderManager:
                         symbols_to_check.append(symbol['id'].replace('-', '/'))
 
             # fetch all buy/sell open orders
-            all_open_orders = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders(None))  # includes
+            all_open_orders = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders(None))  #
+            # includes
             # buy/sell orders
-            all_open_orders = self.utility.format_open_orders(all_open_orders)
-            if len(all_open_orders) > 0:
-                print(f'Open orders: {all_open_orders.to_string(index=False)}')
-            else:
-                print(f'No open orders found')
+            all_open_orders = self.format_open_orders(all_open_orders)
 
             if len(all_open_orders) == 0:  # no open orders for coins in portfolio
                 self.log_manager.sighook_logger.debug(f'order_manager: get_open_orders: No open orders found.')
-                return coin_balance, None
+                return None
             else:  # open orders exist
                 self.log_manager.sighook_logger.debug(f'order_manager: get_open_orders: Found {len(all_open_orders)}'
                                                       f' open orders.')
-                stale_orders = self.cancel_stale_orders(all_open_orders)
-                return coin_balance, stale_orders
+                stale_orders = await self.cancel_stale_orders(all_open_orders)
+                return stale_orders
         except Exception as gooe:
             self.log_manager.sighook_logger.error(f'order_manager: get_open_orders: Exception occurred during '
                                                   f'api(Coinbase Cloud) call: {gooe}')
-            return coin_balance, None
+            return None
 
-    def cancel_stale_orders(self, open_orders):
+    async def cancel_stale_orders(self, open_orders):
         """Cancel stale orders. Stale orders are defined as buy orders that are 2% above the current ask price and sell"""
+        stale_order_indices = []  # Collect indices of stale orders
+        order_id = None
         for index, order in open_orders.iterrows():
             try:
                 # Fetch Current Prices for the Order
                 symbol = order['product_id'].replace('/', '-')
-                ticker = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_ticker(symbol))
+                # Pass function and arguments separately to ccxt_exceptions.ccxt_api_call
+                ticker = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, symbol)
+                base_deci, quote_deci = self.utility.fetch_precision(ticker)
+
                 current_ask = Decimal(ticker['ask'])
                 current_bid = Decimal(ticker['bid'])
+
+                order_id = order['order_id']
+                limit_price = Decimal(order['amount'])
+                limit_price = self.utility.adjust_precision(base_deci, quote_deci, limit_price, 'base')
+                is_buy_order = order['side'].upper() == 'BUY'
+
+                if is_buy_order and limit_price * Decimal('1.02') < current_ask:
+                    await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, order_id)
+                    stale_order_indices.append(index)
+                    print(f"Cancelled stale buy order for {symbol} at {limit_price}. Current ask: {current_ask}")
+                elif not is_buy_order and limit_price * Decimal('0.98') > current_bid:
+                    await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, order_id)
+                    stale_order_indices.append(index)
+                    print(f"Cancelled stale sell order for {symbol} at {limit_price}. Current bid: {current_bid}")
+
             except Exception as e:
                 symbol = order['product_id'].replace('/', '-')
-                self.log_manager.sighook_logger.error(f'order_manager: cancel_stale_orders:An error occurred while '
-                                                      f'fetching ticker for {symbol}: {e}')
+                self.log_manager.sighook_logger.error(f'order_manager: Error processing order {order_id} for {symbol}: {e}')
                 continue
-            try:
-                order_id = order['order_id']
-                # Compare and Cancel
-                limit_price = Decimal(order['amount'])
-                is_buy_order = order['side'] == 'BUY'
+        # Drop stale orders from DataFrame outside the loop
+        open_orders.drop(stale_order_indices, inplace=True)
+        return open_orders
 
-                if is_buy_order:
-                    if limit_price * Decimal('1.02') < current_ask:
-                        self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.cancel_order(order_id))
-                        # remove canceled orders from orders list
-                        open_orders.drop(open_orders[open_orders['order_id'] == order_id].index, inplace=True)
-                        print(f"Cancelled stale buy order for {symbol} at {limit_price}. Current ask: {current_ask}")
-                        self.log_manager.sighook_logger.info(f'order_manager: cancel_stale_orders: Cancelled stale buy '
-                                                             f'order for {symbol} at {limit_price}.')
-                else:  # It's a sell order
-                    if limit_price * Decimal('0.98') > current_bid:
-                        self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order(order_id))
-                        open_orders.drop(open_orders[open_orders['order_id'] == order_id].index, inplace=True)
-                        print(f"Cancelled stale sell order for {symbol} at {limit_price}. Current bid: {current_bid}")
-                        self.log_manager.sighook_logger.info(f'order_manager: cancel_stale_orders: Cancelled stale '
-                                                             f'buy order for {symbol} at {limit_price}.')
-            except Exception as e:
-                self.log_manager.sighook_logger.error(f'order_manager: cancel_stale_orders:An error occurred while '
-                                                      f'processing or canceling the  cancel order for {symbol}: {e}')
-                continue
-            return open_orders
-            # Log (adapt as needed)
-
-    def get_filled_orders(self, product_id):
+    async def get_filled_orders(self, product_id, counter):
+        counter['processed'] += 1
         try:
             symbol = product_id.replace('-', '/')
             if symbol == 'USD/USD':
-                return None
-            filled_orders = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_my_trades(symbol=symbol))
+                return None, counter
+            filled_orders = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_closed_orders(
+                symbol=symbol))
+
             if filled_orders is None:
                 raise ValueError('order_manager:: Received None from get_open_orders api(Coinbase Cloud) call')
             else:
-                return filled_orders
+
+                return filled_orders,  counter
 
         except Exception as e:
             self.log_manager.sighook_logger.error(f'order_manager:: get_filled_orders: Exception occurred during '
                                                   f'api(Coinbase Cloud) call: {e}')
-            return None
+            return None, counter
 
-    def process_sell_order(self, product_id, current_price, old_portfolio, purchase_decimal, diff_decimal):
+    async def process_sell_order(self, product_id, current_price, current_holdings, purchase_decimal, diff_decimal):
         sell_cond = True
         sell_action, sell_pair, sell_limit, sell_order = self.trading_strategy.sell_signal(
-            product_id, current_price, sell_cond, old_portfolio)
+            product_id, current_price, sell_cond, current_holdings, trigger='profit')
         if sell_action:
-            self.webhook.send_webhook(sell_action, sell_pair, sell_limit, sell_order)
-            message = f'Profit opportunity: {product_id},Purchase price:{purchase_decimal}, Close price:' \
-                      f'{current_price}. Gain: {diff_decimal}%'
-            self.coms.callhome('Profit Opportunity', message)
+            await self.webhook.send_webhook(sell_action, sell_pair, sell_limit, sell_order)
+            # message = (f'Sighook v{self.version} Profit opportunity: {product_id},Purchase price:{purchase_decimal}, '
+            #            f'Close price:,{current_price}, Gain: {diff_decimal}%')
+            # self.alerts.callhome('Profit Opportunity', message)
+
+    @staticmethod
+    def format_open_orders(open_orders: list) -> pd.DataFrame:
+        """
+        Format the open orders data received from the ccxt api(Coinbase Cloud) call.
+
+        Parameters:
+
+
+        Returns:
+        - list: A list of dictionaries containing the required data.
+        """
+
+        data_to_load = [{
+            'order_id': order['id'],
+            'product_id': order['info']['product_id'],
+            'side': order['info']['side'],
+            'size': order['amount'],
+            'amount': order['price'],
+            'filled': order['filled'],
+            'remaining': order['remaining']
+        } for order in open_orders]
+        df = pd.DataFrame(data_to_load)
+        return df

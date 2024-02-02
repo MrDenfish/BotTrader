@@ -29,6 +29,8 @@ class AppConfig:
             self._api_secret = os.getenv('API_SECRET')
             self._passphrase = os.getenv('API_PASS')
             self._api_url = os.getenv('API_URL')
+            self._cmc_api_key = os.getenv('CMC_API_KEY')  # PLACEHOLDER NOT USABLE CODE
+            self._cmc_api_url = os.getenv('CMC_API_URL')  # PLACEHOLDER NOT USABLE CODE
             self._docker_staticip = os.getenv('DOCKER_STATICIP')
             self._tv_whitelist = os.getenv('TV_WHITELIST')
             self._coin_whitelist = os.getenv('COIN_WHITELIST')
@@ -36,6 +38,10 @@ class AppConfig:
             self._auth_token = os.getenv('AUTH_TOKEN')
             self._account_phone = os.getenv('ACCOUNT_PHONE')
             self._web_url = os.getenv('WEB_URL')
+            self._phone = os.getenv('PHONE')
+            self._email = os.getenv('EMAIL')
+            self._e_mailpass = os.getenv('E_MAILPASS')
+            self._my_email = os.getenv('MY_EMAIL')
             self._json_config = None
             self.machine_type = None
             self.port = None
@@ -108,12 +114,20 @@ class AppConfig:
         return self._api_secret
 
     @property
+    def cmc_api_key(self):
+        return self._cmc_api_key
+
+    @property
     def passphrase(self):
         return self._passphrase
 
     @property
     def api_url(self):
         return self._api_url
+
+    @property
+    def cmc_api_url(self):
+        return self._cmc_api_url
 
     @property
     def docker_staticip(self):
@@ -153,6 +167,22 @@ class AppConfig:
     @property
     def web_url(self):
         return self._web_url
+
+    @property
+    def phone(self):
+        return self._phone
+
+    @property
+    def email(self):
+        return self._email
+
+    @property
+    def e_mailpass(self):
+        return self._e_mailpass
+
+    @property
+    def my_email(self):
+        return self._my_email
 
     def reload_config(self):
         # Force reload of configuration

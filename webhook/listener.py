@@ -11,8 +11,6 @@ from decimal import ROUND_HALF_UP
 
 import pandas as pd
 
-import os
-
 import ccxt as ccxt
 
 from flask import Flask, request, jsonify
@@ -130,7 +128,7 @@ class WebhookListener:
                     self.order_book_manager.set_trade_parameters(trading_pair, base_currency, quote_currency, base_decimal,
                                                                  quote_decimal, base_increment, quote_increment, balances)
 
-                    self.log_manager.webhook_logger.info(f'webhook: {orig} signal generated for {trading_pair}')
+                    self.log_manager.webhook_logger.info(f'webhook: {orig}  {side}  signal generated for {trading_pair}')
 
                     # get quote price and base price
                     if quote_currency != 'USD':
@@ -184,32 +182,26 @@ class WebhookListener:
                         return "Internal Server Error", 500
                 current_time = datetime.now()
                 formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
-                print(f'<><><><><><><><><><><><><><><><><><><><>< {formatted_time} ><><><><><><><><><><><><><><><><><><><><>')
+                print(f'<><><><><><><><><><><><><><><><><><><><< {formatted_time} >><><><><><><><><><><><><><><><><><><><>')
 
                 print(f'Webhook {self.bot_config.program_version} is Listening...')
                 print(f'Flask Server data:')
                 return jsonify(success=True), 200
             except ValueError as e:
                 # Handle the specific case where the symbol is not found
-                if "not found in exchange markets" in str(e):
+                if "not found in exchange markets" in str(e) or "Failed to fetch markets" in str(e):
                     self.log_manager.webhook_logger.error(f'webhook: {e}')
-                    return jsonify(success=False, message=str(e)), 400
-                elif "Failed to fetch markets" in str(e):
                     self.log_manager.webhook_logger.error(f'webhook: check ip address is whitelisted.  {e}')
                     self.alerts.callhome('Not connecting to Coinbase', f'check ip address is whitelisted  {e}')
-                    return jsonify(success=False, message=str(e)), 401
-                else:
-                    print(f"Debug: Other ValueError: {e}")
-                    # Handle other ValueErrors or re-raise
+
+                return jsonify({"success": False, "Check ip address is whitelisted": str(e)}), 400
             except Exception as outer_e:
                 if 'origin' in outer_e:
                     self.log_manager.webhook_logger.error(f'webhook: origin not found in payload {request.get_json()}')
                     return jsonify(success=False, message="Invalid content type"), 415
                 else:
                     self.log_manager.webhook_logger.error(f'webhook: An error occurred: {outer_e}')
-                    return "Internal Server Error", 500
-
-
+                    return jsonify({"success": False, "Error-500": "Internal Server Error"}), 500
 
     @LoggerManager.log_method_call
     def calculate_order_size(self, side, usd_amount, quote_price, base_price, base_decimal, quote_decimal):

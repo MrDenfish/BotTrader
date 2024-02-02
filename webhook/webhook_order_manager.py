@@ -146,7 +146,7 @@ class TradeOrderManager:
 
             elif response:
                 order_placed = True
-                self.log_success(adjusted_price)
+                self.log_success(adjusted_price, side)
 
             return order_placed, order_record
 
@@ -277,8 +277,8 @@ class TradeOrderManager:
         return order_record
 
     @LoggerManager.log_method_call
-    def log_success(self, price):
-        self.log_manager.webhook_logger.info(f'Order placed for {self.trading_pair} @ {price}')
+    def log_success(self, price, side):
+        self.log_manager.webhook_logger.info(f'{side} order placed for {self.trading_pair} @ {price}')
 
     @LoggerManager.log_method_call
     def handle_coinbase_api_error(self, eapi, response):

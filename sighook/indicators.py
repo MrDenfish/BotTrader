@@ -26,8 +26,9 @@ class BollingerBands:
             return df
 
         return df
-    
-    def calculate_sma(self, df, length=20):
+
+    @staticmethod
+    def calculate_sma(df, length=20):
         try:
             if df.empty:
                 raise ValueError("Input DataFrame is empty")
@@ -42,6 +43,7 @@ class BollingerBands:
             return df
 
         return df
+
     @staticmethod
     def calculate_rsi(df, period=14):
         delta = df['close'].diff()
@@ -51,6 +53,16 @@ class BollingerBands:
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
         return rsi
+
+    @staticmethod
+    def calculate_roc(df, roc_len=2):
+        # Calculate the first ROC
+        roc = ((df['close'] - df['close'].shift(roc_len)) / df['close'].shift(roc_len)) * 100
+        # Calculate the second ROC
+        # roc_previous = ((df['close'].shift(3) - df['close'].shift(3 + roc_len)) / df['close'].shift(3 + roc_len)) * 100
+        # Subtract the second ROC from the first ROC
+
+        return roc
 
     @staticmethod
     def identify_w_bottoms_m_tops(bollinger_df):

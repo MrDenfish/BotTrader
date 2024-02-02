@@ -3,13 +3,14 @@ version: '3.7'
 
 services:
   sighook:
+    image: denfish/bot-sighook:2.4  # Use the environment variable
     build:
       context: ../sighook
     env_file:
       - .env_sighook  # Adjusted path to the .env file
     volumes:
-      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/data:/data
-      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/logs/signal_logs:/logs/signal_logs
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/data:/data
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/logs/signal_logs:/logs/signal_logs
     ports:
       - "5001:5001"
     networks:
@@ -17,14 +18,15 @@ services:
         ipv4_address: 172.24.2.2
 
   webhook:
+    image: denfish/bot-webhook:2.4  # Use the environment variable
     build:
       context: ../webhook
     env_file:
       - .env_webhook  # Adjusted path to the .env file
     volumes:
-      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0.0/data:/data
-      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/logs/listener_logs:/logs/listener_logs
-      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/Bot_Traderv2.0/logs/flask_logs:/logs/flask_logs
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0.0/data:/data
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/logs/listener_logs:/logs/listener_logs
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/logs/flask_logs:/logs/flask_logs
     ports:
       - "80:80"
     networks:

@@ -2,38 +2,37 @@ version: '3.7'
 
 services:
   sighook:
-    build:
-      context: ../sighook
+    image: denfish/bot-sighook:2.4  # Use the environment variable
     env_file:
       - .env_sighook
     volumes:
-      - /home/denfish/Bot_Traderv2.0/data:/data
-      - /home/denfish/Bot_Traderv2.0/logs/signal_logs:/logs/signal_logs
+      - /home/denfish/BotTrader/data:/data
+      - /home/denfish/BotTrader/logs/signal_logs:/logs/signal_logs
     ports:
-      - "5001:5001"  # Maps port 5001 on the host to port 5001 in the container
+      - "5001:5001"
     networks:
-        traderbot_network:
-            ipv4_address: 172.24.2.2
+      traderbot_network:
+        ipv4_address: 172.24.2.2
 
   webhook:
-    build:
-      context: ../webhook
+    image: denfish/bot-webhook:2.4  # Use the environment variable
     env_file:
       - .env_webhook
     volumes:
-      - /home/denfish/Bot_Traderv2.0/data:/data
-      - /home/denfish/Bot_Traderv2.0/logs/listener_logs:/logs/listener_logs
-      - /home/denfish/Bot_Traderv2.0/logs/flask_logs:/logs/flask_logs
-    ports: #HOST_PORT:CONTAINER_PORT
-      - "5000:5000" # digital ocean
+      - /home/denfish/BotTrader/data:/data
+      - /home/denfish/BotTrader/logs/listener_logs:/logs/listener_logs
+      - /home/denfish/BotTrader/logs/flask_logs:/logs/flask_logs
+    ports:
+      - "5000:5000"
     networks:
-        traderbot_network:
-            ipv4_address: 172.24.2.3
+      traderbot_network:
+        ipv4_address: 172.24.2.3
 
 networks:
   traderbot_network:
     driver: bridge
     ipam:
-        driver: default
-        config:
-            - subnet: "172.24.2.1/29"
+      driver: default
+      config:
+        - subnet: "172.24.2.1/29"
+
