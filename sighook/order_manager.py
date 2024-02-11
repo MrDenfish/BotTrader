@@ -1,6 +1,6 @@
 """should execute orders based on instructions from TradingStrategy but should not directly depend on the strategy logic"""
 from decimal import Decimal
-
+import datetime
 import pandas as pd
 
 
@@ -15,21 +15,24 @@ class OrderManager:
         self.utility = utility
         self._version = config.program_version
         self.ticker_cache = None
+        self.session = None
         self.market_cache = None
         self.start_time = None
         self.web_url = None
-        self.current_holdings = None
+        self.holdings = None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache,  web_url, hist_holdings):
+    def set_trade_parameters(self, start_time, session, ticker_cache, market_cache,  web_url, hist_holdings):
         self.start_time = start_time
+        self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
-        self.current_holdings = hist_holdings
+        self.holdings = hist_holdings
 
     @property
     def version(self):
         return self._version
+
     async def get_open_orders(self, old_portfolio, usd_pairs, fetch_all=True):
         """ Fetch open orders for ALL USD paired coins  and process the data to determine if the order should be
         cancelled."""
@@ -77,20 +80,17 @@ class OrderManager:
                 # Pass function and arguments separately to ccxt_exceptions.ccxt_api_call
                 ticker = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, symbol)
                 base_deci, quote_deci = self.utility.fetch_precision(ticker)
-
-                current_ask = Decimal(ticker['ask'])
-                current_bid = Decimal(ticker['bid'])
-
+                current_ask = self.utility.adjust_precision(base_deci, quote_deci, Decimal(ticker['ask']), 'base')
+                current_bid = self.utility.adjust_precision(base_deci, quote_deci, Decimal(ticker['bid']), 'base')
+                limit_price = self.utility.adjust_precision(base_deci, quote_deci, Decimal(order['amount']), 'base')
                 order_id = order['order_id']
-                limit_price = Decimal(order['amount'])
-                limit_price = self.utility.adjust_precision(base_deci, quote_deci, limit_price, 'base')
                 is_buy_order = order['side'].upper() == 'BUY'
 
                 if is_buy_order and limit_price * Decimal('1.02') < current_ask:
                     await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, order_id)
                     stale_order_indices.append(index)
                     print(f"Cancelled stale buy order for {symbol} at {limit_price}. Current ask: {current_ask}")
-                elif not is_buy_order and limit_price * Decimal('0.98') > current_bid:
+                elif is_buy_order and (limit_price * Decimal('0.98')) > current_bid:
                     await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, order_id)
                     stale_order_indices.append(index)
                     print(f"Cancelled stale sell order for {symbol} at {limit_price}. Current bid: {current_bid}")
@@ -123,15 +123,13 @@ class OrderManager:
                                                   f'api(Coinbase Cloud) call: {e}')
             return None, counter
 
-    async def process_sell_order(self, product_id, current_price, current_holdings, purchase_decimal, diff_decimal):
+    async def process_sell_order(self, product_id, current_price, holdings, purchase_decimal, diff_decimal,
+                                 trigger=None):
         sell_cond = True
-        sell_action, sell_pair, sell_limit, sell_order = self.trading_strategy.sell_signal(
-            product_id, current_price, sell_cond, current_holdings, trigger='profit')
+        sell_action, sell_pair, sell_limit, sell_order, trigger = self.trading_strategy.sell_signal(
+            product_id, current_price, sell_cond, holdings, trigger='profit')
         if sell_action:
             await self.webhook.send_webhook(sell_action, sell_pair, sell_limit, sell_order)
-            # message = (f'Sighook v{self.version} Profit opportunity: {product_id},Purchase price:{purchase_decimal}, '
-            #            f'Close price:,{current_price}, Gain: {diff_decimal}%')
-            # self.alerts.callhome('Profit Opportunity', message)
 
     @staticmethod
     def format_open_orders(open_orders: list) -> pd.DataFrame:

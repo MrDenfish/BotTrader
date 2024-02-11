@@ -1,13 +1,9 @@
 # Define the AlertSystem class
 
-import os
 import smtplib
-from datetime import datetime
+import socket
 import asyncio
-import aiohttp
-from aiohttp import ClientSession
-
-from dotenv import load_dotenv
+import random
 
 """ This class handles the sending of alert messages, such as SMS or emails."""
 #
@@ -36,6 +32,12 @@ class AlertSystem:
         # Establish a new SMTP connection for each email sent
         self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         self._smtp_server.login(self._email, self._e_mailpass)
+
+    def get_my_ip_address(self):  # rarely used except when exception occurs for debugging
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        self.log_manager.sighook_logger.info(f"Hostname: {hostname}")
+        return ip_address
 
     @property
     def smtp_server(self):
@@ -68,96 +70,94 @@ class AlertSystem:
             self.log_manager.sighook_logger.error(f'Error sending SMS alert: {e}')
         finally:
             if self._smtp_server:
-                self._smtp_server.quit()  # Close the connection in the finally block
+                self._smtp_server.quit()  # Close the connection
 
 
 class SenderWebhook:
     _instance_count = 0
 
-    def __init__(self, exchange, utility, logmanager, config):
+    def __init__(self, exchange, alerts, logmanager, config):
         self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         self._phone = config.phone
         self._email = config.email
         self._e_mailpass = config.e_mailpass
         self._my_email = config.my_email
+        self._version = config.program_version
         self.log_manager = logmanager
         self.exchange = exchange
         self.base_delay = 5  # Start with a 5-second delay
         self.max_delay = 320  # Don't wait more than this
         self.max_retries = 5  # Default max retries
         self.log_manager = logmanager
-        self.utility = utility
+        self.alerts = alerts
+        self.session = None
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
         self.web_url = None
-        self.current_holdings = None
+        self.holdings = None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
+    def set_trade_parameters(self, start_time, session, ticker_cache, market_cache, web_url, hist_holdings):
         self.start_time = start_time
+        self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
-        self.current_holdings = hist_holdings
+        self.holdings = hist_holdings
 
-    async def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None):
+    async def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None, retries=3, initial_delay=1,
+                           max_delay=60):
+        delay = initial_delay
+        response = None
+        # Define payload outside of the retry loop to avoid redundant operations
         lim_price = str(lim_price)
         send_pair = send_pair.replace('/', '')
-        payload = {}
-        if send_action == 'open_at_limit':
-            order_size = str(100.00)
-            payload = {
-                'action': send_action,  # open_at_limit: buy, close_at_limit: sell
-                'pair': send_pair,  # trading pair (BTCUSD)
-                'order_size': order_size,  # order size
-                'limit_price': lim_price,  # price
-                'origin': "signal_generator"  # where the signal came from
-            }
-        elif send_action == 'close_at_limit':
-            payload = {
-                'action': send_action,  # open_at_limit: buy, close_at_limit: sell
-                'pair': send_pair,  # trading pair (BTCUSD)
-                'limit_price': lim_price,  # price
-                'order_type': send_order,  # order type (market, limit, stop, stop_limit)
-                'origin': "signal_generator"  # where the signal came from
-            }
+        order_size = str(order_size) if order_size is not None else '100'  # Default to '100' if None
+        payload = {
+            'action': send_action,
+            'pair': send_pair,
+            'limit_price': lim_price,
+            'origin': "signal_generator"
+        }
+        if send_action == 'close_at_limit':
+            payload['order_type'] = send_order
+        else:
+            payload['order_size'] = order_size
 
-        current_time = datetime.now()
-        formatted_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
-        async with ClientSession() as session:
+        for attempt in range(1, retries + 1):
             try:
+                self.log_manager.sighook_logger.debug(f"Attempt {attempt}: Sending webhook payload: {payload}")
 
-                async with session.post(self.web_url, json=payload, timeout=20) as response:
-                    # Handle the response here, and raise an exception if rate-limited
-                    if response.status == 200:
-                        self.log_manager.sighook_logger.debug(f'send_webhook 200: {payload} placed at {formatted_time}')
-                    elif response.status == 429:
-                        raise Exception('429: Rate limit exceeded')
-                    elif response.status == 400:
-                        raise Exception('400: Invalid request format.')
-                    elif response.status == 403:
-                        my_ip = self.utility.get_my_ip_address()  # debug when running on the laptop
-                        self.log_manager.sighook_logger.debug(
-                            f'send_webhook: Exception occurred during API call from IP {my_ip}: {response}')
-                        raise Exception('403: IP Not Whitelisted')
-                    elif response.status == 404:
-                        raise Exception('404: Not found, check the webhook URL')
-                    elif response.status == 405:
-                        raise Exception('405: Method Not Allowed')
-                    elif response.status == 500:
-                        raise Exception('500: Internal Server error - Coinbase issue')
-                    elif response.status == 502:
-                        raise Exception('502: Bad Gateway - Coinbase issue')
-                    elif response.status == 401:
-                        raise Exception('401: Invalid api(Coinbase Cloud) Key')
-                    else:
-                        raise Exception(f'Unhandled status code: {response.status}')
+                # async with aiohttp.ClientSession() as session:
+                response = await self.session.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
+                                                   timeout=20)
+                if response.text is not None:
+                    response_text = await response.text()
+                else:
+                    response_text = None
+                self.log_manager.sighook_logger.debug(f"Webhook sent, awaiting response...")
+                if response.status == 200:
+                    self.log_manager.sighook_logger.debug(f"Webhook successfully sent: {payload}")
+                    return  # Success, exit function
 
-            except asyncio.TimeoutError as eto:  # Corrected exception for timeout
-                self.log_manager.sighook_logger.error(f'send_webhook: Request Timed out at {formatted_time}: {eto}')
-            except aiohttp.ClientError as e:  # General aiohttp client errors
-                self.log_manager.sighook_logger.error(f'send_webhook: Aiohttp client error occurred: {e}')
-            except Exception as e:  # Catch-all for any other exceptions
-                self.log_manager.sighook_logger.error(f'send_webhook: Unknown error occurred: {e}')
+                # Handle specific status codes that warrant a retry or log an error
+                if response.status in [429, 500]:  # Rate limit exceeded or server error
+                    self.log_manager.sighook_logger.error(f"Error {response.status}: {response_text}")
+                else:
+                    raise Exception(f"Unhandled status code {response.status}: {response_text}")
 
-            return None
+            except asyncio.TimeoutError as eto:
+                self.log_manager.sighook_logger.error(f"Request timed out: {eto} ")
+
+            except Exception as e:
+                self.log_manager.sighook_logger.error(f"Error sending webhook: {e} ")
+                raise  # Reraise the exception to handle it outside or log it
+
+            # Apply exponential backoff with jitter only if not on last attempt
+            if attempt < retries:
+                sleep_time = int(delay + random.uniform(0, delay * 0.2))
+                await asyncio.sleep(sleep_time)
+                delay = min(delay * 2, max_delay)
+
+        self.log_manager.sighook_logger.error("Max retries reached, giving up.")
+        return None  # Indicate failure after all retries

@@ -13,9 +13,9 @@ class OrderBookManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange_client, logmanager, ccxt_exceptions):
+    def get_instance(cls, exchange_client, utility, logmanager, ccxt_exceptions):
         if cls._instance is None:
-            cls._instance = cls(exchange_client, logmanager, ccxt_exceptions)
+            cls._instance = cls(exchange_client, utility, logmanager, ccxt_exceptions)
         return cls._instance
 
     def __init__(self, exchange_client, utility, logmanager, ccxt_exceptions):
@@ -60,7 +60,8 @@ class OrderBookManager:
         lowest_ask = self.tradebot_utils.float_to_decimal(lowest_ask_float, self.quote_deci).quantize(quantize_format,
                                                                                                       rounding=ROUND_DOWN)
         spread = lowest_ask - highest_bid if highest_bid and lowest_ask else None
-        self.log_manager.webhook_logger.debug(f'analyze_spread:High bid: {highest_bid} Low ask: {lowest_ask} Spread: {spread}')
+        self.log_manager.webhook_logger.debug(f'analyze_spread:High bid: {highest_bid} Low ask: {lowest_ask} Spread: '
+                                              f'{spread}')
         self.log_manager.webhook_logger.debug(
             f'OrderBookManager: analyze_spread: High bid: {highest_bid} Low ask: {lowest_ask} Spread: {spread}')
         # return highest_bid, lowest_ask, spread , additional_bids, additional_asks
@@ -69,13 +70,13 @@ class OrderBookManager:
     @LoggerManager.log_method_call
     def cancel_stale_orders(self, open_orders):
         now = datetime.utcnow()
+        symbol = None
         # iterate through open orders dataframe
         for index, order in open_orders.iterrows():
             try:
                 # Extract order details
                 order_id = order['order_id']
                 symbol = order['product_id']
-                limit_price = Decimal(order['amount'])
                 is_buy_order = order['side'] == 'BUY'
 
                 # Fetch detailed order information
@@ -85,30 +86,15 @@ class OrderBookManager:
                     detailed_order['timestamp'] / 1000)  # Assuming timestamp is in milliseconds
 
                 # Check order age
-                if now - order_time > timedelta(minutes=5):
+                if now - order_time > timedelta(minutes=5) and is_buy_order:  # cancel buy orders older than 5 minutes
                     print(f"Cancelling order {order_id} for {symbol} as it is older than 5 minutes.")
                     self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.cancel_order(order_id))
                     open_orders.drop(index, inplace=True)
                     continue
 
-                # Fetch current prices for the order
-                ticker = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_ticker(symbol))
-                current_ask = Decimal(ticker['ask'])
-                current_bid = Decimal(ticker['bid'])
-
-                # Compare prices and cancel if necessary
-                if is_buy_order and limit_price * Decimal('1.02') < current_ask:
-                    self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.cancel_order(order_id))
-                    open_orders.drop(index, inplace=True)
-                    print(f"Cancelled stale buy order for {symbol} at {limit_price}. Current ask: {current_ask}")
-                elif not is_buy_order and limit_price * Decimal('0.98') > current_bid:
-                    self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.cancel_order(order_id))
-                    open_orders.drop(index, inplace=True)
-                    print(f"Cancelled stale sell order for {symbol} at {limit_price}. Current bid: {current_bid}")
-
             except Exception as e:
                 self.log_manager.webhook_logger.error(f'order_manager: cancel_stale_orders: An error occurred for '
-                                                    f'{symbol}: {e}')
+                                                      f'{symbol}: {e}')
                 continue
 
         return open_orders

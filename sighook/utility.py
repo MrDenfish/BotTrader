@@ -1,6 +1,4 @@
 
-
-import socket
 import time
 import datetime
 import math
@@ -22,13 +20,13 @@ class SenderUtils:
         self.market_cache = None
         self.start_time = None
         self.web_url = None
-        self.current_holdings = None
+        self.holdings = None
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache, hist_holdings):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
-        self.current_holdings = hist_holdings
+        self.holdings = hist_holdings
 
     @staticmethod
     def print_elapsed_time(start_time=None, func_name=None):
@@ -46,7 +44,7 @@ class SenderUtils:
 
             formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
             print(f'Elapsed time for {func_name}: {formatted_time} (hh:mm:ss)')
-            start_time = None # reset start time
+            start_time = None  # reset start time
             return elapsed_seconds
 
     @staticmethod
@@ -91,17 +89,10 @@ class SenderUtils:
             return float('inf')  # If b is 0, then it would cause a division by zero error
         return ((a - b) / b) * 100
 
-    def get_my_ip_address(self):  # rarely used except when exception occurs for debugging
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
-        self.log_manager.sighook_logger.info(f"Hostname: {hostname}")
-        return ip_address
-
     def fetch_precision(self, symbol: str) -> tuple:
         """
         Fetch the precision for base and quote currencies of a given symbol.
 
-        :param markets: list of markets
         :param symbol: The symbol to fetch precision for.
         :return: A tuple containing base and quote decimal places.
         """
@@ -132,6 +123,8 @@ class SenderUtils:
         except ValueError as e:
             self.log_manager.webhook_logger.error(f"fetch_precision: {e}")
             return None, None
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}')
 
         raise ValueError(f"Symbol {symbol} not found in exchange markets.")
 

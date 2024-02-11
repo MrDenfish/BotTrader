@@ -76,19 +76,25 @@ class WebhookListener:
 
         self.utility = TradeBotUtils(self.bot_config, self.log_manager, self.exchange, self.ccxt_exceptions,
                                      self.order_book_manager)
-        self.validate = ValidateOrders(self.log_manager, self.utility)
+        self.validate = ValidateOrders(self.log_manager, self.utility, self.bot_config)
         self.order_book_manager = OrderBookManager(self.exchange, self.utility, self.log_manager, self.ccxt_exceptions)
         self.trade_order_manager = TradeOrderManager(self.exchange, self.utility, self.validate, self.log_manager,
                                                      self.alerts, self.ccxt_exceptions, self.order_book_manager)
 
     def configure_routes(self):
-        #  self.log_manager.flask_logger.info(f'configure_routes: webhook route configured')
 
         @self.app.route('/webhook', methods=['POST'])
         def webhook():
             """Respond to webhook requests from TradingView. Check for whitelist compatability, compile webhook
             signal into a trade order to be placed on Coinbase Pro, and handle errors with the webhook request."""
-
+            # Log the IP address of the requester
+            ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+            self.log_manager.webhook_logger.info(f'Incoming webhook from IP: {ip_address}')
+            # Log request headers and body for debugging
+            self.log_manager.webhook_logger.debug(f'Request Headers: {request.headers}')
+            self.log_manager.webhook_logger.debug(f'Request Body: {request.json}')
+            current_time = datetime.now()
+            formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
             try:
                 if request.method == 'POST':
                     tv_whitelist = self.bot_config.tv_whitelist
@@ -112,7 +118,6 @@ class WebhookListener:
                         self.log_manager.webhook_logger.error(f'webhook: Missing JSON in request')
                         print(f'respond to web_hook, 400 invalid Missing JSON in request')
                         return jsonify(success=False, message="Missing JSON in request"), 400
-
                     action, side, trading_pair, quote_currency, base_currency, usd_amount, orig = self.parse_webhook_data(
                         request.get_json())
                     base_decimal, quote_decimal, base_increment, quote_increment = self.utility.fetch_precision(trading_pair)
@@ -142,7 +147,7 @@ class WebhookListener:
                     if side == 'buy':
                         base_price = base_price/quote_price
                     base_order_size, quote_amount = self.calculate_order_size(side, usd_amount, quote_price, base_price,
-                                                                              base_decimal, quote_decimal)
+                                                                              base_decimal)
 
                     # Process the webhook request check for bad buy order
                     if side == 'buy':
@@ -169,7 +174,7 @@ class WebhookListener:
                             print(F'<><><><><><><><><  {orig}  ><><><><> {side} signal generated for {trading_pair} at '
                                   F'{formatted_time} ')
                             self.handle_action(side, trading_pair, formatted_time, quote_price, quote_amount,
-                                               base_order_size, usd_amount, base_price)
+                                               usd_amount, base_price)
                         else:
                             print(f'respond to web_hook, 400 invalid {action}')
                             self.log_manager.webhook_logger.error(f'webhook: Invalid action {action}.')
@@ -180,8 +185,7 @@ class WebhookListener:
                         self.handle_webhook_error(inner_e, side, trading_pair, formatted_time, quote_price, quote_amount,
                                                   base_order_size, usd_amount, base_price)
                         return "Internal Server Error", 500
-                current_time = datetime.now()
-                formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+
                 print(f'<><><><><><><><><><><><><><><><><><><><< {formatted_time} >><><><><><><><><><><><><><><><><><><><>')
 
                 print(f'Webhook {self.bot_config.program_version} is Listening...')
@@ -192,19 +196,17 @@ class WebhookListener:
                 if "not found in exchange markets" in str(e) or "Failed to fetch markets" in str(e):
                     self.log_manager.webhook_logger.error(f'webhook: {e}')
                     self.log_manager.webhook_logger.error(f'webhook: check ip address is whitelisted.  {e}')
-                    self.alerts.callhome('Not connecting to Coinbase', f'check ip address is whitelisted  {e}')
+                    self.alerts.callhome('Not connecting to Coinbase', f'Time:{formatted_time}'
+                                                                       f'check ip address is whitelisted  {e}')
 
                 return jsonify({"success": False, "Check ip address is whitelisted": str(e)}), 400
+
             except Exception as outer_e:
-                if 'origin' in outer_e:
-                    self.log_manager.webhook_logger.error(f'webhook: origin not found in payload {request.get_json()}')
-                    return jsonify(success=False, message="Invalid content type"), 415
-                else:
-                    self.log_manager.webhook_logger.error(f'webhook: An error occurred: {outer_e}')
-                    return jsonify({"success": False, "Error-500": "Internal Server Error"}), 500
+                self.log_manager.webhook_logger.error(f'Error processing webhook: {outer_e}', exc_info=True)
+                return jsonify({"success": False, "Error": "Internal Server Error"}), 500
 
     @LoggerManager.log_method_call
-    def calculate_order_size(self, side, usd_amount, quote_price, base_price, base_decimal, quote_decimal):
+    def calculate_order_size(self, side, usd_amount, quote_price, base_price, base_decimal):
         # Convert USD to BTC
         quote_amount = None
         # Convert BTC(quote currency) to Base Currency (e.g., ETH)
@@ -234,7 +236,7 @@ class WebhookListener:
             usd_amount = None
         return action, side, pair, quote_currency, base_currency, usd_amount, orig
 
-    def handle_action(self, side, trading_pair, formatted_time, quote_price, quote_amount, base_order_size, usd_amount,
+    def handle_action(self, side, trading_pair, formatted_time, quote_price, quote_amount, usd_amount,
                       base_price):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro."""
         try:
@@ -282,8 +284,7 @@ class WebhookListener:
             self.log_manager.webhook_logger.error(f'warning', 'handle_webhook_error: Rate limit hit. '
                                                   'Retrying in 60 seconds...')
             time.sleep(60)
-            self.handle_action(side, trading_pair, formatted_time, quote_price, quote_amount, base_order_size, usd_amount,
-                               base_price)
+            self.handle_action(side, trading_pair, formatted_time, quote_price, quote_amount, usd_amount, base_price)
         except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
             self.log_manager.webhook_logger.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
 

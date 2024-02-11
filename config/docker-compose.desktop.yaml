@@ -3,7 +3,7 @@ version: '3.7'
 
 services:
   sighook:
-    image: denfish/bot-sighook:2.4  # Use the environment variable
+    image: denfish/bot-sighook:2.9  # Use the environment variable
     build:
       context: ../sighook
     env_file:
@@ -15,10 +15,9 @@ services:
       - "5001:5001"
     networks:
       traderbot_network:
-        ipv4_address: 172.24.2.2
 
   webhook:
-    image: denfish/bot-webhook:2.4  # Use the environment variable
+    image: denfish/bot-webhook:2.9  # Use the environment variable
     build:
       context: ../webhook
     env_file:
@@ -31,7 +30,6 @@ services:
       - "80:80"
     networks:
       traderbot_network:
-        ipv4_address: 172.24.2.3
 
 networks:
   traderbot_network:
@@ -39,4 +37,4 @@ networks:
       ipam:
         driver: default
         config:
-          - subnet: "172.24.2.1/29"
+          - subnet: "172.24.2.0/29"

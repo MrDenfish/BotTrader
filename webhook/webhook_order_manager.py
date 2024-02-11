@@ -60,16 +60,15 @@ class TradeOrderManager:
                 self.order_book.cancel_stale_orders(open_orders)
             order_book, highest_bid, lowest_ask, spread = self.order_book.get_order_book()
             available_coin_balance, valid_order = (self.validate.fetch_and_validate_rules(side, highest_bid, usd_amount,
-                                                   base_balance, quote_bal, open_orders, quote_amount, quote_price))
+                                                   base_balance, open_orders, quote_amount, quote_price))
             if valid_order:
-                convert = 'base' if self.quote_currency != 'USD' else 'quote'
                 adjusted_price, adjusted_size = self.tradebot_utils.adjusted_price_and_size(
                     side, order_book, quote_price, available_coin_balance, usd_amount)
                 self.log_manager.webhook_logger.debug(f'place_order: adjusted_price: {adjusted_price}, adjusted_size: '
                                                       f'{adjusted_size}')
 
                 return self.handle_order(side, adjusted_size, usd_amount, available_coin_balance, adjusted_price,
-                                         quote_price, quote_amount, highest_bid, lowest_ask)
+                                         quote_price, highest_bid, lowest_ask)
             else:
                 return False  # not a valid order
         elif base_price * base_balance > 10.00:
@@ -84,7 +83,7 @@ class TradeOrderManager:
 
     @LoggerManager.log_method_call
     def handle_order(self, side, adjusted_size, usd_amount, available_coin_balance, adjusted_price,
-                     quote_price, quote_amount, highest_bid, lowest_ask, retries=10):
+                     quote_price, highest_bid, lowest_ask, retries=10):
         """
         Coordinates the process of placing an order. It calculates the order parameters, attempts to place
         an order, checks if the order is accepted, and retries if necessary.
@@ -108,10 +107,13 @@ class TradeOrderManager:
                 # Check order feasibility
                 if not self.is_order_feasible(side, available_quote):
                     continue
-
+                # check for open orders
+                open_orders = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders())
+                if open_orders['product_id'] == self.trading_pair:
+                    print(f'open_orders: {open_orders} for {self.trading_pair}. New order will not be placed')
+                    return False
                 # Try placing the order
-                order_placed, order_record = self.try_place_order(attempt, side, adjusted_size, adjusted_price,
-                                                                  lowest_ask, highest_bid, order_record)
+                order_placed, order_record = self.try_place_order(side, adjusted_size, adjusted_price, order_record)
 
                 if order_placed:
                     print(order_record.to_string(index=False))  # print order book after order placed.
@@ -133,12 +135,12 @@ class TradeOrderManager:
         return False
 
     @LoggerManager.log_method_call
-    def try_place_order(self, attempt, side, adjusted_size, adjusted_price, lowest_ask, highest_bid, order_record):
+    def try_place_order(self, side, adjusted_size, adjusted_price, order_record):
 
         #  price is the adjusted_price ( best_highest bid + increment for a sell and best_lowest_ask + increment for a buy)
         response = None
         try:
-            response = self.place_limit_order(attempt, side, adjusted_size, adjusted_price, lowest_ask, highest_bid)
+            response = self.place_limit_order(side, adjusted_size, adjusted_price)
             order_placed = False
             new_order = None
             if response == 'amend':
@@ -157,16 +159,14 @@ class TradeOrderManager:
             return ex
 
     @LoggerManager.log_method_call
-    def place_limit_order(self, i, side, adjusted_size, adjusted_price, lowest_ask, highest_bid):
+    def place_limit_order(self, side, adjusted_size, adjusted_price):
         """
         Attempts to place a limit order and returns the response.
         If the order fails, it logs the error and returns None.
         """
-        error_info, response = None, None
         try:
             response = self.ccxt_exceptions.ccxt_api_call(lambda: (self.exchange.create_limit_order(self.trading_pair, side,
                                                           adjusted_size, adjusted_price, {'post_only': True})))
-
             if response == 'amend':
                 return 'amend'  # Order needs amendment
             elif response:
@@ -191,8 +191,6 @@ class TradeOrderManager:
         open_orders = []
         all_open_orders = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders(None))
         try:
-            if all_open_orders:  # debug
-                pass
             if len(all_open_orders) != 0:
                 open_order = self.tradebot_utils.format_open_orders(all_open_orders)
                 open_orders = list(all_open_orders)
@@ -320,4 +318,3 @@ class TradeOrderManager:
             return None
 
         return balance * (quote_price * adjusted_price)
-

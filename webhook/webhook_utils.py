@@ -334,7 +334,7 @@ class TradeBotUtils:
         :param base_decimal: The number of decimal places for the base value.
         :return: A Decimal object representing the format.
         """
-        if base_decimal <= 0:
+        if base_decimal < 0:
             raise ValueError("base_decimal must be a positive integer")
 
         decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'

@@ -13,7 +13,7 @@ from ccxt import ExchangeError  # Import the specific CCXT
 class ApiExceptions:
     def __init__(self, logmanager, alerts):
         self.log_manager = logmanager
-        self.alert_system = alerts
+        self.alerts = alerts
 
     async def ccxt_api_call(self, func, *args, **kwargs):
         """
@@ -30,7 +30,6 @@ class ApiExceptions:
         retries = 3
         backoff_factor = 0.3
         rate_limit_wait = 1  # seconds
-
         for attempt in range(retries):
             try:
                 return await func(*args, **kwargs)
@@ -41,8 +40,11 @@ class ApiExceptions:
                     wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
                     self.log_manager.sighook_logger.error(f'Rate limit exceeded: Retrying in {wait_time} seconds...')
                     await asyncio.sleep(wait_time)  # Use the calculated wait_time here
-                else:
+                elif 'Insufficient funds' in str(ex):
                     self.log_manager.sighook_logger.error(f'Exchange error: {ex}')
+                elif 'USD/USD' in str(ex):
+                    self.log_manager.sighook_logger.debug(f'USD/USD: {ex}')
+
             except asyncio.TimeoutError as e:
                 # Handle timeout specifically
                 self.log_manager.sighook_logger.error(f"Timeout occurred: {e}")

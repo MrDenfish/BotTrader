@@ -1,4 +1,5 @@
 
+import aiohttp
 import os
 import time
 from decimal import Decimal
@@ -86,16 +87,17 @@ class TradeBot:
         self.log_manager = LoggerManager(log_dir=self.log_dir)
         self.alerts = AlertSystem(self.app_config, self.log_manager)
         self.api401 = UnauthorizedError(self.log_manager, self.coms)
-        self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
         self.custom_excep = CustomExceptions(self.log_manager, self.alerts)
+        self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
         self.utility = SenderUtils(self.log_manager, self.exchange, self.ccxt_exceptions)
         self.market_metrics = CoinMarketAPI(self.cmc_api_key, self.cmc_url, self.log_manager)
         self.ticker_manager = TickerManager(self.utility, self.log_manager,  self.exchange, self.ccxt_exceptions)
         self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange)
-        self.webhook = SenderWebhook(self.exchange, self.utility, self.log_manager, self.app_config)
+        self.webhook = SenderWebhook(self.exchange, self.alerts, self.log_manager, self.app_config)
 
         self.trading_strategy = TradingStrategy(self.webhook, self.ticker_manager, self.utility, self.alerts, self.exchange,
-                                                self.log_manager, self.ccxt_exceptions, self.market_metrics)
+                                                self.log_manager, self.ccxt_exceptions, self.market_metrics,
+                                                self.alerts, self.app_config)
         self.order_manager = OrderManager(self.trading_strategy, self.exchange, self.webhook, self.utility, self.alerts,
                                           self.log_manager, self.ccxt_exceptions, self.app_config)
 
@@ -105,76 +107,95 @@ class TradeBot:
                                             self.ticker_manager, self.utility)
 
         self.profit_manager = ProfitabilityManager(self.api_wrapper, self.utility, self.order_manager,
-                                                   self.portfolio_manager, self.log_manager)
+                                                   self.portfolio_manager, self.log_manager, self.app_config)
 
     async def main(self, port):
 
-        profit_data = pd.DataFrame(columns=['symbol', 'profit'])
-        current_holdings = pd.DataFrame()  # Holds all coins ever traded
+        profit_data = pd.DataFrame(columns=['Symbol', 'Unrealized PCT', 'Profit/Loss', 'Total Cost', 'Current Value',
+                                            'Balance'])
+        holdings = pd.DataFrame()  # Holds all coins ever traded
         ledger = pd.DataFrame()  # Holds all trades and shows profitability of all trades
         web_url = self.web_url
-        try:
-            while True:
-                print(f'          '
-                      f'Sighook {self.app_config.program_version}, Port: {port}    '
-                      f'Updating ticker cache...', end='\r')
-                profit_data = pd.DataFrame(columns=['symbol', 'profit'])
-                start_time = None  # reset start time with each loop
-                start_time = self.utility.print_elapsed_time(start_time, 'main')
-                self.ticker_cache, self.market_cache = await self.ticker_manager.update_ticker_cache(start_time)
-                self.ticker_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, current_holdings)
-                self.utility.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, current_holdings)
-                self.portfolio_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache,
-                                                            current_holdings)
-                self.api_wrapper.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
-                                                      current_holdings)
-                self.trading_strategy.set_trade_parameters(start_time, self.ticker_cache, self.market_cache,
-                                                           current_holdings)
-                self.order_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
-                                                        current_holdings)
-                self.profit_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
-                                                         current_holdings)
-                self.market_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, current_holdings)
-                self.webhook.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
-                                                  current_holdings)
-                self.market_metrics.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
-                                                         current_holdings)
-                self.last_ticker_update = self.ticker_manager.last_ticker_update
+        # Create a ClientSession at the start of main
+        async with aiohttp.ClientSession() as session:
+            try:
+                while True:
+                    print(f'          '
+                          f'Sighook {self.app_config.program_version}, Port: {port}    '
+                          f'Updating ticker cache...')
+                    start_time = None  # reset start time with each loop
+                    start_time = self.utility.print_elapsed_time(start_time, 'main')
+                    self.ticker_cache, self.market_cache = await self.ticker_manager.update_ticker_cache(start_time)
+                    self.utility.print_elapsed_time(start_time, 'load ticker cache')
+                    self.ticker_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, 
+                                                             holdings)
+                    self.utility.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, holdings)
+                    self.portfolio_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache,
+                                                                holdings)
+                    self.api_wrapper.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
+                                                          holdings)
+                    self.trading_strategy.set_trade_parameters(start_time, session,  self.ticker_cache, self.market_cache,
+                                                               holdings)
+                    self.order_manager.set_trade_parameters(start_time, session, self.ticker_cache, self.market_cache,
+                                                            web_url,
+                                                            holdings)
+                    self.profit_manager.set_trade_parameters(start_time, session, self.ticker_cache, self.market_cache,
+                                                             web_url,
+                                                             holdings)
+                    self.market_manager.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, 
+                                                             holdings)
+                    self.webhook.set_trade_parameters(start_time, session, self.ticker_cache, self.market_cache, web_url,
+                                                      holdings)
+                    self.market_metrics.set_trade_parameters(start_time, self.ticker_cache, self.market_cache, web_url,
+                                                             holdings)
+                    self.last_ticker_update = self.ticker_manager.last_ticker_update
 
-                (old_portfolio, usd_coins, avg_vol_total, buy_sell_matrix, price_change) = \
-                    (self.api_wrapper.get_portfolio_data(start_time, self.old_portfolio))
-                current_holdings = old_portfolio
-                # trading strategy
-                if self.ticker_manager.ticker_cache is not None and not self.ticker_manager.ticker_cache.empty:
-                    open_orders, bollinger_df = await self.market_manager.new_fetch_ohlcv(
-                        old_portfolio, usd_coins, avg_vol_total, buy_sell_matrix)
-                    if open_orders is not None and len(open_orders) > 0:
-                        print(f'Open orders: {open_orders.to_string(index=False)}')
-                    else:
-                        print(f'No open orders found')
-                # check portfolio balances for profitability
+                    (old_portfolio, usd_coins, avg_vol_total, buy_sell_matrix, price_change) = \
+                        (self.api_wrapper.get_portfolio_data(start_time, self.old_portfolio))
+                    holdings = old_portfolio
+                    filtered_ticker_cache = self.portfolio_manager.filter_ticker_cache_matrix(buy_sell_matrix)
+                    self.utility.print_elapsed_time(start_time, 'load portfolio data')
+                    # trading strategy
+                    if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
+                        open_orders, bollinger_df = await self.market_manager.new_fetch_ohlcv(
+                            old_portfolio, usd_coins, avg_vol_total, buy_sell_matrix, filtered_ticker_cache)
+                        if open_orders is not None and len(open_orders) > 0:
+                            print(f'Open orders: {open_orders.to_string(index=False)}')
+                        else:
+                            print(f'No open orders found')
 
-                profit_data = await self.profit_manager.check_profit_level(profit_data, current_holdings)
-                self.utility.print_elapsed_time(start_time, 'check Profit level')  # debug statement
-                if len(profit_data) > 0:
-                    activetrade_data_path = os.path.join(self.active_trade_dir, 'activetrade_data.csv')
-                    profit_data.to_csv(activetrade_data_path, index=False)
-                    print(f"Profit Data:\n{profit_data.to_string(index=False)}")
+                        self.utility.print_elapsed_time(start_time, 'Load OHLCV data')  # debug statement
 
-                ledger, profitability = await self.profit_manager.calculate_profits(start_time, self.portfolio_trade_dir)
-                if isinstance(ledger, pd.DataFrame):
-                    portfolio_data_path = os.path.join(self.portfolio_trade_dir, 'portfolio_data.csv')
-                    ledger.to_csv(portfolio_data_path, index=False)
-                if isinstance(profitability, pd.DataFrame):
-                    profit_data_path = os.path.join(self.profit_dir, 'profit_data.csv')
-                    profitability.to_csv(profit_data_path, index=False)
-                intro_text = f"High Volume Crypto with volume greater than {min(avg_vol_total, Decimal(1000000))}:"
-                print(intro_text)
-                print(buy_sell_matrix.to_string(index=False))
-                self.utility.print_elapsed_time(start_time, 'main')  # debug statement
-                self.sleep_with_progress_bar()
-        except KeyboardInterrupt:
-            self.save_data_on_exit(profit_data, ledger)
+                    # check portfolio balances for profitability#
+                    profit_data = await self.profit_manager.check_profit_level(profit_data, holdings)
+                    self.utility.print_elapsed_time(start_time, 'Load profit loss data')  # debug statement
+                    if len(profit_data) > 0:
+                        activetrade_data_path = os.path.join(self.active_trade_dir, 'activetrade_data.csv')
+                        profit_data.to_csv(activetrade_data_path, index=False)
+                        print(f"Profit Data:\n{profit_data.to_string(index=False)}")
+
+                    ledger, profitability = await self.profit_manager.profits(start_time, self.portfolio_trade_dir)
+                    if isinstance(ledger, pd.DataFrame):
+                        portfolio_data_path = os.path.join(self.portfolio_trade_dir, 'portfolio_data.csv')
+                        ledger.to_csv(portfolio_data_path, index=False)
+                    if isinstance(profitability, pd.DataFrame):
+                        profit_data_path = os.path.join(self.profit_dir, 'profit_data.csv')
+                        profitability.to_csv(profit_data_path, index=False)
+                    intro_text = f"High Volume Crypto Volume greater than {min(avg_vol_total, Decimal(1000000))}:"
+                    print("<><><><<><>" * 20)
+                    print(intro_text)
+                    print(f'                        24h           24h       24h       ')
+                    print(buy_sell_matrix.to_string(index=False))
+                    profit_data = profit_data[0:0]  # clear contents of profit_data
+                    self.utility.print_elapsed_time(start_time, 'main')  # debug statement
+                    self.sleep_with_progress_bar()
+            except KeyboardInterrupt:
+                self.save_data_on_exit(profit_data, ledger)
+            finally:
+                self.alerts.callhome(f"Program has stopped running.")
+                print("Program has exited.")
+                #  session will be closed automatically due to the 'async with' context
+                #  No need to call session.close() here
 
     def save_data_on_exit(self, profit_data, ledger):
         pass
@@ -182,7 +203,7 @@ class TradeBot:
 
     @staticmethod
     def sleep_with_progress_bar():
-        total_sleep = 60
+        total_sleep = 300
         update_interval = 1
         num_iterations = total_sleep // update_interval
         with alive_bar(num_iterations, force_tty=True) as bar:
@@ -193,8 +214,8 @@ class TradeBot:
 
 if __name__ == "__main__":
     # os.environ['PYTHONASYNCIODEBUG'] = '1'  # Enable asyncio debug mode #async debug statement
-    print("Debugging - MACHINE_TYPE:", os.getenv('MACHINE_TYPE'))
-    print("Debugging - MACHINE_TYPE:", os.getenv('MACHINE_TYPE'))
+    # print("Debugging - MACHINE_TYPE:", os.getenv('MACHINE_TYPE'))
+    # print("Debugging - MACHINE_TYPE:", os.getenv('MACHINE_TYPE'))
     app_config = AppConfig()  # Create an instance of AppConfig
 
     # Set display options for pandas

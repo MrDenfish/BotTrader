@@ -4,7 +4,6 @@ from environment variables and providing getters for accessing these configurati
 This class  encapsulates the configuration management for the trading bot."""
 import os
 import json
-import re
 
 from dotenv import load_dotenv
 
@@ -59,7 +58,7 @@ class BotConfig:
             if self.machine_type in config:
                 machine_path = config[self.machine_type]
                 # Load machine-specific settings
-                self.get_directory_paths(machine_path)
+                self.get_directory_paths()
             else:
                 print(f"Error: Machine type '{self.machine_type}' not found in config")
                 exit(1)
@@ -93,7 +92,7 @@ class BotConfig:
             exit(1)
         return machine_type
 
-    def get_directory_paths(self, path):
+    def get_directory_paths(self):
         base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
         self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['TRADERBOT_ERROR_LOG_DIR'])
         self.flask_log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['FLASK_ERROR_LOG_DIR'])

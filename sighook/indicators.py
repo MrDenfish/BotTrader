@@ -2,7 +2,7 @@
 from logging_manager import LoggerManager
 
 
-class BollingerBands:
+class Indicators:
     def __init__(self):
         self.log_manager = LoggerManager()
 
@@ -28,12 +28,16 @@ class BollingerBands:
         return df
 
     @staticmethod
-    def calculate_sma(df, length=20):
+    def calculate_trends(df, short=50, long=200, period=30):
         try:
             if df.empty:
                 raise ValueError("Input DataFrame is empty")
 
-            df['basis'] = df['close'].rolling(window=length).mean()  # simple moving average
+            df['50_sma'] = df['close'].rolling(window=short).mean()  # simple moving average
+            df['200_sma'] = df['close'].rolling(window=long).mean()
+            df['sma'] = df['close'].rolling(window=period).mean()  # simple moving average
+            df['volatility'] = df['close'].rolling(window=period).std()
+            return df
         except ValueError as e:
             # Handle the specific case where the symbol is not found
             if "DataFrame is empty" in str(e):
@@ -41,6 +45,24 @@ class BollingerBands:
         except Exception as e:
             print(f"Error in calculate_sma(): {e}")
             return df
+        raise
+
+    @staticmethod
+    def calculate_macd(df, fast_period=12, slow_period=26, signal_period=9):
+        # Calculate the short/fast EMA
+        df['EMA_fast'] = df['close'].ewm(span=fast_period, adjust=False).mean()
+
+        # Calculate the long/slow EMA
+        df['EMA_slow'] = df['close'].ewm(span=slow_period, adjust=False).mean()
+
+        # Calculate the MACD line
+        df['MACD'] = df['EMA_fast'] - df['EMA_slow']
+
+        # Calculate the signal line
+        df['Signal_Line'] = df['MACD'].ewm(span=signal_period, adjust=False).mean()
+
+        # (Optional) Calculate the MACD histogram
+        df['MACD_Histogram'] = df['MACD'] - df['Signal_Line']
 
         return df
 
@@ -51,18 +73,18 @@ class BollingerBands:
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
 
         rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        return rsi
+        df['RSI'] = 100 - (100 / (1 + rs))
+        return df
 
     @staticmethod
-    def calculate_roc(df, roc_len=2):
+    def calculate_roc(df, roc_len=3):
         # Calculate the first ROC
-        roc = ((df['close'] - df['close'].shift(roc_len)) / df['close'].shift(roc_len)) * 100
+        df['ROC'] = ((df['close'] - df['close'].shift(roc_len)) / df['close'].shift(roc_len)) * 100
         # Calculate the second ROC
         # roc_previous = ((df['close'].shift(3) - df['close'].shift(3 + roc_len)) / df['close'].shift(3 + roc_len)) * 100
         # Subtract the second ROC from the first ROC
 
-        return roc
+        return df
 
     @staticmethod
     def identify_w_bottoms_m_tops(bollinger_df):
@@ -125,3 +147,58 @@ class BollingerBands:
         except Exception as e:
             print(f"Error in algorithmic_trading_strategy(): {e}")
             return False, False
+
+    @staticmethod
+    def swing_trading_signals(df):
+        # Initialize a dictionary to store the trading signals for the given symbol
+
+        df['Buy Swing'] = False
+        df['Sell Swing'] = False
+
+        # Define a threshold for low and high volatility (this would need to be optimized)
+        low_volatility_threshold = df['volatility'].mean() * 0.8
+        high_volatility_threshold = df['volatility'].mean() * 1.2
+
+        # Ensure there's enough data for analysis
+        if df.empty or len(df) < 200:
+            return df
+
+        # Last row in the DataFrame
+        last_row = df.iloc[-1]
+
+        # Conditions for a Buy Swing Signal
+        # 1. The current price is above the 50-day moving average, indicating an uptrend.
+        # 2. The RSI is below 70 but above 30, avoiding overbought conditions but ensuring some momentum.
+        # 3. The MACD line is above the Signal line, indicating bullish momentum.
+        # 4. The current price is above the 200-day moving average, confirming the long-term uptrend.
+        buy_conditions = [
+            last_row['close'] > last_row['50_sma'],
+            30 < last_row['RSI'] < 70,
+            last_row['MACD'] > last_row['Signal_Line'],
+            last_row['close'] > last_row['200_sma'],
+            last_row['volatility'] > low_volatility_threshold  # Expecting higher volatility for a strong move
+        ]
+
+        # Conditions for a Sell Swing Signal
+        # 1. The current price is below the 50-day moving average, indicating a downtrend.
+        # 2. The RSI is above 30 but below 70, avoiding oversold conditions but ensuring some downward momentum.
+        # 3. The MACD line is below the Signal line, indicating bearish momentum.
+        # 4. The current price is below the 200-day moving average, confirming the long-term downtrend.
+        sell_conditions = [
+            last_row['close'] < last_row['50_sma'],
+            30 < last_row['RSI'] < 70,
+            last_row['MACD'] < last_row['Signal_Line'],
+            last_row['close'] < last_row['200_sma'],
+            last_row['volatility'] < high_volatility_threshold  # Lower volatility might indicate a potential reversal
+        ]
+
+        # Check if all buy conditions are met
+        if all(buy_conditions):
+            df['Buy Swing'] = True
+
+        # Check if all sell conditions are met
+        if all(sell_conditions):
+            df['Sell Swing'] = True
+
+        # Return the swing trading signals
+        return df

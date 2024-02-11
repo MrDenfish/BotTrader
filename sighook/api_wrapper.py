@@ -19,17 +19,17 @@ class APIWrapper:
         self.market_cache = None
         self.start_time = None
         self.web_url = None
-        self.current_holdings = None
+        self.holdings = None
 
-    def set_trading_strategy(self, trading_strategy):
-        self.trading_strategy = trading_strategy
+    # def set_trading_strategy(self, trading_strategy):
+    #     self.trading_strategy = trading_strategy
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
-        self.current_holdings = hist_holdings
+        self.holdings = hist_holdings
 
     async def get_open_orders(self, old_portfolio, usd_pairs, fetch_all=True):
         return await self.order_manager.get_open_orders(old_portfolio, usd_pairs, fetch_all)
@@ -40,6 +40,9 @@ class APIWrapper:
 
     async def get_filled_orders(self, product_id, counter):
         return await self.order_manager.get_filled_orders(product_id, counter)
+
+    # async def get_my_trades(self, symbol, since=0):
+    #     return await self.portfolio_manager.get_my_trades(symbol)
 
     def fetch_total_supply(self, symbol):
         return self.market_metrics.fetch_total_supply(symbol)

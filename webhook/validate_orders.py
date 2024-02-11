@@ -3,22 +3,25 @@ from log_manager import LoggerManager
 
 from decimal import Decimal, InvalidOperation
 
+import datetime
+
 
 class ValidateOrders:
     _instance_count = 0
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager, utility):
+    def get_instance(cls, logmanager, utility, config):
         if cls._instance is None:
-            cls._instance = cls(logmanager, utility)
+            cls._instance = cls(logmanager, utility, config)
         return cls._instance
 
-    def __init__(self, logmanager, utility):
+    def __init__(self, logmanager, utility, config):
         # self.id = ValidateOrders._instance_count
         # ValidateOrders._instance_count += 1
         # print(f"ValidateOrders Instance ID: {self.id}")
         self.utility = utility
+        self._version = config.program_version
         self.log_manager = logmanager
         self.base_currency, self.quote_currency, self.trading_pair = None, None, None
         self.base_deci, self.quote_deci, self.balances = None, None, None
@@ -35,9 +38,12 @@ class ValidateOrders:
         self.quote_incri = quote_increment
         self.balances = balances
 
+    @property
+    def version(self):
+        return self._version
+
     @LoggerManager.log_method_call
-    def fetch_and_validate_rules(self, side, highest_bid, usd_amount, base_balance, quote_bal,
-                                 open_orders, quote_amount, quote_price):
+    def fetch_and_validate_rules(self, side, highest_bid, usd_amount, base_balance, open_orders, quote_amount, quote_price):
         # Fetch and validate available balance
         # Return available_balance and coin balance
         # buy coin bal is wrong must be 0.0 when buy
@@ -108,6 +114,8 @@ class ValidateOrders:
                     self.log_manager.webhook_logger.info(
                         f'validate_orders: Insufficient funds ${quote_balance} to {side}: '
                         f'{self.trading_pair} ${quote_amount}.00 is required. ')
+                    message = (f'Webhook v{self.version} Time:{datetime.datetime.now()} Insufficient funds ${quote_balance} '
+                               f'to buy {self.base_currency}')
                 elif base_balance is not None and base_balance_value > 10.0:
                     self.log_manager.webhook_logger.info(f'validate_orders: {side} order will not be placed for '
                                                          f'{self.trading_pair} there is a  balance of '

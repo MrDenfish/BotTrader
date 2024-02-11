@@ -2,22 +2,23 @@ version: '3.7'
 
 services:
   sighook:
-    image: denfish/bot-sighook:2.4  # Use the environment variable
+    build:
+      context: ../sighook  # Adjusted relative path for the build context
     env_file:
-      - .env_sighook
+      - .env_sighook  # Keeping it as is, since it's in the same directory as the Docker Compose file
     volumes:
       - /home/denfish/BotTrader/data:/data
       - /home/denfish/BotTrader/logs/signal_logs:/logs/signal_logs
     ports:
       - "5001:5001"
     networks:
-      traderbot_network:
-        ipv4_address: 172.24.2.2
+      - traderbot_network
 
   webhook:
-    image: denfish/bot-webhook:2.4  # Use the environment variable
+    build:
+      context: ../webhook  # Adjusted relative path for the build context
     env_file:
-      - .env_webhook
+      - .env_webhook  # Keeping it as is, since it's in the same directory as the Docker Compose file
     volumes:
       - /home/denfish/BotTrader/data:/data
       - /home/denfish/BotTrader/logs/listener_logs:/logs/listener_logs
@@ -25,8 +26,7 @@ services:
     ports:
       - "5000:5000"
     networks:
-      traderbot_network:
-        ipv4_address: 172.24.2.3
+      - traderbot_network
 
 networks:
   traderbot_network:
@@ -34,5 +34,5 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: "172.24.2.1/29"
+        - subnet: "172.24.2.0/29"
 

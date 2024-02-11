@@ -1,7 +1,5 @@
 import os
 import json
-import re
-
 
 from dotenv import load_dotenv
 
@@ -42,6 +40,8 @@ class AppConfig:
             self._email = os.getenv('EMAIL')
             self._e_mailpass = os.getenv('E_MAILPASS')
             self._my_email = os.getenv('MY_EMAIL')
+            self._stop_loss = os.getenv('STOP_LOSS')
+            self._take_profit = os.getenv('TAKE_PROFIT')
             self._json_config = None
             self.machine_type = None
             self.port = None
@@ -69,9 +69,10 @@ class AppConfig:
             print(f"Error loading JSON configuration: {e}")
             exit(1)
 
-    def determine_machine_type(self):
+    @staticmethod
+    def determine_machine_type():
         machine_type = os.getcwd().split('/')
-        print(f'Machine type: {machine_type}')
+        # print(f'Machine type: {machine_type}')  # debug statement
         if 'app' in machine_type:
             machine_type = 'docker'
             print(f'Machine type: {machine_type}')
@@ -106,6 +107,14 @@ class AppConfig:
         return self._version
 
     @property
+    def stop_loss(self):
+        return self._stop_loss
+
+    @property
+    def take_profit(self):
+        return self._take_profit
+
+    @property
     def api_key(self):
         return self._api_key
 
@@ -132,6 +141,7 @@ class AppConfig:
     @property
     def docker_staticip(self):
         return self._docker_staticip
+
     @property
     def tv_whitelist(self):
         return self._tv_whitelist
@@ -139,10 +149,6 @@ class AppConfig:
     @property
     def coin_whitelist(self):
         return self._coin_whitelist
-
-    @property
-    def tradebot_log_path(self):
-        return self._tradebot_log_path
 
     @property
     def account_sid(self):

@@ -18,15 +18,15 @@ class MarketManager:
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
-        self.current_holdings = None
+        self.holdings = None
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache,  hist_holdings):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
-        self.current_holdings = hist_holdings
+        self.holdings = hist_holdings
 
-    async def new_fetch_ohlcv(self, old_portfolio, usd_pairs, avg_dollar_vol_total, buy_sell_matrix):
+    async def new_fetch_ohlcv(self, old_portfolio, usd_pairs, avg_dollar_vol_total, buy_sell_matrix, filtered_ticker_cache):
         try:
             if avg_dollar_vol_total is None:
                 self.log_manager.sighook_logger.info('average volume missing')
@@ -35,11 +35,12 @@ class MarketManager:
             self.open_orders = await self.api_wrapper.get_open_orders(old_portfolio, usd_pairs)
             counter = {'processed': 0}
             # Prepare asynchronous tasks for processing rows
-            tasks = [self.trading_strategy.process_row_async(row, old_portfolio, buy_sell_matrix, counter)
-                     for _, row in self.ticker_manager.ticker_cache.iterrows()]
 
-            results = await asyncio.gather(*tasks)
-            print(f" {counter['processed']} coins have been evaluated for buy sell conditions")
+            tasks = [self.trading_strategy.process_row_async(row, old_portfolio, buy_sell_matrix, counter)
+                     for _, row in filtered_ticker_cache.iterrows()]
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            print(f" {counter['processed']}  High Volume coins have been evaluated for buy sell conditions")
             # Process the results
             all_bollinger_dfs = []  # List of all bollinger_df DataFrames
             all_updates = []  # List to collect all updates from threads
@@ -47,6 +48,9 @@ class MarketManager:
             signals_generated = []  # List to collect all signals generated from threads
 
             for result in results:
+                # Skip the iteration if the item is not a dictionary
+                if not isinstance(result, dict):
+                    continue
                 if result.get('symbol'):
                     signals_generated.append(result['symbol'])
                     new_entries.append(result['symbol'])
@@ -61,10 +65,18 @@ class MarketManager:
                     new_entries.append(result['action_data'])
                 if 'bollinger_df' in result and result['bollinger_df'] is not None and not result['bollinger_df'].empty:
                     all_bollinger_dfs.append(result['bollinger_df'])
-                if 'roc' in result and result['roc'] is not None and not result['roc'].empty:
+                if 'roc' in result and result['roc'] is not None:
                     new_entries.append(result['roc'])
-                if 'rsi' in result and result['rsi'] is not None and not result['rsi'].empty:
+                if 'rsi' in result and result['rsi'] is not None:
                     new_entries.append(result['rsi'])
+                if 'macd' in result and result['macd'] is not None:
+                    new_entries.append(result['macd'])
+                if 'signal_line' in result and result['signal_line'] is not None:
+                    new_entries.append(result['signal_line'])
+                if 'macd_histogram' in result and result['macd_histogram'] is not None:
+                    new_entries.append(result['macd_histogram'])
+                if 'swing_trend' in result and result['swing_trend'] is not None:
+                    new_entries.append(result['swing_trend'])
                 if result.get('updates'):
                     all_updates.append(result['updates'])
 
@@ -76,8 +88,11 @@ class MarketManager:
                                 buy_sell_matrix.loc[buy_sell_matrix['coin'] == coin, col] = value
 
             # Combine all bollinger_df DataFrames into one
-            combined_bollinger_df = pd.concat(all_bollinger_dfs, ignore_index=True)
-            self.utility.print_elapsed_time(self.start_time, 'fetch_ohlcv')
+            if all_bollinger_dfs:
+                combined_bollinger_df = pd.concat(all_bollinger_dfs, ignore_index=True)
+            else:
+                self.log_manager.sighook_logger.error(f"All Bollinger df :Empty Dataframe {all_bollinger_dfs}")
+                combined_bollinger_df = pd.DataFrame()  # Create an empty DataFrame if the list is empty
             return self.open_orders, combined_bollinger_df
         except ValueError as ve:
             self.log_manager.sighook_logger.error(f"ValueError: {ve}")
@@ -86,9 +101,3 @@ class MarketManager:
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error occurred: {e}")
             raise
-        finally:
-            # Close the exchange connection here, ensuring it's always executed
-            await self.exchange.close()
-
-
-
