@@ -1,7 +1,7 @@
 from decimal import Decimal, ROUND_DOWN
 import datetime
 import pandas as pd
-
+import traceback
 
 class PortfolioManager:
     def __init__(self, utility, logmanager, ccxt_api, exchange):
@@ -157,6 +157,8 @@ class PortfolioManager:
             return (portfolio_df.to_dict('records'), usd_pairs, avg_dollar_vol_total,
                     hi_vol_price_matrix, price_change)
         except Exception as e:
+            error_details = traceback.format_exc()
+            self.log_manager.sighook_logger.error(f'try_place_order: Error placing order: {error_details}')
             self.log_manager.sighook_logger.error(f'Error in get_portfolio_data: {e}')
 
     def _preprocess_ticker_cache(self):  # pull 24hr volume
@@ -167,6 +169,8 @@ class PortfolioManager:
             df['vol_total'] = df['info'].apply(lambda x: float(x.get('volume_24h'))) * df['ask']
             return df
         except Exception as e:
+            error_details = traceback.format_exc()
+            self.log_manager.sighook_logger.error(f'_preprocess_ticker_cache:  {error_details}')
             self.log_manager.sighook_logger.error(f'Error in _preprocess_ticker_cache: {e}')
 
     @staticmethod

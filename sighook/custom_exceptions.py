@@ -30,6 +30,7 @@ class ApiExceptions:
         retries = 3
         backoff_factor = 0.3
         rate_limit_wait = 1  # seconds
+
         for attempt in range(retries):
             try:
                 return await func(*args, **kwargs)

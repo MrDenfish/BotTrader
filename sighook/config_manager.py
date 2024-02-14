@@ -20,7 +20,7 @@ class AppConfig:
 
     def __init__(self):
         if not self._is_loaded:
-            env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env_sighook')
+            env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env_tradebot')
             load_dotenv(env_path)  # Load environment variables
             self._version = os.getenv('VERSION')
             self._api_key = os.getenv('API_KEY')
@@ -40,6 +40,7 @@ class AppConfig:
             self._email = os.getenv('EMAIL')
             self._e_mailpass = os.getenv('E_MAILPASS')
             self._my_email = os.getenv('MY_EMAIL')
+            self._sleep_time = os.getenv('SLEEP')
             self._stop_loss = os.getenv('STOP_LOSS')
             self._take_profit = os.getenv('TAKE_PROFIT')
             self._json_config = None
@@ -105,6 +106,10 @@ class AppConfig:
     @property
     def program_version(self):
         return self._version
+
+    @property
+    def sleep_time(self):
+        return self._sleep_time
 
     @property
     def stop_loss(self):

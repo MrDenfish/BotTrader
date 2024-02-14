@@ -5,7 +5,7 @@ services:
     build:
       context: ../sighook  # Adjusted relative path for the build context
     env_file:
-      - .env_sighook  # Keeping it as is, since it's in the same directory as the Docker Compose file
+      - .env_tradebot  # Keeping it as is, since it's in the same directory as the Docker Compose file
     volumes:
       - /home/denfish/BotTrader/data:/data
       - /home/denfish/BotTrader/logs/signal_logs:/logs/signal_logs
@@ -18,7 +18,7 @@ services:
     build:
       context: ../webhook  # Adjusted relative path for the build context
     env_file:
-      - .env_webhook  # Keeping it as is, since it's in the same directory as the Docker Compose file
+      - .env_tradebot  # Keeping it as is, since it's in the same directory as the Docker Compose file
     volumes:
       - /home/denfish/BotTrader/data:/data
       - /home/denfish/BotTrader/logs/listener_logs:/logs/listener_logs

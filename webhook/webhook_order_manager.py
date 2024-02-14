@@ -6,6 +6,8 @@ from custom_exceptions import CoinbaseAPIError
 from decimal import Decimal, getcontext
 import pandas as pd
 
+import traceback
+
 # Define the TradeOrderManager class
 """This class  will manage the trade orders."""
 
@@ -49,41 +51,48 @@ class TradeOrderManager:
         self.balances = balances
 
     @LoggerManager.log_method_call
-    def place_order(self, quote_price, quote_amount, base_price, side, usd_amount):
-        quote_bal, base_balance, open_orders = self.tradebot_utils.get_open_orders()
-        if side == 'sell' and base_balance == 0.0:
-            print(f'Order for {self.trading_pair} not valid, base balance is 0.0')
-            return False  # not a valid order
-
-        if (side == 'sell') or (side == 'buy' and quote_bal >= quote_amount):
-            if open_orders is not None and not open_orders.empty:
-                self.order_book.cancel_stale_orders(open_orders)
-            order_book, highest_bid, lowest_ask, spread = self.order_book.get_order_book()
-            available_coin_balance, valid_order = (self.validate.fetch_and_validate_rules(side, highest_bid, usd_amount,
-                                                   base_balance, open_orders, quote_amount, quote_price))
-            if valid_order:
-                adjusted_price, adjusted_size = self.tradebot_utils.adjusted_price_and_size(
-                    side, order_book, quote_price, available_coin_balance, usd_amount)
-                self.log_manager.webhook_logger.debug(f'place_order: adjusted_price: {adjusted_price}, adjusted_size: '
-                                                      f'{adjusted_size}')
-
-                return self.handle_order(side, adjusted_size, usd_amount, available_coin_balance, adjusted_price,
-                                         quote_price, highest_bid, lowest_ask)
-            else:
+    async def place_order(self, quote_price, quote_amount, base_price, side, usd_amount):
+        try:
+            quote_bal, base_balance, open_orders = await self.tradebot_utils.get_open_orders()
+            if side == 'sell' and base_balance == 0.0:
+                print(f'Order for {self.trading_pair} not valid, base balance is 0.0')
                 return False  # not a valid order
-        elif base_price * base_balance > 10.00:
-            self.log_manager.webhook_logger.info(f'place_order: {side} order will not be placed for {self.trading_pair}  '
-                                                 f'there is an existing balance of {base_balance} {self.base_currency}')
-        else:
-            self.log_manager.webhook_logger.info(f'Insufficient Balance {quote_bal}{self.quote_currency}: '
-                                                 f'{self.trading_pair} {side} order requires {quote_amount}'
-                                                 f'{self.quote_currency} ')
 
-        return False   # not a valid order
+            if (side == 'sell') or (side == 'buy' and quote_bal >= quote_amount):
+                if open_orders is not None and not open_orders.empty:
+                    await self.order_book.cancel_stale_orders(open_orders)
+                order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book()
+                available_coin_balance, valid_order = (self.validate.fetch_and_validate_rules(side, highest_bid, usd_amount,
+                                                       base_balance, open_orders, quote_amount, quote_price))
+                if valid_order:
+                    adjusted_price, adjusted_size = self.tradebot_utils.adjusted_price_and_size(
+                        side, order_book, quote_price, available_coin_balance, usd_amount)
+                    self.log_manager.webhook_logger.debug(f'place_order: adjusted_price: {adjusted_price}, adjusted_size: '
+                                                          f'{adjusted_size}')
+
+                    return await self.handle_order(open_orders, side, adjusted_size, usd_amount, available_coin_balance,
+                                                   adjusted_price,
+                                                   quote_price, highest_bid, lowest_ask)
+                else:
+                    return False  # not a valid order
+            elif base_price * base_balance > 10.00:
+                self.log_manager.webhook_logger.info(f'place_order: {side} order will not be placed for {self.trading_pair}  '
+                                                     f'there is an existing balance of {base_balance} {self.base_currency}')
+            else:
+                self.log_manager.webhook_logger.info(f'Insufficient Balance {quote_bal}{self.quote_currency}: '
+                                                     f'{self.trading_pair} {side} order requires {quote_amount}'
+                                                     f'{self.quote_currency} ')
+
+            return False   # not a valid order
+        except Exception as ex:
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(f'place_order: Error details: {error_details}')
+            self.log_manager.webhook_logger.error(f'place_order: Error placing order: {ex}')
+            return False
 
     @LoggerManager.log_method_call
-    def handle_order(self, side, adjusted_size, usd_amount, available_coin_balance, adjusted_price,
-                     quote_price, highest_bid, lowest_ask, retries=10):
+    async def handle_order(self, open_orders, side, adjusted_size, usd_amount, available_coin_balance, adjusted_price,
+                           quote_price, highest_bid, lowest_ask, retries=10):
         """
         Coordinates the process of placing an order. It calculates the order parameters, attempts to place
         an order, checks if the order is accepted, and retries if necessary.
@@ -98,7 +107,7 @@ class TradeOrderManager:
                                                  highest_bid)
                 # Skip iteration if available_quote is None
                 if available_quote is None or adjusted_price is None or adjusted_size is None:
-                    order_book, highest_bid, lowest_ask, spread = self.order_book.get_order_book()
+                    order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book()
                     adjusted_price, adjusted_size = (
                         self.tradebot_utils.adjusted_price_and_size(side, order_book, quote_price, available_coin_balance,
                                                                     usd_amount))
@@ -108,70 +117,86 @@ class TradeOrderManager:
                 if not self.is_order_feasible(side, available_quote):
                     continue
                 # check for open orders
-                open_orders = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders())
-                if open_orders['product_id'] == self.trading_pair:
-                    print(f'open_orders: {open_orders} for {self.trading_pair}. New order will not be placed')
+                if open_orders is None:
+                    self.log_manager.webhook_logger.error("Failed to fetch open orders after multiple attempts.")
+                    # Handle the None case as needed, e.g., by skipping further processing or taking some recovery action
+                    continue
+                open_order_exists = (open_orders['product_id'] == self.trading_pair).any()
+                if open_order_exists:
+                    self.log_manager.webhook_logger.info(
+                        f'Open orders exist for {self.trading_pair}. New order will not be placed.')
                     return False
-                # Try placing the order
-                order_placed, order_record = self.try_place_order(side, adjusted_size, adjusted_price, order_record)
-
-                if order_placed:
-                    print(order_record.to_string(index=False))  # print order book after order placed.
-                    return True
                 else:
-                    order_book, highest_bid, lowest_ask, spread = self.order_book.get_order_book()
-                    adjusted_price, adjusted_size = (
-                        self.tradebot_utils.adjusted_price_and_size(side, order_book, quote_price, available_coin_balance,
-                                                                    usd_amount))
+                    # Try placing the order
+                    order_placed, order_record, response = await self.try_place_order(side, adjusted_size, adjusted_price,
+                                                                                      order_record)
 
+                    if order_placed:
+                        print(order_record.to_string(index=False))  # print order book after order placed.
+                        return True
+                    else:
+                        order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book()
+                        adjusted_price, adjusted_size = (
+                            self.tradebot_utils.adjusted_price_and_size(side, order_book, quote_price, available_coin_balance,
+                                                                        usd_amount, response))
                 # Handle retries and adjustments
                 if attempt == retries - 1:
                     print(order_record.to_string(index=False))
                     # self.place_market_order(side, adjusted_size, adjusted_price)
                 print(f'    ', end='\r')
         except Exception as ex:
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(f'handle_order: Error placing order: {error_details}')
             self.log_manager.webhook_logger.error(f'Error placing limit order: {ex}')
 
         return False
 
     @LoggerManager.log_method_call
-    def try_place_order(self, side, adjusted_size, adjusted_price, order_record):
+    async def try_place_order(self, side, adjusted_size, adjusted_price, order_record):
 
         #  price is the adjusted_price ( best_highest bid + increment for a sell and best_lowest_ask + increment for a buy)
         response = None
         try:
-            response = self.place_limit_order(side, adjusted_size, adjusted_price)
+            response = await self.place_limit_order(side, adjusted_size, adjusted_price)
             order_placed = False
             new_order = None
             if response == 'amend':
                 order_placed = False
-
+            if response == 'insufficient base balance':
+                order_placed = False
             elif response:
                 order_placed = True
                 self.log_success(adjusted_price, side)
 
-            return order_placed, order_record
+            return order_placed, order_record, response
 
         except CoinbaseAPIError as eapi:
             return self.handle_coinbase_api_error(eapi, response)
         except Exception as ex:
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(f'try_place_order: Error placing order: {error_details}')
             self.log_manager.webhook_logger.error(f'Error placing limit order: {ex}')
             return ex
 
     @LoggerManager.log_method_call
-    def place_limit_order(self, side, adjusted_size, adjusted_price):
+    async def place_limit_order(self, side, adjusted_size, adjusted_price):
         """
         Attempts to place a limit order and returns the response.
         If the order fails, it logs the error and returns None.
         """
         try:
-            response = self.ccxt_exceptions.ccxt_api_call(lambda: (self.exchange.create_limit_order(self.trading_pair, side,
-                                                          adjusted_size, adjusted_price, {'post_only': True})))
+            response = await self.ccxt_exceptions.ccxt_api_call(lambda: (self.exchange.create_limit_order(self.trading_pair,
+                                                                         side, adjusted_size, adjusted_price,
+                                                                         {'post_only': True})))
             if response == 'amend':
                 return 'amend'  # Order needs amendment
+            elif response == 'insufficient base balance':
+                return 'insufficient base balance'
             elif response:
                 return response  # order placed successfully
         except Exception as ex:
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(f'place_limit_order: {error_details}')
             if 'coinbase createOrder() has failed, check your arguments and parameters' in str(ex):
                 self.log_manager.webhook_logger.info(f'Limit order was not accepted, placing new limit order for '
                                                      f'{self.trading_pair}')
@@ -182,14 +207,14 @@ class TradeOrderManager:
         return None  # Return None indicating the order was not successfully placed
 
     @LoggerManager.log_method_call
-    def fetch_order_status(self, side, adjusted_price, retries):
+    async def fetch_order_status(self, side, adjusted_price, retries):
         """
         Determine if order placed. free balance < $10 indicates sell order was placed
         total balance > $10 indicates buy order was placed
         """
         getcontext().prec = 8
         open_orders = []
-        all_open_orders = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders(None))
+        all_open_orders = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders(None))
         try:
             if len(all_open_orders) != 0:
                 open_order = self.tradebot_utils.format_open_orders(all_open_orders)
@@ -203,7 +228,7 @@ class TradeOrderManager:
                 active_orders = [order for order in open_orders if order['symbol'] == self.trading_pair]
                 print(f'active_orders: {active_orders}')
 
-            balances = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_balance())
+            balances = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_balance())
 
             if side == 'buy':
                 balances = (balances[coin[0]]['total'])  # Need coin balance determine if order was placed
@@ -314,7 +339,8 @@ class TradeOrderManager:
         if balance is None or quote_price is None or adjusted_price is None:
             # Handle the error condition, e.g., by logging and returning None or a default value
             self.log_manager.webhook_logger.error(f'calculate_available_quote: One or more parameters are None for '
-                                                  f'{self.trading_pair}')
+                                                  f'{self.trading_pair} Balance:{balance} Quote Price: {quote_price} '
+                                                  f'Adjusted Price: {adjusted_price}')
             return None
 
         return balance * (quote_price * adjusted_price)

@@ -5,6 +5,8 @@ from decimal import Decimal
 
 import pandas as pd
 
+import traceback
+
 
 class TickerManager:
     def __init__(self, utility, logmanager, exchange, ccxt_api, max_concurrent_tasks=10):
@@ -84,6 +86,8 @@ class TickerManager:
             return df, market_data
 
         except Exception as e:
+            error_details = traceback.format_exc()
+            self.log_manager.sighook_logger.error(f'update_ticker_cache: {error_details}')
             self.ccxt_exceptions.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {e}')
 
     async def parallel_fetch_and_update(self, df):
@@ -107,6 +111,8 @@ class TickerManager:
                 else:
                     self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
         except Exception as e:
+            error_details = traceback.format_exc()
+            self.log_manager.sighook_logger.error(f'parallel_fetch_and_update: {error_details}')
             self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}')
 
     async def fetch_ticker_data(self, symbol):

@@ -19,7 +19,7 @@ class BotConfig:
 
     def __init__(self):
         if not self._is_loaded:
-            env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env_webhook')
+            env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env_tradebot')
             load_dotenv(env_path)  # Load environment variables
             self._version = os.getenv('VERSION')
             self._api_key = os.getenv('API_KEY')

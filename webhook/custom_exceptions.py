@@ -3,15 +3,19 @@
 from requests.exceptions import ConnectionError, Timeout
 import time
 import functools
+import asyncio
+import traceback
 
-from ccxt.base.errors import AuthenticationError as CCXTAuthenticationError  # Import the specific CCXT AuthenticationError
+from ccxt.base.errors import RequestTimeout
+from ccxt import ExchangeError  # Import the specific CCXT
+
 
 class ApiExceptions:
     def __init__(self, logmanager, alerts):
         self.log_manager = logmanager
         self.alert_system = alerts
 
-    def ccxt_api_call(self, func, *args, **kwargs):
+    async def ccxt_api_call(self, func, *args, **kwargs):
         """
                 Wrapper function for CCXT api(Coinbase) calls.
 
@@ -31,23 +35,39 @@ class ApiExceptions:
             try:
                 return func(*args, **kwargs)
 
-            except RateLimitException as rle:
-                self.log_manager.sighook_logger.error(
-                    f'Rate limit exceeded: {rle}. Retrying in {rate_limit_wait} seconds...')
-                time.sleep(rate_limit_wait)  # Wait before retrying
-                rate_limit_wait *= 2  # Increase wait time for subsequent retries
-
-            except (ConnectionError, Timeout, UnauthorizedError) as e:
-                self.log_manager.webhook_logger.error(f'{e.__class__.__name__} error: {e}')
-                time.sleep(backoff_factor * (2 ** attempt))
-
-            except CCXTAuthenticationError as auth_error:  # Catching the CCXT AuthenticationError
-                self.log_manager.webhook_logger.error(f'Authentication error in {func.__name__}: {auth_error}')
+            except ExchangeError as ex:
+                if 'Rate limit exceeded' in str(ex):
+                    max_wait_time = 60  # Maximum wait time of 60 seconds
+                    wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
+                    self.log_manager.webhook_logger.error(f'Rate limit exceeded: Retrying in {wait_time} seconds...')
+                    await asyncio.sleep(wait_time)  # Use the calculated wait_time here
+                elif 'Insufficient funds' in str(ex):
+                    self.log_manager.webhook_logger.error(f'Exchange error: {ex}')
+                elif 'Insufficient balance in source account' in str(ex):
+                    self.log_manager.webhook_logger.info(f'Base amount too granular, base amount will be adjusted {ex}')
+                    return 'insufficient base balance'
+                elif 'USD/USD' in str(ex):
+                    self.log_manager.webhook_logger.debug(f'USD/USD: {ex}')
+                # error_details = traceback.format_exc() # debug statement
+                # self.log_manager.webhook_logger.error(f'try_place_order: Error placing order: {error_details}')
                 return None
+            except asyncio.TimeoutError as e:
+                # Handle timeout specifically
+                self.log_manager.webhook_logger.error(f"Timeout occurred: {e}")
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
+            except IndexError as e:
+                self.log_manager.webhook_logger.info(f'Index error Trading is unavailable for {args}: {e}')
+                # Add more specific logging or handling here
+                return None
+            except RequestTimeout as timeout_error:
+                self.log_manager.webhook_logger.error(f'Request timeout error: {timeout_error}')
+                await asyncio.sleep(backoff_factor * (2 ** attempt))
             except CoinbaseAPIError as ez:
                 error_message = str(ez)
                 return ez, func.__name__
             except Exception as ex:
+                error_details = traceback.format_exc()
+                self.log_manager.webhook_logger.error(f'try_place_order: Error placing order: {error_details}')
                 # Check if it's a data-related error (adjust as needed)
                 if isinstance(ex, (IndexError, DataUnavailableException)):
                     return None  # Return None immediately for data-related errors
@@ -55,7 +75,7 @@ class ApiExceptions:
                     self.handle_general_error(ex)
                     return 'amend'
                 else:
-                    time.sleep(backoff_factor * (2 ** attempt))
+                    await asyncio.sleep(backoff_factor * (2 ** attempt))
                 # self.log_manager.webhook_logger.error(f'Error in {func.__name__} with symbol {args[0]}: {ex}')
         return None
 

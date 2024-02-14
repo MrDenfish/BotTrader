@@ -3,11 +3,11 @@ version: '3.7'
 
 services:
   sighook:
-    image: denfish/bot-sighook:2.9  # Use the environment variable
+    image: denfish/bot-sighook:2.14 # Use the environment variable
     build:
       context: ../sighook
     env_file:
-      - .env_sighook  # Adjusted path to the .env file
+      - .env_tradebot  # Adjusted path to the .env file
     volumes:
       - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/data:/data
       - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/logs/signal_logs:/logs/signal_logs
@@ -17,11 +17,11 @@ services:
       traderbot_network:
 
   webhook:
-    image: denfish/bot-webhook:2.9  # Use the environment variable
+    image: denfish/bot-webhook:2.14  # Use the environment variable
     build:
       context: ../webhook
     env_file:
-      - .env_webhook  # Adjusted path to the .env file
+      - .env_tradebot  # Adjusted path to the .env file
     volumes:
       - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0.0/data:/data
       - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/logs/listener_logs:/logs/listener_logs

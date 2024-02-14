@@ -43,7 +43,7 @@ class OrderBookManager:
         self.balances = balances
 
     @LoggerManager.log_method_call
-    def get_order_book(self):
+    async def get_order_book(self):
         """ This method fetches the order book from the exchange and returns it as a dictionary."""
         order_book = self.exchange.fetch_order_book(self.trading_pair, limit=5)
         highest_bid, lowest_ask, spread = self.analyze_spread(order_book)
@@ -68,7 +68,7 @@ class OrderBookManager:
         return highest_bid, lowest_ask, spread
 
     @LoggerManager.log_method_call
-    def cancel_stale_orders(self, open_orders):
+    async def cancel_stale_orders(self, open_orders):
         now = datetime.utcnow()
         symbol = None
         # iterate through open orders dataframe
@@ -80,7 +80,8 @@ class OrderBookManager:
                 is_buy_order = order['side'] == 'BUY'
 
                 # Fetch detailed order information
-                detailed_order = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_order(order_id, symbol))
+                detailed_order = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_order(order_id,
+                                                                                                            symbol))
                 # Extract timestamp and convert to datetime
                 order_time = datetime.utcfromtimestamp(
                     detailed_order['timestamp'] / 1000)  # Assuming timestamp is in milliseconds
@@ -88,7 +89,7 @@ class OrderBookManager:
                 # Check order age
                 if now - order_time > timedelta(minutes=5) and is_buy_order:  # cancel buy orders older than 5 minutes
                     print(f"Cancelling order {order_id} for {symbol} as it is older than 5 minutes.")
-                    self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.cancel_order(order_id))
+                    await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.cancel_order(order_id))
                     open_orders.drop(index, inplace=True)
                     continue
 

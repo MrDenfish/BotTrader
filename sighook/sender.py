@@ -4,6 +4,7 @@ import os
 import time
 from decimal import Decimal
 import asyncio
+import datetime
 
 import pandas as pd
 
@@ -49,6 +50,7 @@ class TradeBot:
         # TradeBot._instance_count += 1
         # print(f"TradeBot Instance ID: {self.id}")
         self.app_config = appconfig  # Instance of AppConfig
+        self._sleep_time = appconfig.sleep_time
         self.log_manager, self.alerts, self.ccxt_exceptions, self.api401, self.custom_excep = None, None, None, None, None
         self.coms, self.utility, self.ticker_manager, self.portfolio_manager, self.webhook = None, None, None, None, None
         self.trading_strategy, self.order_manager, self.api_wrapper, self.market_manager = None, None, None, None
@@ -108,6 +110,10 @@ class TradeBot:
 
         self.profit_manager = ProfitabilityManager(self.api_wrapper, self.utility, self.order_manager,
                                                    self.portfolio_manager, self.log_manager, self.app_config)
+
+    @property
+    def sleep_time(self):
+        return self._sleep_time
 
     async def main(self, port):
 
@@ -192,7 +198,7 @@ class TradeBot:
             except KeyboardInterrupt:
                 self.save_data_on_exit(profit_data, ledger)
             finally:
-                self.alerts.callhome(f"Program has stopped running.")
+                self.alerts.callhome(f"Program has stopped running.",f'Time:{datetime.datetime.now()}')
                 print("Program has exited.")
                 #  session will be closed automatically due to the 'async with' context
                 #  No need to call session.close() here
@@ -201,9 +207,8 @@ class TradeBot:
         pass
     # Logic to save data when the program exits unexpectedly
 
-    @staticmethod
-    def sleep_with_progress_bar():
-        total_sleep = 300
+    def sleep_with_progress_bar(self):
+        total_sleep = int(self.sleep_time)
         update_interval = 1
         num_iterations = total_sleep // update_interval
         with alive_bar(num_iterations, force_tty=True) as bar:

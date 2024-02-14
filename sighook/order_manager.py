@@ -1,7 +1,9 @@
 """should execute orders based on instructions from TradingStrategy but should not directly depend on the strategy logic"""
 from decimal import Decimal
-import datetime
+
 import pandas as pd
+
+import traceback
 
 
 class OrderManager:
@@ -96,6 +98,8 @@ class OrderManager:
                     print(f"Cancelled stale sell order for {symbol} at {limit_price}. Current bid: {current_bid}")
 
             except Exception as e:
+                error_details = traceback.format_exc()
+                self.log_manager.sighook_logger.error(f'update_ticker_cache: {error_details}')
                 symbol = order['product_id'].replace('/', '-')
                 self.log_manager.sighook_logger.error(f'order_manager: Error processing order {order_id} for {symbol}: {e}')
                 continue
