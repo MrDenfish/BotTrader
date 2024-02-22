@@ -4,11 +4,39 @@ from logging.handlers import TimedRotatingFileHandler
 import platform
 from datetime import datetime
 
-from dotenv import load_dotenv
+
+class CustomLogger(logging.Logger):
+    # Define custom logging levels
+    BUY_LEVEL_NUM = 21
+    SELL_LEVEL_NUM = 19
+
+    logging.addLevelName(BUY_LEVEL_NUM, "BUY")
+    logging.addLevelName(SELL_LEVEL_NUM, "SELL")
+
+    def sell(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.SELL_LEVEL_NUM):
+            self._log(self.SELL_LEVEL_NUM, f"SELL: {message}", args, **kwargs)
+
+    def take_profit(self, message, *args, **kwargs):
+        if self.isEnabledFor(logging.INFO):
+            self._log(logging.INFO, f"TAKE_PROFIT: {message}", args, **kwargs)
+
+    def stop_loss(self, message, *args, **kwargs):
+        if self.isEnabledFor(logging.INFO):
+            self._log(logging.INFO, f"STOP_LOSS: {message}", args, **kwargs)
+
+    def buy(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.BUY_LEVEL_NUM):
+            self._log(self.BUY_LEVEL_NUM, f"BUY: {message}", args, **kwargs)
+
+
+logging.setLoggerClass(CustomLogger)
 
 
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
+    blue = "\x1b[34;21m"
+    green = "\x1b[32;21m"
     yellow = "\x1b[33;21m"
     red = "\x1b[31;21m"
     bold_red = "\x1b[31;1m"
@@ -20,9 +48,10 @@ class CustomFormatter(logging.Formatter):
         logging.INFO: grey + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.CRITICAL: bold_red + format + reset,
+        CustomLogger.BUY_LEVEL_NUM: blue + format + reset,
+        CustomLogger.SELL_LEVEL_NUM: green + format + reset
     }
-
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno, self.format)
         formatter = logging.Formatter(log_fmt, "%Y-%m-%d %H:%M:%S")
@@ -57,9 +86,10 @@ class LoggerManager:
         """ This method sets up the logging for the TradeBot.  It creates the log directory if it does not exist and
         creates the log files.  It also sets up the logging for the Flask server."""
 
+        logging.setLoggerClass(CustomLogger)
+
         current_date = datetime.now().strftime('%Y-%m-%d')
         current_platform = platform.system()
-
 
         # Directories for listener and Flask logs
         webhook_log_dir = os.path.join(self.log_dir, 'listener_logs')

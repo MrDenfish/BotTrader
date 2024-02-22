@@ -1,0 +1,43 @@
+
+version: '3.8'
+#docker-compose.desktop.yaml
+services:
+  sighook:
+    image: denfish/bot-sighook:2.22
+    build:
+      context: sighook  # This goes one level up from the config directory to BotTraderv2.0
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/.env_tradebot:/app/.env  #"./local_env_path/.env:/app/
+    env_file:
+      - ./.env_tradebot
+    ports:
+      - "5001:5001"
+    networks:
+      traderbot_network:
+    environment:
+      - NAME=World
+
+  webhook:
+    image: denfish/bot-webhook:2.22
+    build:
+      context: webhook  # This goes two levels up from the config directory to BotTraderv2.0
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv2.0/.env_tradebot:/app/.env  #"./local_env_path/.env:/app/
+    env_file:
+      - ./.env_tradebot
+    ports:
+      - "80:80"
+    networks:
+      traderbot_network:
+    environment:
+      - NAME=World
+
+networks:
+  traderbot_network:
+      driver: bridge
+      ipam:
+        driver: default
+        config:
+          - subnet: "172.24.2.0/29"

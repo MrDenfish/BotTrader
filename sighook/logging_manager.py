@@ -7,10 +7,41 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 
+class CustomLogger(logging.Logger):
+    # Define custom logging levels
+    BUY_LEVEL_NUM = 21
+    SELL_LEVEL_NUM = 19
+    PROFIT_LEVEL_NUM = 17
+    STOP_LOSS_LEVEL_NUM = 15
+
+    logging.addLevelName(BUY_LEVEL_NUM, "BUY")
+    logging.addLevelName(SELL_LEVEL_NUM, "SELL")
+
+    def sell(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.SELL_LEVEL_NUM):
+            self._log(self.SELL_LEVEL_NUM, f"SELL: {message}", args, **kwargs)
+
+    def take_profit(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.PROFIT_LEVEL_NUM):
+            self._log(logging.INFO, f"TAKE_PROFIT: {message}", args, **kwargs)
+
+    def stop_loss(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.STOP_LOSS_LEVEL_NUM):
+            self._log(logging.INFO, f"STOP_LOSS: {message}", args, **kwargs)
+
+    def buy(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.BUY_LEVEL_NUM):
+            self._log(self.BUY_LEVEL_NUM, f"BUY: {message}", args, **kwargs)
+
+
+logging.setLoggerClass(CustomLogger)
+
+
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
-    yellow = "\x1b[33;21m"
+    blue = "\x1b[34;21m"
     green = "\x1b[32;21m"
+    yellow = "\x1b[33;21m"
     red = "\x1b[31;21m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
@@ -21,7 +52,11 @@ class CustomFormatter(logging.Formatter):
         logging.INFO: grey + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.CRITICAL: bold_red + format + reset,
+        CustomLogger.BUY_LEVEL_NUM: blue + format + reset,
+        CustomLogger.SELL_LEVEL_NUM: green + format + reset,
+        CustomLogger.PROFIT_LEVEL_NUM: green + format + reset,
+        CustomLogger.STOP_LOSS_LEVEL_NUM: red + format + reset
     }
 
     def format(self, record):
@@ -53,11 +88,13 @@ class LoggerManager:
     def setup_logging(self):
         """ This method sets up the logging for the TradeBot.  It creates the log directory if it does not exist and
         creates the log files.  It also sets up the logging for the Flask server."""
+        # Ensure CustomLogger is set as the logger class
+        logging.setLoggerClass(CustomLogger)
 
         current_date = datetime.now().strftime('%Y-%m-%d')
         current_platform = platform.system()
 
-        sighook_log_dir = os.path.join(self.log_dir, 'sighook_logs')
+        sighook_log_dir = os.path.join(self.log_dir)
         if not os.path.exists(sighook_log_dir):
             os.makedirs(sighook_log_dir)
 

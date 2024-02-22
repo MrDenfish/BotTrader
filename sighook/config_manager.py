@@ -19,43 +19,75 @@ class AppConfig:
         return cls._instance
 
     def __init__(self):
+        self.port = None
+        self.machine_type = None
+        self.profit_dir = None
+        self.portfolio_dir = None
+        self.active_trade_dir = None
+        self.log_dir = None
+        self._json_config = None
+        self._take_profit = None
+        self._stop_loss = None
+        self._sleep_time = None
+        self._my_email = None
+        self._e_mailpass = None
+        self._email = None
+        self._phone = None
+        self._web_url = None
+        self._account_phone = None
+        self._auth_token = None
+        self._account_sid = None
+        self._coin_whitelist = None
+        self._tv_whitelist = None
+        self._docker_staticip = None
+        self._cmc_api_url = None
+        self._cmc_api_key = None
+        self._api_url = None
+        self._passphrase = None
+        self._api_secret = None
+        self._api_key = None
+        self._version = None
         if not self._is_loaded:
-            env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env_tradebot')
-            load_dotenv(env_path)  # Load environment variables
-            self._version = os.getenv('VERSION')
-            self._api_key = os.getenv('API_KEY')
-            self._api_secret = os.getenv('API_SECRET')
-            self._passphrase = os.getenv('API_PASS')
-            self._api_url = os.getenv('API_URL')
-            self._cmc_api_key = os.getenv('CMC_API_KEY')  # PLACEHOLDER NOT USABLE CODE
-            self._cmc_api_url = os.getenv('CMC_API_URL')  # PLACEHOLDER NOT USABLE CODE
-            self._docker_staticip = os.getenv('DOCKER_STATICIP')
-            self._tv_whitelist = os.getenv('TV_WHITELIST')
-            self._coin_whitelist = os.getenv('COIN_WHITELIST')
-            self._account_sid = os.getenv('ACCOUNT_SID')
-            self._auth_token = os.getenv('AUTH_TOKEN')
-            self._account_phone = os.getenv('ACCOUNT_PHONE')
-            self._web_url = os.getenv('WEB_URL')
-            self._phone = os.getenv('PHONE')
-            self._email = os.getenv('EMAIL')
-            self._e_mailpass = os.getenv('E_MAILPASS')
-            self._my_email = os.getenv('MY_EMAIL')
-            self._sleep_time = os.getenv('SLEEP')
-            self._stop_loss = os.getenv('STOP_LOSS')
-            self._take_profit = os.getenv('TAKE_PROFIT')
-            self._json_config = None
-            self.machine_type = None
-            self.port = None
-            self.log_dir = None
-            self.active_trade_dir = None
-            self.portfolio_dir = None
-            self.profit_dir = None
+            # Check if running inside Docker by looking for a specific environment variable
+            if os.getenv('RUNNING_IN_DOCKER'):
+                env_path = ".env"  # Docker environment
+            else:
+                # Local environment
+                env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env_tradebot')
 
+
+            load_dotenv(env_path)
+            self.load_environment_variables()
             self.load_json_config()
             self._is_loaded = True
 
-    def load_json_config(self):
+    def load_environment_variables(self):
+        self._version = os.getenv('VERSION')
+        self._api_key = os.getenv('API_KEY')
+        self._api_secret = os.getenv('API_SECRET')
+        self._passphrase = os.getenv('API_PASS')
+        self._api_url = os.getenv('API_URL')
+        self._cmc_api_key = os.getenv('CMC_API_KEY')  # PLACEHOLDER NOT USABLE CODE
+        self._cmc_api_url = os.getenv('CMC_API_URL')  # PLACEHOLDER NOT USABLE CODE
+        self._docker_staticip = os.getenv('DOCKER_STATICIP')
+        self._tv_whitelist = os.getenv('TV_WHITELIST')
+        self._coin_whitelist = os.getenv('COIN_WHITELIST')
+        self._account_sid = os.getenv('ACCOUNT_SID')
+        self._auth_token = os.getenv('AUTH_TOKEN')
+        self._account_phone = os.getenv('ACCOUNT_PHONE')
+        self._web_url = os.getenv('WEB_URL')
+        self._phone = os.getenv('PHONE')
+        self._email = os.getenv('EMAIL')
+        self._e_mailpass = os.getenv('E_MAILPASS')
+        self._my_email = os.getenv('MY_EMAIL')
+        self._sleep_time = os.getenv('SLEEP')
+        self._stop_loss = os.getenv('STOP_LOSS')
+        self._take_profit = os.getenv('TAKE_PROFIT')
         self.machine_type, self.port = self.determine_machine_type()
+        if self.machine_type in ['moe', 'Manny', 'docker']:
+            self.port = os.getenv('SIGHOOK_PORT')  # Example usage
+
+    def load_json_config(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(current_dir, 'config.json')
         try:
@@ -65,7 +97,6 @@ class AppConfig:
             if self.machine_type in config:
                 machine_path = config[self.machine_type]
                 self.get_directory_paths(machine_path)
-                self._is_loaded = True
         except (FileNotFoundError, json.JSONDecodeError) as e:
             print(f"Error loading JSON configuration: {e}")
             exit(1)

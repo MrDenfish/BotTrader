@@ -8,9 +8,10 @@ import datetime
 class ProfitabilityManager:
 
     def __init__(self, api_wrapper, utility, order_manager, portfolio_manager, logmanager, config):
+        print("STOP_LOSS value from config:", config.stop_loss)  # Debugging line
         self.exchange = api_wrapper.exchange
-        self._stop_loss = Decimal(config.stop_loss)
         self._take_profit = Decimal(config.take_profit)
+        self._stop_loss = Decimal(config.stop_loss)
         self.api_wrapper = api_wrapper
         self.ledger_cache = None
         self.order_manager = order_manager
@@ -110,13 +111,16 @@ class ProfitabilityManager:
             if (-.1 > unrealized_pct > -.11) or unrealized_pct > self.take_profit or unrealized_pct < self.stop_loss:
                 if unrealized_pct > self.take_profit:
                     trigger = 'Profit'
+                    quote = self.ticker_cache.loc[self.ticker_cache['base'] == product_id, 'quote'].iloc[0]
+                    self.log_manager.sighook_logger.take_profit(f"{trigger} triggered for {product_id}. Unrealized gains:"
+                                                                f"{unrealized_gains}{quote}")
                 elif unrealized_pct < self.stop_loss:
                     trigger = 'Stop-Loss'
                     quote = self.ticker_cache.loc[self.ticker_cache['base'] == product_id, 'quote'].iloc[0]
-                    self.log_manager.sighook_logger.info(f"{trigger} triggered for {product_id}. Unrealized gains:"
-                                                         f"{unrealized_gains}{quote}")
-                await self.order_manager.process_sell_order(current_symbol, current_price, holdings,
-                                                            purchase_decimal, diff_decimal, trigger)
+                    self.log_manager.sighook_logger.stop_loss(f"{trigger} triggered for {product_id}. Unrealized gains:"
+                                                              f"{unrealized_gains}{quote}")
+                await self.order_manager.process_sell_order(current_symbol, current_price, holdings, purchase_decimal,
+                                                            diff_decimal, trigger)
 
             # Return the new row to be added to the profit_data DataFrame
             return {

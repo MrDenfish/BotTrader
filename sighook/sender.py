@@ -166,7 +166,10 @@ class TradeBot:
                         open_orders, bollinger_df = await self.market_manager.new_fetch_ohlcv(
                             old_portfolio, usd_coins, avg_vol_total, buy_sell_matrix, filtered_ticker_cache)
                         if open_orders is not None and len(open_orders) > 0:
-                            print(f'Open orders: {open_orders.to_string(index=False)}')
+                            print(f'')
+                            print(f'Open orders:')
+                            print(open_orders.to_string(index=False))
+                            print(f'')
                         else:
                             print(f'No open orders found')
 
@@ -178,8 +181,9 @@ class TradeBot:
                     if len(profit_data) > 0:
                         activetrade_data_path = os.path.join(self.active_trade_dir, 'activetrade_data.csv')
                         profit_data.to_csv(activetrade_data_path, index=False)
+                        print(f'')
                         print(f"Profit Data:\n{profit_data.to_string(index=False)}")
-
+                        print(f'')
                     ledger, profitability = await self.profit_manager.profits(start_time, self.portfolio_trade_dir)
                     if isinstance(ledger, pd.DataFrame):
                         portfolio_data_path = os.path.join(self.portfolio_trade_dir, 'portfolio_data.csv')
@@ -192,13 +196,14 @@ class TradeBot:
                     print(intro_text)
                     print(f'                        24h           24h       24h       ')
                     print(buy_sell_matrix.to_string(index=False))
+                    print(f'')
                     profit_data = profit_data[0:0]  # clear contents of profit_data
                     self.utility.print_elapsed_time(start_time, 'main')  # debug statement
                     self.sleep_with_progress_bar()
             except KeyboardInterrupt:
                 self.save_data_on_exit(profit_data, ledger)
             finally:
-                self.alerts.callhome(f"Program has stopped running.",f'Time:{datetime.datetime.now()}')
+                self.alerts.callhome(f"Program has stopped running.", f'Time:{datetime.datetime.now()}')
                 print("Program has exited.")
                 #  session will be closed automatically due to the 'async with' context
                 #  No need to call session.close() here

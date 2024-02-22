@@ -71,12 +71,11 @@ class TradeOrderManager:
                                                           f'{adjusted_size}')
 
                     return await self.handle_order(open_orders, side, adjusted_size, usd_amount, available_coin_balance,
-                                                   adjusted_price,
-                                                   quote_price, highest_bid, lowest_ask)
+                                                   adjusted_price, quote_price, highest_bid, lowest_ask)
                 else:
                     return False  # not a valid order
             elif base_price * base_balance > 10.00:
-                self.log_manager.webhook_logger.info(f'place_order: {side} order will not be placed for {self.trading_pair}  '
+                self.log_manager.webhook_logger.info(f'place_order: {side} order will not be placed for {self.trading_pair} '
                                                      f'there is an existing balance of {base_balance} {self.base_currency}')
             else:
                 self.log_manager.webhook_logger.info(f'Insufficient Balance {quote_bal}{self.quote_currency}: '
@@ -97,16 +96,20 @@ class TradeOrderManager:
         Coordinates the process of placing an order. It calculates the order parameters, attempts to place
         an order, checks if the order is accepted, and retries if necessary.
         """
-        order_record = pd.DataFrame(columns=['attempt', 'symbol', 'action', 'size', 'price', 'ask', 'bid'])
+        # Initialize an empty list to collect order records
+        order_records = []
+        #  order_record = pd.DataFrame(columns=['attempt', 'symbol', 'action', 'size', 'price', 'ask', 'bid'])
         try:
             for attempt in range(1, retries + 1):
                 print(f'Working...', end='\r')
                 # Calculate available quote in dollars
                 available_quote = self.calculate_available_quote(available_coin_balance, quote_price, adjusted_price)
-                order_record = self.record_order(order_record, attempt, side, adjusted_size, adjusted_price, lowest_ask,
-                                                 highest_bid)
+                # Record the order attempt
+                order_records = self.record_order(order_records, attempt, side, adjusted_size, adjusted_price, lowest_ask,
+                                                  highest_bid)
+
                 # Skip iteration if available_quote is None
-                if available_quote is None or adjusted_price is None or adjusted_size is None:
+                if None in (available_quote, adjusted_price, adjusted_size):
                     order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book()
                     adjusted_price, adjusted_size = (
                         self.tradebot_utils.adjusted_price_and_size(side, order_book, quote_price, available_coin_balance,
@@ -116,10 +119,10 @@ class TradeOrderManager:
                 # Check order feasibility
                 if not self.is_order_feasible(side, available_quote):
                     continue
-                # check for open orders
+
+                # checking for open orders, an open order is an order placed but not yet filled.
                 if open_orders is None:
-                    self.log_manager.webhook_logger.error("Failed to fetch open orders after multiple attempts.")
-                    # Handle the None case as needed, e.g., by skipping further processing or taking some recovery action
+                    # make another attempt at placing order by adjusting the price and size
                     continue
                 open_order_exists = (open_orders['product_id'] == self.trading_pair).any()
                 if open_order_exists:
@@ -128,22 +131,22 @@ class TradeOrderManager:
                     return False
                 else:
                     # Try placing the order
-                    order_placed, order_record, response = await self.try_place_order(side, adjusted_size, adjusted_price,
-                                                                                      order_record)
-
+                    order_placed, response = await self.try_place_order(side, adjusted_size, adjusted_price)
                     if order_placed:
-                        print(order_record.to_string(index=False))  # print order book after order placed.
-                        return True
+                        break
                     else:
                         order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book()
                         adjusted_price, adjusted_size = (
-                            self.tradebot_utils.adjusted_price_and_size(side, order_book, quote_price, available_coin_balance,
-                                                                        usd_amount, response))
-                # Handle retries and adjustments
-                if attempt == retries - 1:
-                    print(order_record.to_string(index=False))
-                    # self.place_market_order(side, adjusted_size, adjusted_price)
-                print(f'    ', end='\r')
+                            self.tradebot_utils.adjusted_price_and_size(side, order_book, quote_price,
+                                                                        available_coin_balance, usd_amount, response))
+            # Convert the list of order records to a DataFrame
+            order_record_df = pd.DataFrame(order_records)
+            # Handle retries and adjustments
+            print(f'')
+            print(order_record_df.to_string(index=False))
+            print(f'')
+
+            return True
         except Exception as ex:
             error_details = traceback.format_exc()
             self.log_manager.webhook_logger.error(f'handle_order: Error placing order: {error_details}')
@@ -152,14 +155,13 @@ class TradeOrderManager:
         return False
 
     @LoggerManager.log_method_call
-    async def try_place_order(self, side, adjusted_size, adjusted_price, order_record):
+    async def try_place_order(self, side, adjusted_size, adjusted_price):
 
         #  price is the adjusted_price ( best_highest bid + increment for a sell and best_lowest_ask + increment for a buy)
         response = None
         try:
             response = await self.place_limit_order(side, adjusted_size, adjusted_price)
             order_placed = False
-            new_order = None
             if response == 'amend':
                 order_placed = False
             if response == 'insufficient base balance':
@@ -168,7 +170,7 @@ class TradeOrderManager:
                 order_placed = True
                 self.log_success(adjusted_price, side)
 
-            return order_placed, order_record, response
+            return order_placed, response
 
         except CoinbaseAPIError as eapi:
             return self.handle_coinbase_api_error(eapi, response)
@@ -217,8 +219,8 @@ class TradeOrderManager:
         all_open_orders = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_open_orders(None))
         try:
             if len(all_open_orders) != 0:
-                open_order = self.tradebot_utils.format_open_orders(all_open_orders)
-                open_orders = list(all_open_orders)
+                open_orders = self.tradebot_utils.format_open_orders(all_open_orders)
+                # open_orders = list(all_open_orders)
             coin = [self.trading_pair.split('/')[0], self.quote_currency]  # USD
             if not open_orders:
                 self.log_manager.webhook_logger.info(f'No open orders found for {self.trading_pair} a {side} order will be '
@@ -279,7 +281,7 @@ class TradeOrderManager:
         return False
 
     @LoggerManager.log_method_call
-    def record_order(self, order_record, attempt, side, adjusted_size, adjusted_price, lowest_ask, highest_bid):
+    def record_order(self, order_records, attempt, side, adjusted_size, adjusted_price, lowest_ask, highest_bid):
         # Create a new order record
         try:
             new_order = {
@@ -291,13 +293,15 @@ class TradeOrderManager:
                 'ask': lowest_ask,
                 'bid': highest_bid
             }
-            new_order_df = pd.DataFrame([new_order])
+            #  new_order_df = pd.DataFrame([new_order])
 
             # Append the new order to the open_orders DataFrame
-            order_record = pd.concat([order_record, new_order_df], ignore_index=True)
+            order_records.append(new_order)
+            return order_records
+            # order_record = pd.concat([order_record, new_order_df], ignore_index=True)
         except Exception as ex:
             self.log_manager.webhook_logger.error(f'Error appending order book: {ex}')
-        return order_record
+        return order_records
 
     @LoggerManager.log_method_call
     def log_success(self, price, side):
@@ -335,12 +339,16 @@ class TradeOrderManager:
 
     @LoggerManager.log_method_call
     def calculate_available_quote(self, balance, quote_price, adjusted_price):
-        # Check if any of the values are None
-        if balance is None or quote_price is None or adjusted_price is None:
-            # Handle the error condition, e.g., by logging and returning None or a default value
-            self.log_manager.webhook_logger.error(f'calculate_available_quote: One or more parameters are None for '
-                                                  f'{self.trading_pair} Balance:{balance} Quote Price: {quote_price} '
-                                                  f'Adjusted Price: {adjusted_price}')
-            return None
 
-        return balance * (quote_price * adjusted_price)
+        try:  # Check if any of the values are None
+            if None in (balance, quote_price, adjusted_price):
+                # Handle the error condition, e.g., by logging and returning None or a default value
+                self.log_manager.webhook_logger.error(f'calculate_available_quote: One or more parameters are None for '
+                                                      f'{self.trading_pair} Balance:{balance} Quote Price: {quote_price} '
+                                                      f'Adjusted Price: {adjusted_price}')
+                return None
+
+            return balance * (quote_price * adjusted_price)
+        except Exception as ex:
+            error_details = traceback.format_exc()
+            self.log_manager.sighook_logger.error(f'update_ticker_cache: {error_details}  {ex}')

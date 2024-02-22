@@ -4,6 +4,7 @@ import smtplib
 import socket
 import asyncio
 import random
+import traceback
 
 """ This class handles the sending of alert messages, such as SMS or emails."""
 #
@@ -150,7 +151,8 @@ class SenderWebhook:
                 self.log_manager.sighook_logger.error(f"Request timed out: {eto} ")
 
             except Exception as e:
-                self.log_manager.sighook_logger.error(f"Error sending webhook: {e} ")
+                tb_str = traceback.format_exc()  # get complete traceback as a string
+                self.log_manager.sighook_logger.error(f'Error in sending webhook(): {e}\nTraceback: {tb_str}')
                 raise  # Reraise the exception to handle it outside or log it
 
             # Apply exponential backoff with jitter only if not on last attempt

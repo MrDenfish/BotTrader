@@ -90,7 +90,7 @@ class WebhookListener:
             signal into a trade order to be placed on Coinbase Pro, and handle errors with the webhook request."""
             # Log the IP address of the requester
             ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
-            self.log_manager.webhook_logger.info(f'Incoming webhook from IP: {ip_address}')
+            self.log_manager.webhook_logger.info(f'Incoming webhook from IP: {ip_address}  {request.json}')
             # Log request headers and body for debugging
             self.log_manager.webhook_logger.debug(f'Request Headers: {request.headers}')
             self.log_manager.webhook_logger.debug(f'Request Body: {request.json}')
@@ -135,7 +135,7 @@ class WebhookListener:
                     self.order_book_manager.set_trade_parameters(trading_pair, base_currency, quote_currency, base_decimal,
                                                                  quote_decimal, base_increment, quote_increment, balances)
 
-                    self.log_manager.webhook_logger.info(f'webhook: {orig}  {side}  signal generated for {trading_pair}')
+                    self.log_manager.webhook_logger.debug(f'webhook: {orig}  {side}  signal generated for {trading_pair}')
 
                     # get quote price and base price
                     if quote_currency != 'USD':
@@ -188,10 +188,7 @@ class WebhookListener:
                                                         quote_amount, base_order_size, usd_amount, base_price)
                         return "Internal Server Error", 500
 
-                print(f'<><><><><><><><><><><><><><><><><><><><< {formatted_time} >><><><><><><><><><><><><><><><><><><><>')
-
                 print(f'Webhook {self.bot_config.program_version} is Listening...')
-                print(f'Flask Server data:')
                 return jsonify(success=True), 200
             except ValueError as e:
                 # Handle the specific case where the symbol is not found
@@ -207,7 +204,7 @@ class WebhookListener:
                 self.log_manager.webhook_logger.error(f'Error processing webhook: {outer_e}', exc_info=True)
                 return jsonify({"success": False, "Error": "Internal Server Error"}), 500
             finally:
-                self.log_manager.webhook_logger.info(f'webhook: End of webhook request')
+                self.log_manager.webhook_logger.debug(f'webhook: End of webhook request')
 
     @LoggerManager.log_method_call
     def calculate_order_size(self, side, usd_amount, quote_price, base_price, base_decimal):
@@ -224,7 +221,6 @@ class WebhookListener:
         return base_order_size, quote_amount
 
     def parse_webhook_data(self, webhook_data):
-        order_size = None
         action = webhook_data['action']  # Extract order type (open or close)
         side = 'buy' if 'open' in action else 'sell'
         quote_currency = webhook_data['pair'][-3:]  # Extract quote currency

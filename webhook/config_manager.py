@@ -19,23 +19,21 @@ class BotConfig:
 
     def __init__(self):
         if not self._is_loaded:
-            env_path = os.path.join(os.path.dirname(__file__), '..', 'config', '.env_tradebot')
-            load_dotenv(env_path)  # Load environment variables
-            self._version = os.getenv('VERSION')
-            self._api_key = os.getenv('API_KEY')
-            self._api_secret = os.getenv('API_SECRET')
-            self._passphrase = os.getenv('API_PASS')
-            self._api_url = os.getenv('API_URL')
-            self._docker_staticip = os.getenv('DOCKER_STATICIP')
-            self._tv_whitelist = os.getenv('TV_WHITELIST')
-            self._coin_whitelist = os.getenv('COIN_WHITELIST')
-            self._account_sid = os.getenv('ACCOUNT_SID')
-            self._auth_token = os.getenv('AUTH_TOKEN')
-            self._account_phone = os.getenv('ACCOUNT_PHONE')
-            self._web_url = os.getenv('WEB_URL')
+            self._version = None
+            self._api_key = None
+            self._api_secret = None
+            self._passphrase = None
+            self._api_url = None
             self._json_config = None
+            self._docker_staticip = None
+            self._tv_whitelist = None
+            self._coin_whitelist = None
+            self._account_sid = None
+            self._auth_token = None
+            self._account_phone = None
+            self._web_url = None
+            self.port = None
             self.machine_type = None
-            self.port = int(os.getenv('WEBHOOK_PORT', 80))  # Default to 80 if not set
             self.log_dir = None
             self.flask_log_dir = None
             self.sql_log_dir = None
@@ -43,11 +41,36 @@ class BotConfig:
             self.portfolio_dir = None
             self.profit_dir = None
 
-            self.load_json_config()
-            self._is_loaded = True
+            if not self._is_loaded:
+                # Check if running inside Docker by looking for a specific environment variable
+                if os.getenv('RUNNING_IN_DOCKER'):
+                    env_path = ".env"  # Docker environment
+                    self.port = int(os.getenv('PORT', 80))
+                else:
+                    # Local environment
+                    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env_tradebot')
+                    self.port = int(os.getenv('PORT', 80))
+                load_dotenv(env_path)
+                self.load_environment_variables()
+                self.load_json_config()
+                self._is_loaded = True
+
+    def load_environment_variables(self):
+        self._version = os.getenv('VERSION')
+        self._api_key = os.getenv('API_KEY')
+        self._api_secret = os.getenv('API_SECRET')
+        self._passphrase = os.getenv('API_PASS')
+        self._api_url = os.getenv('API_URL')
+        self._docker_staticip = os.getenv('DOCKER_STATICIP')
+        self._tv_whitelist = os.getenv('TV_WHITELIST')
+        self._coin_whitelist = os.getenv('COIN_WHITELIST')
+        self._account_sid = os.getenv('ACCOUNT_SID')
+        self._auth_token = os.getenv('AUTH_TOKEN')
+        self._account_phone = os.getenv('ACCOUNT_PHONE')
+        self._web_url = os.getenv('WEB_URL')
+        self.machine_type = self.determine_machine_type()
 
     def load_json_config(self):
-        self.machine_type = self.determine_machine_type()
         current_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(current_dir, 'config.json')
 

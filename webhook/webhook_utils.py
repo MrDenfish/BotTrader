@@ -5,7 +5,8 @@ from custom_exceptions import CoinbaseAPIError
 
 from log_manager import LoggerManager
 
-from decimal import Decimal, ROUND_DOWN, getcontext
+from decimal import Decimal, getcontext, ROUND_DOWN, InvalidOperation
+
 # from .shared.api_related import retry_on_401  # shared module
 from typing import Dict
 import socket
@@ -72,11 +73,11 @@ class TradeBotUtils:
 
     @LoggerManager.log_method_call
     async def fetch_spot(self, symbol):
-            ticker = self. exchange.fetch_ticker(symbol)
-            # Extract the spot price (last price)
-            spot_price = ticker['last']
-            self.log_manager.webhook_logger.info(f'fetch_spot: {symbol} spot price: {spot_price}')
-            return spot_price
+        ticker = self. exchange.fetch_ticker(symbol)
+        # Extract the spot price (last price)
+        spot_price = ticker['last']
+        self.log_manager.webhook_logger.info(f'fetch_spot: {symbol} spot price: {spot_price}')
+        return spot_price
 
     @LoggerManager.log_method_call
     async def fetch_precision(self, symbol: str) -> tuple:
@@ -244,47 +245,53 @@ class TradeBotUtils:
 
     @LoggerManager.log_method_call
     def adjusted_price_and_size(self, side, order_book, quote_price, available_coin_balance, usd_amount, response=None):
-        # was available_balance
         """ Calculate and adjust price and size
-        # Return adjusted_price and adjusted_size """
-        best_ask_price = None
-        best_bid_price = None
-        # Set the precision for Decimal operations if needed
-        getcontext().prec = 8  # more than 8 may cause class 'decimal.DivisionImpossible' error
+                # Return adjusted_price and adjusted_size """
+
+        best_bid_price = Decimal(order_book['bids'][0][0])
+        best_ask_price = Decimal(order_book['asks'][0][0])
+        spread = best_ask_price - best_bid_price
+
+        # Dynamic adjustment factor based on a percentage of the spread
+        adjustment_factor = spread * Decimal('0.25')  # Example: 25% of the spread
         try:
             if side == 'buy':
-                # For buy orders
-                best_ask_price = Decimal(order_book['asks'][0][0])
-                if best_ask_price is None:
-                    pass
-                adjusted_price = self.adjust_precision(best_ask_price + self.quote_incri, convert='quote')
-                # lowest ask to comply with Coinbase's requirement
-                quote_amount = Decimal(usd_amount) / Decimal(quote_price)
+                # Adjust the buy price to be slightly higher than the best bid
+                adjusted_price = best_bid_price + adjustment_factor
+                adjusted_price = self.adjust_precision(adjusted_price, convert='quote')
+                quote_amount = Decimal(usd_amount) / quote_price
                 adjusted_size = quote_amount / adjusted_price
-
                 adjusted_size = adjusted_size.quantize(self.base_incri, rounding=ROUND_DOWN)
-                if adjusted_price is None or adjusted_size is None:
+                if None in (adjusted_price, adjusted_size):
                     self.log_manager.webhook_logger.info(
                         f'adjusted_price_and_size: {side}, best_ask_price: {best_ask_price}, adjusted_price: '
                         f'{adjusted_price}, adjusted_size: {adjusted_size}')
                     return None, None
-            else:  # sell orders
-                best_bid_price = Decimal(order_book['bids'][0][0]).quantize(self.quote_incri, rounding=ROUND_DOWN)
-                if best_bid_price is None:
-                    pass
-                adjusted_price = self.adjust_precision(best_bid_price + self.quote_incri, convert='quote')
-                # Ensure the sell price is above the highest bid to comply with Coinbase's requirement
-                adjusted_size = Decimal(available_coin_balance).quantize(self.base_incri, rounding=ROUND_DOWN)
-                if response is not None and 'insufficient base balance' in response:
-                    adjusted_size = adjusted_size - (adjusted_size * Decimal(0.01))  # reduce size by 1%
-                if adjusted_price is None or adjusted_size is None:
-                    error_details = traceback.format_exc()
-                    self.log_manager.webhook_logger.error(f'adjusted_price_and_size: Error placing order: {error_details}')
-                    self.log_manager.webhook_logger.error(
-                        f'adjusted_price_and_size: {side}, best_bid_price: {best_bid_price}, adjusted_price: '
-                        f'{adjusted_price},adjusted_size: {adjusted_size} order book{order_book} {order_book["asks"][0][0]}')
-                    return None, None
+            else:
+                # Adjust the sell price to be slightly lower than the best ask
+                adjusted_price = best_ask_price - adjustment_factor
+                adjusted_price = self.adjust_precision(adjusted_price, convert='quote')
+                adjusted_size = Decimal(available_coin_balance)
+
+            # Apply quantization based on market precision rules
+            adjusted_price = adjusted_price.quantize(self.quote_incri, rounding=ROUND_DOWN)
+            adjusted_size = Decimal(available_coin_balance).quantize(self.base_incri, rounding=ROUND_DOWN)
+            if response is not None and 'insufficient base balance' in response:
+                adjusted_size = adjusted_size - (adjusted_size * Decimal(0.01))  # reduce size by 1%
+            if None in (adjusted_price, adjusted_size):
+                error_details = traceback.format_exc()
+                self.log_manager.webhook_logger.error(f'adjusted_price_and_size: Error placing order: {error_details}')
+                self.log_manager.webhook_logger.error(
+                    f'adjusted_price_and_size: {side}, best_bid_price: {best_bid_price}, adjusted_price: '
+                    f'{adjusted_price},adjusted_size: {adjusted_size} order book{order_book} {order_book["asks"][0][0]}')
+                return None, None
             return adjusted_price, adjusted_size
+        except InvalidOperation as e:
+            # Log the error and the values that caused it
+            self.log_manager.webhook_logger.error(f'Invalid operation encountered during quantization: {e}')
+            self.log_manager.webhook_logger.error(
+                f'available_coin_balance: {available_coin_balance}, base_incri: {self.base_incri}')
+            return None, None
         except Exception as e:
             error_details = traceback.format_exc()
             self.log_manager.webhook_logger.error(

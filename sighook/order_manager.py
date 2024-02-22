@@ -130,8 +130,8 @@ class OrderManager:
     async def process_sell_order(self, product_id, current_price, holdings, purchase_decimal, diff_decimal,
                                  trigger=None):
         sell_cond = True
-        sell_action, sell_pair, sell_limit, sell_order, trigger = self.trading_strategy.sell_signal(
-            product_id, current_price, sell_cond, holdings, trigger='profit')
+        sell_action, sell_pair, sell_limit, sell_order = self.trading_strategy.sell_signal(
+            product_id, current_price, sell_cond, holdings, trigger)
         if sell_action:
             await self.webhook.send_webhook(sell_action, sell_pair, sell_limit, sell_order)
 

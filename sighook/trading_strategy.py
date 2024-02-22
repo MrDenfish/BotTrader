@@ -2,7 +2,7 @@
 """focus solely on decision-making based on data provided by MarketManager"""
 
 from decimal import Decimal, ROUND_HALF_UP
-import datetime
+
 import pandas as pd
 from indicators import Indicators
 import traceback
@@ -45,9 +45,7 @@ class TradingStrategy:
 
     async def process_row_async(self, row, old_portfolio, buy_sell_matrix, counter):
         async with self.semaphore:  # Acquire a semaphore slot
-            retries = 3  # make max of three attempts to place order
             backoff_factor = 0.3
-            rate_limit_wait = 1  # seconds
             symbol = f"{row['symbol'].replace('-', '/')}"
             if symbol == 'USD/USD':
                 pass
@@ -55,7 +53,6 @@ class TradingStrategy:
             price = None  # Initialize with default values
             bollinger_df = None  # Initialize with default value
             updates = {}  # Initialize a dictionary to store updates
-            ohlcv = []
             action_data = None  # Initialize action_data
             action = None  # Initialize action
             band_ratio = None  # Initialize band_ratio
@@ -134,17 +131,17 @@ class TradingStrategy:
 
     def buy_sell(self, bollinger_df, df, symbol):
         """Determine buy or sell signal based on Bollinger band data, rsi and roc macd values. Values of the matrix are
-                of boolen type. If 3 or more conditions are true, then the signal is true. If 3 or more conditions are false,
+                of boolean type. If 3 or more conditions are true, then the signal is true. If 3 or more conditions are
+                false,
                 the signal is False. ROC values can override the 3 condition rule if the rate of change is significant.
-                br - Buy Ratio
-                bt - Buy Touch
-                wb - W-Bottom Signal
-                rs - RSI Signal
-                ro - ROC Signal
-                mc - MACD Signal
-                sw - Swing Signal"""
+                bsr & ssr - Ratio-based signal
+                bst & sst - Price touching or below the lower Bollinger Band
+                wbs & mts - W-Bottom Signal, M-Tops Signal
+                brs & srs - RSI Signal (oversold or overbought)
+                bro & sro- ROC Signal
+                bmc & smc - MACD Signal
+                bss & sss - Swing Signal """
 
-        action = None
         buy_sell_data = {
             'action': None,
             'buy_signal': '',  # Initialize as an empty string
@@ -179,17 +176,18 @@ class TradingStrategy:
                 'basis']
 
             # Buy Signal: Price touching or below the lower Bollinger Band
-            buy_sell_data['buy_signal_touch'] = last_row['close'] < last_row['lower']
+            buy_sell_data['buy_sig_touch'] = last_row['close'] < last_row['lower']
+
             # Sell Signal: Price touching or above the upper Bollinger Band
-            buy_sell_data['sell_signal_touch'] = last_row['close'] > last_row['upper']
+            buy_sell_data['sell_sig_touch'] = last_row['close'] > last_row['upper']
 
             # bottom buy, top sell
             buy_sell_data['w_bottom_signal'], buy_sell_data['m_top_signal'] = (
                 self.indicators.algorithmic_trading_strategy(bollinger_df))
 
             # RSI-based signals
-            buy_sell_data['buy_signal_rsi'] = df['RSI'].iloc[-1] < 30  # RSI less than 30 indicates oversold
-            buy_sell_data['sell_signal_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
+            buy_sell_data['buy_sig_rsi'] = df['RSI'].iloc[-1] < 30  # RSI less than 30 indicates oversold
+            buy_sell_data['sell_sig_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
 
             # ROC-based signals
             buy_sell_data['buy_signal_roc'] = df['ROC'].iloc[-1] > 1  # ROC buy condition
@@ -207,51 +205,63 @@ class TradingStrategy:
             buy_sell_data['buy_swing_signal'] = df['Buy Swing'].iloc[-1]
             buy_sell_data['sell_swing_signal'] = df['Sell Swing'].iloc[-1]
 
-            # Check each condition and append its code to buy_triggers or sell_triggers
-            if buy_sell_data['buy_sig_ratio']:
-                buy_sell_data['buy_signal'] += 'br'
-            if buy_sell_data['buy_signal_touch']:
-                buy_sell_data['buy_signal'] += '-bt'
-            if buy_sell_data['w_bottom_signal']:
-                buy_sell_data['buy_signal'] += '-wb'
-            if buy_sell_data['buy_signal_rsi']:
-                buy_sell_data['buy_signal'] += '-rs'
-            if buy_sell_data['buy_signal_roc']:
-                buy_sell_data['buy_signal'] = 'ro'  # ROC can be a standalone trigger
-            if buy_sell_data['buy_signal_macd']:
-                buy_sell_data['buy_signal'] += '-mc'
-            if buy_sell_data['buy_swing_signal']:  # Assuming this is a boolean
-                buy_sell_data['buy_signal'] += '-sw'
+            # ROC-based signals with precedence
+            if df['ROC'].iloc[-1] > 1:  # ROC buy condition
+                buy_sell_data['buy_signal_roc'] = True
+                buy_sell_data['buy_signal'] = 'bro'  # Set ROC as the primary trigger
+            elif df['ROC'].iloc[-1] < -1:  # ROC sell condition
+                buy_sell_data['sell_signal_roc'] = True
+                buy_sell_data['sell_signal'] = 'sro'  # Set ROC as the primary trigger
 
-            # Similar checks for sell triggers...
-            if buy_sell_data['sell_sig_ratio']:
-                buy_sell_data['sell_signal'] += 'br'
-            if buy_sell_data['sell_signal_touch']:
-                buy_sell_data['sell_signal'] += '-bt'
-            if buy_sell_data['m_top_signal']:
-                buy_sell_data['sell_signal'] += '-wb'
-            if buy_sell_data['sell_signal_rsi']:
-                buy_sell_data['sell_signal'] += '-rs'
-            if buy_sell_data['sell_signal_roc']:
-                buy_sell_data['sell_signal'] = 'ro'  # ROC can be a standalone trigger
-            if buy_sell_data['sell_signal_macd']:
-                buy_sell_data['sell_signal'] += '-mc'
-            if buy_sell_data['sell_swing_signal']:
-                buy_sell_data['sell_signal'] += '-sw'
+            # Function to add signals without leading hyphen for the first condition
+            def add_signal(signal_str, new_signal):
+                return new_signal if not signal_str else f"{signal_str}-{new_signal}"
+
+            # Append other signals only if ROC signal is not set
+            if not buy_sell_data['buy_signal']:
+                # Similar logic for adding buy signals...
+                if buy_sell_data['buy_sig_ratio']:
+                    buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bsr')
+                if buy_sell_data['buy_sig_touch']:
+                    buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bst')
+                if buy_sell_data['w_bottom_signal']:
+                    buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'wbs')
+                if buy_sell_data['buy_signal_rsi']:
+                    buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'brs')
+                if buy_sell_data['buy_signal_macd']:
+                    buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bmc')
+                if buy_sell_data['buy_swing_signal']:  # Assuming this is a boolean
+                    buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bss')
+
+            if not buy_sell_data['sell_signal']:
+                # Similar logic for adding sell signals...
+                if buy_sell_data['sell_sig_ratio']:
+                    buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'ssr')
+                if buy_sell_data['sell_sig_touch']:
+                    buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'sst')
+                if buy_sell_data['m_top_signal']:
+                    buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'mts')
+                if buy_sell_data['sell_signal_rsi']:
+                    buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'srs')
+                if buy_sell_data['sell_signal_macd']:
+                    buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'smc')
+                if buy_sell_data['sell_swing_signal']:
+                    buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'sss')
+
+            # More robust way to count conditions: Count hyphens and add one for the first condition
+            buy_conditions_met = buy_sell_data['buy_signal'].count('-') + bool(buy_sell_data['buy_signal'])
+            sell_conditions_met = buy_sell_data['sell_signal'].count('-') + bool(buy_sell_data['sell_signal'])
 
             # Determine the final action based on the triggers
-            buy_conditions_met = len(buy_sell_data['buy_signal'].split('-'))  # Count triggers
-            sell_conditions_met = len(buy_sell_data['sell_signal'].split('-'))
-
-            if buy_conditions_met >= 3 or 'ro' in buy_sell_data['buy_signal']:
+            if buy_conditions_met >= 3 or 'bro' in buy_sell_data['buy_signal']:
                 buy_sell_data['action'] = 'buy'
-            elif sell_conditions_met >= 3 or 'ro' in buy_sell_data['sell_signal']:
+            elif sell_conditions_met >= 3 or 'sro' in buy_sell_data['sell_signal']:
                 buy_sell_data['action'] = 'sell'
 
             return buy_sell_data
         except Exception as e:
             self.log_manager.sighook_logger.error(f'Error in buy_sell(): {e}')
-            return buy_sell_data
+        return buy_sell_data
 
     async def handle_action(self, symbol, action, price, band_ratio, sell_cond, old_portfolio):
         # Separate logic for handling buy and sell actions
@@ -267,8 +277,8 @@ class TradingStrategy:
                     buy_limit = price
                     buy_order = 'limit'
                     await self.webhook.send_webhook(buy_action, buy_pair, buy_limit, buy_order)  # send webhook
-                    self.log_manager.sighook_logger.warning(f'{symbol} buy signal triggered @ {buy_action} price'
-                                                            f' {buy_limit}, USD balance: ${usd_balance}')
+                    self.log_manager.sighook_logger.buy(f'{symbol} buy signal triggered @ {buy_action} price'
+                                                        f' {buy_limit}, USD balance: ${usd_balance}')
                     return {'buy_action': buy_action, 'buy_pair': buy_pair, 'buy_limit': buy_limit, 'curr_band_ratio':
                             band_ratio, 'sell_action': None, 'sell_symbol': None, 'sell_limit': None, 'sell_cond': None}
                 else:
@@ -276,7 +286,7 @@ class TradingStrategy:
                     return None
             elif action == 'sell':
                 # Prepare sell action data
-                sell_action, sell_symbol, sell_limit, sell_order, trigger = (
+                sell_action, sell_symbol, sell_limit, sell_order = (
                     self.sell_signal(symbol, price, sell_cond, old_portfolio, trigger='buysell Matrix'))
                 if sell_action:
                     await self.webhook.send_webhook(sell_action, sell_symbol, sell_limit, sell_order)
@@ -290,19 +300,18 @@ class TradingStrategy:
             self.log_manager.sighook_logger.error(f'Error in handle_action(): {e}\nTraceback: {tb_str}')
         return None
 
-    @staticmethod
-    def sell_signal(symbol, price, sell_cond, old_portfolio, trigger):
+    def sell_signal(self, symbol, price, sell_cond, old_portfolio, trigger):
         coin = symbol.split('/')[0]
         if sell_cond and any(item['Currency'] == coin for item in old_portfolio):  # sell
             sell_action = 'close_at_limit'
             sell_pair = symbol
             sell_limit = price
             sell_order = 'limit'
-            print(f'sell signal received for {symbol} order created by {trigger}')
+            self.log_manager.sighook_logger.sell(f'sell signal created for {symbol} order triggered by {trigger}')
         else:
-            return None, None, None, None, None
+            return None, None, None, None
 
-        return sell_action, sell_pair, sell_limit, sell_order, trigger
+        return sell_action, sell_pair, sell_limit, sell_order
 
     @staticmethod
     def is_valid_bollinger_df(bollinger_df):
