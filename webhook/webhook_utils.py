@@ -5,7 +5,7 @@ from custom_exceptions import CoinbaseAPIError
 
 from log_manager import LoggerManager
 
-from decimal import Decimal, getcontext, ROUND_DOWN, InvalidOperation
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 # from .shared.api_related import retry_on_401  # shared module
 from typing import Dict
@@ -39,20 +39,6 @@ class TradeBotUtils:
         self.log_manager = logmanager
         self.ccxt_exceptions = ccxt_api
         self.order_book = order_book
-        self.base_currency, self.quote_currency, self.trading_pair = None, None, None
-        self.base_deci, self.quote_deci = None, None
-        self.base_incri, self.quote_incri, self.balances = None, None, None
-
-    def set_trade_parameters(self, trading_pair, base_currency, quote_currency, base_decimal, quote_decimal,
-                             base_increment, quote_increment, balances):
-        self.base_currency = base_currency
-        self.quote_currency = quote_currency
-        self.trading_pair = trading_pair
-        self.base_deci = base_decimal
-        self.quote_deci = quote_decimal
-        self.base_incri = base_increment
-        self.quote_incri = quote_increment
-        self.balances = balances
 
     @LoggerManager.log_method_call
     def refresh_authentication(self):
@@ -73,11 +59,16 @@ class TradeBotUtils:
 
     @LoggerManager.log_method_call
     async def fetch_spot(self, symbol):
-        ticker = self. exchange.fetch_ticker(symbol)
-        # Extract the spot price (last price)
-        spot_price = ticker['last']
-        self.log_manager.webhook_logger.info(f'fetch_spot: {symbol} spot price: {spot_price}')
-        return spot_price
+        try:
+            ticker = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_ticker(symbol))
+            # Extract the spot price (last price)
+            spot_price = ticker['last']
+            self.log_manager.webhook_logger.info(f'fetch_spot: {symbol} spot price: {spot_price}')
+            return spot_price
+        except Exception as ex:
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(f'fetch_spot: Error details: {error_details}')
+            self.log_manager.webhook_logger.error(f'fetch_spot: Error fetching ticker {symbol}: {ex}')
 
     @LoggerManager.log_method_call
     async def fetch_precision(self, symbol: str) -> tuple:
@@ -87,6 +78,7 @@ class TradeBotUtils:
         :param symbol: The symbol to fetch precision for.
         :return: A tuple containing base and quote decimal places.
         """
+        markets = None
         try:
             markets = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets)
             if markets is None:
@@ -112,6 +104,9 @@ class TradeBotUtils:
                     return base_decimal_places, quote_decimal_places, base_increment, quote_increment
 
         except ValueError as e:
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(
+                f'fetch_precision: An error occurred:{markets} {e}\nDetails: {error_details}')
             self.log_manager.webhook_logger.error(f"fetch_precision: {e}")
             return None, None, None, None
 
@@ -140,7 +135,7 @@ class TradeBotUtils:
         return df
 
     @LoggerManager.log_method_call
-    async def get_open_orders(self):
+    async def get_open_orders(self, balances, base_deci, quote_deci, quote_currency, trading_pair):
         base_balance = Decimal(0)
         quote_bal = Decimal(0)
         try:
@@ -149,26 +144,23 @@ class TradeBotUtils:
             # Ensure format_open_orders returns a DataFrame
             all_open_orders = self.format_open_orders(fetched_open_orders) if fetched_open_orders else pd.DataFrame()
 
-            self.balances = await self.get_account_balance([self.trading_pair.split('/')[0], self.quote_currency])
-            if None in self.balances.values():
+            balances = await self.get_account_balance(balances, [trading_pair.split('/')[0], quote_currency])
+            if None in balances.values():
                 self.log_manager.webhook_logger.warning(
                     'None values detected in balances. Refreshing authentication and retrying.')
                 self.refresh_authentication()
-                self.balances = await self.get_account_balance([self.trading_pair.split('/')[0], self.quote_currency])
+                balances = await self.get_account_balance([trading_pair.split('/')[0], quote_currency])
 
-            base_value = self.balances.get(self.trading_pair.split('/')[0], 0)
-            base_balance = self.float_to_decimal(base_value, self.base_deci) if base_value is not None else Decimal(0)
-            quote_value = self.balances.get(self.quote_currency, 0)
-            quote_balance = self.float_to_decimal(quote_value, self.quote_deci) if quote_value is not None else Decimal(0)
+            base_value = balances.get(trading_pair.split('/')[0], 0)
+            base_balance = self.float_to_decimal(base_value, base_deci) if base_value is not None else Decimal(0)
+            quote_value = balances.get(quote_currency, 0)
+            quote_balance = self.float_to_decimal(quote_value, quote_deci) if quote_value is not None else Decimal(0)
 
             # Check if all_open_orders DataFrame is empty
             if all_open_orders.empty:
                 self.log_manager.webhook_logger.debug(
-                    f'get_open_orders: No open orders found for {self.trading_pair}. Coin Balance: {base_balance}')
+                    f'get_open_orders: No open orders found for {trading_pair}. Coin Balance: {base_balance}')
                 return quote_balance, base_balance, None
-
-            # Process non-empty all_open_orders
-            print(f'{all_open_orders}')
 
             return quote_balance, base_balance, all_open_orders
         except CoinbaseAPIError as e:
@@ -195,7 +187,7 @@ class TradeBotUtils:
     from decimal import Decimal
 
     @LoggerManager.log_method_call
-    async def get_account_balance(self, currencies):
+    async def get_account_balance(self, balances, currencies):
         try:
             accounts = await self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_balance())
 
@@ -208,12 +200,12 @@ class TradeBotUtils:
             for currency in currencies:
                 if currency in accounts:
                     account = accounts[currency]
-                    self.balances[currency] = float(account['free']) if account['free'] is not None else None
+                    balances[currency] = float(account['free']) if account['free'] is not None else None
                 else:
-                    self.balances[currency] = None
+                    balances[currency] = None
                     self.log_manager.webhook_logger.info(f'get_account_balance: {currency} not found in accounts')
 
-            return self.balances
+            return balances
 
         except Exception as e:
             my_ip = self.get_my_ip_address()  # debug when running on the laptop
@@ -222,18 +214,18 @@ class TradeBotUtils:
             return {currency: None for currency in currencies}
 
     @LoggerManager.log_method_call
-    def adjust_precision(self, num_to_adjust, convert):
+    def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
 
         """"" Adjust the amount based on the number of decimal places required for the symbol.
          base_deci and quote_deci are determined by the symbol presicion from markets and is the number of decimal places
          for the currency used in a particular market.  For example, for BTC/USD, base_deci is 8 and quote_deci is 2."""
         try:
             if convert == 'base':
-                decimal_places = self.base_deci
+                decimal_places = base_deci
             elif convert == 'usd':
                 decimal_places = 2
             elif convert == 'quote':
-                decimal_places = self.quote_deci
+                decimal_places = quote_deci
             else:
                 decimal_places = 8
             adjusted_precision = self.float_to_decimal(num_to_adjust, decimal_places)
@@ -244,7 +236,8 @@ class TradeBotUtils:
             return None
 
     @LoggerManager.log_method_call
-    def adjusted_price_and_size(self, side, order_book, quote_price, available_coin_balance, usd_amount, response=None):
+    def adjust_price_and_size(self, base_deci, quote_deci, base_incri, side, order_book, quote_price,
+                              available_coin_balance, usd_amount, response=None):
         """ Calculate and adjust price and size
                 # Return adjusted_price and adjusted_size """
 
@@ -253,15 +246,15 @@ class TradeBotUtils:
         spread = best_ask_price - best_bid_price
 
         # Dynamic adjustment factor based on a percentage of the spread
-        adjustment_factor = spread * Decimal('0.25')  # Example: 25% of the spread
+        adjustment_factor = spread * Decimal('0.1')  # Example: 25% of the spread
         try:
             if side == 'buy':
                 # Adjust the buy price to be slightly higher than the best bid
-                adjusted_price = best_bid_price + adjustment_factor
-                adjusted_price = self.adjust_precision(adjusted_price, convert='quote')
+                adjusted_price = best_ask_price + adjustment_factor
+                adjusted_price = self.adjust_precision(base_deci, quote_deci, adjusted_price, convert='quote')
                 quote_amount = Decimal(usd_amount) / quote_price
                 adjusted_size = quote_amount / adjusted_price
-                adjusted_size = adjusted_size.quantize(self.base_incri, rounding=ROUND_DOWN)
+                adjusted_size = adjusted_size.quantize(base_incri, rounding=ROUND_DOWN)
                 if None in (adjusted_price, adjusted_size):
                     self.log_manager.webhook_logger.info(
                         f'adjusted_price_and_size: {side}, best_ask_price: {best_ask_price}, adjusted_price: '
@@ -269,15 +262,16 @@ class TradeBotUtils:
                     return None, None
             else:
                 # Adjust the sell price to be slightly lower than the best ask
-                adjusted_price = best_ask_price - adjustment_factor
-                adjusted_price = self.adjust_precision(adjusted_price, convert='quote')
+                adjusted_price = best_bid_price - adjustment_factor
+                adjusted_price = self.adjust_precision(base_deci, quote_deci, adjusted_price, convert='quote')
                 adjusted_size = Decimal(available_coin_balance)
 
             # Apply quantization based on market precision rules
-            adjusted_price = adjusted_price.quantize(self.quote_incri, rounding=ROUND_DOWN)
-            adjusted_size = Decimal(available_coin_balance).quantize(self.base_incri, rounding=ROUND_DOWN)
+            # adjusted_price = adjusted_price.quantize(self.quote_incri, rounding=ROUND_DOWN)
+            # adjusted_size = Decimal(available_coin_balance).quantize(self.base_incri, rounding=ROUND_DOWN)
             if response is not None and 'insufficient base balance' in response:
                 adjusted_size = adjusted_size - (adjusted_size * Decimal(0.01))  # reduce size by 1%
+                adjusted_size = adjusted_size.quantize(base_incri, rounding=ROUND_DOWN)
             if None in (adjusted_price, adjusted_size):
                 error_details = traceback.format_exc()
                 self.log_manager.webhook_logger.error(f'adjusted_price_and_size: Error placing order: {error_details}')
@@ -290,7 +284,7 @@ class TradeBotUtils:
             # Log the error and the values that caused it
             self.log_manager.webhook_logger.error(f'Invalid operation encountered during quantization: {e}')
             self.log_manager.webhook_logger.error(
-                f'available_coin_balance: {available_coin_balance}, base_incri: {self.base_incri}')
+                f'available_coin_balance: {available_coin_balance}, base_incri: {base_incri}')
             return None, None
         except Exception as e:
             error_details = traceback.format_exc()
@@ -333,7 +327,10 @@ class TradeBotUtils:
 
             return value_decimal
         except Exception as e:
-
+            error_details = traceback.format_exc()
+            self.log_manager.webhook_logger.error(
+                f'float_to_decimal: An error occurred:decimal places:{decimal_places},value:{value},'
+                f' {e}\nDetails: {error_details}')
             self.log_manager.webhook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
                                                   f'Decimal places: {decimal_places}')
             raise

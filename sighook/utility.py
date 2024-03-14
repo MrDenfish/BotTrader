@@ -1,6 +1,9 @@
 
 import time
-import datetime
+from datetime import datetime
+import json
+import os
+import sqlite3
 import math
 import pandas as pd
 from decimal import Decimal, ROUND_DOWN
@@ -47,12 +50,15 @@ class SenderUtils:
             start_time = None  # reset start time
             return elapsed_seconds
 
-    @staticmethod
-    def time_unix(last_timestamp):
-        if last_timestamp != 0:
+    def time_unix(self, last_timestamp):
+        if last_timestamp and last_timestamp != 0:  # Check if last_timestamp is not None and not 0
             format_string = "%Y-%m-%d %H:%M:%S.%f"
-            last_timestamp = datetime.datetime.strptime(last_timestamp, format_string)
-            return int(last_timestamp.timestamp() * 1000)
+            try:
+                last_timestamp = datetime.strptime(last_timestamp, format_string)
+                return int(last_timestamp.timestamp() * 1000)
+            except ValueError as e:
+                self.log_manager.sighook_logger.error(f"Error parsing timestamp: {e}")
+                return None  # or some other error handling
         else:
             return 0
 
@@ -64,6 +70,37 @@ class SenderUtils:
         except ValueError:
             # Fallback for standard datetime strings
             return pd.to_datetime(timestamp)
+
+    @staticmethod
+    def convert_to_unix_timestamp(iso_time_str):
+        # Parse the ISO 8601 string to a datetime object
+        dt = datetime.fromisoformat(iso_time_str)
+
+        # Convert the datetime object to a Unix timestamp (seconds since epoch)
+        unix_timestamp = int(time.mktime(dt.timetuple()))
+
+        return unix_timestamp
+
+    @staticmethod
+    def parse_isoformat_with_high_precision(trade_time_str):
+        # Check if the datetime string contains a '.'
+        if '.' in trade_time_str:
+            # Split the datetime string into the main part and the fractional seconds
+            main_part, fractional_seconds = trade_time_str.split('.')
+
+            # Truncate the fractional seconds to microsecond precision (6 digits)
+            truncated_fractional = fractional_seconds[:6]
+
+            # Reassemble the datetime string with truncated fractional seconds
+            truncated_datetime_str = f"{main_part}.{truncated_fractional}"
+        else:
+            # No fractional seconds present, use the original datetime string
+            truncated_datetime_str = trade_time_str
+
+        # Convert to datetime object
+        trade_time = datetime.fromisoformat(truncated_datetime_str)
+
+        return trade_time
 
     @staticmethod
     def find_price(product_id, usd_pairs):
@@ -121,7 +158,7 @@ class SenderUtils:
                     return base_decimal_places, quote_decimal_places
 
         except ValueError as e:
-            self.log_manager.webhook_logger.error(f"fetch_precision: {e}")
+            self.log_manager.sighook_logger.error(f"fetch_precision: {e}")
             return None, None
         except Exception as e:
             self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}')
@@ -169,3 +206,7 @@ class SenderUtils:
             self.log_manager.webhook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
                                                   f'Decimal places: {decimal_places}')
             raise
+
+
+
+

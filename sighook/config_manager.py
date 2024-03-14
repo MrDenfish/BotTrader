@@ -25,6 +25,9 @@ class AppConfig:
         self.portfolio_dir = None
         self.active_trade_dir = None
         self.log_dir = None
+        self.database_dir = None
+        self.sqlite_db_path = None
+        self.sqlite_db_file = None
         self._json_config = None
         self._take_profit = None
         self._stop_loss = None
@@ -35,11 +38,14 @@ class AppConfig:
         self._phone = None
         self._web_url = None
         self._account_phone = None
+        self._async_mode = None
         self._auth_token = None
         self._account_sid = None
         self._coin_whitelist = None
         self._tv_whitelist = None
         self._docker_staticip = None
+        self._manny_database_path = None
+        self._digital_ocean_database_path = None
         self._cmc_api_url = None
         self._cmc_api_key = None
         self._api_url = None
@@ -47,6 +53,7 @@ class AppConfig:
         self._api_secret = None
         self._api_key = None
         self._version = None
+        self._log_level = None
         if not self._is_loaded:
             # Check if running inside Docker by looking for a specific environment variable
             if os.getenv('RUNNING_IN_DOCKER'):
@@ -54,8 +61,6 @@ class AppConfig:
             else:
                 # Local environment
                 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env_tradebot')
-
-
             load_dotenv(env_path)
             self.load_environment_variables()
             self.load_json_config()
@@ -63,6 +68,7 @@ class AppConfig:
 
     def load_environment_variables(self):
         self._version = os.getenv('VERSION')
+        self._async_mode = os.getenv('ASYNC_MODE')
         self._api_key = os.getenv('API_KEY')
         self._api_secret = os.getenv('API_SECRET')
         self._passphrase = os.getenv('API_PASS')
@@ -70,6 +76,8 @@ class AppConfig:
         self._cmc_api_key = os.getenv('CMC_API_KEY')  # PLACEHOLDER NOT USABLE CODE
         self._cmc_api_url = os.getenv('CMC_API_URL')  # PLACEHOLDER NOT USABLE CODE
         self._docker_staticip = os.getenv('DOCKER_STATICIP')
+        self._manny_database_path = os.getenv('MANNY_DATABASE_PATH')
+        self._digital_ocean_database_path = os.getenv('DIGITAL_OCEAN_DATABASE_PATH')
         self._tv_whitelist = os.getenv('TV_WHITELIST')
         self._coin_whitelist = os.getenv('COIN_WHITELIST')
         self._account_sid = os.getenv('ACCOUNT_SID')
@@ -83,6 +91,7 @@ class AppConfig:
         self._sleep_time = os.getenv('SLEEP')
         self._stop_loss = os.getenv('STOP_LOSS')
         self._take_profit = os.getenv('TAKE_PROFIT')
+        self._log_level = os.getenv('LOG_LEVEL_SIGHOOK')
         self.machine_type, self.port = self.determine_machine_type()
         if self.machine_type in ['moe', 'Manny', 'docker']:
             self.port = os.getenv('SIGHOOK_PORT')  # Example usage
@@ -125,6 +134,9 @@ class AppConfig:
     def get_directory_paths(self, path):
         base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
         self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['SENDER_ERROR_LOG_DIR'])
+        self.database_dir = os.path.join(base_dir, self._json_config[self.machine_type]['DATABASE_DIR'])
+        self.sqlite_db_file = self._json_config[self.machine_type]['DATABASE_FILE']
+        self.sqlite_db_path = os.path.join(self.database_dir, self.sqlite_db_file)
         self.active_trade_dir = os.path.join(base_dir, self._json_config[self.machine_type]['ACTIVE_TRADE_DIR'])
         self.portfolio_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PORTFOLIO_DIR'])
         self.profit_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PROFIT_DIR'])
@@ -134,9 +146,27 @@ class AppConfig:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
 
+    # @staticmethod  # Toggleable Function
+    # def run_in_mode(sync_func, async_func, *args, **kwargs):
+    #     if async_mode:
+    #         return async_func(*args, **kwargs)  # Remember to await this when calling
+    #     else:
+    #         return sync_func(*args, **kwargs)
+    #
+    # # Usage
+    # result = run_in_mode(get_data_sync, get_data_async, arg1, arg2)
+
     @property
     def program_version(self):
         return self._version
+
+    @property
+    def async_mode(self):
+        return self._async_mode
+
+    @property
+    def log_level(self):
+        return self._log_level
 
     @property
     def sleep_time(self):

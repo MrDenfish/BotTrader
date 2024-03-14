@@ -5,7 +5,10 @@
      containers"""
 
 import time
+
 import asyncio
+
+import traceback
 
 from datetime import datetime
 from decimal import ROUND_HALF_UP
@@ -68,7 +71,7 @@ class WebhookListener:
 
     def load_bot_components(self):
         self.bot_config = BotConfig()
-        self.log_manager = LoggerManager(log_dir=self.log_dir)
+        self.log_manager = LoggerManager(self.bot_config, log_dir=self.log_dir)
         self.accessory_tools = AccessoryTools(self.log_manager)
         self.alerts = AlertSystem(self.log_manager)
         self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
@@ -90,7 +93,7 @@ class WebhookListener:
             signal into a trade order to be placed on Coinbase Pro, and handle errors with the webhook request."""
             # Log the IP address of the requester
             ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
-            self.log_manager.webhook_logger.info(f'Incoming webhook from IP: {ip_address}  {request.json}')
+            self.log_manager.webhook_logger.debug(f'Incoming webhook from IP: {ip_address}  {request.json}')
             # Log request headers and body for debugging
             self.log_manager.webhook_logger.debug(f'Request Headers: {request.headers}')
             self.log_manager.webhook_logger.debug(f'Request Body: {request.json}')
@@ -121,35 +124,30 @@ class WebhookListener:
                         return jsonify(success=False, message="Missing JSON in request"), 400
                     action, side, trading_pair, quote_currency, base_currency, usd_amount, orig = self.parse_webhook_data(
                         request.get_json())
-                    base_decimal, quote_decimal, base_increment, quote_increment = await self.utility.fetch_precision(
+                    base_deci, quote_deci, base_increment, quote_increment = await self.utility.fetch_precision(
                         trading_pair)
-                    base_increment = self.utility.float_to_decimal(base_increment, base_decimal)
-                    quote_increment = self.utility.float_to_decimal(quote_increment, quote_decimal)
+                    if None in (base_deci, quote_deci, base_increment, quote_increment):
+                        print(f'request: {request.get_json()}')
+
+                    base_incri = self.utility.float_to_decimal(base_increment, base_deci)
+                    quote_incri = self.utility.float_to_decimal(quote_increment, quote_deci)
                     balances = {}
-                    self.validate.set_trade_parameters(trading_pair, base_currency, quote_currency, base_decimal,
-                                                       quote_decimal, base_increment, quote_increment, balances)
-                    self.utility.set_trade_parameters(trading_pair, base_currency, quote_currency, base_decimal,
-                                                      quote_decimal, base_increment, quote_increment, balances)
-                    self.trade_order_manager.set_trade_parameters(trading_pair, base_currency, quote_currency, base_decimal,
-                                                                  quote_decimal, base_increment, quote_increment, balances)
-                    self.order_book_manager.set_trade_parameters(trading_pair, base_currency, quote_currency, base_decimal,
-                                                                 quote_decimal, base_increment, quote_increment, balances)
 
                     self.log_manager.webhook_logger.debug(f'webhook: {orig}  {side}  signal generated for {trading_pair}')
 
                     # get quote price and base price
                     if quote_currency != 'USD':
                         quote_price = await self.utility.fetch_spot(quote_currency + '-USD')
-                        quote_price = self.utility.float_to_decimal(quote_price, quote_decimal)
+                        quote_price = self.utility.float_to_decimal(quote_price, quote_deci)
                     else:
-                        quote_price = self.utility.float_to_decimal(1.00, quote_decimal)
+                        quote_price = self.utility.float_to_decimal(1.00, quote_deci)
 
                     base_price = await self.utility.fetch_spot(base_currency + '-USD')
-                    base_price = self.utility.float_to_decimal(base_price, quote_decimal)
+                    base_price = self.utility.float_to_decimal(base_price, quote_deci)
                     if side == 'buy':
                         base_price = base_price/quote_price
                     base_order_size, quote_amount = self.calculate_order_size(side, usd_amount, quote_price, base_price,
-                                                                              base_decimal)
+                                                                              base_deci)
 
                     # Process the webhook request check for bad buy order
                     if side == 'buy':
@@ -164,7 +162,8 @@ class WebhookListener:
                                                                      f'{trading_pair}  balance is {quote_amount} ')
                                 return jsonify(success=False, message="Invalid order size!"), 400
                             else:
-                                quote_amount = self.utility.adjust_precision(quote_amount, convert='quote')
+                                quote_amount = self.utility.adjust_precision(base_deci, quote_deci, quote_amount,
+                                                                             convert='quote')
 
                     try:
                         current_time = datetime.now()
@@ -175,8 +174,10 @@ class WebhookListener:
                             #  place order with handle_action
                             print(F'<><><><><><><><><  {orig}  ><><><><> {side} signal generated for {trading_pair} at '
                                   F'{formatted_time} ')
-                            await self.handle_action(side, trading_pair, formatted_time, quote_price, quote_amount,
-                                                     usd_amount, base_price)
+                            (await self.handle_action(side, balances, base_incri, base_deci, quote_deci, base_currency,
+                                                      quote_currency, trading_pair, formatted_time, quote_price,
+                                                      quote_amount, usd_amount, base_price))
+
                         else:
                             print(f'respond to web_hook, 400 invalid {action}')
                             self.log_manager.webhook_logger.error(f'webhook: Invalid action {action}.')
@@ -184,8 +185,10 @@ class WebhookListener:
                     except Exception as inner_e:
                         current_time = datetime.now()
                         formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
-                        await self.handle_webhook_error(inner_e, side, trading_pair, formatted_time, quote_price,
-                                                        quote_amount, base_order_size, usd_amount, base_price)
+                        await self.handle_webhook_error(inner_e, side, balances, base_incri, base_deci, quote_deci,
+                                                        base_currency, quote_currency, trading_pair, formatted_time,
+                                                        quote_price, quote_amount, base_order_size, usd_amount, base_price)
+
                         return "Internal Server Error", 500
 
                 print(f'Webhook {self.bot_config.program_version} is Listening...')
@@ -201,6 +204,8 @@ class WebhookListener:
                 return jsonify({"success": False, "Check ip address is whitelisted": str(e)}), 400
 
             except Exception as outer_e:
+                error_details = traceback.format_exc()
+                self.log_manager.webhook_logger.error(f'place_order: Error details: {error_details}')
                 self.log_manager.webhook_logger.error(f'Error processing webhook: {outer_e}', exc_info=True)
                 return jsonify({"success": False, "Error": "Internal Server Error"}), 500
             finally:
@@ -236,12 +241,14 @@ class WebhookListener:
             usd_amount = None
         return action, side, pair, quote_currency, base_currency, usd_amount, orig
 
-    async def handle_action(self, side, trading_pair, formatted_time, quote_price, quote_amount, usd_amount,
-                            base_price):
+    async def handle_action(self, side, balances, base_incri, base_deci, quote_deci, base_currency,
+                            quote_currency,
+                            trading_pair, formatted_time, quote_price, quote_amount, usd_amount, base_price):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro."""
         try:
-            await self.trade_order_manager.place_order(quote_price, quote_amount, base_price, side=side,
-                                                       usd_amount=usd_amount)
+            await self.trade_order_manager.place_order(balances, base_incri, base_deci, quote_deci, base_currency,
+                                                       quote_currency, trading_pair, quote_price,  quote_amount, base_price,
+                                                       side=side, usd_amount=usd_amount)
         except InsufficientFundsException:
             self.log_manager.webhook_logger.info(f'handle_action: Insufficient funds')
             self.alerts.callhome('Insufficient funds', f'Insufficient funds  {trading_pair} at {formatted_time}')
@@ -258,7 +265,8 @@ class WebhookListener:
             # Catch-all for other exceptions
             self.log_manager.webhook_logger.error(f'Handle_action: An unexpected error occurred: {e}')
 
-    async def handle_webhook_error(self, e, side, trading_pair, formatted_time, quote_price, quote_amount,
+    async def handle_webhook_error(self, e, side, balances, base_incri, base_deci, quote_deci, base_currency,
+                                   quote_currency, trading_pair, formatted_time, quote_price, quote_amount,
                                    base_order_size, usd_amount, base_price):
         """Handle errors that occur while processing a webhook request."""
         exception_map = {
@@ -285,7 +293,9 @@ class WebhookListener:
             self.log_manager.webhook_logger.error(f'warning', 'handle_webhook_error: Rate limit hit. '
                                                   'Retrying in 60 seconds...')
             time.sleep(60)
-            await self.handle_action(side, trading_pair, formatted_time, quote_price, quote_amount, usd_amount, base_price)
+            await self.handle_action(side, balances, base_incri, base_deci, quote_deci, base_currency, quote_currency,
+                                     trading_pair, formatted_time, quote_price, quote_amount, usd_amount, base_price)
+
         except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
             self.log_manager.webhook_logger.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
 

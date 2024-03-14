@@ -26,21 +26,98 @@ class MarketManager:
         self.market_cache = market_cache
         self.holdings = hist_holdings
 
-    async def new_fetch_ohlcv(self, old_portfolio, usd_pairs, avg_dollar_vol_total, buy_sell_matrix, filtered_ticker_cache):
+    def new_fetch_ohlcv(self, holdings, usd_pairs, avg_dollar_vol_total, buy_sell_matrix, filtered_ticker_cache):
+        try:
+            if avg_dollar_vol_total is None:
+                self.log_manager.sighook_logger.info('average volume missing')
+                return None, None
+
+            self.open_orders = self.api_wrapper.get_open_orders(holdings,
+                                                                usd_pairs)  # Assuming get_open_orders is now synchronous
+
+            # counter = {'processed': 0}
+            results = [self.trading_strategy.process_row(row, holdings, buy_sell_matrix) for _, row in
+                       filtered_ticker_cache.iterrows()]  # Assuming process_row is now a synchronous version of process_row_async
+
+            # Process the results as before, no changes needed here since we're iterating over results synchronously
+
+            # Process the results
+            all_bollinger_dfs = []  # List of all bollinger_df DataFrames
+            all_updates = []  # List to collect all updates from threads
+            new_entries = []  # List to collect all new entries from threads
+            signals_generated = []  # List to collect all signals generated from threads
+
+            for result in results:
+                # Skip the iteration if the item is not a dictionary
+                if not isinstance(result, dict):
+                    continue
+                if result.get('symbol'):
+                    signals_generated.append(result['symbol'])
+                    new_entries.append(result['symbol'])
+                if result.get('action'):
+                    signals_generated.append(result['action'])
+                    new_entries.append(result['action'])
+                if result.get('band_ratio'):
+                    new_entries.append(result['band_ratio'])
+                if result.get('price'):
+                    signals_generated.append(result['price'])
+                if result.get('action_data'):
+                    new_entries.append(result['action_data'])
+                if 'bollinger_df' in result and result['bollinger_df'] is not None and not result['bollinger_df'].empty:
+                    all_bollinger_dfs.append(result['bollinger_df'])
+                if 'roc' in result and result['roc'] is not None:
+                    new_entries.append(result['roc'])
+                if 'rsi' in result and result['rsi'] is not None:
+                    new_entries.append(result['rsi'])
+                if 'macd' in result and result['macd'] is not None:
+                    new_entries.append(result['macd'])
+                if 'signal_line' in result and result['signal_line'] is not None:
+                    new_entries.append(result['signal_line'])
+                if 'macd_histogram' in result and result['macd_histogram'] is not None:
+                    new_entries.append(result['macd_histogram'])
+                if 'swing_trend' in result and result['swing_trend'] is not None:
+                    new_entries.append(result['swing_trend'])
+                if result.get('updates'):
+                    all_updates.append(result['updates'])
+
+            for update in all_updates:
+                if update is not None:  # Check if update is not None
+                    for coin, values in update.items():
+                        for col, value in values.items():
+                            if col in buy_sell_matrix.columns:
+                                buy_sell_matrix.loc[buy_sell_matrix['coin'] == coin, col] = value
+
+            # Combine all bollinger_df DataFrames into one
+            if all_bollinger_dfs:
+                combined_bollinger_df = pd.concat(all_bollinger_dfs, ignore_index=True)
+            else:
+                self.log_manager.sighook_logger.error(f"All Bollinger df :Empty Dataframe {all_bollinger_dfs}")
+                combined_bollinger_df = pd.DataFrame()  # Create an empty DataFrame if the list is empty
+            return self.open_orders, combined_bollinger_df
+        except ValueError as ve:
+            self.log_manager.sighook_logger.error(f"ValueError: {ve}")
+        except RuntimeError as re:
+            self.log_manager.sighook_logger.error(f"RuntimeError: {re}")
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f"Error occurred: {e}")
+            raise
+
+    def async_new_fetch_ohlcv(self, holdings, usd_pairs, avg_dollar_vol_total, buy_sell_matrix,
+                              filtered_ticker_cache):  #
+        # async
         try:
             if avg_dollar_vol_total is None:
                 self.log_manager.sighook_logger.info('average volume missing')
                 return None, None, self.results
 
-            self.open_orders = await self.api_wrapper.get_open_orders(old_portfolio, usd_pairs)
-            counter = {'processed': 0}
+            self.open_orders = self.api_wrapper.get_open_orders(holdings, usd_pairs)  # await
+            # counter = {'processed': 0}
             # Prepare asynchronous tasks for processing rows
 
-            tasks = [self.trading_strategy.process_row_async(row, old_portfolio, buy_sell_matrix, counter)
+            tasks = [self.trading_strategy.process_row_async(row, holdings, buy_sell_matrix)
                      for _, row in filtered_ticker_cache.iterrows()]
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            print(f" {counter['processed']}  High Volume coins have been evaluated for buy sell conditions")
+            results = asyncio.gather(*tasks, return_exceptions=True)  # await
             # Process the results
             all_bollinger_dfs = []  # List of all bollinger_df DataFrames
             all_updates = []  # List to collect all updates from threads

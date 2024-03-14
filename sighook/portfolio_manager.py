@@ -1,7 +1,10 @@
 from decimal import Decimal, ROUND_DOWN
 import datetime
+import json
+import os
 import pandas as pd
 import traceback
+
 
 class PortfolioManager:
     def __init__(self, utility, logmanager, ccxt_api, exchange):
@@ -21,59 +24,6 @@ class PortfolioManager:
         self.market_cache = market_cache
         self.holdings = hist_holdings
 
-    '''All Coins ever traded '''
-    async def track_trades(self, portfolio_dir):
-        # Load existing ledger cache
-        try:
-            existing_ledger = pd.read_csv(portfolio_dir + '/portfolio_data.csv')
-        except (FileNotFoundError, pd.errors.EmptyDataError):
-            existing_ledger = pd.DataFrame()
-
-        # Initialize an empty dictionary for latest timestamps
-        last_timestamp = {}
-
-        # # Check if existing_ledger is not empty before grouping
-
-        last_timestamp = existing_ledger['timestamp'].iloc[-2] if not existing_ledger.empty else 0
-        unix_timestamp = self.utility.time_unix(last_timestamp)
-        transactions = []
-        for symbol in self.ticker_cache['symbol']:
-            print(f'Updating trades data...{symbol}', end='\r')
-            # if 'HOPR' in symbol: # debug statement
-            #     last_timestamp = '2024-01-04 04:12:02.944'  # debug statement
-            #     unix_timestamp = self.utility.time_unix(last_timestamp)  # debug statement
-            try:
-                if unix_timestamp == 0:
-                    trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, symbol)
-                else:
-                    trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, symbol,
-                                                                      since=unix_timestamp)
-
-            # Fetching trades for each symbol that are newer than the last timestamp
-                for trade in trades:
-                    transactions.append({
-                        'timestamp': trade['timestamp'],
-                        'symbol': symbol,
-                        'type': trade['side'],
-                        'price': trade['price'],
-                        'amount': trade['amount'] if trade['side'] == 'buy' else -trade['amount'],
-                        'cost': -trade['cost'] if trade['side'] == 'buy' else trade['cost'],
-                        'fee': -trade['fee']['cost'] if trade['fee'] else 0
-                    })
-            except Exception as e:
-                print(f"Error fetching trades for {symbol}: {e}")
-                continue
-
-        if transactions:
-            temp_ledger = pd.DataFrame(transactions)
-            self.ledger_cache = pd.concat([existing_ledger, temp_ledger], ignore_index=True)
-            # Convert 'timestamp' to datetime before sorting
-            self.ledger_cache['timestamp'] = self.ledger_cache['timestamp'].apply(self.utility.convert_timestamp)
-            self.ledger_cache = self.ledger_cache.sort_values(by='timestamp')
-            # Save the updated ledger cache
-            self.ledger_cache.to_csv(portfolio_dir + '/portfolio_data.csv', index=False)
-        return self.ledger_cache
-
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
         """ Filter ticker cache by volume > 1 million and price change > 2.1% """
         #  Extract list of unique cryptocurrencies from buy_sell_matrix
@@ -84,19 +34,33 @@ class PortfolioManager:
         filtered_ticker_cache = self.ticker_cache[self.ticker_cache['base_currency'].isin(unique_coins)]
         return filtered_ticker_cache
 
-    async def get_my_trades(self, symbol, since=0):
-        # Get the current datetime
-        now = datetime.datetime.now()
-        # Calculate the datetime 30 days before now
-        last_timestamp = (now - datetime.timedelta(days=30))
-        string_timestamp = last_timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")
-        unix_timestamp = self.utility.time_unix(string_timestamp)
+    def get_my_trades(self, symbol, since=None):  # async
+        try:
+            # Calculate the timestamp since opening coinbase account
+            now = datetime.datetime.now()
+            # Set since to December 1, 2017, if not provided
+            if since is None:
+                since = datetime.datetime(2017, 12, 1)
+                since = self.utility.time_unix(since.strftime("%Y-%m-%d %H:%M:%S.%f")) if since else None
 
-        # Assuming 'trades' is the list of trade dictionaries you've fetched
-        trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, symbol, since=unix_timestamp)
-        return trades
+            params = {
+                'paginate': True,  # Enable automatic pagination
+                'paginationCalls': 20  # Set the max number of pagination calls if necessary
+            }
 
-    def get_portfolio_data(self, start_time, old_portfolio, threshold=0.01):
+            # Fetch trades using CCXT's automatic pagination
+            trades = self.ccxt_exceptions.ccxt_api_call(   # await
+                self.exchange.fetch_my_trades, symbol, since=since, params=params
+            )
+
+            return trades
+
+        except Exception as e:
+            error_details = traceback.format_exc()
+            self.log_manager.sighook_logger.error(f'get_my_trades: {error_details}, {e}')
+            return None
+
+    def get_portfolio_data(self, start_time, holdings, threshold=0.01):
         usd_pairs = []
         avg_dollar_vol_total = 0.0
         price_change, df = pd.DataFrame(), pd.DataFrame()
@@ -110,7 +74,7 @@ class PortfolioManager:
             self.ticker_cache = self._preprocess_ticker_cache()
             self.ticker_cache = self.ticker_cache.drop_duplicates(subset='symbol')
             # Calculate average dollar volume total
-            avg_dollar_vol_total = self.ticker_cache['vol_total'].mean() if not self.ticker_cache.empty else 0
+            avg_dollar_vol_total = self.ticker_cache['quote_vol_24h'].mean() if not self.ticker_cache.empty else 0
 
             # Generate rows_to_add from ticker_cache
             rows_list = self.ticker_cache.apply(self._create_row, axis=1).tolist()
@@ -154,19 +118,33 @@ class PortfolioManager:
                 df = self._process_portfolio(threshold)  # filter coins with less than $0.1USD value
             # Handle the case when a specific symbol is provided
             portfolio_df = df.sort_values(by='Currency')
-            return (portfolio_df.to_dict('records'), usd_pairs, avg_dollar_vol_total,
+            # load
+            holdings = portfolio_df.to_dict('records')
+
+            return (holdings, usd_pairs, avg_dollar_vol_total,
                     hi_vol_price_matrix, price_change)
         except Exception as e:
             error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f'try_place_order: Error placing order: {error_details}')
+            self.log_manager.sighook_logger.error(f'try_place_order: Error placing order: {error_details} df:{df}')
             self.log_manager.sighook_logger.error(f'Error in get_portfolio_data: {e}')
 
     def _preprocess_ticker_cache(self):  # pull 24hr volume
         try:
-            df = self.ticker_cache.dropna(subset=['free', 'ask'])
-            df = df[df['info'].apply(lambda x: x.get('volume_24h') not in ['', '0'])]
-            df['currency'] = df['symbol'].str.split('/').str[0]
-            df['vol_total'] = df['info'].apply(lambda x: float(x.get('volume_24h'))) * df['ask']
+            df = self.ticker_cache.dropna(subset=['free'])
+            # Ensure 'info' is a dict and 'volume_24h' is not an empty string, '0', or None
+            df = df[df['info'].apply(lambda x: isinstance(x, dict) and x.get('volume_24h') not in ['', '0', None])]
+            # df['currency'] = df['symbol'].str.split('/').str[0]   delete when certain line is not needed base_currency
+                                                                                                        # is sufficient
+            # extract 'volume_24h' from 'info' and multiply by 'ask', ensuring 'info' is a dict
+            df['quote_vol_24h'] = df.apply(lambda row: float(row['info'].get('volume_24h', 0)) * float(row['info'].get(
+                'price', 0)) if isinstance(row['info'], dict) else 0, axis=1)
+            df['price'] = df.apply(lambda row: float(row['info'].get('price', 0))
+                                   if isinstance(row['info'], dict) else 0, axis=1)
+            # clean up the dataframe removing unnecessary columns
+            columns_to_drop = df.columns[(df == False).all(axis=0)]
+            df = df.drop(columns=columns_to_drop)
+            df = df.dropna(axis='columns', how='all')
+            self.ticker_cache = df
             return df
         except Exception as e:
             error_details = traceback.format_exc()
@@ -175,7 +153,7 @@ class PortfolioManager:
 
     @staticmethod
     def _get_usd_pairs(df):
-        return df[df['free'] == 0].apply(lambda x: {'id': f"{x['currency']}-USD", 'price': x['ask']}, axis=1).tolist()
+        return df[df['free'] == 0].apply(lambda x: {'id': f"{x['base_currency']}-USD", 'price': x['price']}, axis=1).tolist()
 
     @staticmethod
     def format_hi_vol_price_matrix(hi_vol_price_matrix):
@@ -202,15 +180,15 @@ class PortfolioManager:
 
     @staticmethod
     def _create_row(row):
-        price_decimal = Decimal(row['ask']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-        balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-        return {'coin': row['currency'], 'price': price_decimal, 'base volume': row['info']['volume_24h'],
-                'quote volume': row['vol_total'], 'price change %': row['info']['price_percentage_change_24h']}
+        price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+        # balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+        return {'coin': row['base_currency'], 'price': price_decimal, 'base volume': row['info']['volume_24h'],
+                'quote volume': row['quote_vol_24h'], 'price change %': row['info']['price_percentage_change_24h']}
 
     @staticmethod
     def _check_portfolio(row, threshold):
         balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-        price_decimal = Decimal(row['ask']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+        price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         if balance_decimal * price_decimal > Decimal(threshold):
-            return {'Currency': row['currency'], 'Balance': balance_decimal}
+            return {'symbol': row['symbol'], 'Currency': row['base_currency'], 'Balance': balance_decimal}
         return None

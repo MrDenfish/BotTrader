@@ -44,6 +44,8 @@ class ApiExceptions:
                 elif 'Insufficient funds' in str(ex):
                     self.log_manager.webhook_logger.error(f'Exchange error: {ex}')
                 elif 'Insufficient balance in source account' in str(ex):
+                    error_details = traceback.format_exc()
+                    self.log_manager.webhook_logger.error(f'custom exceptions: Error details: {error_details}')
                     self.log_manager.webhook_logger.info(f'Base amount too granular, base amount will be adjusted {ex}')
                     return 'insufficient base balance'
                 elif 'USD/USD' in str(ex):
@@ -63,7 +65,9 @@ class ApiExceptions:
                 self.log_manager.webhook_logger.error(f'Request timeout error: {timeout_error}')
                 await asyncio.sleep(backoff_factor * (2 ** attempt))
             except CoinbaseAPIError as ez:
-                error_message = str(ez)
+                error_details = traceback.format_exc()
+                self.log_manager.webhook_logger.error(f'custom exceptions: Error details: {error_details}')
+                self.log_manager.webhook_logger.error(f'custom exceptions: Error placing order: {ez}')
                 return ez, func.__name__
             except Exception as ex:
                 error_details = traceback.format_exc()

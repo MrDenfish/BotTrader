@@ -55,5 +55,3 @@ class AlertSystem:
         except Exception as e:
             print(f'Error sending SMS alert: {e}')
             self.log_manager.webhook_logger.error(f'Error sending SMS alert: {e}')
-
-

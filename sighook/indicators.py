@@ -3,8 +3,8 @@ from logging_manager import LoggerManager
 
 
 class Indicators:
-    def __init__(self):
-        self.log_manager = LoggerManager()
+    def __init__(self, config):
+        self.log_manager = LoggerManager(config)
 
     @staticmethod
     def calculate_bollinger_bands(df, length=20, mult=2.0):

@@ -4,8 +4,6 @@ from logging.handlers import TimedRotatingFileHandler
 import platform
 from datetime import datetime
 
-from dotenv import load_dotenv
-
 
 class CustomLogger(logging.Logger):
     # Define custom logging levels
@@ -77,13 +75,17 @@ class LoggerManager:
             cls._instance = super(LoggerManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, log_dir=None):
+    def __init__(self, config, log_dir=None):
         if not self._is_initialized:
+            self._log_level = config.log_level
             self.sighook_logger = None
             self.log_dir = log_dir if log_dir else os.getenv('SENDER_ERROR_LOG_DIR', 'logs')
             self.setup_logging()
             self._is_initialized = True
 
+    @property
+    def log_level(self):
+        return self._log_level
 
     def setup_logging(self):
         """ This method sets up the logging for the TradeBot.  It creates the log directory if it does not exist and
@@ -104,19 +106,16 @@ class LoggerManager:
 
         self.sighook_logger = self.get_logger('sighook_logger', log_file_path, constant_log_file_path)
 
-    @staticmethod
-    def get_logger(name, log_file_path, constant_log_file_path):
-        log_level_str = os.getenv('LOG_LEVEL', 'INFO')
-        log_level = getattr(logging, log_level_str.upper(), logging.INFO)
+    def get_logger(self, name, log_file_path, constant_log_file_path):
 
         logger = logging.getLogger(name)
-        logger.setLevel(log_level)
+        logger.setLevel(self.log_level)
 
         if not logger.handlers:
             # Handler for console output
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(CustomFormatter())
-            console_handler.setLevel(log_level)  # Use the dynamic log level
+            console_handler.setLevel(self.log_level)  # Use the dynamic log level
             logger.addHandler(console_handler)
 
             # File handler for rotating logs
@@ -124,13 +123,13 @@ class LoggerManager:
             file_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)")
             timed_file_handler.setFormatter(file_formatter)
-            timed_file_handler.setLevel(log_level)  # Use the dynamic log level
+            timed_file_handler.setLevel(self.log_level)  # Use the dynamic log level
             logger.addHandler(timed_file_handler)
 
             # File handler for constant log file
             constant_file_handler = logging.FileHandler(constant_log_file_path)
             constant_file_handler.setFormatter(file_formatter)
-            constant_file_handler.setLevel(log_level)  # Use the dynamic log level
+            constant_file_handler.setLevel(self.log_level)  # Use the dynamic log level
             logger.addHandler(constant_file_handler)
 
         return logger

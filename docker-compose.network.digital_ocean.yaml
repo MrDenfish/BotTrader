@@ -1,25 +1,30 @@
 version: '3.7'
-#docker-compose.network.digital_ocean.yaml
 services:
   sighook:
-    image: denfish/bot-sighook:2.22
+    image: denfish/bot-sighook:2.25
     env_file:
-      - ./.env_tradebot  # Path relative to the context
+      - ./.env_tradebot
     volumes:
-      - /home/denfish/BotTrader/.env_tradebot:/app/.env  #"./local_env_path/.env:/app/
-      - /home/denfish/BotTrader/data:/data
+      - /home/denfish/BotTrader/.env_tradebot:/app/.env
+      - /home/denfish/BotTrader/data:/app/data
       - /home/denfish/BotTrader/logs/sender/sender_logs:/app/logs/sender/sender_logs
     ports:
       - "5001:5001"
     networks:
       - traderbot_network
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"   # Maximum log file size
+        max-file: "3"     # Number of log files to retain
+
   webhook:
-    image: denfish/bot-webhook:2.22
+    image: denfish/bot-webhook:2.25
     env_file:
-      - ./.env_tradebot  # Path relative to the context
+      - ./.env_tradebot
     volumes:
-      - /home/denfish/BotTrader/.env_tradebot:/app/.env  #"./local_env_path/.env:/app/
+      - /home/denfish/BotTrader/.env_tradebot:/app/.env
       - /home/denfish/BotTrader/data:/app/data
       - /home/denfish/BotTrader/logs/listener/listener_logs:/app/logs/listener/listener_logs
       - /home/denfish/BotTrader/logs/flask_logs:/app/logs/flask_logs
@@ -28,6 +33,12 @@ services:
     networks:
       - traderbot_network
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   traderbot_network:
     driver: bridge
@@ -35,4 +46,5 @@ networks:
       driver: default
       config:
         - subnet: "172.24.2.0/29"
+
 

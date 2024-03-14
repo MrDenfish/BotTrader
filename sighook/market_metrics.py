@@ -57,6 +57,3 @@ class CoinMarketAPI:
                 return 0  # or any default value you deem appropriate
         except Exception as e:
             self.log_manager.sighook_logger.error(f'Error in get_market_data: {e}. Response :{data_str}')
-
-
-

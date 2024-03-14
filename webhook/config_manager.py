@@ -32,6 +32,7 @@ class BotConfig:
             self._auth_token = None
             self._account_phone = None
             self._web_url = None
+            self._log_level = None
             self.port = None
             self.machine_type = None
             self.log_dir = None
@@ -68,6 +69,7 @@ class BotConfig:
         self._auth_token = os.getenv('AUTH_TOKEN')
         self._account_phone = os.getenv('ACCOUNT_PHONE')
         self._web_url = os.getenv('WEB_URL')
+        self._log_level = os.getenv('LOG_LEVEL_WEBHOOK')
         self.machine_type = self.determine_machine_type()
 
     def load_json_config(self):
@@ -128,6 +130,10 @@ class BotConfig:
     @property
     def program_version(self):
         return self._version
+
+    @property
+    def log_level(self):
+        return self._log_level
 
     @property  # read only
     def api_key(self):

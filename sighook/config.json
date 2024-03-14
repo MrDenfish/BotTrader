@@ -3,25 +3,33 @@
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
-    "PROFIT_DIR": "data/profit_data"
+    "PROFIT_DIR": "data/profit_data",
+    "DATABASE_DIR": "data",
+    "DATABASE_FILE": "trades.db"
   },
   "Manny": {
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
-    "PROFIT_DIR": "data/profit_data"
+    "PROFIT_DIR": "data/profit_data",
+    "DATABASE_DIR": "data",
+    "DATABASE_FILE": "trades.db"
   },
   "moe": {
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
-    "PROFIT_DIR": "data/profit_data"
+    "PROFIT_DIR": "data/profit_data",
+    "DATABASE_DIR": "data",
+    "DATABASE_FILE": "trades.db"
   },
   "do_server": {
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
-    "PROFIT_DIR": "data/profit_data"
+    "PROFIT_DIR": "data/profit_data",
+    "DATABASE_DIR": "data",
+    "DATABASE_FILE": "trades.db"
   }
 }
 

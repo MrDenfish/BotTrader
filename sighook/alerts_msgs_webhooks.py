@@ -1,9 +1,11 @@
 # Define the AlertSystem class
 
 import smtplib
+import requests
 import socket
 import asyncio
 import random
+import time
 import traceback
 
 """ This class handles the sending of alert messages, such as SMS or emails."""
@@ -98,18 +100,17 @@ class SenderWebhook:
         self.web_url = None
         self.holdings = None
 
-    def set_trade_parameters(self, start_time, session, ticker_cache, market_cache, web_url, hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
         self.start_time = start_time
-        self.session = session
+        # self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
         self.holdings = hist_holdings
 
-    async def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None, retries=3, initial_delay=1,
-                           max_delay=60):
+    def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None, retries=3, initial_delay=1,
+                     max_delay=60):  # async
         delay = initial_delay
-        response = None
         # Define payload outside of the retry loop to avoid redundant operations
         lim_price = str(lim_price)
         send_pair = send_pair.replace('/', '')
@@ -130,25 +131,27 @@ class SenderWebhook:
                 self.log_manager.sighook_logger.debug(f"Attempt {attempt}: Sending webhook payload: {payload}")
 
                 # async with aiohttp.ClientSession() as session:
-                response = await self.session.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
-                                                   timeout=20)
-                if response.text is not None:
-                    response_text = await response.text()
-                else:
-                    response_text = None
+                # response = await self.session.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
+                #                                    timeout=20)
+                response = requests.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
+                                         timeout=20)
+                response_text = response.text or None
+
                 self.log_manager.sighook_logger.debug(f"Webhook sent, awaiting response...")
-                if response.status == 200:
+                if response.status_code == 200:
                     self.log_manager.sighook_logger.debug(f"Webhook successfully sent: {payload}")
                     return  # Success, exit function
 
                 # Handle specific status codes that warrant a retry or log an error
-                if response.status in [429, 500]:  # Rate limit exceeded or server error
-                    self.log_manager.sighook_logger.error(f"Error {response.status}: {response_text}")
+                if response.status_code in [429, 500]:  # Rate limit exceeded or server error
+                    self.log_manager.sighook_logger.error(f"Error {response.status_code}: {response_text}")
                 else:
-                    raise Exception(f"Unhandled status code {response.status}: {response_text}")
+                    raise Exception(f"Unhandled status code {response.status_code}: {response_text}")
 
-            except asyncio.TimeoutError as eto:
-                self.log_manager.sighook_logger.error(f"Request timed out: {eto} ")
+            # except asyncio.TimeoutError as eto:
+            #     async_error = traceback.format_exc()  # get complete traceback as a string
+            #     self.log_manager.sighook_logger.error(f'Error in sending webhook(): {eto}\nTraceback: {async_error}')
+            #     self.log_manager.sighook_logger.error(f"Request timed out: {eto} ")
 
             except Exception as e:
                 tb_str = traceback.format_exc()  # get complete traceback as a string
@@ -158,7 +161,8 @@ class SenderWebhook:
             # Apply exponential backoff with jitter only if not on last attempt
             if attempt < retries:
                 sleep_time = int(delay + random.uniform(0, delay * 0.2))
-                await asyncio.sleep(sleep_time)
+                time.sleep(sleep_time)
+                # await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)
 
         self.log_manager.sighook_logger.error("Max retries reached, giving up.")

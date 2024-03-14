@@ -2,7 +2,6 @@ import random
 import time
 
 
-
 class AccessoryTools:
     def __init__(self, logmanager):
         self.base_delay = 5  # Start with a 5-second delay
@@ -30,7 +29,7 @@ class AccessoryTools:
                 sleep_time = wait_time * jitter
 
                 self.log_manager.webhook_logger.warning(f"Rate limit hit. Retrying in {sleep_time:.2f} "
-                                                      f"seconds...- retry_request")
+                                                        f"seconds...- retry_request")
                 time.sleep(sleep_time)
                 retries += 1
 
