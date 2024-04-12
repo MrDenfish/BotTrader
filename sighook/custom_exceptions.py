@@ -1,255 +1,156 @@
 
-import functools
-import re
-import time
-# import asyncio
+import asyncio
+import inspect
 import traceback
+from contextlib import asynccontextmanager
+from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError
 
-from ccxt.base.errors import RequestTimeout
-from ccxt import ExchangeError  # Import the specific CCXT
-# AuthenticationError
+
+class ApiRateLimiter:
+    def __init__(self, burst, rate):
+        self.tokens = burst
+        self.burst = burst
+        self.rate = rate
+        self.last_time = asyncio.get_event_loop().time()
+
+    async def wait(self):
+        current_time = asyncio.get_event_loop().time()
+        elapsed = current_time - self.last_time
+        self.last_time = current_time
+
+        # Refill tokens based on elapsed time
+        self.tokens = min(self.burst, self.tokens + elapsed * self.rate)
+
+        if self.tokens < 1:
+            # Wait for enough tokens to accumulate
+            await asyncio.sleep((1 - self.tokens) / self.rate)
+            self.tokens = 0
+        else:
+            self.tokens -= 1
+
+
+class ApiCallContext:
+    def __init__(self, api_exceptions):
+        self.api_exceptions = api_exceptions
+
+    @asynccontextmanager
+    async def limit(self, endpoint_type):
+        semaphore = self.api_exceptions.get_semaphore(endpoint_type)
+        async with semaphore:
+            yield
 
 
 class ApiExceptions:
     def __init__(self, logmanager, alerts):
         self.log_manager = logmanager
         self.alerts = alerts
+        self.semaphores = {
+            'public': asyncio.Semaphore(10),
+            'private': asyncio.Semaphore(15),
+            'fills': asyncio.Semaphore(10)
+        }
 
-    def ccxt_api_call(self, func, *args, **kwargs):  # async
+    def get_semaphore(self, endpoint_type):
+        return self.semaphores.get(endpoint_type, asyncio.Semaphore(1))  # Fallback to a default semaphore
+
+    async def ccxt_api_call(self, func, endpoint_type, *args, **kwargs):  # async
         """
         Wrapper function for CCXT api(Coinbase Cloud) calls.
 
         Parameters:
         - func (callable): The CCXT api(Coinbase Cloud) function to call.
+        - endpoint_type (str): The type of endpoint ('public', 'private', 'fills').
         - *args: Positional arguments to pass to func.
         - **kwargs: Keyword arguments to pass to func.
 
         Returns:
         - The result of the api(Coinbase Cloud) call, or None if an exception was caught.
         """
-        retries = 3
-        # backoff_factor = 0.3
+
+        if self.semaphores is None:
+            self.log_manager.sighook_logger.error(f"Unknown endpoint type: {endpoint_type}")
+            return None
+
+        retries = 5
+        backoff_factor = 0.2
         rate_limit_wait = 1  # seconds
 
-        for attempt in range(retries):
+        async with ApiCallContext(self).limit(endpoint_type):
             try:
-                return func(*args, **kwargs)  # await
-
-            except ExchangeError as ex:
-                if 'Rate limit exceeded' in str(ex):
-                    max_wait_time = 60  # Maximum wait time of 60 seconds
-                    wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
-                    error_details = traceback.format_exc()
-                    self.log_manager.sighook_logger.error(
-                        f'Request timeout error: {ExchangeError}\nDetails: {error_details}')
-                    self.log_manager.sighook_logger.error(f'Rate limit exceeded: Retrying in {wait_time} seconds...')
-                    time.sleep(wait_time)
-                    # asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
-                elif 'Insufficient funds' in str(ex):
-                    self.log_manager.sighook_logger.error(f'Exchange error: {ex}')
-                elif 'USD/USD' in str(ex):
-                    self.log_manager.sighook_logger.debug(f'USD/USD: {ex}')
-            except IndexError as e:
-                self.log_manager.sighook_logger.info(f'Index error Trading is unavailable for {args}: {e}')
-                # Add more specific logging or handling here
-                return None
-            except RequestTimeout as timeout_error:
-                max_wait_time = 60  # Maximum wait time of 60 seconds
-                wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
-                error_details = traceback.format_exc()
-                self.log_manager.sighook_logger.error(f'Request timeout error: {timeout_error}\nDetails: {error_details}')
-                time.sleep(wait_time)
-                # asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here  # Use the calculated wait_time
-                # here
-            except Exception as e:
-                max_wait_time = 60  # Maximum wait time of 60 seconds
-                wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
-                error_details = traceback.format_exc()
-                self.log_manager.sighook_logger.error(f"Error in API call: {e}\nDetails: {error_details}")
-                time.sleep(wait_time)
-                # asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
-            # except asyncio.TimeoutError as e:
-            #     # Handle timeout specifically
-            #     self.log_manager.sighook_logger.error(f"Timeout occurred: {e}")
-            #     asyncio.sleep(backoff_factor * (2 ** attempt))  # await
-        return None
-
-    def handle_general_error(self, ex, func):
-        error_message = str(ex)
-        if 'coinbase createOrder() has failed, check your arguments and parameters' in error_message:
-            self.log_manager.sighook_logger.error(f'Error placing limit order: {ex}')
-            return 'amend'
-        elif 'list index out of range' in error_message:
-            self.log_manager.sighook_logger.error(f'List index out of range: {ex}  occured when calling '
-                                                  f'{func.__name__}')
-            return False
-        else:
-            self.log_manager.sighook_logger.error(f'Error placing limit order: {ex}')
-            return False
-
-
-class UnauthorizedError(Exception):
-    """Custom exception class for 401 Unauthorized errors."""
-    def __init__(self, logmanager, alerts):
-        self.log_manager = logmanager
-        self.alert_system = alerts
-
-    def retry_on_401(self, max_retries=3, backoff_factor=1.0):
-        def decorator_retry(func):
-            @functools.wraps(func)
-            def wrapper_retry(*args, **kwargs):
-                retries = 0
-                while retries < max_retries:
+                for attempt in range(1, retries + 1):  # Start counting attempts from 1
                     try:
-                        return func(*args, **kwargs)
-                    except UnauthorizedError as ue:
-                        retries += 1
-                        time.sleep(backoff_factor * retries)
-                        self.log_manager.sighook_logger.error(f'Error placing limit order: {ue}')
-                        # Add token refresh logic here if necessary
+                        try:
+                            # Check if 'func' is a coroutine function and await it directly
+                            if asyncio.iscoroutinefunction(func):
+                                return await func(*args, **kwargs)
+                            else:
+                                # If 'func' is not a coroutine, run it in the executor
+                                loop = asyncio.get_event_loop()
+                                return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+                        except asyncio.TimeoutError:
+                            if attempt == retries:
+                                self.log_manager.sighook_logger.error(f"Request timed out after {retries} attempts")
+                                break  # Exit the loop if this was the last attempt
+                            await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
+
+                        except BadSymbol as ex:
+                            # Handle the case where the symbol is not recognized by the exchange
+                            self.log_manager.sighook_logger.info(f'Invalid Symbol: {ex}')
+                            return None
+
+                        except RateLimitExceeded as ex:
+                            wait_time = min(rate_limit_wait * (2 ** attempt), 60)
+                            self.log_manager.sighook_logger.info(f'Rate limit exceeded: Retrying in {wait_time} seconds...')
+                            await asyncio.sleep(wait_time)
+
+                        except ExchangeError as ex:
+                            if 'Rate limit exceeded' in str(ex):
+                                # Dynamic wait time based on the attempt number, considering both standard and burst rates
+                                burst_multiplier = 1.5 if attempt <= 3 else 1  # Use burst rate for the first few attempts
+                                wait_time = min((2 ** (attempt - 1)) * backoff_factor * burst_multiplier, 60)
+                                # Get the name of the calling function using inspect.stack()
+                                caller = inspect.stack()[1]
+                                caller_function_name = caller.function
+                                self.log_manager.sighook_logger.info(f'Rate limit exceeded {caller_function_name}, args: '
+                                                                     f'{args}: Retrying in {wait_time} seconds...')
+                                await asyncio.sleep(wait_time)
+                            elif 'Insufficient funds' in str(ex):
+                                self.log_manager.sighook_logger.info(f'Exchange error: {ex}', exc_info=True)
+                            elif 'USD/USD' in str(ex):
+                                self.log_manager.sighook_logger.debug(f'USD/USD: {ex}', exc_info=True)
+                            else:
+                                if 'coinbase does not have market symbol' in str(ex):
+                                    self.log_manager.sighook_logger.error(f'Exchange error: {ex}')
+                                    return None
+                                else:
+                                    self.log_manager.sighook_logger.error(f'Exchange error: {ex}\nDetails:', exc_info=True)
+                                    break  # Break out of the loop for non-rate limit related errors
+                            await asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
+                    except IndexError as e:
+                        error_details = traceback.format_exc()
+                        if args is not None:
+                            return None
+                        else:
+                            self.log_manager.sighook_logger.error(f'IndexError: {args}\nDetails: {e},   {error_details}')
+                            self.log_manager.sighook_logger.debug(f'Index error Trading is unavailable for {args}: {e}')
+
+                    except RequestTimeout as timeout_error:
+                        max_wait_time = 60  # Maximum wait time of 60 seconds
+                        wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
+                        error_details = traceback.format_exc()
+                        self.log_manager.sighook_logger.error(f'Request timeout error: {timeout_error}\nDetails: '
+                                                              f'{error_details}')
+                        await asyncio.sleep(wait_time)  # await Use the calculated wait_time
+
                     except Exception as e:
-                        raise e
+                        max_wait_time = 60  # Maximum wait time of 60 seconds
+                        wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
+                        error_details = traceback.format_exc()
+                        self.log_manager.sighook_logger.error(f"Error in API call: {e}\nDetails: {error_details}")
+                        await asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
+
                 return None
-            return wrapper_retry
-        return decorator_retry
-
-
-class DataUnavailableException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class AuthenticationError(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class InsufficientFundsException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class CoinbaseAPIError(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class SizeTooSmallException(Exception):
-    def __init__(self, message="Order size is to accurate. Order could not be placed."):
-        self.message = message
-        super().__init__(self.message)
-
-
-class ProductIDException(Exception):
-    def __init__(self, message="Product ID is not known. Order could not be placed."):
-        self.message = message
-        super().__init__(self.message)
-
-
-class MaintenanceException(Exception):
-    def __init__(self, message="Server is experiencing a maintenance issue. Order could not be placed."):
-        self.message = message
-        super().__init__(self.message)
-
-
-class RateLimitException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class BadRequestException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class NotFoundException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class InternalServerErrorException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class EmptyListException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class UnknownException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class AttemptedRetriesException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class CustomExceptions:
-    def __init__(self, logmanager, coms):
-        self.log_manager = logmanager
-        self.coms = coms
-
-
-class PostOnlyModeException(Exception):
-    def __init__(self, message, errors=None):
-        super().__init__(message)
-        self.errors = errors
-
-
-class PriceTooAccurateException(Exception):
-    def __init__(self, message, loggmanager, errors=None):
-        super().__init__(message)
-        self.log_manager = loggmanager
-        self.errors = errors
-
-    def handle_webhook_error(self, e):
-        """Handle errors that occur while processing a webhook request."""
-        exception_map = {
-            401: AuthenticationError,
-            429: RateLimitException,
-            400: BadRequestException,
-            404: NotFoundException,
-            500: InternalServerErrorException,
-        }
-        extra_error_details = {
-            'action': "action",
-            'trading_pair': "trading_pair",
-            'buy_size': "buy_size",
-            'formatted_time': "formatted_time",
-        }
-        # Extract status code from the exception message
-        match = re.search(r'\b(\d{3})\b', str(e))
-        status_code = int(match.group(1)) if match else None
-
-        # Map status_code to custom exceptions
-        exception_to_raise = exception_map.get(getattr(e, 'status_code', None), UnknownException)
-
-        # Raise the exception and handle it in the except block
-        try:
-            raise exception_to_raise(
-                f"An error occurred with status code: {status_code}, error: {e}",
-                extra_error_details)
-        except RateLimitException:
-            self.log_manager.sighook_logger.error(f'handle_webhook_error: Rate limit hit. "Retrying in 60 seconds..."')
-            time.sleep(60)
-            # handle_action(action, trading_pair, buy_size, formatted_time)
-        except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
-            self.log_manager.sighook_logger.error(f'handle_webhook_error: {ex}. Additional info: '
-                                                  f'{getattr(ex, "errors", "N/A")}')
-        except Exception as ex:
-            self.log_manager.sighook_logger.error(f'handle_webhook_error: An unhandled exception occurred: {ex}. '
-                                                  f'Additional info: {getattr(ex, "errors", "N/A")}')
+            finally:
+                # print(f'API call completed for {func.__name__}') # debug
+                pass

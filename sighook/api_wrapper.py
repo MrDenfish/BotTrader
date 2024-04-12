@@ -1,4 +1,3 @@
-
 class APIWrapper:
     _instance = None
 
@@ -31,8 +30,8 @@ class APIWrapper:
         self.web_url = web_url
         self.holdings = hist_holdings
 
-    def get_open_orders(self, holdings: object, usd_pairs: object, fetch_all: object = True) -> object:  # async
-        return self.order_manager.get_open_orders(holdings, usd_pairs, fetch_all)  # await
+    async def get_open_orders(self, holdings: object, usd_pairs: object, fetch_all: object = True) -> object:  # async
+        return await self.order_manager.get_open_orders(holdings, usd_pairs, fetch_all)  # await
 
     def get_portfolio_data(self, start_time, holdings, symbol=None, threshold=0.1):
 

@@ -1,4 +1,3 @@
-# config_manager.py
 """The BotConfig class has been outlined with methods for loading configuration
 from environment variables and providing getters for accessing these configurations.
 This class  encapsulates the configuration management for the trading bot."""
@@ -46,11 +45,11 @@ class BotConfig:
                 # Check if running inside Docker by looking for a specific environment variable
                 if os.getenv('RUNNING_IN_DOCKER'):
                     env_path = ".env"  # Docker environment
-                    self.port = int(os.getenv('PORT', 80))
+                    self.port = int(os.getenv('WEBHOOK_PORT', 80))
                 else:
                     # Local environment
                     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env_tradebot')
-                    self.port = int(os.getenv('PORT', 80))
+                    self.port = int(os.getenv('WEBHOOK_PORT', 80))
                 load_dotenv(env_path)
                 self.load_environment_variables()
                 self.load_json_config()

@@ -1,10 +1,5 @@
 
-from log_manager import LoggerManager
-
 from decimal import Decimal, InvalidOperation
-
-import datetime
-import traceback
 
 
 class ValidateOrders:
@@ -29,37 +24,45 @@ class ValidateOrders:
     def version(self):
         return self._version
 
-    @LoggerManager.log_method_call
-    def fetch_and_validate_rules(self, balances, base_deci, quote_deci, base_currency, quote_currency, trading_pair, side,
-                                 highest_bid, base_balance, open_orders, quote_amount, quote_price):
+    def fetch_and_validate_rules(self, validate_data):
         # Fetch and validate available balance
         # Return available_balance and coin balance
         # buy coin bal is wrong must be 0.0 when buy
-        base_balance, base_balance_value, valid_order = (self.validate_orders(balances, base_deci, quote_deci, base_currency,
-                                                         quote_currency, trading_pair, side, highest_bid, base_balance,
-                                                                              open_orders, quote_amount, quote_price))
+        base_balance, base_balance_value, valid_order = (self.validate_orders(validate_data))
         if valid_order:
             return base_balance, True
         else:
             if base_balance is not None and base_balance_value > 10.0:
                 return None, False
             elif base_balance is None or base_balance == 0.0:
-                if open_orders is not None:
-                    if not open_orders.empty:
+                if validate_data['open_order'] is not None:
+                    if not validate_data['open_order'].empty:
                         # Handle the case where open_orders is a non-empty DataFrame
-                        self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: {side} order will not be placed '
-                                                             f'for {trading_pair} there is an open order.')
+                        self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: '
+                                                             f'{validate_data["side"]} order will not be placed '
+                                                             f'for {validate_data["trading_pair"]} there is an open order.')
                         return None, False  # not a valid order
                 else:
-                    self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: {side} order is not valid. '
-                                                         f'{trading_pair}  balance is {base_balance} ')
+                    self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: {validate_data["side"]} order not '
+                                                         f'valid. {validate_data["trading_pair"]} balance is {base_balance}')
 
-            # if there is an open order for symbol, cancel it may be stale
             return None, False
 
-    @LoggerManager.log_method_call
-    def validate_orders(self, balances, base_deci, quote_deci, base_currency, quote_currency, trading_pair, side,
-                        highest_bid, base_balance, open_orders, quote_amount, quote_price):
+    def validate_orders(self, validate_data):
+
+        quote_currency = validate_data['quote_currency']
+        quote_balance = validate_data['quote_balance']
+        base_deci = validate_data['base_decimal']
+        quote_deci = validate_data['quote_decimal']
+        base_currency = validate_data['base_currency']
+        base_balance = validate_data['base_balance']
+        highest_bid = validate_data['highest_bid']
+        quote_price = validate_data['quote_price']
+        open_orders = validate_data['open_order']
+        trading_pair = validate_data['trading_pair']
+        quote_amount = validate_data['quote_amount']
+        side = validate_data['side']
+
         try:
             # Initialize base_balance_value
 
@@ -67,7 +70,7 @@ class ValidateOrders:
 
             # Safely convert quote_balance using try-except to handle potential conversion issues
             try:
-                quote_balance_float = Decimal(balances.get(quote_currency, 0))  # Safely get quote value of account
+                quote_balance_float = Decimal(quote_balance)  # Safely get quote value of account
             except InvalidOperation:
                 quote_balance_float = Decimal(0)
 
@@ -114,11 +117,9 @@ class ValidateOrders:
             elif side == 'sell':
                 return base_balance, base_balance_value, base_balance_value > Decimal('1.0')  # must be more than $1.0 to
                 # sell
-
             return base_balance, base_balance_value, False
 
         except Exception as e:
-            error_details = traceback.format_exc()
-            self.log_manager.webhook_logger.error(f'validate_orders: Error details: {error_details}')
-            self.log_manager.webhook_logger.debug(f'validate_orders: An unexpected error occurred: {e}. ')
+
+            self.log_manager.webhook_logger.debug(f'validate_orders: An unexpected error occurred: {e}. ', exc_info=True)
             return None, None, False

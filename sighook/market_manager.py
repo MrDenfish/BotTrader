@@ -1,16 +1,19 @@
 
-import pandas as pd
-
 import asyncio
+import pandas as pd
+from datetime import datetime, timedelta
+from ccxt.base.errors import RequestTimeout
 
 
 class MarketManager:
-    def __init__(self, api_wrapper, trading_strategy, logmanager, ticker_manager, utility):
-        assert api_wrapper is not None, "api_wrapper must not be None"
+    def __init__(self, exchange, order_manager, trading_strategy, logmanager, ccxt_api, ticker_manager, utility,
+                 max_concurrent_tasks):
+
         self.open_orders = []
-        self.api_wrapper = api_wrapper
-        self.exchange = api_wrapper.exchange
+        self.exchange = exchange
+        self.ccxt_exceptions = ccxt_api
         self.trading_strategy = trading_strategy
+        self.order_manager = order_manager
         self.ticker_manager = ticker_manager
         self.utility = utility
         self.log_manager = logmanager
@@ -18,163 +21,84 @@ class MarketManager:
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
-        self.holdings = None
+        self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache,  hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
-        self.holdings = hist_holdings
 
-    def new_fetch_ohlcv(self, holdings, usd_pairs, avg_dollar_vol_total, buy_sell_matrix, filtered_ticker_cache):
-        try:
-            if avg_dollar_vol_total is None:
-                self.log_manager.sighook_logger.info('average volume missing')
-                return None, None
+    async def fetch_ohlcv(self, holdings, usd_pairs, avg_dollar_vol_total, buy_sell_matrix,  filtered_ticker_cache):
+        """PART III: Order cancellation and Data Collection"""
+        if avg_dollar_vol_total is None:
+            self.log_manager.sighook_logger.info('Average volume missing')
+            return None, None, None
 
-            self.open_orders = self.api_wrapper.get_open_orders(holdings,
-                                                                usd_pairs)  # Assuming get_open_orders is now synchronous
+        open_orders = await self.order_manager.get_open_orders(holdings, usd_pairs)
+        self.utility.print_elapsed_time(self.start_time, 'open_orders')
+        symbols = filtered_ticker_cache['symbol'].unique().tolist()
+        ohlcv_data_dict = await self.fetch_all_ohlcv_data(symbols)
+        self.utility.print_elapsed_time(self.start_time, 'fetch_all_ohlcv_data')
+        return open_orders, ohlcv_data_dict
 
-            # counter = {'processed': 0}
-            results = [self.trading_strategy.process_row(row, holdings, buy_sell_matrix) for _, row in
-                       filtered_ticker_cache.iterrows()]  # Assuming process_row is now a synchronous version of process_row_async
+    async def fetch_all_ohlcv_data(self, symbols):
+        """PART III: Order cancellation and Data Collection"""
+        """Fetch OHLCV data for multiple symbols concurrently."""
+        tasks = [self.fetch_ohlcv_data(symbol) for symbol in symbols if symbol != 'USD/USD']
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        ohlcv_data_dict = {}
+        for symbol, result in zip(symbols, results):
+            try:
+                if isinstance(result, Exception):
+                    self.log_manager.sighook_logger.error(f"Error fetching OHLCV data for {symbol}: {result}")
+                else:
+                    if result is not None:
+                        ohlcv_data_dict[symbol] = result
+            except RequestTimeout as e:
+                self.log_manager.sighook_logger.error(f"Request timed out for {symbol}: {e}")
+            except Exception as e:
+                self.log_manager.sighook_logger.error(f"Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
 
-            # Process the results as before, no changes needed here since we're iterating over results synchronously
+        return ohlcv_data_dict
 
-            # Process the results
-            all_bollinger_dfs = []  # List of all bollinger_df DataFrames
-            all_updates = []  # List to collect all updates from threads
-            new_entries = []  # List to collect all new entries from threads
-            signals_generated = []  # List to collect all signals generated from threads
+    # @profile
+    async def fetch_ohlcv_data(self, symbol):
+        """PART III: Order cancellation and Data Collection"""
+        """Fetch OHLCV data for a single symbol."""
+        async with self.semaphore:
+            if symbol == 'USD/USD':
+                return None
+            endpoint = 'public'
+            limit = 300  # Coinbase exchange limit
+            since = int((datetime.now() - timedelta(days=1)).timestamp() * 1000)  # Starting from 24 hours ago
+            pagination_calls = 5  # Number of pagination calls to make
 
-            for result in results:
-                # Skip the iteration if the item is not a dictionary
-                if not isinstance(result, dict):
-                    continue
-                if result.get('symbol'):
-                    signals_generated.append(result['symbol'])
-                    new_entries.append(result['symbol'])
-                if result.get('action'):
-                    signals_generated.append(result['action'])
-                    new_entries.append(result['action'])
-                if result.get('band_ratio'):
-                    new_entries.append(result['band_ratio'])
-                if result.get('price'):
-                    signals_generated.append(result['price'])
-                if result.get('action_data'):
-                    new_entries.append(result['action_data'])
-                if 'bollinger_df' in result and result['bollinger_df'] is not None and not result['bollinger_df'].empty:
-                    all_bollinger_dfs.append(result['bollinger_df'])
-                if 'roc' in result and result['roc'] is not None:
-                    new_entries.append(result['roc'])
-                if 'rsi' in result and result['rsi'] is not None:
-                    new_entries.append(result['rsi'])
-                if 'macd' in result and result['macd'] is not None:
-                    new_entries.append(result['macd'])
-                if 'signal_line' in result and result['signal_line'] is not None:
-                    new_entries.append(result['signal_line'])
-                if 'macd_histogram' in result and result['macd_histogram'] is not None:
-                    new_entries.append(result['macd_histogram'])
-                if 'swing_trend' in result and result['swing_trend'] is not None:
-                    new_entries.append(result['swing_trend'])
-                if result.get('updates'):
-                    all_updates.append(result['updates'])
+            all_ohlcv = []
+            try:
+                for _ in range(pagination_calls):
+                    params = {
+                        "paginate": True,
+                        "paginationCalls": 1,  # We handle the loop externally, so we set this to 1
+                        "since": since,
+                        "limit": limit,
+                    }
 
-            for update in all_updates:
-                if update is not None:  # Check if update is not None
-                    for coin, values in update.items():
-                        for col, value in values.items():
-                            if col in buy_sell_matrix.columns:
-                                buy_sell_matrix.loc[buy_sell_matrix['coin'] == coin, col] = value
+                    ohlcv_page = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ohlcv, endpoint, symbol, '1m',
+                                                                          since, limit, params=params)
+                    if not ohlcv_page:
+                        break  # No more data available
 
-            # Combine all bollinger_df DataFrames into one
-            if all_bollinger_dfs:
-                combined_bollinger_df = pd.concat(all_bollinger_dfs, ignore_index=True)
-            else:
-                self.log_manager.sighook_logger.error(f"All Bollinger df :Empty Dataframe {all_bollinger_dfs}")
-                combined_bollinger_df = pd.DataFrame()  # Create an empty DataFrame if the list is empty
-            return self.open_orders, combined_bollinger_df
-        except ValueError as ve:
-            self.log_manager.sighook_logger.error(f"ValueError: {ve}")
-        except RuntimeError as re:
-            self.log_manager.sighook_logger.error(f"RuntimeError: {re}")
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error occurred: {e}")
-            raise
+                    all_ohlcv.extend(ohlcv_page)
+                    last_entry_timestamp = ohlcv_page[-1][0]
+                    since = last_entry_timestamp + 1  # Set 'since' to the timestamp of the last entry for the next call
 
-    def async_new_fetch_ohlcv(self, holdings, usd_pairs, avg_dollar_vol_total, buy_sell_matrix,
-                              filtered_ticker_cache):  #
-        # async
-        try:
-            if avg_dollar_vol_total is None:
-                self.log_manager.sighook_logger.info('average volume missing')
-                return None, None, self.results
+                if all_ohlcv:
+                    df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
+                    return {
+                        'symbol': symbol,
+                        'data': df
+                    }
+            except Exception as e:
+                self.log_manager.sighook_logger.error(f"Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
 
-            self.open_orders = self.api_wrapper.get_open_orders(holdings, usd_pairs)  # await
-            # counter = {'processed': 0}
-            # Prepare asynchronous tasks for processing rows
-
-            tasks = [self.trading_strategy.process_row_async(row, holdings, buy_sell_matrix)
-                     for _, row in filtered_ticker_cache.iterrows()]
-
-            results = asyncio.gather(*tasks, return_exceptions=True)  # await
-            # Process the results
-            all_bollinger_dfs = []  # List of all bollinger_df DataFrames
-            all_updates = []  # List to collect all updates from threads
-            new_entries = []  # List to collect all new entries from threads
-            signals_generated = []  # List to collect all signals generated from threads
-
-            for result in results:
-                # Skip the iteration if the item is not a dictionary
-                if not isinstance(result, dict):
-                    continue
-                if result.get('symbol'):
-                    signals_generated.append(result['symbol'])
-                    new_entries.append(result['symbol'])
-                if result.get('action'):
-                    signals_generated.append(result['action'])
-                    new_entries.append(result['action'])
-                if result.get('band_ratio'):
-                    new_entries.append(result['band_ratio'])
-                if result.get('price'):
-                    signals_generated.append(result['price'])
-                if result.get('action_data'):
-                    new_entries.append(result['action_data'])
-                if 'bollinger_df' in result and result['bollinger_df'] is not None and not result['bollinger_df'].empty:
-                    all_bollinger_dfs.append(result['bollinger_df'])
-                if 'roc' in result and result['roc'] is not None:
-                    new_entries.append(result['roc'])
-                if 'rsi' in result and result['rsi'] is not None:
-                    new_entries.append(result['rsi'])
-                if 'macd' in result and result['macd'] is not None:
-                    new_entries.append(result['macd'])
-                if 'signal_line' in result and result['signal_line'] is not None:
-                    new_entries.append(result['signal_line'])
-                if 'macd_histogram' in result and result['macd_histogram'] is not None:
-                    new_entries.append(result['macd_histogram'])
-                if 'swing_trend' in result and result['swing_trend'] is not None:
-                    new_entries.append(result['swing_trend'])
-                if result.get('updates'):
-                    all_updates.append(result['updates'])
-
-            for update in all_updates:
-                if update is not None:  # Check if update is not None
-                    for coin, values in update.items():
-                        for col, value in values.items():
-                            if col in buy_sell_matrix.columns:
-                                buy_sell_matrix.loc[buy_sell_matrix['coin'] == coin, col] = value
-
-            # Combine all bollinger_df DataFrames into one
-            if all_bollinger_dfs:
-                combined_bollinger_df = pd.concat(all_bollinger_dfs, ignore_index=True)
-            else:
-                self.log_manager.sighook_logger.error(f"All Bollinger df :Empty Dataframe {all_bollinger_dfs}")
-                combined_bollinger_df = pd.DataFrame()  # Create an empty DataFrame if the list is empty
-            return self.open_orders, combined_bollinger_df
-        except ValueError as ve:
-            self.log_manager.sighook_logger.error(f"ValueError: {ve}")
-        except RuntimeError as re:
-            self.log_manager.sighook_logger.error(f"RuntimeError: {re}")
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error occurred: {e}")
-            raise
+            return None

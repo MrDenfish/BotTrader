@@ -1,12 +1,8 @@
-
 import time
-from datetime import datetime
-import json
-import os
-import sqlite3
-import math
 import pandas as pd
 from decimal import Decimal, ROUND_DOWN
+from datetime import datetime
+import math
 
 
 class SenderUtils:
@@ -23,13 +19,11 @@ class SenderUtils:
         self.market_cache = None
         self.start_time = None
         self.web_url = None
-        self.holdings = None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
-        self.holdings = hist_holdings
 
     @staticmethod
     def print_elapsed_time(start_time=None, func_name=None):
@@ -46,9 +40,17 @@ class SenderUtils:
             seconds = elapsed_seconds % 60
 
             formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            print(f'Elapsed time for {func_name}: {formatted_time} (hh:mm:ss)')
-            start_time = None  # reset start time
+            print(f'******   Elapsed time for {func_name}: {formatted_time} (hh:mm:ss) ******')
             return elapsed_seconds
+
+    @staticmethod
+    def convert_timestamp(timestamp):
+        try:
+            # Assuming Unix timestamps are in milliseconds
+            return pd.to_datetime(timestamp, unit='ms')
+        except ValueError:
+            # Fallback for standard datetime strings
+            return pd.to_datetime(timestamp)
 
     def time_unix(self, last_timestamp):
         if last_timestamp and last_timestamp != 0:  # Check if last_timestamp is not None and not 0
@@ -62,71 +64,8 @@ class SenderUtils:
         else:
             return 0
 
-    @staticmethod
-    def convert_timestamp(timestamp):
-        try:
-            # Assuming Unix timestamps are in milliseconds
-            return pd.to_datetime(timestamp, unit='ms')
-        except ValueError:
-            # Fallback for standard datetime strings
-            return pd.to_datetime(timestamp)
-
-    @staticmethod
-    def convert_to_unix_timestamp(iso_time_str):
-        # Parse the ISO 8601 string to a datetime object
-        dt = datetime.fromisoformat(iso_time_str)
-
-        # Convert the datetime object to a Unix timestamp (seconds since epoch)
-        unix_timestamp = int(time.mktime(dt.timetuple()))
-
-        return unix_timestamp
-
-    @staticmethod
-    def parse_isoformat_with_high_precision(trade_time_str):
-        # Check if the datetime string contains a '.'
-        if '.' in trade_time_str:
-            # Split the datetime string into the main part and the fractional seconds
-            main_part, fractional_seconds = trade_time_str.split('.')
-
-            # Truncate the fractional seconds to microsecond precision (6 digits)
-            truncated_fractional = fractional_seconds[:6]
-
-            # Reassemble the datetime string with truncated fractional seconds
-            truncated_datetime_str = f"{main_part}.{truncated_fractional}"
-        else:
-            # No fractional seconds present, use the original datetime string
-            truncated_datetime_str = trade_time_str
-
-        # Convert to datetime object
-        trade_time = datetime.fromisoformat(truncated_datetime_str)
-
-        return trade_time
-
-    @staticmethod
-    def find_price(product_id, usd_pairs):
-        """
-            Find the price of a product given its ID.
-
-            Parameters:
-            - product_id (str): The ID of the product to search for.
-            - usd_pairs (list): A list of product pairs in USD.
-
-            Returns:
-            - float: The price of the product. Returns None if the product ID is not found.
-            """
-        for pair in usd_pairs:
-            if pair['id'] == product_id:
-                return pair['price']
-        # If the product ID is not found, return None or raise an exception.
-        return None
-
-    @staticmethod
-    def percentage_difference(a, b):
-        if b == 0:
-            return float('inf')  # If b is 0, then it would cause a division by zero error
-        return ((a - b) / b) * 100
-
     def fetch_precision(self, symbol: str) -> tuple:
+        """PART III: Order cancellation and Data Collection """
         """
         Fetch the precision for base and quote currencies of a given symbol.
 
@@ -134,12 +73,10 @@ class SenderUtils:
         :return: A tuple containing base and quote decimal places.
         """
         try:
-            # markets = self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets)
-            # if markets is None:
-            #     raise ValueError("Failed to fetch markets.")
-
+            ticker = symbol[0].replace('-', '/')
             for market in self.market_cache:
-                if market['symbol'] == symbol['symbol']:
+
+                if market['symbol'] == ticker:
                     base_precision = market['precision']['price']  # float
                     quote_precision = market['precision']['amount']  # float
                     # base_increment = market['info']['base_increment']  # string
@@ -166,7 +103,7 @@ class SenderUtils:
         raise ValueError(f"Symbol {symbol} not found in exchange markets.")
 
     def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
-
+        """PART III: Order cancellation and Data Collection """
         """"" Adjust the amount based on the number of decimal places required for the symbol.
          base_deci and quote_deci are determined by the symbol presicion from markets and is the number of decimal places
          for the currency used in a particular market.  For example, for BTC/USD, base_deci is 8 and quote_deci is 2."""
@@ -189,6 +126,7 @@ class SenderUtils:
     def float_to_decimal(self, value: float, decimal_places: int) -> Decimal:
         """
         Convert a float to a Decimal with a specified number of decimal places.
+        Used in Part I
         """
         try:
             # Construct a string representing the desired decimal format
@@ -206,7 +144,3 @@ class SenderUtils:
             self.log_manager.webhook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
                                                   f'Decimal places: {decimal_places}')
             raise
-
-
-
-

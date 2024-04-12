@@ -1,16 +1,9 @@
-# Define the AlertSystem class
 
 import smtplib
-import requests
+import aiohttp
 import socket
 import asyncio
 import random
-import time
-import traceback
-
-""" This class handles the sending of alert messages, such as SMS or emails."""
-#
-
 
 class AlertSystem:
     _instance = None
@@ -30,50 +23,6 @@ class AlertSystem:
         # self._smtp_host = 'smtp.gmail.com'
         # self._smtp_port = 465  # Us
         self.log_manager = logmanager
-
-    def _connect_smtp_server(self):
-        # Establish a new SMTP connection for each email sent
-        self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        self._smtp_server.login(self._email, self._e_mailpass)
-
-    def get_my_ip_address(self):  # rarely used except when exception occurs for debugging
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
-        self.log_manager.sighook_logger.info(f"Hostname: {hostname}")
-        return ip_address
-
-    @property
-    def smtp_server(self):
-        return self._smtp_server
-
-    @property
-    def phone(self):
-        return self._phone
-
-    @property
-    def email(self):
-        return self._email
-
-    @property
-    def e_mailpass(self):
-        return self._e_mailpass
-
-    @property
-    def my_email(self):
-        return self._my_email
-
-    def callhome(self, subject, message):
-        try:
-            self._connect_smtp_server()  # Ensure a fresh connection is established
-            to = f'{self._phone}@txt.att.net'
-            email_text = f'Subject: {subject}\n\n{message}'
-            self._smtp_server.sendmail(self._my_email, to, email_text)
-        except Exception as e:
-            print(f'Error sending SMS alert: {e}')
-            self.log_manager.sighook_logger.error(f'Error sending SMS alert: {e}')
-        finally:
-            if self._smtp_server:
-                self._smtp_server.quit()  # Close the connection
 
 
 class SenderWebhook:
@@ -100,70 +49,57 @@ class SenderWebhook:
         self.web_url = None
         self.holdings = None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, session=None):
         self.start_time = start_time
-        # self.session = session
+        self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
-        self.holdings = hist_holdings
 
-    def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None, retries=3, initial_delay=1,
-                     max_delay=60):  # async
+    async def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None, retries=3, initial_delay=1,
+                           max_delay=60):  # async
         delay = initial_delay
         # Define payload outside of the retry loop to avoid redundant operations
-        lim_price = str(lim_price)
-        send_pair = send_pair.replace('/', '')
-        order_size = str(order_size) if order_size is not None else '100'  # Default to '100' if None
         payload = {
             'action': send_action,
-            'pair': send_pair,
-            'limit_price': lim_price,
-            'origin': "signal_generator"
+            'pair': send_pair.replace('/', ''),
+            'limit_price': str(lim_price),
+            'origin': "SIGHOOK",
+            'order_size': str(order_size) if order_size is not None else '100'  # Default order size
         }
         if send_action == 'close_at_limit':
             payload['order_type'] = send_order
-        else:
-            payload['order_size'] = order_size
 
         for attempt in range(1, retries + 1):
             try:
-                self.log_manager.sighook_logger.debug(f"Attempt {attempt}: Sending webhook payload: {payload}")
+                response = await self.session.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
+                                                   timeout=20)
+                response_text = await response.text()
 
-                # async with aiohttp.ClientSession() as session:
-                # response = await self.session.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
-                #                                    timeout=20)
-                response = requests.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
-                                         timeout=20)
-                response_text = response.text or None
-
-                self.log_manager.sighook_logger.debug(f"Webhook sent, awaiting response...")
-                if response.status_code == 200:
-                    self.log_manager.sighook_logger.debug(f"Webhook successfully sent: {payload}")
+                if response.status == 200:
                     return  # Success, exit function
 
-                # Handle specific status codes that warrant a retry or log an error
-                if response.status_code in [429, 500]:  # Rate limit exceeded or server error
-                    self.log_manager.sighook_logger.error(f"Error {response.status_code}: {response_text}")
+                # Handle specific status codes
+                if response.status in [429, 500]:  # Rate limit exceeded or server error
+                    self.log_manager.sighook_logger.error(f"Error {response.status}: {response_text}  check webhook "
+                                                          f"listener is listening")
+                elif response.status == 502:  # Not found
+                    self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status}")
+
                 else:
-                    raise Exception(f"Unhandled status code {response.status_code}: {response_text}")
+                    raise Exception(f"Unhandled status code {response.status}: {response_text}")
 
-            # except asyncio.TimeoutError as eto:
-            #     async_error = traceback.format_exc()  # get complete traceback as a string
-            #     self.log_manager.sighook_logger.error(f'Error in sending webhook(): {eto}\nTraceback: {async_error}')
-            #     self.log_manager.sighook_logger.error(f"Request timed out: {eto} ")
+            except asyncio.TimeoutError as eto:
 
-            except Exception as e:
-                tb_str = traceback.format_exc()  # get complete traceback as a string
-                self.log_manager.sighook_logger.error(f'Error in sending webhook(): {e}\nTraceback: {tb_str}')
-                raise  # Reraise the exception to handle it outside or log it
+                self.log_manager.sighook_logger.error(f'Request timed out:  {eto}', exc_info=True)
+            except aiohttp.ClientError as e:
 
-            # Apply exponential backoff with jitter only if not on last attempt
+                self.log_manager.sighook_logger.error(f'Error in sending webhook():  {e}', exc_info=True)
+
             if attempt < retries:
-                sleep_time = int(delay + random.uniform(0, delay * 0.2))
-                time.sleep(sleep_time)
-                # await asyncio.sleep(sleep_time)
+                sleep_time = delay + random.uniform(0, delay * 0.2)
+                await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)
 
         self.log_manager.sighook_logger.error("Max retries reached, giving up.")
-        return None  # Indicate failure after all retries
+        return None

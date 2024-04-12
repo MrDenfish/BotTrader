@@ -146,16 +146,6 @@ class AppConfig:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
 
-    # @staticmethod  # Toggleable Function
-    # def run_in_mode(sync_func, async_func, *args, **kwargs):
-    #     if async_mode:
-    #         return async_func(*args, **kwargs)  # Remember to await this when calling
-    #     else:
-    #         return sync_func(*args, **kwargs)
-    #
-    # # Usage
-    # result = run_in_mode(get_data_sync, get_data_async, arg1, arg2)
-
     @property
     def program_version(self):
         return self._version

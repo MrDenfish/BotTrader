@@ -11,6 +11,7 @@ class CustomLogger(logging.Logger):
     SELL_LEVEL_NUM = 19
     PROFIT_LEVEL_NUM = 17
     STOP_LOSS_LEVEL_NUM = 15
+    INSUFFICIENT_FUNDS = 13
 
     logging.addLevelName(BUY_LEVEL_NUM, "BUY")
     logging.addLevelName(SELL_LEVEL_NUM, "SELL")
@@ -31,6 +32,10 @@ class CustomLogger(logging.Logger):
         if self.isEnabledFor(self.BUY_LEVEL_NUM):
             self._log(self.BUY_LEVEL_NUM, f"BUY: {message}", args, **kwargs)
 
+    def insufficient_funds(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.INSUFFICIENT_FUNDS):
+            self._log(self.INSUFFICIENT_FUNDS, f"INSUFFICIENT_FUNDS: {message}", args, **kwargs)
+
 
 logging.setLoggerClass(CustomLogger)
 
@@ -48,13 +53,14 @@ class CustomFormatter(logging.Formatter):
     FORMATS = {
         logging.DEBUG: grey + format + reset,
         logging.INFO: grey + format + reset,
-        logging.WARNING: yellow + format + reset,
+        logging.WARNING: bold_red + format + reset,
         logging.ERROR: red + format + reset,
         logging.CRITICAL: bold_red + format + reset,
         CustomLogger.BUY_LEVEL_NUM: blue + format + reset,
         CustomLogger.SELL_LEVEL_NUM: green + format + reset,
         CustomLogger.PROFIT_LEVEL_NUM: green + format + reset,
-        CustomLogger.STOP_LOSS_LEVEL_NUM: red + format + reset
+        CustomLogger.INSUFFICIENT_FUNDS: yellow + format + reset,
+        CustomLogger.STOP_LOSS_LEVEL_NUM: yellow + format + reset
     }
 
     def format(self, record):

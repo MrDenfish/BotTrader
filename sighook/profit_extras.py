@@ -85,4 +85,3 @@ class ProfitabilityManager:
             self.log_manager.sighook_logger.error(f'get_current_price_and_symbol: {error_details}')
             logging.error(f"Error getting price/symbol for {product_id}: {e}")
             return None, None
-

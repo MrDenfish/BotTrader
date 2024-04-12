@@ -1,18 +1,14 @@
 
-"""focus solely on decision-making based on data provided by MarketManager"""
 
-from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime, timedelta
+import asyncio
 import pandas as pd
 from indicators import Indicators
-import traceback
-from ccxt.base.errors import RequestTimeout
-import asyncio
 
 
 class TradingStrategy:
+    """focus on decision-making based on data provided by MarketManager"""
     def __init__(self, webhook, tickermanager, utility, exchange, alerts, logmanager, ccxt_api, metrics, config,
-                 max_concurrent_tasks=10):
+                 max_concurrent_tasks):
 
         self._version = config.program_version
         self.exchange = exchange
@@ -21,129 +17,190 @@ class TradingStrategy:
         self.log_manager = logmanager
         self.utility = utility
         self.ticker_manager = tickermanager
-        self.indicators = Indicators(config)
+        self.indicators = Indicators(config, logmanager)
         self.market_metrics = metrics
         self.webhook = webhook
+        self.ohlcv_data = {}  # A dictionary to store OHLCV data for each symbol
         self.results = None
-        self.session = None
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
-        self.holdings = None
-        # self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache):
         self.start_time = start_time
-        #self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
-        self.holdings = hist_holdings
 
-    @property
-    def version(self):
-        return self._version
+    async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, ohlcv_data_dict):
+        """PART IV: Trading Strategies"""
 
-    def process_row(self, row, holdings, buy_sell_matrix):  # async
-        #  with self.semaphore:  # async
+        tasks = [self.process_row(row, buy_sell_matrix, ohlcv_data_dict) for _, row in
+                 filtered_ticker_cache.iterrows()]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        symbol = f"{row['symbol'].replace('-', '/')}"
-        if symbol == 'USD/USD':
-            pass
-        # base_deci, quote_deci = self.utility.fetch_precision(ticker)
-        price = None  # Initialize with default values
-        bollinger_df = None  # Initialize with default value
-        updates = {}  # Initialize a dictionary to store updates
-        action_data = None  # Initialize action_data
-        action = None  # Initialize action
-        band_ratio = None  # Initialize band_ratio
-        retries = 3
-        backoff_factor = 0.3
-        max_iterations = 1000
+        buy_sell_matrix = self.process_row_results(results, buy_sell_matrix)
+        self.utility.print_elapsed_time(self.start_time, 'process all row')
+        return results, buy_sell_matrix  # Return both the results and the aggregated orders
+
+    # @profile
+    async def process_row(self, row, buy_sell_matrix, ohlcv_data_dict):
+        """PART IV: Trading Strategies"""
         try:
-            # for attempt in range(retries):
-            if symbol != 'USD/USD':
-                ticker = symbol.replace('/', '-')
-                price_str = row['info']['price']
-                price = float(price_str) if price_str else 0.0
-                # Calculate the timestamp for 200 minutes ago from now
-                since = int((datetime.now() - timedelta(minutes=1440)).timestamp() * 1000)  # milliseconds
-                limit = 100  # The maximum number of OHLCV entries per request
-                all_ohlcv = []
-                for _ in range(max_iterations):
-                    ohlcv = self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ohlcv, symbol, '1m', since, limit)  # await
+            symbol = row['symbol'].replace('-', '/')
+            price_str = row['info']['price']
+            price = float(price_str) if price_str else 0.0
+            if symbol == 'USD/USD':
+                return None
+            ohlcv_data = ohlcv_data_dict.get(symbol)
+            if ohlcv_data is None:
+                return None
+                # Access the DataFrame directly from ohlcv_data
+            ohlcv_df = ohlcv_data['data']
+            bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
+            action_data = self.decide_action(ohlcv_df, bollinger_df, symbol, row['info']['price'], buy_sell_matrix)
 
-                    if not ohlcv or ohlcv[-1][0] <= since:
-                        break
-                    all_ohlcv.extend(ohlcv)
-                    since = ohlcv[-1][0] + 1  # Increment since to the timestamp of the last entry plus one millisecond
-                else:
-                    self.log_manager.sighook_logger.error(f"Reached maximum iterations for {symbol}")
-                # data
-                df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
-                bollinger_df = self.indicators.calculate_bollinger_bands(df)
-                df = self.indicators.calculate_trends(df)  # Calculate 50, 200 volitility and sma trends
-                df = self.indicators.calculate_rsi(df)  # Calculate RSI
-                df = self.indicators.calculate_roc(df)  # Calculate ROC
-                df = self.indicators.calculate_macd(df)  # Calculate MACD
-                df = self.indicators.swing_trading_signals(df)
-                if self.is_valid_bollinger_df(bollinger_df):
-                    buy_sell_data, trigger = self.buy_sell(bollinger_df, df, symbol)  # get buy sell data
+            order_info = {
+                'symbol': symbol,
+                'action': action_data.get('action'),
+                'price': price,
+                'trigger': action_data.get('trigger'),
+                'band_ratio': action_data.get('band_ratio'),
+                'sell_cond': action_data.get('sell_cond'),
+                # Include bollinger_df and action_data for further use
+                'bollinger_df': bollinger_df.to_dict('list'),  # Convert DataFrame to a more serializable format
+                'action_data': action_data
+            }
+            return {'order_info': order_info}
 
-                    coin = symbol.split('/')[0]
-                    if coin in buy_sell_matrix['coin'].values:
-                        updates[coin] = {
-                            'Buy Ratio': buy_sell_data['buy_sig_ratio'],
-                            'Buy Touch': buy_sell_data['buy_sig_touch'],
-                            'W-Bottom Signal': buy_sell_data['w_bottom_signal'],
-                            'Buy RSI': buy_sell_data['buy_signal_rsi'],
-                            'Buy ROC': buy_sell_data['buy_signal_roc'],
-                            'Buy MACD': buy_sell_data['buy_signal_macd'],  # Include MACD buy signal
-                            'Buy Swing': buy_sell_data['buy_swing_signal'],
-                            'Buy Signal': buy_sell_data['buy_signal'],
-                            'Sell Ratio': buy_sell_data['sell_sig_ratio'],
-                            'Sell Touch': buy_sell_data['sell_sig_touch'],
-                            'M-Top Signal': buy_sell_data['m_top_signal'],
-                            'Sell RSI': buy_sell_data['sell_signal_rsi'],
-                            'Sell ROC': buy_sell_data['sell_signal_roc'],
-                            'Sell MACD': buy_sell_data['sell_signal_macd'],  # Include MACD sell signal
-                            'Sell Swing': buy_sell_data['sell_swing_signal'],
-                            'Sell Signal': buy_sell_data['sell_signal']
-                        }
-                    action = buy_sell_data['action']
-                    band_ratio = buy_sell_data['band_ratio']
+        except Exception as e:
+            return {"error": f"Error processing row for symbol {row['symbol']}:  {str(e)}"}
 
-                    # Check for buy or sell actions and handle accordingly
-                    if action == 'buy' or action == 'sell':
-                        action_data = self.handle_action(symbol, action, price, band_ratio,  # await
-                                                         buy_sell_data['sell_signal'], holdings, trigger)
-        except RequestTimeout as timeout_error:
-            self.log_manager.sighook_logger.error(f'Request timeout error for {symbol}: {timeout_error}')
-            asyncio.sleep(backoff_factor * (2 ** 1))  # await
+    def process_row_results(self, results, buy_sell_matrix):
+        """PART IV: Trading Strategies
+        enter results from indicators and Order cancellation and Data Collection into the buy_sell_matrix"""
+        try:
+            for result in results:
+                if isinstance(result, Exception) or "error" in result:
+                    continue  # Skip this result and move on to the next
 
-        except Exception as xcept:
-            tb_str = traceback.format_exc()  # get complete traceback as a string
-            self.log_manager.sighook_logger.error(f'Error in process_row(): {xcept}\nTraceback: {tb_str}')
-            self.log_manager.sighook_logger.error(f'Error in process_row(): {symbol}: {str(xcept)}')  # debug statement
+                    # Skip the iteration if the item is not a dictionary
+                if not isinstance(result, dict):
+                    continue
 
-        # Single return statement
-        #  counter['processed'] += 1
-        return {
+                symbol = result.get('symbol')
+                action_data = result['order_info']['action_data']
+                if action_data and 'updates' in action_data:
+                    updates = action_data['updates']
+                    # load indicator results into the buy_sell_matrix
+                    for coin, coin_updates in updates.items():
+                        # Ensure the coin is in the buy_sell_matrix
+                        if coin in buy_sell_matrix['coin'].values:
+                            for col, value in coin_updates.items():
+                                # Update only the columns that exist in buy_sell_matrix
+                                if col in buy_sell_matrix.columns:
+                                    buy_sell_matrix.loc[buy_sell_matrix['coin'] == coin, col] = value
+
+            return buy_sell_matrix
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f"fetch_ohlcv: {e}", exc_info=True)
+
+    def decide_action(self, df, bollinger_df, symbol, price, buy_sell_matrix):
+        """PART IV: Trading Strategies"""
+
+        trigger = None
+        updates = {}  # Initialize a dictionary to store updates
+        buy_sell_data = {}
+
+        df = self.indicators.calculate_trends(df)  # Calculate 50, 200 volatility and sma trends
+        df = self.indicators.calculate_rsi(df)  # Calculate RSI
+        df = self.indicators.calculate_roc(df)  # Calculate ROC
+        df = self.indicators.calculate_macd(df)  # Calculate MACD
+        df = self.indicators.swing_trading_signals(df)
+        if self.is_valid_bollinger_df(bollinger_df):
+            buy_sell_data, trigger = self.buy_sell(bollinger_df, df, symbol)  # get buy sell data
+        coin = symbol.split('/')[0]
+        if coin in buy_sell_matrix['coin'].values:
+            updates[coin] = {
+                'Buy Ratio': buy_sell_data['buy_sig_ratio'],
+                'Buy Touch': buy_sell_data['buy_sig_touch'],
+                'W-Bottom Signal': buy_sell_data['w_bottom_signal'],
+                'Buy RSI': buy_sell_data['buy_signal_rsi'],
+                'Buy ROC': buy_sell_data['buy_signal_roc'],
+                'Buy MACD': buy_sell_data['buy_signal_macd'],  # Include MACD buy signal
+                'Buy Swing': buy_sell_data['buy_swing_signal'],
+                'Buy Signal': buy_sell_data['buy_signal'],
+                'Sell Ratio': buy_sell_data['sell_sig_ratio'],
+                'Sell Touch': buy_sell_data['sell_sig_touch'],
+                'M-Top Signal': buy_sell_data['m_top_signal'],
+                'Sell RSI': buy_sell_data['sell_signal_rsi'],
+                'Sell ROC': buy_sell_data['sell_signal_roc'],
+                'Sell MACD': buy_sell_data['sell_signal_macd'],  # Include MACD sell signal
+                'Sell Swing': buy_sell_data['sell_swing_signal'],
+                'Sell Signal': buy_sell_data['sell_signal']
+            }
+        action = buy_sell_data['action']
+        sell_cond = buy_sell_data['sell_signal']
+        band_ratio = buy_sell_data['band_ratio']
+
+        return {'action': action, 'band_ratio': band_ratio, 'trigger': trigger, 'updates': updates, 'sell_cond': sell_cond}
+
+    @staticmethod
+    def format_row_result(symbol, action_data, bollinger_df, order_info=None):
+        """PART III: Order cancellation and Data Collection"""
+        """
+        Formats the result of processing a row with trading data.
+
+        :param symbol: The symbol for which the row was processed.
+        :param action_data: The action data resulting from decision-making (buy/sell/nothing).
+        :param bollinger_df: The DataFrame containing Bollinger Bands and related indicators.
+        :param order_info: Optional. Information about any orders that were executed as part of processing this row.
+        :return: A dictionary with formatted results including symbol, action, key indicators, and order information.
+        """
+        # Ensure action_data is not empty
+        if not action_data:
+            action_data = {}
+
+        # Prepare result dictionary with basic info
+        result = {
             'symbol': symbol,
-            'action': action,
-            'band_ratio': band_ratio,
-            'price': price,
+            'action': action_data.get('action', None),
+            'band_ratio': action_data.get('band_ratio', None),
+            'price': action_data.get('price', None),
             'action_data': action_data,
-            'bollinger_df': bollinger_df,
-            'roc': df['ROC'].iloc[-1],
-            'rsi': df['RSI'].iloc[-1],
-            'macd': df['MACD'].iloc[-1],
-            'signal_line': df['Signal_Line'].iloc[-1],  # Added Signal Line to return data
-            'macd_histogram': df['MACD_Histogram'].iloc[-1],  # Added MACD Histogram to return data
-            'swing_trend': df['Buy Swing'].iloc[-1],  # Added Swing Trend to return data
-            'updates': updates
+            'roc': None,
+            'rsi': None,
+            'macd': None,
+            'signal_line': None,
+            'macd_histogram': None,
+            'swing_trend': None,
+            'order_info': order_info  # Include order_info in the result if available
         }
 
+        # If Bollinger DataFrame is not empty, extract the latest values of key indicators
+        if bollinger_df is not None and not bollinger_df.empty:
+            latest_row = bollinger_df.iloc[-1]
+            result.update({
+                'roc': latest_row.get('ROC', None),
+                'rsi': latest_row.get('RSI', None),
+                'macd': latest_row.get('MACD', None),
+                'signal_line': latest_row.get('Signal_Line', None),
+                'macd_histogram': latest_row.get('MACD_Histogram', None),
+                'swing_trend': latest_row.get('Buy Swing', None)
+                # Assuming 'Buy Swing' is an indicator column in your DataFrame
+            })
+
+        return result
+
+    @staticmethod
+    def is_valid_bollinger_df(bollinger_df):
+        """PART III: Order cancellation and Data Collection"""
+        return not (bollinger_df is None or
+                    bollinger_df.iloc[-1][['basis', 'upper', 'lower', 'band_ratio']].isna().any() or
+                    bollinger_df.empty)
+
     def buy_sell(self, bollinger_df, df, symbol):
+        """PART IV: Trading Strategies"""
         """Determine buy or sell signal based on Bollinger band data, rsi and roc macd values. Values of the matrix are
                 of boolean type. If 3 or more conditions are true, then the signal is true. If 3 or more conditions are
                 false,
@@ -276,46 +333,11 @@ class TradingStrategy:
 
             return buy_sell_data, trigger
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in buy_sell(): {e}')
-        return buy_sell_data
+            self.log_manager.sighook_logger.error(f'Error in buy_sell() {symbol}: {e}', exc_info=True)
+        return buy_sell_data, None
 
-    def handle_action(self, symbol, action, price, band_ratio, sell_cond, holdings, trigger):  # async
-        # Separate logic for handling buy and sell actions
-        try:
-            if action == 'buy':
-                coin_balance, usd_balance = self.ticker_manager.get_ticker_balance(symbol)  # await
-                usd_balance = usd_balance.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-                coin_balance_value = coin_balance * Decimal(price)
-                if usd_balance > 100 and coin_balance_value < 10.00:  # min funds to buy and max balance value to buy
-                    # Prepare buy action data
-                    buy_action = 'open_at_limit'
-                    buy_pair = symbol
-                    buy_limit = price
-                    buy_order = 'limit'
-                    self.webhook.send_webhook(buy_action, buy_pair, buy_limit, buy_order)  # await
-                    self.log_manager.sighook_logger.buy(f'{symbol} buy signal triggered @ {buy_action} price'
-                                                        f' {buy_limit}, USD balance: ${usd_balance}')
-                    return {'buy_action': buy_action, 'buy_pair': buy_pair, 'buy_limit': buy_limit, 'curr_band_ratio':
-                            band_ratio, 'sell_action': None, 'sell_symbol': None, 'sell_limit': None, 'sell_cond': None}
-                else:
-                    self.log_manager.sighook_logger.warning(f'Insufficient funds ${usd_balance} to buy {symbol}')
-                    return None
-            elif action == 'sell':
-                # Prepare sell action data
-                sell_action, sell_symbol, sell_limit, sell_order = (self.sell_signal(symbol, price, holdings, trigger))
-                if sell_action:
-                    self.webhook.send_webhook(sell_action, sell_symbol, sell_limit, sell_order)  # await
-                    self.log_manager.sighook_logger.warning(f'{symbol} sell signal triggered @ {sell_action} price'
-                                                            f' {sell_limit}')
-                    return {'buy_action': None, 'buy_pair': None, 'buy_limit': None, 'curr_band_ratio': None,
-                            'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit,
-                            'sell_cond': sell_cond}
-        except Exception as e:
-            tb_str = traceback.format_exc()  # get complete traceback as a string
-            self.log_manager.sighook_logger.error(f'Error in handle_action(): {e}\nTraceback: {tb_str}')
-        return None
-
-    def sell_signal(self, symbol, price, holdings, trigger):
+    def sell_signal_from_indicators(self, symbol, price, trigger, holdings):
+        """PART V: Order Execution"""
         try:
             # Convert DataFrame to list of dictionaries if holdings is a DataFrame ( it will be when it comes from
             # "process_sell_order" function)
@@ -332,18 +354,5 @@ class TradingStrategy:
 
             return None, None, None, None
         except Exception as e:
-            tb_str = traceback.format_exc()  # get complete traceback as a string
-            self.log_manager.sighook_logger.error(f'Error in handle_action(): {e}\nTraceback: {tb_str}')
+            self.log_manager.sighook_logger.error(f'Error in handle_action(): {e}\nTraceback:,', exc_info=True)
             return None, None, None, None
-
-    @staticmethod
-    def is_valid_bollinger_df(bollinger_df):
-        return not (bollinger_df is None or
-                    bollinger_df.iloc[-1][['basis', 'upper', 'lower', 'band_ratio']].isna().any() or
-                    bollinger_df.empty)
-
-    def update_results(self, symbol, action, price, band_ratio):
-        """ Update the results DataFrame with the new entry """
-        new_entry = {'symbol': symbol, 'action': action, 'price': price, 'band_ratio': band_ratio}
-        self.results = self.results.concat(new_entry, ignore_index=True)
-        return self.results

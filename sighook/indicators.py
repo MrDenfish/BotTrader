@@ -1,13 +1,12 @@
-# Description: Bollinger Bands indicator
-from logging_manager import LoggerManager
 
 
 class Indicators:
-    def __init__(self, config):
-        self.log_manager = LoggerManager(config)
+    """PART III: Trading Strategies"""
+    """ This class contains the functions to calculate various technical indicators and trading signals."""
+    def __init__(self, config, logmanager):
+        self.log_manager = logmanager
 
-    @staticmethod
-    def calculate_bollinger_bands(df, length=20, mult=2.0):
+    def calculate_bollinger_bands(self, df, length=20, mult=2.0):
         try:
             if df.empty:
                 raise ValueError("Input DataFrame is empty")
@@ -22,13 +21,13 @@ class Indicators:
             if "DataFrame is empty" in str(e):
                 return None
         except Exception as e:
-            print(f"Error in calculate_bollinger_bands(): {e}")
+            self.log_manager.sighook_logger.error(f"Error in calculate_bollinger_bands(): {e}", exc_info=True)
+
             return df
 
         return df
 
-    @staticmethod
-    def calculate_trends(df, short=50, long=200, period=30):
+    def calculate_trends(self, df, short=50, long=200, period=30):
         try:
             if df.empty:
                 raise ValueError("Input DataFrame is empty")
@@ -43,7 +42,7 @@ class Indicators:
             if "DataFrame is empty" in str(e):
                 return None
         except Exception as e:
-            print(f"Error in calculate_sma(): {e}")
+            self.log_manager.sighook_logger.error(f"Error in calculate_sma(): {e}", exc_info=True)
             return df
         raise
 
@@ -86,8 +85,7 @@ class Indicators:
 
         return df
 
-    @staticmethod
-    def identify_w_bottoms_m_tops(bollinger_df):
+    def identify_w_bottoms_m_tops(self, bollinger_df):
         w_bottoms = []
         m_tops = []
         try:
@@ -106,7 +104,7 @@ class Indicators:
 
             return w_bottoms, m_tops
         except Exception as e:
-            print(f"Error in identify_w_bottoms_m_tops(): {e}")
+            self.log_manager.sighook_logger.error(f"Error in identify_w_bottoms_m_tops(): {e}", exc_info=True)
             return w_bottoms, m_tops
 
     @staticmethod
@@ -145,7 +143,7 @@ class Indicators:
                     sell_signal = True
             return buy_signal, sell_signal
         except Exception as e:
-            print(f"Error in algorithmic_trading_strategy(): {e}")
+            self.log_manager.sighook_logger.error(f"Error in algorithmic_trading_strategy(): {e}", exc_info=True)
             return False, False
 
     @staticmethod

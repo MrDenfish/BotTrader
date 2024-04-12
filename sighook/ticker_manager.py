@@ -1,15 +1,18 @@
-
 import asyncio
-import datetime
-from decimal import Decimal
 
 import pandas as pd
 
+from memory_profiler import profile  # Debugging tool
+
 import traceback
+
+import datetime
+
+from decimal import Decimal
 
 
 class TickerManager:
-    def __init__(self, utility, logmanager, exchange, ccxt_api, max_concurrent_tasks=10):
+    def __init__(self, utility, logmanager, exchange, ccxt_api, max_concurrent_tasks):
         self.exchange = exchange
         self.ticker_cache = None
         self.market_cache = None
@@ -18,164 +21,60 @@ class TickerManager:
         self.ccxt_exceptions = ccxt_api
         self.utility = utility
         self.start_time = None
-        self.holdings = None
-        # self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, hist_holdings):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache):
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
-        self.holdings = hist_holdings
 
-    def update_ticker_cache(self, start_time=None):  # async
-
+    async def update_ticker_cache(self, start_time=None):
+        """PART I: Data Gathering and Database Loading"""
         refresh_time = 300  # 5 minutes
         empty_df = pd.DataFrame()
         empty_market_data = []
+
         try:
-            market_data = None
-            now = datetime.datetime.utcnow()
-            if self.start_time is None:
-                market_data = self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets)  # await
-                if market_data is None:
-                    return empty_df, empty_market_data
-            else:
-                start_time_datetime = datetime.datetime.utcfromtimestamp(self.start_time)
-                temp_time = now - start_time_datetime
-                if temp_time.seconds >= refresh_time:  # 5 minutes
-                    market_data = self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets)  # await
-                    if market_data is None:
-                        return empty_df, empty_market_data
-                else:
+            async with self.semaphore:
+                now = datetime.datetime.utcnow()
+                endpoint = 'public'  # for rate limiting
+                should_fetch = self.start_time is None or (
+                            now - datetime.datetime.utcfromtimestamp(self.start_time)).seconds >= refresh_time
 
-                    return self.ticker_cache, self.market_cache  # Exit if the ticker cache is already up to date
+                if should_fetch:
+                    market_data = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets, endpoint)
+                    if not market_data:
+                        return empty_df, empty_market_data, None, None
 
-            # Filter for symbols that end with '/USD'
-            tickers = [market for market in market_data if market['symbol'].endswith('/USD')]
-            if not tickers:
-                return empty_df, empty_market_data  # Exit if no USD tickers are found
+                    filtered_market_data = self.filter_market_data(market_data)
+                    del market_data  # frees up memory
+                    usd_tickers, tickers_dict = self.extract_usd_tickers(filtered_market_data)
 
-            tickers_dict = {market['symbol']: market for market in tickers}
-            balance = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_balance())  # await
-            usd_balance = Decimal(balance['USD']['total']) if 'USD' in balance else Decimal(0.0)
-            usd_free = Decimal(balance['USD']['free']) if 'USD' in balance else Decimal(0.0)
-            # dollar_balance = balance.get('USD', {})
-            # Safely get the 'total' value from the USD balance, defaulting to 0 if not present
-            #  usd_total = Decimal(dollar_balance.get('total', 0))
-            if balance is None:
-                return empty_df, empty_market_data
+                    if not usd_tickers:
+                        return empty_df, empty_market_data, None, None
 
-            avail_qty = balance.get('free', {})
-            total_qty = balance.get('total', {})
-            usd_total = self.utility.float_to_decimal(Decimal(usd_balance), 2)
-            usd_free = self.utility.float_to_decimal(Decimal(usd_free), 2)
-            # Create a new DataFrame with the USD balance row
-            df = pd.DataFrame.from_dict(tickers_dict, orient='index')
-            df['base_currency'] = df['symbol'].str.split('/').str[0]
-            df['free'] = df['base_currency'].map(avail_qty).fillna(0)
-            df['total'] = df['base_currency'].map(total_qty).fillna(0)
-            df['volume_24h'] = df['info'].apply(lambda x: x.get('volume_24h', 0))
-            usd_row = pd.DataFrame({
-                'symbol': ['USD/USD'],  # Assuming you want to use 'USD/USD' as the symbol for clarity
-                'base_currency': ['USD'],
-                'free': [usd_free],
-                'total': [usd_total],
-                'volume_24h': [0]  # Assuming no volume for USD/USD
-            }, index=['USD'])  # 'USD' is set as the index
+                    filtered_balances, usd_balance, usd_free = await self.fetch_balance_and_filter()
 
-            # Append the USD row DataFrame to the original DataFrame
+                    updated_ticker_cache = self.prepare_dataframe(tickers_dict, filtered_balances, usd_balance, usd_free)
 
-            df = pd.concat([df, usd_row], ignore_index=False)
-            df, _ = self.parallel_fetch_and_update(df)  # await  # re-examine if asyncio_parallel_fetch_and_update is better
-            return df, market_data
+                    updated_ticker_cache, current_prices = await self.parallel_fetch_and_update(updated_ticker_cache)
+
+                    return updated_ticker_cache, filtered_market_data, current_prices, filtered_balances
+
+                return self.ticker_cache, self.market_cache, None, None
 
         except Exception as e:
-            error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f'update_ticker_cache: {error_details}')
-            self.ccxt_exceptions.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {e}')
+            self.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {e}', exc_info=True)
 
-    def parallel_fetch_and_update(self, df):
-        current_prices = {}  # Dictionary to store the current prices
-        try:
-            # Filter out non-traditional symbols like 'USD'
-            symbols = [str(symbol) for symbol in df['symbol'].tolist() if '/' in str(symbol)]
-
-            for symbol in symbols:
-                result = self.fetch_ticker_data(symbol)  # Make sure this function is synchronous
-                if not result or len(result) < 3:
-                    self.log_manager.sighook_logger.info(f"Invalid result: {result}")
-                    continue
-                symbol, bid, ask = result
-                if bid is None or ask is None:
-                    self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
-                    continue
-                if symbol in df.index:
-                    df.loc[symbol, ['bid', 'ask']] = bid, ask
-                    current_prices[symbol] = ask
-                else:
-                    self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
-
-        except Exception as e:
-            error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f'parallel_fetch_and_update: {error_details}')
-            self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}')
-        return df, current_prices
-
-    def asyncio_parallel_fetch_and_update(self, df):  # ayncio
-        #  removed ThreadPoolExecutor
-        result = None
-        try:
-            # filterout non-traditional symbols like 'USD'
-            symbols = [str(symbol) for symbol in df['symbol'].tolist() if '/' in str(symbol)]
-            tasks = [self.fetch_ticker_data(symbol) for symbol in symbols]
-            results = asyncio.gather(*tasks, return_exceptions=True)  # await
-            for result in results:
-                if not result or len(result) < 3:
-                    self.log_manager.sighook_logger.info(f"Invalid result: {result}")
-                    continue
-                symbol, bid, ask = result
-                symbol_exists = symbol in df.index
-                if bid is None or ask is None:
-                    self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
-                    continue
-                if symbol_exists:
-                    df.loc[symbol, ['bid', 'ask']] = bid, ask
-                else:
-                    self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
-        except Exception as e:
-            error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f'parallel_fetch_and_update: {error_details}, {result}')
-            self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}')
-
-    def fetch_ticker_data(self, symbol: str):  # async
-        # with self.semaphore:  # async # Acquire a semaphore slot
-        try:
-            if symbol == 'USD/USD':
-                return symbol, None, None
-            ticker = symbol.replace('/', '-')
-            individual_ticker = self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, ticker)  # await
-            if individual_ticker and isinstance(individual_ticker, dict):
-                bid = individual_ticker.get('bid')
-                ask = individual_ticker.get('ask')
-                return symbol, bid, ask
-            else:
-                self.log_manager.sighook_logger.debug(f'No data available for ticker {symbol}')
-                return symbol, None, None
-
-        except IndexError:
-            self.log_manager.sighook_logger.error(
-                f'Index error for symbol {symbol}: Data format may be incorrect or incomplete.')
-            return symbol, None, None
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error while fetching ticker data for {symbol}: {e}')
-            return symbol, None, None
-
-    def get_ticker_balance(self, coin):  # async
+    async def get_ticker_balance(self, coin):  # async
+        """PART III: Order cancellation and Data Collection"""
         """Get the balance of a coin in the exchange account."""
         try:
-            balance = self.ccxt_exceptions.ccxt_api_call(lambda: self.exchange.fetch_balance())  # await
-            coin_balance = Decimal(balance[coin]['total']) if coin in balance else Decimal('0.0')
-            usd_balance = Decimal(balance['USD']['total']) if 'USD' in balance else Decimal('0.0')
+            async with self.semaphore:
+                endpoint = 'private'
+                balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint)
+                coin_balance = Decimal(balance[coin]['total']) if coin in balance else Decimal('0.0')
+                usd_balance = Decimal(balance['USD']['total']) if 'USD' in balance else Decimal('0.0')
 
         except Exception as e:
             self.log_manager.sighook_logger.error(f'SenderUtils get_balance: Exception occurred during  {e}')
@@ -184,32 +83,127 @@ class TickerManager:
 
         return coin_balance, usd_balance
 
-    def old_get_ticker_balance(self, coin):
-        """Get the balance of a coin from the DataFrame."""
+    @staticmethod
+    def filter_market_data(market_data):
+        """PART I: Data Gathering and Database Loading"""
+        return [
+            {
+                'symbol': item['symbol'],
+                'precision': item['precision'],
+                'info': {key: item['info'][key] for key in ['product_id', 'price', 'volume_24h',
+                                                            'price_percentage_change_24h']}
+            }
+            for item in market_data
+        ]
+
+    @staticmethod
+    def extract_usd_tickers(filtered_market_data):
+        """PART I: Data Gathering and Database Loading"""
+        usd_tickers = [market for market in filtered_market_data if market['symbol'].endswith('/USD')]
+        tickers_dict = {market['symbol']: market for market in usd_tickers}
+        return usd_tickers, tickers_dict
+
+    async def fetch_balance_and_filter(self):
+        """PART I: Data Gathering and Database Loading"""
+        end_point = 'private'  # for rate limiting
+        balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, end_point)  # await
+        filtered_balance = {
+            currency: details for currency, details in balance.items()
+            if
+            currency != 'info' and (details.get('free', 0) > 0 or details.get('used', 0) > 0 or details.get('total', 0) > 0)
+        }
+        if not filtered_balance:
+            return None, None, None
+
+        usd_balance = Decimal(filtered_balance.get('USD', {}).get('total', 0))
+        usd_free = Decimal(filtered_balance.get('USD', {}).get('free', 0))
+
+        return filtered_balance, usd_balance, usd_free
+
+    def prepare_dataframe(self, tickers_dict, balance, usd_balance, usd_free):
+        """PART I: Data Gathering and Database Loading"""
+        # Creating avail_qty and total_qty from balance dictionary
+        avail_qty = {k: v.get('free', 0) for k, v in balance.items()}
+        total_qty = {k: v.get('total', 0) for k, v in balance.items()}
+        df = pd.DataFrame.from_dict(tickers_dict, orient='index')
+        df['base_currency'] = df['symbol'].str.split('/').str[0]
+        df['free'] = df['base_currency'].map(avail_qty).fillna(0)
+        df['total'] = df['base_currency'].map(total_qty).fillna(0)
+        df['volume_24h'] = df['info'].apply(lambda x: x.get('volume_24h', 0))
+
+        # Calculating usd_total and usd_free using utility function
+        usd_total = self.utility.float_to_decimal(Decimal(usd_balance), 2)
+        usd_free = self.utility.float_to_decimal(Decimal(usd_free), 2)
+
+        usd_row = pd.DataFrame({
+            'symbol': ['USD/USD'],
+            'base_currency': ['USD'],
+            'free': [usd_free],
+            'total': [usd_total],
+            'volume_24h': [0]
+        }, index=['USD'])
+
+        df = pd.concat([df, usd_row], ignore_index=False)
+        return df
+
+    async def parallel_fetch_and_update(self, df):
+        """PART I: Data Gathering and Database Loading
+            PART VI: Profitability Analysis and Order Generation """
         try:
-            # Find the row in the DataFrame where the symbol matches the coin
-            symbol_exists = coin in self.ticker_cache.index
-            symbol_exists = 'USD' in self.ticker_cache.index
-            if symbol_exists:
-                #  'total' column holds the balance amount
-                coin_balance = Decimal(self.ticker_cache.iloc[0]['total'])
-                usd_row = self.ticker_cache[self.ticker_cache['symbol'] == 'USD/USD']
-                usd_balance = Decimal(usd_row.iloc[0]['free']) if not usd_row.empty else Decimal('0.0')
-            else:
-                coin_balance = Decimal('0.0')
-                usd_balance = Decimal('0.0')
+            current_prices = {}  # Dictionary to store the current prices
+            chunk_size = 50  # Adjust based on your rate limits and performance
+            symbols = [str(symbol) for symbol in df['symbol'].tolist() if '/' in str(symbol)]
+            chunks = [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
+            tasks = []
+            for chunk in chunks:
+                tasks.extend([self.fetch_ticker_data(symbol) for symbol in chunk])
 
+            # Wait for all tasks to complete, outside the loop
+            results = await asyncio.gather(*tasks, return_exceptions=True)  # Gather results from all tasks
+            for result in results:
+                if not result or len(result) < 3:
+                    self.log_manager.sighook_logger.info(f"Invalid result: {result}")
+                    continue
+                if isinstance(result, Exception):
+                    self.log_manager.sighook_logger.error(f"Error in parallel_fetch_and_update: {result}", exc_info=True)
+                    continue
+                symbol, bid, ask = result
+                if bid is None or ask is None:
+                    self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
+                    continue
+                if symbol in df.symbol.values:
+                    df.loc[symbol, ['bid', 'ask']] = bid, ask
+                    current_prices[symbol] = ask
+                else:
+                    self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
+            return df, current_prices
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'get_ticker_balance: Exception occurred {e}')
-            coin_balance = Decimal('0.0')
-            usd_balance = Decimal('0.0')
+            self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}', exc_info=True)
 
-        return coin_balance, usd_balance
+    async def fetch_ticker_data(self, symbol: str):  # async
+        """PART I: Data Gathering and Database Loading
+        PART VI: Profitability Analysis and Order Generation """
+        async with self.semaphore:  # async # Acquire a semaphore slot
+            try:
+                if symbol == 'USD/USD':
+                    return symbol, None, None
+                ticker = symbol.replace('/', '-')
+                endpoint = 'public'  # for rate limiting
+                individual_ticker = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, endpoint, ticker)
+                if individual_ticker and isinstance(individual_ticker, dict):
+                    return symbol, individual_ticker['bid'], individual_ticker['ask']
+                else:
+                    self.log_manager.sighook_logger.debug(f'No data available for ticker {symbol}')
+                    return symbol, None, None
 
-    def fetch_all_tickers(self,holding):  # async
-        try:
-            all_tickers = self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_tickers)  # await
-
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in fetch_all_tickers: {e}')
-            return None
+            except IndexError:
+                error_details = traceback.format_exc()
+                self.log_manager.sighook_logger.error(f'Index error: {error_details}')
+                self.log_manager.sighook_logger.error(
+                    f'Index error for symbol {symbol}: Data format may be incorrect or incomplete.')
+                return symbol, None, None
+            except Exception as e:
+                error_details = traceback.format_exc()
+                self.log_manager.sighook_logger.error(f'fetch_ticker_data: {error_details}')
+                self.log_manager.sighook_logger.error(f'Error while fetching ticker data for {symbol}: {e}')
+                return symbol, None, None
