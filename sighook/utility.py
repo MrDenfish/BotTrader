@@ -53,16 +53,28 @@ class SenderUtils:
             return pd.to_datetime(timestamp)
 
     def time_unix(self, last_timestamp):
-        if last_timestamp and last_timestamp != 0:  # Check if last_timestamp is not None and not 0
-            format_string = "%Y-%m-%d %H:%M:%S.%f"
-            try:
-                last_timestamp = datetime.strptime(last_timestamp, format_string)
-                return int(last_timestamp.timestamp() * 1000)
-            except ValueError as e:
-                self.log_manager.sighook_logger.error(f"Error parsing timestamp: {e}")
-                return None  # or some other error handling
-        else:
+        if not last_timestamp or last_timestamp == 0:
+            # If the timestamp is None or explicitly zero, return 0
             return 0
+
+        if isinstance(last_timestamp, datetime):
+            # If last_timestamp is already a datetime object, convert directly to Unix time
+            return int(last_timestamp.timestamp() * 1000)
+
+        # Assume last_timestamp is a string if it's not a datetime object
+        format_string = "%Y-%m-%d %H:%M:%S.%f"
+        try:
+            # Try to parse the string to a datetime object
+            parsed_timestamp = datetime.strptime(last_timestamp, format_string)
+            return int(parsed_timestamp.timestamp() * 1000)
+        except ValueError as e:
+            # Log error if parsing fails
+            self.log_manager.sighook_logger.error(f"Error parsing timestamp: {e}")
+            return None
+        except Exception as e:
+            # Log unexpected errors
+            self.log_manager.sighook_logger.error(f"Error converting timestamp to unix: {e}", exc_info=True)
+            return None
 
     def fetch_precision(self, symbol: str) -> tuple:
         """PART III: Order cancellation and Data Collection """
@@ -73,7 +85,11 @@ class SenderUtils:
         :return: A tuple containing base and quote decimal places.
         """
         try:
-            ticker = symbol[0].replace('-', '/')
+
+            if '-' in symbol and '/' not in symbol:
+                ticker = symbol.replace('-', '/')
+            else:
+                ticker = symbol
             for market in self.market_cache:
 
                 if market['symbol'] == ticker:

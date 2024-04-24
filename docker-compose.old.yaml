@@ -1,0 +1,28 @@
+
+version: '3.8'
+#docker-compose.old.yaml
+services:
+  webhook:
+    image: denfish/bot-webhook:2.26
+    build:
+      context: webhook  # This goes two levels up from the config directory to BotTraderv3.0
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv3.0/.env_tradebot:/app/.env
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv3.0/data:/app/data
+    env_file:
+      - ./.env_tradebot
+    ports:
+      - "80:80"
+    networks:
+      traderbot_network:
+    environment:
+      - NAME=World
+
+networks:
+  traderbot_network:
+      driver: bridge
+      ipam:
+        driver: default
+        config:
+          - subnet: "172.24.2.0/29"

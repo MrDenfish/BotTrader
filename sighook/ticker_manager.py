@@ -2,7 +2,7 @@ import asyncio
 
 import pandas as pd
 
-from memory_profiler import profile  # Debugging tool
+from ccxt import AuthenticationError
 
 import traceback
 
@@ -53,35 +53,18 @@ class TickerManager:
                     if not usd_tickers:
                         return empty_df, empty_market_data, None, None
 
-                    filtered_balances, usd_balance, usd_free = await self.fetch_balance_and_filter()
+                    balances = await self.fetch_balance_and_filter()
 
-                    updated_ticker_cache = self.prepare_dataframe(tickers_dict, filtered_balances, usd_balance, usd_free)
+                    updated_ticker_cache = self.prepare_dataframe(tickers_dict, balances)
 
                     updated_ticker_cache, current_prices = await self.parallel_fetch_and_update(updated_ticker_cache)
 
-                    return updated_ticker_cache, filtered_market_data, current_prices, filtered_balances
+                    return updated_ticker_cache, filtered_market_data, current_prices, balances
 
                 return self.ticker_cache, self.market_cache, None, None
 
         except Exception as e:
             self.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {e}', exc_info=True)
-
-    async def get_ticker_balance(self, coin):  # async
-        """PART III: Order cancellation and Data Collection"""
-        """Get the balance of a coin in the exchange account."""
-        try:
-            async with self.semaphore:
-                endpoint = 'private'
-                balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint)
-                coin_balance = Decimal(balance[coin]['total']) if coin in balance else Decimal('0.0')
-                usd_balance = Decimal(balance['USD']['total']) if 'USD' in balance else Decimal('0.0')
-
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'SenderUtils get_balance: Exception occurred during  {e}')
-            coin_balance = Decimal('0.0')
-            usd_balance = Decimal('0.0')
-
-        return coin_balance, usd_balance
 
     @staticmethod
     def filter_market_data(market_data):
@@ -103,28 +86,44 @@ class TickerManager:
         tickers_dict = {market['symbol']: market for market in usd_tickers}
         return usd_tickers, tickers_dict
 
-    async def fetch_balance_and_filter(self):
+    async def fetch_balance_and_filter(self) -> object:
         """PART I: Data Gathering and Database Loading"""
         end_point = 'private'  # for rate limiting
-        balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, end_point)  # await
-        filtered_balance = {
-            currency: details for currency, details in balance.items()
-            if
-            currency != 'info' and (details.get('free', 0) > 0 or details.get('used', 0) > 0 or details.get('total', 0) > 0)
+        params = {
+            'offset': 0,  # Skip the first 0 items
+            'paginate': True,  # Enable automatic pagination
+            'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+            'limit': 300  # Set the max number of items to return
         }
-        if not filtered_balance:
-            return None, None, None
+        try:
+            balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, end_point, params=params)  #
+            # await
+            filtered_balance = {
+                currency: details for currency, details in balance.items()
+                if
+                currency != 'info' and (details.get('free', 0) > 0
+                                        or details.get('used', 0) > 0
+                                        or details.get('total', 0) > 0)
+            }
+            if not filtered_balance:
+                return {}
 
-        usd_balance = Decimal(filtered_balance.get('USD', {}).get('total', 0))
-        usd_free = Decimal(filtered_balance.get('USD', {}).get('free', 0))
+            usd_balance = Decimal(filtered_balance.get('USD', {}).get('total', 0))
+            usd_free = Decimal(filtered_balance.get('USD', {}).get('free', 0))
+            return {
+                'filtered': filtered_balance,
+                'usd_balance': usd_balance,
+                'usd_free': usd_free,
+            }
+        except AuthenticationError as e:
+            self.log_manager.sighook_logger.error(f'Authentication Error: {e}')
+            return {}
 
-        return filtered_balance, usd_balance, usd_free
-
-    def prepare_dataframe(self, tickers_dict, balance, usd_balance, usd_free):
+    def prepare_dataframe(self, tickers_dict, balances):
         """PART I: Data Gathering and Database Loading"""
         # Creating avail_qty and total_qty from balance dictionary
-        avail_qty = {k: v.get('free', 0) for k, v in balance.items()}
-        total_qty = {k: v.get('total', 0) for k, v in balance.items()}
+        avail_qty = {k: v.get('free', 0) for k, v in balances['filtered'].items()}
+        total_qty = {k: v.get('total', 0) for k, v in balances['filtered'].items()}
         df = pd.DataFrame.from_dict(tickers_dict, orient='index')
         df['base_currency'] = df['symbol'].str.split('/').str[0]
         df['free'] = df['base_currency'].map(avail_qty).fillna(0)
@@ -132,8 +131,8 @@ class TickerManager:
         df['volume_24h'] = df['info'].apply(lambda x: x.get('volume_24h', 0))
 
         # Calculating usd_total and usd_free using utility function
-        usd_total = self.utility.float_to_decimal(Decimal(usd_balance), 2)
-        usd_free = self.utility.float_to_decimal(Decimal(usd_free), 2)
+        usd_total = self.utility.float_to_decimal(Decimal(balances['usd_balance']), 2)
+        usd_free = self.utility.float_to_decimal(Decimal(balances['usd_free']), 2)
 
         usd_row = pd.DataFrame({
             'symbol': ['USD/USD'],
@@ -146,7 +145,7 @@ class TickerManager:
         df = pd.concat([df, usd_row], ignore_index=False)
         return df
 
-    async def parallel_fetch_and_update(self, df):
+    async def parallel_fetch_and_update(self, df, update_type='bid_ask'):
         """PART I: Data Gathering and Database Loading
             PART VI: Profitability Analysis and Order Generation """
         try:
@@ -171,11 +170,17 @@ class TickerManager:
                 if bid is None or ask is None:
                     self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
                     continue
-                if symbol in df.symbol.values:
-                    df.loc[symbol, ['bid', 'ask']] = bid, ask
-                    current_prices[symbol] = ask
+
+                # Locate the row in the DataFrame where the symbol matches and update the price
+                if symbol in df['symbol'].values:
+                    if update_type == 'bid_ask':
+                        df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
+                    elif update_type == 'current_price':
+                        df.loc[df['symbol'] == symbol, 'current_price'] = Decimal(ask)
+                    current_prices[symbol] = Decimal(ask)
                 else:
                     self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
+
             return df, current_prices
         except Exception as e:
             self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}', exc_info=True)
@@ -207,3 +212,21 @@ class TickerManager:
                 self.log_manager.sighook_logger.error(f'fetch_ticker_data: {error_details}')
                 self.log_manager.sighook_logger.error(f'Error while fetching ticker data for {symbol}: {e}')
                 return symbol, None, None
+
+#<><><><><><><><><><><><><><><><><><><><><>  RETIRED CODE <><><><><><><><><><><><><><><><><><><><><>
+    async def old_get_ticker_balance(self, coin):  # async
+        """PART III: Order cancellation and Data Collection"""
+        """Get the balance of a coin in the exchange account."""
+        try:
+            async with self.semaphore:
+                endpoint = 'private'
+                balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint)
+                coin_balance = Decimal(balance[coin]['total']) if coin in balance else Decimal('0.0')
+                usd_balance = Decimal(balance['USD']['total']) if 'USD' in balance else Decimal('0.0')
+
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f'SenderUtils get_balance: Exception occurred during  {e}')
+            coin_balance = Decimal('0.0')
+            usd_balance = Decimal('0.0')
+
+        return coin_balance, usd_balance

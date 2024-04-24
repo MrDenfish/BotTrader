@@ -1,6 +1,6 @@
 from custom_exceptions import CoinbaseAPIError
 import asyncio
-
+from datetime import datetime
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, InvalidOperation
 # from .shared.api_related import retry_on_401  # shared module
 
@@ -64,9 +64,14 @@ class TradeBotUtils:
         :param symbol: The symbol to fetch precision for.
         :return: A tuple containing base and quote decimal places.
         """
-        markets = None
         try:
-            endpoint = 'public'
+            endpoint = 'public'  # for rate limiting
+            # params = {
+            #     'offset': 0,  # Skip the first 0 items
+            #     'paginate': True,  # Enable automatic pagination
+            #     'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+            #     'limit': 300  # Set the max number of items to return
+            # }
             # Run the synchronous fetch_markets method in the default executor
             markets = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets, endpoint)
             if markets is None:
@@ -88,15 +93,14 @@ class TradeBotUtils:
                         raise ValueError("Base decimal places cannot be negative.")
 
                     return base_decimal_places, quote_decimal_places, base_increment, quote_increment
+        except self.exchange.NetworkError as e:
+            self.log_manager.webhook_logger.error(f"Network issue when fetching markets: {e}")
+        except self.exchange.ExchangeError as e:
+            self.log_manager.webhook_logger.error(f"Exchange issue encountered: {e}")
+        except Exception as e:
+            self.log_manager.webhook_logger.error(f"Unexpected error in fetch_precision: {e}", exc_info=True)
 
-        except ValueError as e:
-            error_details = traceback.format_exc()
-            self.log_manager.webhook_logger.error(
-                f'fetch_precision: An error occurred:{markets} {e}\nDetails: {error_details}')
-            self.log_manager.webhook_logger.error(f"fetch_precision: {e}")
-            return None, None, None, None
-
-        raise ValueError(f"Symbol {symbol} not found in exchange markets.")
+        return None, None, None, None  # Default return on error
 
     async def get_open_orders(self, order_data):
         base_balance = Decimal(0)
@@ -108,7 +112,7 @@ class TradeBotUtils:
                 'paginationCalls': 10  # Set the max number of pagination calls if necessary
             }
             fetched_open_orders = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_open_orders, endpoint,
-                                                                           None, params=params)
+                                                                           params=params)
 
             # Ensure format_open_orders returns a DataFrame
 
@@ -168,13 +172,20 @@ class TradeBotUtils:
 
         return df
 
-    async def get_account_balance(self, currencies):
+    async def get_account_balance(self, currencies, get_staked=False):
 
         balances = {}
         try:
-            endpoint = 'private'
-            accounts = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint)
-
+            endpoint = 'private'  # for rate limiting
+            params = {
+                'offset': 0,  # Skip the first 0 items
+                'paginate': True,  # Enable automatic pagination
+                'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+                'limit': 300  # Set the max number of items to return
+            }
+            accounts = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint, params=params)
+            if get_staked:
+                return accounts  # Return the full accounts object
             # Check if accounts is None
             if accounts is None:
                 self.log_manager.webhook_logger.error('get_account_balance: Failed to fetch accounts', exc_info=True)
@@ -187,7 +198,7 @@ class TradeBotUtils:
                 else:
                     balances[currency] = None
                     self.log_manager.webhook_logger.info(f'get_account_balance: {currency} not found in accounts')
-
+            print(f'balances: {balances}')
             return balances
         except Exception as e:
             my_ip = self.get_my_ip_address()
@@ -225,7 +236,7 @@ class TradeBotUtils:
                 return None  # Or handle this scenario appropriately
             # Extract the spot price (last price)
             spot_price = ticker['last']
-            self.log_manager.webhook_logger.debug(f'fetch_spot: {symbol} spot price: {spot_price}', exc_info=True)
+            self.log_manager.webhook_logger.debug(f'fetch_spot: {symbol} spot price: {spot_price}')
             return spot_price
         except asyncio.CancelledError:
             self.log_manager.webhook_logger.error(f"fetch_ticker: Task was cancelled for {symbol}")
@@ -254,7 +265,7 @@ class TradeBotUtils:
             self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}')
             return None
 
-    def adjust_price_and_size(self, order_data, order_book, response=None):
+    def adjust_price_and_size(self, order_data, order_book, response=None) -> object:
         """ Calculate and adjust price and size
                 # Return adjusted_price and adjusted_size """
 
@@ -263,12 +274,12 @@ class TradeBotUtils:
         quote_amount = order_data['quote_amount']
         base_deci = order_data['base_decimal']
         side = order_data['side']
-        available_coin_balance = order_data['available_coin_balance']
+        available_coin_balance = order_data['base_balance']
         base_incri = order_data['base_increment']
 
-        best_bid_price = Decimal(order_book['bids'][0][0])
+        best_bid_price = Decimal(order_book['highest_bid'])
 
-        best_ask_price = Decimal(order_book['asks'][0][0])
+        best_ask_price = Decimal(order_book['lowest_ask'])
 
         spread = best_ask_price - best_bid_price
 
@@ -283,8 +294,9 @@ class TradeBotUtils:
             if side == 'buy':
                 # Adjust the buy price to be slightly higher than the best bid
                 adjusted_price = best_bid_price + adjustment_factor
+                adjusted_price = adjusted_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_UP)
                 print(f'adjusted_price: {adjusted_price}')
-                adjusted_price = self.adjust_precision(base_deci, quote_deci, adjusted_price, convert='quote')
+                best_ask_price = best_ask_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_UP)
                 print(f'best_ask_price: {best_ask_price}')
                 quote_amount = Decimal(quote_amount) / quote_price
                 adjusted_size = quote_amount / adjusted_price
@@ -298,8 +310,9 @@ class TradeBotUtils:
             else:
                 # Adjust the sell price to be slightly lower than the best ask
                 adjusted_price = best_ask_price - adjustment_factor
-                print(f'adjusted_price: {adjusted_price}')
                 adjusted_price = self.adjust_precision(base_deci, quote_deci, adjusted_price, convert='quote')
+                print(f'adjusted_price: {adjusted_price}')
+                best_bid_price = best_bid_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_UP)
                 print(f'best_bid_price: {best_bid_price}')
                 adjusted_size = Decimal(available_coin_balance)
 
@@ -346,3 +359,11 @@ class TradeBotUtils:
 
         decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
         return Decimal(decimal_format)  # example 0.00000001
+
+    @staticmethod
+    def convert_timestamp_to_datetime(timestamp_ms):
+        # Divide by 1000 to convert milliseconds to seconds
+        timestamp_s = float(timestamp_ms) / 1000.0
+        # Create datetime object from timestamp
+        dt = datetime.fromtimestamp(timestamp_s)
+        return dt

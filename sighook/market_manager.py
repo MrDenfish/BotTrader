@@ -28,6 +28,24 @@ class MarketManager:
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
 
+    async def update_market_data(self):
+        """PART I: Data Gathering and Database Loading. Fetch and prepare market data from various sources."""
+        try:
+            ticker_cache, market_cache, current_prices, filtered_balances = await self.ticker_manager.update_ticker_cache()
+            if not market_cache:
+                self.log_manager.sighook_logger.info("Market cache is empty. Unable to fetch historical trades.")
+                return None  # or return an empty dictionary {}
+
+            return {
+                'ticker_cache': ticker_cache,
+                'market_cache': market_cache,
+                'current_prices': current_prices,
+                'filtered_balances': filtered_balances
+            }
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f"Error updating market data: {e}", exc_info=True)
+            return {}  # Return an empty dictionary in case of an error
+
     async def fetch_ohlcv(self, holdings, usd_pairs, avg_dollar_vol_total, buy_sell_matrix,  filtered_ticker_cache):
         """PART III: Order cancellation and Data Collection"""
         if avg_dollar_vol_total is None:

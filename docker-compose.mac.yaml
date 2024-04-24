@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  sighook:
+    image: denfish/bot-sighook:2.35
+    build:
+      context: ./sighook
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv3.0/.env_tradebot:/app/.env
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv3.0/data:/app/data  # location for SQLite DB
+    env_file:
+      - ./.env_tradebot
+    ports:
+      - "5001:5001"
+    networks:
+      - traderbot_network
+
+  webhook:
+    image: denfish/bot-webhook:2.35
+    build:
+      context: ./webhook
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv3.0/.env_tradebot:/app/.env
+      - /Users/Manny/Library/CloudStorage/Dropbox/Coins/BotTraderv3.0/data:/app/data
+    env_file:
+      - ./.env_tradebot
+    ports:
+      - "80:80"
+    networks:
+      - traderbot_network
+
+
+networks:
+  traderbot_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.24.2.0/29"

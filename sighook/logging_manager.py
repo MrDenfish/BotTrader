@@ -10,6 +10,7 @@ class CustomLogger(logging.Logger):
     BUY_LEVEL_NUM = 21
     SELL_LEVEL_NUM = 19
     PROFIT_LEVEL_NUM = 17
+    LOSS_LEVEL_NUM = 16
     STOP_LOSS_LEVEL_NUM = 15
     INSUFFICIENT_FUNDS = 13
 
@@ -22,11 +23,15 @@ class CustomLogger(logging.Logger):
 
     def take_profit(self, message, *args, **kwargs):
         if self.isEnabledFor(self.PROFIT_LEVEL_NUM):
-            self._log(logging.INFO, f"TAKE_PROFIT: {message}", args, **kwargs)
+            self._log(logging.INFO, f"TAKE PROFIT: {message}", args, **kwargs)
+
+    def take_loss(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.LOSS_LEVEL_NUM):
+            self._log(logging.INFO, f"TAKE LOSS: {message}", args, **kwargs)
 
     def stop_loss(self, message, *args, **kwargs):
         if self.isEnabledFor(self.STOP_LOSS_LEVEL_NUM):
-            self._log(logging.INFO, f"STOP_LOSS: {message}", args, **kwargs)
+            self._log(logging.INFO, f"STOP LOSS: {message}", args, **kwargs)
 
     def buy(self, message, *args, **kwargs):
         if self.isEnabledFor(self.BUY_LEVEL_NUM):
@@ -34,7 +39,7 @@ class CustomLogger(logging.Logger):
 
     def insufficient_funds(self, message, *args, **kwargs):
         if self.isEnabledFor(self.INSUFFICIENT_FUNDS):
-            self._log(self.INSUFFICIENT_FUNDS, f"INSUFFICIENT_FUNDS: {message}", args, **kwargs)
+            self._log(self.INSUFFICIENT_FUNDS, f"INSUFFICIENT FUNDS: {message}", args, **kwargs)
 
 
 logging.setLoggerClass(CustomLogger)
@@ -59,6 +64,7 @@ class CustomFormatter(logging.Formatter):
         CustomLogger.BUY_LEVEL_NUM: blue + format + reset,
         CustomLogger.SELL_LEVEL_NUM: green + format + reset,
         CustomLogger.PROFIT_LEVEL_NUM: green + format + reset,
+        CustomLogger.LOSS_LEVEL_NUM: red + format + reset,
         CustomLogger.INSUFFICIENT_FUNDS: yellow + format + reset,
         CustomLogger.STOP_LOSS_LEVEL_NUM: yellow + format + reset
     }

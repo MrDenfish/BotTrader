@@ -6,7 +6,9 @@ from typing import Optional
 from sqlalchemy.future import select
 import traceback
 import pandas as pd
-from database_manager import Trade, Holding, SymbolUpdate, RealizedProfit
+import numpy as np
+
+from old_database_manager import Trade, Holding, SymbolUpdate, RealizedProfit
 from dateutil import parser
 from datetime import datetime
 
@@ -43,46 +45,34 @@ class ProfitHelper:
     def take_profit(self):
         return self._take_profit
 
-    async def calculate_unrealized_profit_loss(self, session):
-        """ PART VI: Profitability Analysis and Order Generation
-        Asynchronously calculate and update unrealized profit/loss for each holding.
+    import pandas as pd
+    from decimal import Decimal
+
+    async def calculate_unrealized_profit_loss(self, aggregated_df):
+        """PART VI: Profitability Analysis and Order Generation
+        Asynchronously calculate and update unrealized profit/loss for each holding using a DataFrame.
         """
         try:
-            # Fetch holdings from the database
-
-            holdings = await session.execute(select(Holding))
-            holdings = holdings.scalars().all()
-
-            # Prepare DataFrame from holdings for parallel_fetch_and_update
-            df = pd.DataFrame([{
-                'currency': holding.currency,
-                'symbol': holding.symbol,
-                'balance': holding.balance,
-                'average_cost': holding.average_cost
-            } for holding in holdings])
-            df.set_index('currency', inplace=True)
-
             # Fetch current prices
-            df, current_prices = await self.ticker_manager.parallel_fetch_and_update(df)
+            update_type = 'current_price'
+            df, current_prices = await self.ticker_manager.parallel_fetch_and_update(aggregated_df, update_type)
 
-            # Calculate unrealized profit/loss
-            for holding in holdings:
-                current_price = Decimal(current_prices.get(holding.symbol, 0))
-                if current_price:
-                    # Calculate unrealized profit or loss
-                    total_cost = holding.average_cost * holding.balance
-                    market_value = holding.balance * current_price
-                    unrealized_p_l = market_value - total_cost
+            # Update the DataFrame with current prices
+            df['current_price'] = df['symbol'].map(current_prices).fillna(df['current_price'])
 
-                    # Update the holding
-                    holding.current_price = current_price
-                    holding.unrealized_profit_loss = unrealized_p_l.quantize(Decimal('.01'))
-                    if total_cost != 0:
-                        holding.unrealized_pct_change = ((unrealized_p_l / total_cost) * 100).quantize(Decimal('.01'))
-                    else:
-                        holding.unrealized_pct_change = Decimal(0)
-            return current_prices
+            # Calculate unrealized profit or loss
+            df['total_cost'] = df['average_cost'] * df['Balance']
+            df['market_value'] = df['Balance'] * df['current_price']
+            df['unrealized_profit_loss'] = (df['market_value'] - df['total_cost']).apply(
+                lambda x: Decimal(x).quantize(Decimal('.01')))
 
+            # Calculate unrealized percent change
+            df['unrealized_pct_change'] = (
+                (df['unrealized_profit_loss'] / df['total_cost'] * 100).replace([pd.NA, pd.NaT, np.inf, -np.inf], 0))
+            df['unrealized_pct_change'] = df['unrealized_pct_change'].apply(
+                lambda x: Decimal(x).quantize(Decimal('.01')) if not pd.isna(x) else Decimal(0))
+
+            return df  # Return the updated DataFrame with all calculations
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error calculating unrealized profit/loss: {e}", exc_info=True)
             raise
@@ -97,10 +87,10 @@ class ProfitHelper:
             return False
 
         # Calculate current value and unrealized profit percentage
-        current_value = holding.balance * Decimal(current_price)
-        unrealized_profit = current_value - (holding.balance * holding.average_cost)
+        current_value = holding['Balance'] * Decimal(current_price)
+        unrealized_profit = current_value - (holding['Balance'] * holding['average_cost'])
         unrealized_profit_pct = ((unrealized_profit / (
-                    holding.average_cost * holding.balance)) * 100) if holding.average_cost > 0 else Decimal('0')
+                    holding['average_cost'] * holding['Balance'])) * 100) if holding['average_cost'] > 0 else Decimal('0')
 
         # Decide to sell based on the calculated unrealized profit percentage
         return unrealized_profit_pct > self._take_profit or unrealized_profit_pct < self._stop_loss
@@ -116,56 +106,7 @@ class ProfitHelper:
                 market_prices[symbol] = bid
         return market_prices
 
-    async def get_last_update_time_for_symbol(self, session, symbol):
-        """PART VI: Profitability Analysis and Order Generation """
-        """Retrieve the last update time for a symbol from the database.
 
-    Parameters:
-    - session (AsyncSession): The SQLAlchemy asynchronous session.
-    - symbol (str): The trading symbol to query the last update time for.
-
-    Returns:
-    - datetime: The last update time for the symbol, or a default datetime if not found."""
-        try:
-            # Query the database for the symbol's last update time
-            symbol_update = await session.get(SymbolUpdate, symbol)
-            # The session is already managed by the calling function
-
-            if symbol_update:
-                return symbol_update.last_update_time
-            else:
-                # Return a default time if there's no record for the symbol
-                # This could be the time when your trading application started, or an earlier date
-                return datetime(2017, 12, 1)  # Example default date
-        except Exception as e:
-            # Log the error and decide on the appropriate error handling strategy
-            self.log_manager.sighook_logger.error(f'Error getting last update time for {symbol}: {e}', exc_info=True)
-            # Depending on your error handling strategy, you might return a default value or re-raise the exception
-        return datetime(2017, 12, 1)  # Return a default date as a fallback
-
-    async def set_last_update_time(self, session, symbol, last_update_trade_time):
-        """ PART VI: Profitability Analysis and Order Generation Updates or sets the last update time for a given trading
-        symbol in the database."""
-        try:
-            # Query the database for the symbol's last update time
-            symbol_update = await session.get(SymbolUpdate, symbol)
-
-            if symbol_update:
-                # If a record exists, update the last update time
-                symbol_update.last_update_time = last_update_trade_time
-            else:
-                # If no record exists, create a new one with the last update time
-                new_symbol_update = SymbolUpdate(
-                    symbol=symbol,
-                    last_update_time=last_update_trade_time
-                )
-                session.add(new_symbol_update)
-
-        except Exception as e:
-            # Log the error or raise an exception as per your error handling policy
-            error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f"Error setting last update time for {symbol}: {error_details}, {e}")
-            raise
 
     def process_trade_data(self, trade):
         """PART VI: Profitability Analysis and Order Generation """

@@ -1,9 +1,11 @@
 
+from async_functions import AsyncFunctions
 import smtplib
 import aiohttp
 import socket
 import asyncio
 import random
+import time
 
 class AlertSystem:
     _instance = None
@@ -42,47 +44,57 @@ class SenderWebhook:
         self.max_retries = 5  # Default max retries
         self.log_manager = logmanager
         self.alerts = alerts
-        self.session = None
+        self.http_session = None
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
         self.web_url = None
         self.holdings = None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, session=None):
+    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url):
         self.start_time = start_time
-        self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
 
-    async def send_webhook(self, send_action, send_pair, lim_price, send_order, order_size=None, retries=3, initial_delay=1,
+    async def send_webhook(self, http_session, send_action, send_pair, lim_price, send_order, order_size=None, retries=3,
+                           initial_delay=1,
                            max_delay=60):  # async
+
         delay = initial_delay
+
         # Define payload outside of the retry loop to avoid redundant operations
         payload = {
+            'timestamp': time.time(),
             'action': send_action,
             'pair': send_pair.replace('/', ''),
             'limit_price': str(lim_price),
             'origin': "SIGHOOK",
-            'order_size': str(order_size) if order_size is not None else '100'  # Default order size
+            'order_size': str(order_size) if order_size is not None else '100',
+            'verified': "valid or not valid " # this will be used to verify the order
         }
         if send_action == 'close_at_limit':
             payload['order_type'] = send_order
 
         for attempt in range(1, retries + 1):
             try:
-                response = await self.session.post(self.web_url, json=payload, headers={'Content-Type': 'application/json'},
+                response = await http_session.post(self.web_url,
+                                                   json=payload,
+                                                   headers={'Content-Type': 'application/json'},
                                                    timeout=20)
                 response_text = await response.text()
 
                 if response.status == 200:
-                    return  # Success, exit function
+                    return response
 
                 # Handle specific status codes
-                if response.status in [429, 500]:  # Rate limit exceeded or server error
-                    self.log_manager.sighook_logger.error(f"Error {response.status}: {response_text}  check webhook "
-                                                          f"listener is listening")
+                if response.status in [403, 429, 500]:  # Rate limit exceeded or server error
+                    if response.status == 403:
+                        self.log_manager.sighook_logger.error(f"There may be an issue with NGROK or LocalTunnel check "
+                                                              f"monthly limits: {response.status}")
+                    else:
+                        self.log_manager.sighook_logger.error(f"Error {response.status}: check webhook listener is listening")
+                    return response
                 elif response.status == 502:  # Not found
                     self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status}")
 

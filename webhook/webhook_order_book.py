@@ -26,14 +26,19 @@ class OrderBookManager:
 
     async def get_order_book(self, order_data):
         """ This method fetches the order book from the exchange and returns it as a dictionary."""
-
         endpoint = 'public'
         order_book = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_order_book, endpoint, order_data[
                                                               'trading_pair'], limit=50)
 
         highest_bid, lowest_ask, spread = self.analyze_spread(order_data, order_book)
+        order_details = {
+            'order_book': order_book,
+            'highest_bid': highest_bid,
+            'lowest_ask': lowest_ask,
+            'spread': spread
+        }
 
-        return order_book, highest_bid, lowest_ask, spread
+        return order_details
 
     async def cancel_stale_orders(self, order_data, open_orders):
 
@@ -57,9 +62,9 @@ class OrderBookManager:
                     order_time = datetime.utcfromtimestamp(detailed_order['timestamp'] / 1000)  # Assuming  milliseconds
 
                     # Check order age
-                    if now - order_time > timedelta(minutes=5) and is_buy_order:  # cancel buy orders older than 5 minutes
+                    if now - order_time > timedelta(minutes=5):  # cancel orders older than 5 minutes
                         print(f"Cancelling order {order_id} for {symbol} as it is older than 5 minutes.")
-                        await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order(order_id), endpoint)
+                        await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, endpoint, order_id)
                         open_orders.drop(index, inplace=True)
                         continue
                     elif order_data['base_currency'] == detailed_order['symbol'].split('/')[0]:
@@ -67,7 +72,7 @@ class OrderBookManager:
                             # orders
                             # if price has changed significantly
                             print(f"Cancelling order {order_id} for {symbol} as it is no longer the best bid.")
-                            await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order(order_id), endpoint)
+                            await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, endpoint, order_id)
                             open_orders.drop(index, inplace=True)
                             continue
 

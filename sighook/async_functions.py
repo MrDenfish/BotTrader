@@ -6,7 +6,7 @@ class AsyncFunctions:
     shutdown_event = asyncio.Event()
 
     @classmethod
-    async def shutdown(cls, loop, database_manager=None, http_session=None):
+    async def shutdown(cls, loop, http_session=None):
         # Cancel all running tasks
         tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task(loop)]
         [task.cancel() for task in tasks]
@@ -14,9 +14,10 @@ class AsyncFunctions:
         await asyncio.gather(*tasks, return_exceptions=True)
 
         # Close database connections
-        if database_manager:
-            await database_manager.close()
-            # Gracefully close the aiohttp session
+        # if database_manager:
+        #     await database_manager.close()
+
+        # Gracefully close the aiohttp session
         if http_session:
             try:
                 await http_session.close()

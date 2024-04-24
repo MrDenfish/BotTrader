@@ -1,5 +1,5 @@
 import requests
-import numpy as np
+
 
 
 class CoinMarketAPI:

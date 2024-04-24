@@ -16,9 +16,19 @@ class ValidateOrders:
         # self.id = ValidateOrders._instance_count
         # ValidateOrders._instance_count += 1
         # print(f"ValidateOrders Instance ID: {self.id}")
+        self._min_sell_value = Decimal(config.min_sell_value)
         self.utility = utility
+        self._hodl = config.hodl
         self._version = config.program_version
         self.log_manager = logmanager
+
+    @property
+    def hodl(self):
+        return self._hodl
+
+    @property
+    def min_sell_value(self):
+        return self._min_sell_value # Minimum value of a sell order
 
     @property
     def version(self):
@@ -32,7 +42,7 @@ class ValidateOrders:
         if valid_order:
             return base_balance, True
         else:
-            if base_balance is not None and base_balance_value > 10.0:
+            if base_balance is not None and base_balance_value > 1.0:
                 return None, False
             elif base_balance is None or base_balance == 0.0:
                 if validate_data['open_order'] is not None:
@@ -48,7 +58,60 @@ class ValidateOrders:
 
             return None, False
 
+    from decimal import Decimal, InvalidOperation
+
     def validate_orders(self, validate_data):
+        # Use a helper function to fetch and convert data safely
+        def get_decimal_value(key, default='0'):
+            try:
+                return Decimal(validate_data.get(key, default))
+            except InvalidOperation:
+                return Decimal(default)
+
+        quote_currency = validate_data.get('quote_currency', '')  # buy
+        base_currency = validate_data.get('base_currency', '')  # sell
+        trading_pair = validate_data.get('trading_pair', '')
+        side = validate_data.get('side', '')
+
+        quote_balance = get_decimal_value('quote_balance')
+        base_balance = get_decimal_value('base_balance')
+        highest_bid = get_decimal_value('highest_bid')
+        quote_price = get_decimal_value('quote_price')
+        quote_amount = get_decimal_value('quote_amount')
+        base_deci = validate_data.get('base_decimal', 0)
+        quote_deci = validate_data.get('quote_decimal', 0)
+        open_orders = validate_data.get('open_order', None)
+        valid_order = False
+
+        convert = 'usd' if quote_currency == 'USD' else 'quote'
+        adjusted_quote_balance = self.utility.adjust_precision(base_deci, quote_deci, quote_balance, convert=convert)
+
+        base_balance_value = Decimal(0)
+        if base_currency != 'USD' and base_balance != Decimal(0):
+            base_balance_value = (base_balance * highest_bid * quote_price)
+            base_balance_value = self.utility.adjust_precision(base_deci, quote_deci, base_balance_value, convert=convert)
+
+        if open_orders is not None and not open_orders.empty:
+            open_orders['product_id'] = open_orders['product_id'].str.replace('-', '/')
+            for _, order in open_orders.iterrows():
+                if order.get('product_id') == trading_pair and order.get('remaining', 0) > 0:
+                    return base_balance, base_balance_value, valid_order  # Order is not valid if open order exists
+
+        hodling = base_currency in self.hodl
+        if side == 'buy':
+            if adjusted_quote_balance < quote_amount:
+                self.log_manager.webhook_logger.info(
+                    f'validate_orders: Insufficient funds ${adjusted_quote_balance} to {side}: '
+                    f'{trading_pair} ${quote_amount}.00 is required.')
+            elif adjusted_quote_balance > quote_amount and (hodling or base_balance_value <= Decimal('10.01')):
+                valid_order = True
+        elif side == 'sell' and not hodling:
+            valid_order = base_balance_value > Decimal('1.0')
+
+        return base_balance, base_balance_value, valid_order
+
+
+    def old_validate_orders(self, validate_data):
 
         quote_currency = validate_data['quote_currency']
         quote_balance = validate_data['quote_balance']
@@ -62,7 +125,7 @@ class ValidateOrders:
         trading_pair = validate_data['trading_pair']
         quote_amount = validate_data['quote_amount']
         side = validate_data['side']
-
+        valid_order = False
         try:
             # Initialize base_balance_value
 
@@ -96,11 +159,11 @@ class ValidateOrders:
                     # Check if the order has a 'product_id' and 'remaining'
                     if 'product_id' in order and 'remaining' in order:
                         if order['product_id'] == trading_pair and order['remaining'] > 0:
-                            return base_balance, base_balance_value, False  # Return False if an open order exists for the
-                            # trading pair
+                            return base_balance, base_balance_value, valid_order  # not a valid order if open order exists
+
                     else:
                         self.log_manager.webhook_logger.debug(f'Invalid order format: {order}')
-
+            hodling = base_currency in self.hodl
             # Logic for buy and sell sides
             if side == 'buy':
                 # must have more $quote than the order requires and  must be less than $10.01 worth of coin to buy
@@ -108,18 +171,26 @@ class ValidateOrders:
                     self.log_manager.webhook_logger.info(
                         f'validate_orders: Insufficient funds ${quote_balance} to {side}: '
                         f'{trading_pair} ${quote_amount}.00 is required. ')
-                elif base_balance is not None and base_balance_value > 10.0:
+                    valid_order = False
+                elif quote_balance > quote_amount and hodling:  # ok to buy coins actively held for accumulation
+                    valid_order = True
+                elif not hodling and (base_balance is not None and base_balance_value > self.min_sell_value):
                     self.log_manager.webhook_logger.info(f'validate_orders: {side} order will not be placed for '
                                                          f'{trading_pair} there is a  balance of '
                                                          f'{base_balance}{base_currency}. ')
-                return base_balance, base_balance_value, quote_balance > quote_amount and base_balance_value <= Decimal(
-                    '10.01')
+                    valid_order = False
+                else:
+                    valid_order = quote_balance > quote_amount and base_balance_value <= Decimal('10.01') and not hodling
+                return base_balance, base_balance_value, valid_order
             elif side == 'sell':
-                return base_balance, base_balance_value, base_balance_value > Decimal('1.0')  # must be more than $1.0 to
-                # sell
-            return base_balance, base_balance_value, False
+                if hodling:
+                    valid_order = False  # do not sell coins actively being held for accumulation
+                else:
+                    valid_order = base_balance_value > Decimal('1.0')
+
+            return base_balance, base_balance_value, valid_order
 
         except Exception as e:
 
             self.log_manager.webhook_logger.debug(f'validate_orders: An unexpected error occurred: {e}. ', exc_info=True)
-            return None, None, False
+            return None, None, valid_order

@@ -64,6 +64,7 @@ class TradingStrategy:
                 'symbol': symbol,
                 'action': action_data.get('action'),
                 'price': price,
+                'value': row['free'] * price,
                 'trigger': action_data.get('trigger'),
                 'band_ratio': action_data.get('band_ratio'),
                 'sell_cond': action_data.get('sell_cond'),
@@ -118,7 +119,9 @@ class TradingStrategy:
         df = self.indicators.calculate_macd(df)  # Calculate MACD
         df = self.indicators.swing_trading_signals(df)
         if self.is_valid_bollinger_df(bollinger_df):
-            buy_sell_data, trigger = self.buy_sell(bollinger_df, df, symbol)  # get buy sell data
+            buy_sell_data, trigger = self.buy_sell(bollinger_df, df, symbol)  # get buy sell dat
+            if trigger:
+                print(f"Trigger for {symbol}: {trigger}")
         coin = symbol.split('/')[0]
         if coin in buy_sell_matrix['coin'].values:
             updates[coin] = {
@@ -349,7 +352,8 @@ class TradingStrategy:
                 sell_pair = symbol
                 sell_limit = price
                 sell_order = 'limit'
-                self.log_manager.sighook_logger.sell(f'Sell signal created for {symbol}, order triggered by {trigger}.')
+                self.log_manager.sighook_logger.sell(f'Sell signal created for {symbol}, order triggered by {trigger} @ '
+                                                     f'{price}.')
                 return sell_action, sell_pair, sell_limit, sell_order
 
             return None, None, None, None

@@ -39,25 +39,29 @@ class WebHookManager:
         return base_order_size, quote_amount
 
     def parse_webhook_data(self, webhook_data):
-        action = webhook_data['action']  # Extract order type (open or close)
-        side = 'buy' if 'open' in action else 'sell'
-        quote_currency = webhook_data['pair'][-3:]  # Extract quote currency
-        base_currency = webhook_data['pair'][:-3]  # Extract base currency
-        pair = webhook_data['pair'][:-3] + '/' + webhook_data['pair'][-3:]
-        orig = webhook_data['origin']
-        if side == 'buy':
-            quote_amount = webhook_data['order_size']  # Extract order size
-            if quote_amount is not None:
-                quote_amount = self.utility.float_to_decimal(quote_amount, 2)  # dollar amount from tradingview strategy
-                # $100.00
-                self.log_manager.webhook_logger.debug(f'webhook: buy_size: {quote_amount}', exc_info=True)
-        else:
-            quote_amount = None
+        try:
+            action = webhook_data['action']  # Extract order type (open or close)
+            side = 'buy' if 'open' in action else 'sell'
+            quote_currency = webhook_data['pair'][-3:]  # Extract quote currency
+            base_currency = webhook_data['pair'][:-3]  # Extract base currency
+            pair = webhook_data['pair'][:-3] + '/' + webhook_data['pair'][-3:]
+            orig = webhook_data['origin']
+            time = self.utility.convert_timestamp_to_datetime(webhook_data['timestamp'])
+            if side == 'buy':
+                quote_amount = webhook_data['order_size']  # Extract order size
+                if quote_amount is not None:
+                    quote_amount = self.utility.float_to_decimal(quote_amount, 2)  # dollar amount from tradingview strategy
+                    # $100.00
+                    self.log_manager.webhook_logger.debug(f'webhook: buy_size: {quote_amount}', exc_info=True)
+            else:
+                quote_amount = None
 
-        trade_data = {'action': action, 'side': side, 'trading_pair': pair, 'quote_currency': quote_currency,
-                      'base_currency': base_currency, 'quote_amount': quote_amount, 'orig': orig}
+            trade_data = {'time': time, 'action': action, 'side': side, 'trading_pair': pair, 'quote_currency': quote_currency,
+                          'base_currency': base_currency, 'quote_amount': quote_amount, 'orig': orig}
 
-        return trade_data
+            return trade_data
+        except Exception as e:
+            self.log_manager.webhook_logger.error(f'parse_webhook_data: {webhook_data}An error occurred: {e}', exc_info=True)
 
     async def handle_action(self, order_data):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro."""

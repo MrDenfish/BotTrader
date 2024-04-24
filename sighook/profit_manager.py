@@ -6,27 +6,28 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
-from database_manager import Base
-from database_manager import Trade, Holding, RealizedProfit, ProfitData
+from old_database_manager import Base
+from old_database_manager import Trade, Holding, RealizedProfit, ProfitData
 
 
 class ProfitabilityManager:
-    def __init__(self, exchange, ccxt_api, utility, database_manager, order_manager, portfolio_manager,
-                 trading_strategy, profit_helper, logmanager, config):
+    def __init__(self, exchange, ccxt_api, utility, portfolio_manager, database_session_mngr, order_manager,
+                 trading_strategy, profit_helper, profit_extras, logmanager, app_config):
 
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
-        self._take_profit = Decimal(config.take_profit)
-        self._stop_loss = Decimal(config.stop_loss)
-        self.database_dir = config.database_dir
-        self.sqlite_db_path = config.sqlite_db_path
+        self._take_profit = Decimal(app_config.take_profit)
+        self._stop_loss = Decimal(app_config.stop_loss)
+        self.database_dir = app_config.database_dir
+        self.sqlite_db_path = app_config.sqlite_db_path
         self.ledger_cache = None
         self.utility = utility
-        self.database_manager = database_manager
+        self.database_manager = database_session_mngr
         self.order_manager = order_manager
         self.portfolio_manager = portfolio_manager
         self.trading_strategy = trading_strategy
         self.profit_helper = profit_helper
+        self.profit_extras = profit_extras
         self.log_manager = logmanager
         self.ticker_cache = None
         self.session = None
@@ -35,9 +36,9 @@ class ProfitabilityManager:
         self.web_url = None
         self.holdings = None
 
-        self.engine = create_engine(f'sqlite:///{self.sqlite_db_path}')  # Use SQLAlchemy engine with the correct URI
-        Base.metadata.create_all(self.engine)  # Create tables based on models
-        self.Session = sessionmaker(bind=self.engine)
+        # self.engine = create_engine(f'sqlite:///{self.sqlite_db_path}')  # Use SQLAlchemy engine with the correct URI
+        # Base.metadata.create_all(self.engine)  # Create tables based on models
+        # self.Session = sessionmaker(bind=self.engine)
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
         self.start_time = start_time
@@ -57,33 +58,30 @@ class ProfitabilityManager:
 
     async def check_profit_level(self, holdings):  # async
         """PART VI: Profitability Analysis and Order Generation """
+        # await self.database_session_mngr.process_holding_db(holdings, self.start_time)
         try:
-            async with self.database_manager.AsyncSession() as session:
-                async with session.begin():
-                    # Update and process holdings
-                    aggregated_df = await self.update_and_process_holdings(session, holdings)  # await
-                    # Fetch current market prices for these symbols
-                    symbols = [holding['symbol'] for holding in holdings]
-                    current_market_prices = await self.profit_helper.fetch_current_market_prices(symbols)  # await
-                    #self.profit_extras.create_performance_snapshot(session, current_market_prices)  # Create a snapshot of current
-                    # portfolio
-                    # performance
-                    return aggregated_df
+            # Update and process holdings
+            aggregated_df = await self.update_and_process_holdings(holdings)  # await
+            # Fetch current market prices for these symbols
+            symbols = [holding['symbol'] for holding in holdings]
+            current_market_prices = await self.profit_helper.fetch_current_market_prices(symbols)  # await
+            # self.profit_extras.create_performance_snapshot(session, current_market_prices)  # Create a snapshot
+            # of current portfolio performance
+
+            return aggregated_df
         except Exception as e:
             self.log_manager.sighook_logger.error(f'check_profit_level: {e} e', exc_info=True)
-        finally:
-            await self.session.close()
 
-    async def update_and_process_holdings(self, session, holdings_list):
+    async def update_and_process_holdings(self, holdings_list):
         """PART VI: Profitability Analysis and Order Generation """
         try:
 
             # Load or update holdings
-            aggregated_df = await self.database_manager.update_holdings_from_list(session, holdings_list)
-            current_prices = await self.profit_helper.calculate_unrealized_profit_loss(session)
-            await self.check_and_execute_sell_orders(session, current_prices, holdings_list)  # await
+            aggregated_df = await self.database_manager.process_holding_db(holdings_list)
+            updated_holdings_df = await self.profit_helper.calculate_unrealized_profit_loss(aggregated_df)
+            await self.check_and_execute_sell_orders(updated_holdings_df)  # await
 
-            #await self.order_manager.process_sell_orders(session, product_id, current_price, holdings, trigger)  # await
+            # await self.order_manager.process_sell_orders(session, product_id, current_price, holdings, trigger)  # await
 
             # # # Fetch new trades for all currencies in holdings
             # currency = [item['Currency'] for item in holdings_list]
@@ -97,56 +95,52 @@ class ProfitabilityManager:
 
         except Exception as e:
             self.log_manager.sighook_logger.error(f'update_and_process_holdings: {e}', exc_info=True)
-            await session.rollback()  # Rollback the session in case of an error
 
-    async def check_and_execute_sell_orders(self, session, current_prices, holdings_list):
-        """PART VI: Profitability Analysis and Order Generation """
+    import pandas as pd
+    from decimal import Decimal
+
+    async def check_and_execute_sell_orders(self, updated_holdings_df):
+        """PART VI: Profitability Analysis and Order Generation"""
         try:
             realized_profit = 0
-            # Fetch holdings from the database
+            updated_holdings_list = updated_holdings_df.to_dict('records')  # Convert DataFrame to list of dictionaries
 
-            holdings = await session.execute(select(Holding))
-            holdings = holdings.scalars().all()
-
-            for holding in holdings:
-                current_market_price = current_prices.get(holding.symbol, 0)
+            for holding in updated_holdings_list:
+                symbol = holding['symbol']
+                current_market_price = holding['current_price']
                 if self.profit_helper.should_place_sell_order(holding, current_market_price):
-                    sell_amount = holding.balance  # or any other logic to determine the amount to sell
-                    sell_price = Decimal(current_market_price)  # or any other logic to determine the sell price
-                    realized_profit = await self.database_manager.process_sell_order_fifo(session, holding.symbol,
-                                                                                          sell_amount, sell_price)
-                    if realized_profit > 0:
-                        trigger = 'profit'
-                    else:
-                        trigger = 'loss'
-                    symbol = holding.symbol
-                    action = 'sell'
-                    sell_price = current_market_price
-                    # holdings = self.profit_helper.get_holdings(session)
-                    # Construct the 'order' dictionary for this holding
+                    sell_amount = holding['Balance']
+                    sell_price = Decimal(current_market_price)
+
+                    # Assuming process_sell_order_fifo is properly adjusted to handle the DataFrame format
+                    realized_profit += \
+                        await self.database_manager.sell_order_fifo(symbol, sell_amount, sell_price,updated_holdings_df,
+                                                                    updated_holdings_list)
+
+                    trigger = 'profit' if realized_profit > 0 else 'loss'
                     order = {
-                        'symbol': holding.symbol,
+                        'symbol': holding['symbol'],
                         'action': 'sell',
                         'price': sell_price,
-                        'trigger': trigger,  # Define how you determine the trigger
+                        'trigger': trigger,
                         'bollinger_df': None,  # If applicable
                         'action_data': {
                             'action': 'sell',
-                            'trigger': trigger,  # Define how you determine the trigger
+                            'trigger': trigger,
                             'updates': {
-                                holding.currency: {
-                                    # Include relevant action data here
-                                    'Sell Signal': trigger  # Define how you determine the sell signal
+                                holding['Currency']: {
+                                    'Sell Signal': trigger
                                 }
                             },
-                            'sell_cond': trigger  # Define how you determine the sell condition
-                        }
+                            'sell_cond': trigger
+                        },
+                        'value': holding['Balance'] * sell_price  # Calculate the value of the order
                     }
 
-                    await self.order_manager.handle_actions(order, holdings_list)
-                    # Log or take further action based on realized_profit...
-                    # Update or delete the holding record as necessary...
+                    # Here, handle_actions needs to accept order and holdings_list
+                    await self.order_manager.handle_actions(order, updated_holdings_list)
 
+            return realized_profit  # It might be useful to return the realized profit
         except Exception as e:
             self.log_manager.sighook_logger.error(f'check_and_execute_sell_orders:  {e}', exc_info=True)
             raise
@@ -173,7 +167,7 @@ class ProfitabilityManager:
 
             except Exception as e:
                 self.log_manager.sighook_logger.error(f'Error fetching new trades for {symbol}: {e}', exc_info=True)
-                # Depending on your error handling strategy, you might choose to continue to the next symbol or halt the process
+
                 raise
         return all_new_trades
 
@@ -204,7 +198,7 @@ class ProfitabilityManager:
                         select(Trade)
                         .filter(Trade.symbol == symbol)
                         .order_by(Trade.trade_time.desc())
-                         .limit(1)
+                        .limit(1)
                     )
                     most_recent_trade = most_recent_trade.scalar_one_or_none()
                     last_update = most_recent_trade.trade_time if most_recent_trade else None
@@ -243,9 +237,7 @@ class ProfitabilityManager:
             self.log_manager.sighook_logger.error(f'Error fetching new trades for {symbol}: {e}', exc_info=True)
             return []
 
-
     #  <><><><><><><><><><><><><><><><><><><>><><><><><><><><><><><><><><><><><><><>><>><><><><><><><><><><><><><><><><><><><>
-
 
     def process_trade(self, session, symbol, new_trades):
         for trade in new_trades:
@@ -258,11 +250,8 @@ class ProfitabilityManager:
                 pass
                 # call handle_action to process the sell trade
 
-
         # Implement logic to handle sell trades, potentially recording realized profits
 
         # Consider adding the processed_trade to your Trade table here
 
         # Update Holding's last update time, average cost, etc., outside this loop for efficiency
-
-

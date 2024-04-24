@@ -2,16 +2,16 @@ import logging
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 from decimal import Decimal, ROUND_DOWN
-from database_manager import Base
-from database_manager import Trade, Holding, RealizedProfit, ProfitData
+from old_database_manager import Base
+from old_database_manager import Trade, Holding, RealizedProfit, ProfitData
 import datetime
 import asyncio
 import pandas as pd
 import traceback
 
 
-class ProfitabilityManager:
-    def __init__(self, exchange, ccxt_api, utility, database_manager, order_manager, portfolio_manager, profit_helper,
+class PerformanceManager:
+    def __init__(self, exchange, ccxt_api, utility, profit_helper, order_manager, portfolio_manager, database_session_mngr,
                  logmanager, config):
 
         self.exchange = exchange
@@ -22,7 +22,7 @@ class ProfitabilityManager:
         self.sqlite_db_path = config.sqlite_db_path
         self.ledger_cache = None
         self.utility = utility
-        self.database_manager = database_manager
+        self.database_manager = database_session_mngr
         self.order_manager = order_manager
         self.portfolio_manager = portfolio_manager
         self.profit_helper = profit_helper
@@ -54,11 +54,8 @@ class ProfitabilityManager:
         self.web_url = web_url
         self.holdings = hist_holdings
 
-
-
-
-
-    def create_performance_snapshot(self, session, current_market_prices):
+    @staticmethod
+    def create_performance_snapshot(session, current_market_prices):
         """"takes a high-level view of the portfolio's performance, aggregating realized and unrealized profits to create
         periodic snapshots."""
         total_realized_profit = session.query(func.sum(ProfitData.total_realized_profit)).scalar() or 0

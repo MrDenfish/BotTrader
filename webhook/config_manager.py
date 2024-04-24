@@ -3,7 +3,7 @@ from environment variables and providing getters for accessing these configurati
 This class  encapsulates the configuration management for the trading bot."""
 import os
 import json
-
+from decimal import Decimal
 from dotenv import load_dotenv
 
 
@@ -18,28 +18,12 @@ class BotConfig:
 
     def __init__(self):
         if not self._is_loaded:
-            self._version = None
-            self._api_key = None
-            self._api_secret = None
-            self._passphrase = None
-            self._api_url = None
-            self._json_config = None
-            self._docker_staticip = None
-            self._tv_whitelist = None
-            self._coin_whitelist = None
-            self._account_sid = None
-            self._auth_token = None
-            self._account_phone = None
-            self._web_url = None
-            self._log_level = None
-            self.port = None
-            self.machine_type = None
-            self.log_dir = None
-            self.flask_log_dir = None
-            self.sql_log_dir = None
-            self.active_trade_dir = None
-            self.portfolio_dir = None
-            self.profit_dir = None
+            self._version, self._api_key, self._api_secret, self._passphrase = None, None, None, None
+            self._api_url, self._json_config, self._docker_staticip, self._tv_whitelist = None, None, None, None
+            self._coin_whitelist, self._pagekite_whitelist, self._account_sid, self._auth_token = None, None, None, None
+            self._account_phone, self._web_url, self._log_level, self._hodl = None, None, None, []
+            self._min_sell_value,self.port, self.machine_type, self.log_dir, self.sql_log_dir = None, None, None, None, None
+            self.flask_log_dir, self.active_trade_dir, self.portfolio_dir, self.profit_dir = None, None, None, None
 
             if not self._is_loaded:
                 # Check if running inside Docker by looking for a specific environment variable
@@ -64,11 +48,14 @@ class BotConfig:
         self._docker_staticip = os.getenv('DOCKER_STATICIP')
         self._tv_whitelist = os.getenv('TV_WHITELIST')
         self._coin_whitelist = os.getenv('COIN_WHITELIST')
+        self._pagekite_whitelist = os.getenv('PAGEKITE_WHITELIST')
         self._account_sid = os.getenv('ACCOUNT_SID')
         self._auth_token = os.getenv('AUTH_TOKEN')
         self._account_phone = os.getenv('ACCOUNT_PHONE')
         self._web_url = os.getenv('WEB_URL')
         self._log_level = os.getenv('LOG_LEVEL_WEBHOOK')
+        self._min_sell_value = Decimal(os.getenv('MIN_SELL_VALUE'))
+        self._hodl = os.getenv('HODL')
         self.machine_type = self.determine_machine_type()
 
     def load_json_config(self):
@@ -93,7 +80,6 @@ class BotConfig:
     @staticmethod
     def determine_machine_type():
         machine_type = os.getcwd().split('/')
-        print(f'Machine type: {machine_type}')
         if 'app' in machine_type:
             machine_type = 'docker'
             print(f'Machine type: {machine_type}')
@@ -125,6 +111,14 @@ class BotConfig:
         for dir_path in [self.log_dir, self.flask_log_dir]:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
+
+    @property
+    def hodl(self):
+        return self._hodl
+
+    @property
+    def min_sell_value(self):
+        return self._min_sell_value
 
     @property
     def program_version(self):
@@ -162,6 +156,10 @@ class BotConfig:
     @property
     def coin_whitelist(self):
         return self._coin_whitelist
+
+    @property
+    def pagekite_whitelist(self):
+        return self._pagekite_whitelist
 
     @property
     def account_sid(self):

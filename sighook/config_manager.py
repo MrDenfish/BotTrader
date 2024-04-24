@@ -1,12 +1,7 @@
 import os
-import json
-
 from dotenv import load_dotenv
-
-
-"""The AppConfig class has been outlined with methods for loading configuration
-from environment variables and providing getters for accessing these configurations.
-This class  encapsulates the configuration management for the trading bot."""
+import json
+from decimal import Decimal
 
 
 class AppConfig:
@@ -19,54 +14,38 @@ class AppConfig:
         return cls._instance
 
     def __init__(self):
-        self.port = None
-        self.machine_type = None
-        self.profit_dir = None
-        self.portfolio_dir = None
-        self.active_trade_dir = None
-        self.log_dir = None
-        self.database_dir = None
-        self.sqlite_db_path = None
-        self.sqlite_db_file = None
-        self._json_config = None
-        self._take_profit = None
-        self._stop_loss = None
-        self._sleep_time = None
-        self._my_email = None
-        self._e_mailpass = None
-        self._email = None
-        self._phone = None
-        self._web_url = None
-        self._account_phone = None
-        self._async_mode = None
-        self._auth_token = None
-        self._account_sid = None
-        self._coin_whitelist = None
-        self._tv_whitelist = None
-        self._docker_staticip = None
-        self._manny_database_path = None
-        self._digital_ocean_database_path = None
-        self._cmc_api_url = None
-        self._cmc_api_key = None
-        self._api_url = None
-        self._passphrase = None
-        self._api_secret = None
-        self._api_key = None
-        self._version = None
-        self._log_level = None
-        if not self._is_loaded:
-            # Check if running inside Docker by looking for a specific environment variable
-            if os.getenv('RUNNING_IN_DOCKER'):
-                env_path = ".env"  # Docker environment
-            else:
-                # Local environment
-                env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env_tradebot')
-            load_dotenv(env_path)
-            self.load_environment_variables()
-            self.load_json_config()
-            self._is_loaded = True
+        self.db_type, self.port, self.machine_type, self.profit_dir, self.portfolio_dir  = None, None, None, None, None
+        self.active_trade_dir, self._min_sell_value, self.sqlite_db_path, self.sqlite_db_file = None, None, None, None
+        self.log_dir, self._json_config, self._take_profit, self._stop_loss, self._sleep_time = None, None, None, None, None
+        self._my_email, self._e_mailpass, self._email, self._phone, self._web_url = None, None, None, None, None
+        self._account_phone, self._async_mode, self._auth_token, self._account_sid = None, None, None, None
+        self._coin_whitelist, self._tv_whitelist, self._docker_staticip, self._manny_database_path = None, None, None, None
+        self._digital_ocean_database_path, self._cmc_api_url, self._cmc_api_key, self._api_url = None, None, None, None
+        self._passphrase, self._api_secret, self._api_key, self._version, self._log_level = None, None, None, None, None
+        self._echo_sql, self._db_pool_size, self._db_max_overflow, self._db_echo = None, None, None, None
+        self._ccxt_verbose = None
+        self._database_dir = None
+        self._hodl = []
+        if self._is_loaded:
+            return
+
+        self.load_dotenv_settings()
+        self.machine_type, self.port = self.determine_machine_type()
+        self.load_json_config()
+        self.load_environment_variables()
+        self._is_loaded = True
+
+    @staticmethod
+    def load_dotenv_settings():
+        env_path = ".env" if os.getenv('RUNNING_IN_DOCKER') else os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                                                              '.env_tradebot')
+        load_dotenv(env_path)
 
     def load_environment_variables(self):
+        self.db_type = os.getenv('DB_TYPE', 'sqlite')
+        self._database_dir = self.get_database_dir()
+        self.db_name = os.getenv('DB_NAME', 'tradebot')
+        self.db_file = os.getenv('DB_FILE', 'trades.db')  # Default SQLite file name
         self._version = os.getenv('VERSION')
         self._async_mode = os.getenv('ASYNC_MODE')
         self._api_key = os.getenv('API_KEY')
@@ -89,26 +68,54 @@ class AppConfig:
         self._e_mailpass = os.getenv('E_MAILPASS')
         self._my_email = os.getenv('MY_EMAIL')
         self._sleep_time = os.getenv('SLEEP')
+        self._min_sell_value = Decimal(os.getenv('MIN_SELL_VALUE'))
+        self._hodl = os.getenv('HODL')
         self._stop_loss = os.getenv('STOP_LOSS')
         self._take_profit = os.getenv('TAKE_PROFIT')
         self._log_level = os.getenv('LOG_LEVEL_SIGHOOK')
-        self.machine_type, self.port = self.determine_machine_type()
         if self.machine_type in ['moe', 'Manny', 'docker']:
             self.port = os.getenv('SIGHOOK_PORT')  # Example usage
 
+    def generate_database_url(self):
+        db_path = os.path.join(self.get_database_dir(), self.db_file)
+        return f"sqlite+aiosqlite:///{db_path}"
+
     def load_json_config(self):
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(current_dir, 'config.json')
         try:
+            config_path = os.path.join(os.path.dirname(__file__), 'config.json')
             with open(config_path, 'r') as f:
-                config = json.load(f)
-            self._json_config = config
-            if self.machine_type in config:
-                machine_path = config[self.machine_type]
-                self.get_directory_paths(machine_path)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
+                self._json_config = json.load(f)
+            # Process loaded configuration here...
+        except Exception as e:
             print(f"Error loading JSON configuration: {e}")
             exit(1)
+
+    def process_config_paths(self, config):
+        base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
+        for key in ['SENDER_ERROR_LOG_DIR', 'DATABASE_DIR', 'ACTIVE_TRADE_DIR', 'PORTFOLIO_DIR', 'PROFIT_DIR']:
+            path = os.path.join(base_dir, config[self.machine_type][key])
+            setattr(self, key.lower(), path)
+            if not os.path.exists(path):
+                os.makedirs(path)
+
+    def get_database_dir(self):
+        return os.path.join(os.getenv('BASE_DIR_' + self.machine_type.upper(), '.'),
+                            self._json_config.get(self.machine_type, {}).get('DATABASE_DIR', ''))
+
+    def get_directory_paths(self, path):
+        base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
+        self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['SENDER_ERROR_LOG_DIR'])
+        # self.database_dir = os.path.join(base_dir, self._json_config[self.machine_type]['DATABASE_DIR'])
+        self.sqlite_db_file = self._json_config[self.machine_type]['DATABASE_FILE']
+        self.sqlite_db_path = os.path.join(self.database_dir, self.sqlite_db_file)
+        self.active_trade_dir = os.path.join(base_dir, self._json_config[self.machine_type]['ACTIVE_TRADE_DIR'])
+        self.portfolio_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PORTFOLIO_DIR'])
+        self.profit_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PROFIT_DIR'])
+
+        # Create the directories if they don't exist
+        for dir_path in [self.active_trade_dir, self.portfolio_dir, self.profit_dir]:
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
 
     @staticmethod
     def determine_machine_type():
@@ -131,20 +138,40 @@ class AppConfig:
             exit(1)
         return machine_type, port
 
-    def get_directory_paths(self, path):
-        base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
-        self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['SENDER_ERROR_LOG_DIR'])
-        self.database_dir = os.path.join(base_dir, self._json_config[self.machine_type]['DATABASE_DIR'])
-        self.sqlite_db_file = self._json_config[self.machine_type]['DATABASE_FILE']
-        self.sqlite_db_path = os.path.join(self.database_dir, self.sqlite_db_file)
-        self.active_trade_dir = os.path.join(base_dir, self._json_config[self.machine_type]['ACTIVE_TRADE_DIR'])
-        self.portfolio_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PORTFOLIO_DIR'])
-        self.profit_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PROFIT_DIR'])
+    @property
+    def database_dir(self):
+        return self._database_dir
 
-        # Create the directories if they don't exist
-        for dir_path in [self.active_trade_dir, self.portfolio_dir, self.profit_dir]:
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
+    @property
+    def database_url(self):
+        if self.db_type == 'sqlite':
+            return f"sqlite+aiosqlite:///{os.path.join(self.database_dir, self.db_file)}"
+        # Additional database types can be handled here
+        return None
+
+    @property
+    def db_echo(self):
+        return self._db_echo
+
+    @property
+    def db_pool_size(self):
+        return self._db_pool_size
+
+    @property
+    def db_max_overflow(self):
+        return self._db_max_overflow
+
+    @property
+    def echo_sql(self):
+        return self._echo_sql
+
+    @property
+    def hodl(self):
+        return self._hodl
+
+    @property
+    def min_sell_value(self):
+        return self._min_sell_value
 
     @property
     def program_version(self):

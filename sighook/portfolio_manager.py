@@ -22,60 +22,36 @@ class PortfolioManager:
         self.market_cache = market_cache
 
     async def get_my_trades(self, symbol, last_update_time):
-        """Fetch trades for a single symbol up to the last update time."""
-        since_unix = self.utility.time_unix(last_update_time.strftime("%Y-%m-%d %H:%M:%S.%f")) if isinstance(
-            last_update_time, datetime) else last_update_time
+        """PART I: Data Gathering and Database Loading. Process a single symbol's market data.
+        Fetch trades for a single symbol up to the last update time."""
         try:
-            trades = await self.fetch_trades_for_symbol(symbol, since=since_unix)
-            return trades
+            since_unix = self.utility.time_unix(last_update_time)
+            return await self.fetch_trades_for_symbol(symbol, since=since_unix)
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error fetching trades for {symbol}: {e}')
+            self.log_manager.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
             return []
 
-    async def old_get_my_trades(self, symbols, last_update_by_symbol):
-        """PART I: Data Gathering and Database Loading Fetch trades for multiple symbols using asyncio.gather."""
-
-        tasks = []
-        for symbol in symbols:
-            since = last_update_by_symbol.get(symbol, datetime(2017, 12, 1))
-            since_unix = self.utility.time_unix(since.strftime("%Y-%m-%d %H:%M:%S.%f")) if isinstance(since,
-                                                                                                      datetime) else since
-            try:
-                task = self.fetch_trades_for_symbol(symbol, since=since_unix)
-                tasks.append(task)
-            except Exception as e:
-                self.log_manager.sighook_logger.error(f'Error scheduling fetch for {symbol}: {e}')
-
-            # Using semaphore to limit concurrent operations
-        async with self.semaphore:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Processing results after releasing the semaphore
-        trades_by_symbol = {}
-        for symbol, result in zip(symbols, results):
-            if isinstance(result, Exception):
-                self.log_manager.sighook_logger.error(f'Error fetching trades for {symbol}: {result}')
-            else:
-                trades_by_symbol[symbol] = result
-
-        return trades_by_symbol
-
     async def fetch_trades_for_symbol(self, symbol, since=None):
-        """ PART I: Data Gathering and Database Loading  Fetch trades for a single symbol."""
+        """PART I: Data Gathering and Database Loading. Fetch trades for a single symbol."""
         try:
-            params = {
-                'paginate': True,
-                'paginationCalls': 20
-            }
-
             endpoint = 'private'
-            trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol,
-                                                              since=since, params=params)
+            params = {'paginate': True, 'paginationCalls': 50, 'limit': 300}
+            my_trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol,
+                                                                 since=since, params=params)
+            # Convert the 'datetime' from ISO format to a Python datetime object
+            for trade in my_trades:
+                if 'datetime' in trade and trade['datetime']:
+                    trade_time_str = trade['datetime'].rstrip('Z')
+                    if '.' in trade_time_str:  # Handle fractional seconds properly
+                        trade_time_str, ms = trade_time_str.split('.')
+                        ms = ms.ljust(6, '0')[:6]  # Normalize to microseconds
+                        trade_time_str = f"{trade_time_str}.{ms}"
+                    trade['datetime'] = datetime.fromisoformat(trade_time_str)
 
-            return symbol, trades
+            return my_trades
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error fetching trades for {symbol}: {e}', exc_info=True)
-            return symbol, None
+            self.log_manager.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
+            return []
 
     def get_portfolio_data(self, start_time, threshold=0.01):
         """PART II: Trade Database Updates and Portfolio Management"""
@@ -221,3 +197,21 @@ class PortfolioManager:
         # Filter rows where base_currency is in the list of unique_coins
         filtered_ticker_cache = self.ticker_cache[self.ticker_cache['base_currency'].isin(unique_coins)]
         return filtered_ticker_cache
+
+    #<><><><><><><><><><><><><><><><><> RETIRED CODE DO NOT DELETE 4/22/24 <><><><><>><><><><><><><><><><><><><><><><><><><>
+    async def olf_fetch_trades_for_symbol(self, symbol, since=None):
+        """ PART I: Data Gathering and Database Loading  Fetch trades for a single symbol."""
+        try:
+            params = {
+                'paginate': True,
+                'paginationCalls': 20
+            }
+
+            endpoint = 'private'
+            trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol,
+                                                              since=since, params=params)
+
+            return symbol, trades
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f'Error fetching trades for {symbol}: {e}', exc_info=True)
+            return symbol, None
