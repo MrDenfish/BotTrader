@@ -2,11 +2,7 @@ import logging
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 from decimal import Decimal, ROUND_DOWN
-from old_database_manager import Base
-from old_database_manager import Trade, Holding, RealizedProfit, ProfitData
 import datetime
-import asyncio
-import pandas as pd
 import traceback
 
 
@@ -34,9 +30,6 @@ class PerformanceManager:
         self.web_url = None
         self.holdings = None
 
-        self.engine = create_engine(f'sqlite:///{self.sqlite_db_path}')  # Use SQLAlchemy engine with the correct URI
-        Base.metadata.create_all(self.engine)  # Create tables based on models
-        self.Session = sessionmaker(bind=self.engine)
 
     @property
     def stop_loss(self):

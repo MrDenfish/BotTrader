@@ -1,13 +1,9 @@
 from datetime import datetime
-import asyncio
 from decimal import Decimal
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
-from old_database_manager import Base
-from old_database_manager import Trade, Holding, RealizedProfit, ProfitData
+
 
 
 class ProfitabilityManager:
@@ -36,10 +32,6 @@ class ProfitabilityManager:
         self.web_url = None
         self.holdings = None
 
-        # self.engine = create_engine(f'sqlite:///{self.sqlite_db_path}')  # Use SQLAlchemy engine with the correct URI
-        # Base.metadata.create_all(self.engine)  # Create tables based on models
-        # self.Session = sessionmaker(bind=self.engine)
-
     def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
         self.start_time = start_time
         # self.session = session
@@ -56,12 +48,13 @@ class ProfitabilityManager:
     def take_profit(self):
         return self._take_profit
 
-    async def check_profit_level(self, holdings):  # async
+    async def check_profit_level(self, holdings, current_prices):  # async
         """PART VI: Profitability Analysis and Order Generation """
         # await self.database_session_mngr.process_holding_db(holdings, self.start_time)
         try:
             # Update and process holdings
-            aggregated_df = await self.update_and_process_holdings(holdings)  # await
+            print(f'current_prices: {len(current_prices)}')
+            aggregated_df = await self.update_and_process_holdings(holdings, current_prices)  # await
             # Fetch current market prices for these symbols
             symbols = [holding['symbol'] for holding in holdings]
             current_market_prices = await self.profit_helper.fetch_current_market_prices(symbols)  # await
@@ -72,16 +65,15 @@ class ProfitabilityManager:
         except Exception as e:
             self.log_manager.sighook_logger.error(f'check_profit_level: {e} e', exc_info=True)
 
-    async def update_and_process_holdings(self, holdings_list):
+    async def update_and_process_holdings(self, holdings_list, current_prices):
         """PART VI: Profitability Analysis and Order Generation """
         try:
 
             # Load or update holdings
-            aggregated_df = await self.database_manager.process_holding_db(holdings_list)
+            print(f'current_prices: {len(current_prices)}')
+            aggregated_df = await self.database_manager.process_holding_db(holdings_list, current_prices)
             updated_holdings_df = await self.profit_helper.calculate_unrealized_profit_loss(aggregated_df)
-            await self.check_and_execute_sell_orders(updated_holdings_df)  # await
-
-            # await self.order_manager.process_sell_orders(session, product_id, current_price, holdings, trigger)  # await
+            await self.check_and_execute_sell_orders(updated_holdings_df, current_prices)  # await
 
             # # # Fetch new trades for all currencies in holdings
             # currency = [item['Currency'] for item in holdings_list]
@@ -99,7 +91,7 @@ class ProfitabilityManager:
     import pandas as pd
     from decimal import Decimal
 
-    async def check_and_execute_sell_orders(self, updated_holdings_df):
+    async def check_and_execute_sell_orders(self, updated_holdings_df, current_prices):
         """PART VI: Profitability Analysis and Order Generation"""
         try:
             realized_profit = 0
@@ -114,8 +106,8 @@ class ProfitabilityManager:
 
                     # Assuming process_sell_order_fifo is properly adjusted to handle the DataFrame format
                     realized_profit += \
-                        await self.database_manager.sell_order_fifo(symbol, sell_amount, sell_price,updated_holdings_df,
-                                                                    updated_holdings_list)
+                        await self.database_manager.sell_order_fifo(symbol, sell_amount, sell_price, updated_holdings_list,
+                                                                    holding, current_prices)  # await
 
                     trigger = 'profit' if realized_profit > 0 else 'loss'
                     order = {

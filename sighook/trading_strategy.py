@@ -148,52 +148,6 @@ class TradingStrategy:
 
         return {'action': action, 'band_ratio': band_ratio, 'trigger': trigger, 'updates': updates, 'sell_cond': sell_cond}
 
-    @staticmethod
-    def format_row_result(symbol, action_data, bollinger_df, order_info=None):
-        """PART III: Order cancellation and Data Collection"""
-        """
-        Formats the result of processing a row with trading data.
-
-        :param symbol: The symbol for which the row was processed.
-        :param action_data: The action data resulting from decision-making (buy/sell/nothing).
-        :param bollinger_df: The DataFrame containing Bollinger Bands and related indicators.
-        :param order_info: Optional. Information about any orders that were executed as part of processing this row.
-        :return: A dictionary with formatted results including symbol, action, key indicators, and order information.
-        """
-        # Ensure action_data is not empty
-        if not action_data:
-            action_data = {}
-
-        # Prepare result dictionary with basic info
-        result = {
-            'symbol': symbol,
-            'action': action_data.get('action', None),
-            'band_ratio': action_data.get('band_ratio', None),
-            'price': action_data.get('price', None),
-            'action_data': action_data,
-            'roc': None,
-            'rsi': None,
-            'macd': None,
-            'signal_line': None,
-            'macd_histogram': None,
-            'swing_trend': None,
-            'order_info': order_info  # Include order_info in the result if available
-        }
-
-        # If Bollinger DataFrame is not empty, extract the latest values of key indicators
-        if bollinger_df is not None and not bollinger_df.empty:
-            latest_row = bollinger_df.iloc[-1]
-            result.update({
-                'roc': latest_row.get('ROC', None),
-                'rsi': latest_row.get('RSI', None),
-                'macd': latest_row.get('MACD', None),
-                'signal_line': latest_row.get('Signal_Line', None),
-                'macd_histogram': latest_row.get('MACD_Histogram', None),
-                'swing_trend': latest_row.get('Buy Swing', None)
-                # Assuming 'Buy Swing' is an indicator column in your DataFrame
-            })
-
-        return result
 
     @staticmethod
     def is_valid_bollinger_df(bollinger_df):

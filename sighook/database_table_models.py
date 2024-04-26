@@ -21,6 +21,7 @@ class Trade(Base):
         side (str): Trade side, 'buy' or 'sell', nullable if not applicable.
         fee (Numeric): Trading fee incurred, nullable if not applicable.
     """
+    """Holds all closed trades."""
 
     __tablename__ = 'trades'
 
@@ -40,6 +41,9 @@ class Trade(Base):
 class NewTrade(Base):
     """All recently
     closed trades since last update."""
+
+    """Holds all closed trades that are newly added to the database."""
+
     __tablename__ = 'trades_new'
 
     trade_id = Column(String, primary_key=True)
@@ -50,6 +54,7 @@ class NewTrade(Base):
 
 
 class TradeSummary(Base):
+    """Summary of all trades for a specific symbol."""
     __tablename__ = 'trade_summary'
     id = Column(Integer, primary_key=True)
     symbol = Column(String)
@@ -62,6 +67,7 @@ class TradeSummary(Base):
 
 class Holding(Base):
     """All current holdings are stored in this table."""
+    """Holds all Current holdings."""
 
     __tablename__ = 'holdings'
     currency = Column(String, primary_key=True)
@@ -80,6 +86,7 @@ class Holding(Base):
 
     @classmethod
     def create_from_trade(cls, trade):
+        # used by old_database_manager
         """Create a new Holding instance from a trade."""
         currency = trade.symbol.split('/')[0]
         return cls(
@@ -98,6 +105,7 @@ class Holding(Base):
 
     @classmethod
     def create_from_aggregated_data(cls, currency, aggregated_data, balance):
+        # used by old_database_manager
         """
         Create a new Holding instance from aggregated trade data.
 
@@ -170,7 +178,7 @@ class ProfitData(Base):
 
 
 class SymbolUpdate(Base):
-    """tracks the symbol and last_update_time"""
+    """tracks each symbols  most recent trade time,  last_update_time"""
     __tablename__ = 'symbol_updates'
 
     symbol = Column(String, primary_key=True)

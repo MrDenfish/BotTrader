@@ -96,7 +96,7 @@ class OrderManager:
         try:
             # Fetch ticker data for unique symbols in open_orders
             symbols = set(open_orders['product_id'].str.replace('/', '-'))
-            ticker_tasks = [self.fetch_ticker(symbol) for symbol in symbols]
+            ticker_tasks = [self.fetch_ticker_data(symbol) for symbol in symbols]
             ticker_data = await asyncio.gather(*ticker_tasks)
 
             # Create a DataFrame from the fetched ticker data
@@ -135,7 +135,7 @@ class OrderManager:
             self.log_manager.sighook_logger.error(f'Error cancelling stale orders: {e}', exc_info=True)
             return None
 
-    async def fetch_ticker(self, symbol):
+    async def fetch_ticker_data(self, symbol):
         """PART III: Order cancellation and Data Collection """
         """Fetch ticker data for a symbol."""
         try:

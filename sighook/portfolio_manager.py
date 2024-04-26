@@ -199,19 +199,4 @@ class PortfolioManager:
         return filtered_ticker_cache
 
     #<><><><><><><><><><><><><><><><><> RETIRED CODE DO NOT DELETE 4/22/24 <><><><><>><><><><><><><><><><><><><><><><><><><>
-    async def olf_fetch_trades_for_symbol(self, symbol, since=None):
-        """ PART I: Data Gathering and Database Loading  Fetch trades for a single symbol."""
-        try:
-            params = {
-                'paginate': True,
-                'paginationCalls': 20
-            }
 
-            endpoint = 'private'
-            trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol,
-                                                              since=since, params=params)
-
-            return symbol, trades
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error fetching trades for {symbol}: {e}', exc_info=True)
-            return symbol, None

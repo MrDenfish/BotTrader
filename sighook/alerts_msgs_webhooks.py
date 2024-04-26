@@ -30,7 +30,7 @@ class AlertSystem:
 class SenderWebhook:
     _instance_count = 0
 
-    def __init__(self, exchange, alerts, logmanager, config):
+    def __init__(self, exchange, utility, alerts, logmanager, config):
         self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         self._phone = config.phone
         self._email = config.email
@@ -39,6 +39,7 @@ class SenderWebhook:
         self._version = config.program_version
         self.log_manager = logmanager
         self.exchange = exchange
+        self.utils = utility
         self.base_delay = 5  # Start with a 5-second delay
         self.max_delay = 320  # Don't wait more than this
         self.max_retries = 5  # Default max retries
@@ -91,12 +92,16 @@ class SenderWebhook:
                 if response.status in [403, 429, 500]:  # Rate limit exceeded or server error
                     if response.status == 403:
                         self.log_manager.sighook_logger.error(f"There may be an issue with NGROK or LocalTunnel check "
-                                                              f"monthly limits: {response.status}")
+                                                              f"monthly limits: {response.status}", exc_info=True)
                     else:
                         self.log_manager.sighook_logger.error(f"Error {response.status}: check webhook listener is listening")
                     return response
                 elif response.status == 502:  # Not found
-                    self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status}")
+                    self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status}", exc_info=True)
+                elif response.status == 503:  # Service Unavailable
+                    my_ip = self.utils.get_my_ip_address()
+                    self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status} "
+                                                          f"from {my_ip}", exc_info=True)
 
                 else:
                     raise Exception(f"Unhandled status code {response.status}: {response_text}")

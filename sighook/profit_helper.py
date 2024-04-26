@@ -1,15 +1,7 @@
 from decimal import Decimal, ROUND_DOWN
-import asyncio
-from sqlalchemy import func
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
-from sqlalchemy.future import select
 import traceback
 import pandas as pd
 import numpy as np
-
-from old_database_manager import Trade, Holding, SymbolUpdate, RealizedProfit
-from dateutil import parser
 from datetime import datetime
 
 class ProfitHelper:
@@ -105,8 +97,6 @@ class ProfitHelper:
             if bid:
                 market_prices[symbol] = bid
         return market_prices
-
-
 
     def process_trade_data(self, trade):
         """PART VI: Profitability Analysis and Order Generation """

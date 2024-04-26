@@ -3,12 +3,12 @@ import pandas as pd
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime
 import math
-
+import socket
 
 class SenderUtils:
     _instance_count = 0
 
-    def __init__(self, logmanager, exchange, ccxt_api):
+    def __init__(self, logmanager, exchange,ccxt_api):
         # self.id = SenderUtils._instance_count
         # SenderUtils._instance_count += 1
         # print(f"SenderUtils Instance ID: {self.id}")
@@ -24,6 +24,12 @@ class SenderUtils:
         self.start_time = start_time
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
+
+    @staticmethod
+    def get_my_ip_address():
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        return ip_address
 
     @staticmethod
     def print_elapsed_time(start_time=None, func_name=None):
@@ -76,45 +82,47 @@ class SenderUtils:
             self.log_manager.sighook_logger.error(f"Error converting timestamp to unix: {e}", exc_info=True)
             return None
 
+    import math
+
     def fetch_precision(self, symbol: str) -> tuple:
-        """PART III: Order cancellation and Data Collection """
         """
         Fetch the precision for base and quote currencies of a given symbol.
 
-        :param symbol: The symbol to fetch precision for.
+        :param symbol: The symbol to fetch precision for, in the format 'BTC-USD' or 'BTC/USD'.
         :return: A tuple containing base and quote decimal places.
         """
         try:
-
-            if '-' in symbol and '/' not in symbol:
-                ticker = symbol.replace('-', '/')
-            else:
-                ticker = symbol
+            # Normalize symbol format to 'BTC/USD' for consistent comparison
+            ticker = symbol.replace('-', '/') if '-' in symbol else symbol
+            ticker_value = ticker.iloc[0] if isinstance(ticker, pd.Series) else ticker
+            # Iterate through market data cache
             for market in self.market_cache:
+                # Compare market symbol or product_id to the normalized ticker
+                if market['symbol'] == ticker_value or market['info']['product_id'] == ticker_value:
+                    base_precision = market['precision']['price']  # Expected to be a float
+                    quote_precision = market['precision']['amount']  # Expected to be a float
 
-                if market['symbol'] == ticker:
-                    base_precision = market['precision']['price']  # float
-                    quote_precision = market['precision']['amount']  # float
-                    # base_increment = market['info']['base_increment']  # string
-                    # quote_increment = market['info']['quote_increment']  # string
+                    if base_precision <= 0 or quote_precision <= 0:
+                        raise ValueError("Precision value is zero or negative, which may cause a division error.")
 
-                    if base_precision == 0 or quote_precision == 0:
-                        raise ValueError("Precision value is zero, which may cause a division error.")
-                    # base_decimal_places = 8
-                    # quote_decimal_places = 8
+                    # Calculate decimal places using logarithm
                     base_decimal_places = -int(math.log10(base_precision))
                     quote_decimal_places = -int(math.log10(quote_precision))
-                    # Check for negative decimal places
-                    if base_decimal_places < 0:
-                        raise ValueError("Base decimal places cannot be negative.")
+
+                    # Check for negative decimal places (should not happen if the log10 is correct)
+                    if base_decimal_places < 0 or quote_decimal_places < 0:
+                        raise ValueError("Decimal places cannot be negative.")
 
                     return base_decimal_places, quote_decimal_places
 
+            # If no matching market found
+            raise LookupError(f"No market found for symbol {symbol}.")
+
         except ValueError as e:
-            self.log_manager.sighook_logger.error(f"fetch_precision: {e}")
+            self.log_manager.sighook_logger.error(f"fetch_precision: {e}", exc_info=True)
             return None, None
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}')
+            self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}', exc_info=True)
 
         raise ValueError(f"Symbol {symbol} not found in exchange markets.")
 
@@ -136,7 +144,7 @@ class SenderUtils:
 
             return adjusted_precision
         except Exception as e:
-            self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}')
+            self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}', exc_info=True)
             return None
 
     def float_to_decimal(self, value: float, decimal_places: int) -> Decimal:
@@ -157,6 +165,6 @@ class SenderUtils:
             return value_decimal
         except Exception as e:
 
-            self.log_manager.webhook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
-                                                  f'Decimal places: {decimal_places}')
+            self.log_manager.sighook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
+                                                  f'Decimal places: {decimal_places}', exc_info=True)
             raise

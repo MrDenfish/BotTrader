@@ -36,13 +36,21 @@ class DatabaseSessionManager:
 
         async with self.AsyncSessionLocal() as session:
             try:
-                await self.database_ops.load_db(session, market_data, start_time)
+                # load all historical trades into the database
                 await self.database_ops.clear_new_trades(session)  # clear out the new_trades table every time we load the db
+                # load the new trades into the database
+                await self.database_ops.process_market_data(session, market_data['market_cache'])
+
+                # load holdings into the holdings table
                 # For example: await session.execute(...)
                 await session.commit()
+                # load the most recent trade for each symbol into the database symbol_updates table
+                # symbols_processed = [market['symbol'] for market in market_data['market_cache']]
+                # summarize the trades for each symbol and load the summary into the trade_summary table
+                # await self.database_ops.update_last_trade_times(symbols_processed)
                 # tasks = [self.database_ops.process_symbol(symbol, start_time) for symbol in market_data['market_cache']]
                 # await asyncio.gather(*tasks)
-                return
+
             except Exception as e:
                 await session.rollback()
                 self.log_manager.sighook_logger.error(f"Failed to process data: {e}")
@@ -50,12 +58,15 @@ class DatabaseSessionManager:
             finally:
                 await session.close()
 
-    async def process_holding_db(self, holdings_list):
+
+        return
+
+    async def process_holding_db(self, holdings_list, current_prices):
         """PART V, PART VI: Order Execution Process data using a database session."""
         async with self.AsyncSessionLocal() as session:
             try:
                 # Initialize and potentially update holdings in the database
-                await self.database_ops.initialize_holding_db(session, holdings_list)
+                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices)
                 await session.commit()
                 # Fetch the updated contents of the holdings table
                 # Fetch the updated contents of the holdings table
@@ -65,7 +76,10 @@ class DatabaseSessionManager:
                     'Currency': holding.currency,
                     'symbol': holding.symbol,
                     'Balance': holding.balance,
-                    'average_cost': holding.average_cost
+                    'current_price': holding.current_price,
+                    'average_cost': holding.average_cost,
+                    'unrealized_profit': holding.unrealized_profit_loss,
+                    'unrealized_profit_percent': holding.unrealized_pct_change
                 } for holding in updated_holdings])
 
                 return df
@@ -76,12 +90,12 @@ class DatabaseSessionManager:
             finally:
                 await session.close()
 
-    async def sell_order_fifo(self, symbol, sell_amount, sell_price, updated_holdings_df, updated_holdings_list):
+    async def sell_order_fifo(self, symbol, sell_amount, sell_price, updated_holdings_list, holding, current_prices):
         """PART VI: Order Execution Process data using a database session."""
         async with self.AsyncSessionLocal() as session:
             try:
                 realized_profit = await self.database_ops.process_sell_order_fifo(session, symbol, sell_amount, sell_price)
-                await self.database_ops.initialize_holding_db(session, updated_holdings_list)
+                await self.database_ops.initialize_holding_db(session, updated_holdings_list, current_prices)
                 await session.commit()
                 return realized_profit
 

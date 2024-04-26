@@ -213,20 +213,4 @@ class TickerManager:
                 self.log_manager.sighook_logger.error(f'Error while fetching ticker data for {symbol}: {e}')
                 return symbol, None, None
 
-#<><><><><><><><><><><><><><><><><><><><><>  RETIRED CODE <><><><><><><><><><><><><><><><><><><><><>
-    async def old_get_ticker_balance(self, coin):  # async
-        """PART III: Order cancellation and Data Collection"""
-        """Get the balance of a coin in the exchange account."""
-        try:
-            async with self.semaphore:
-                endpoint = 'private'
-                balance = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint)
-                coin_balance = Decimal(balance[coin]['total']) if coin in balance else Decimal('0.0')
-                usd_balance = Decimal(balance['USD']['total']) if 'USD' in balance else Decimal('0.0')
-
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'SenderUtils get_balance: Exception occurred during  {e}')
-            coin_balance = Decimal('0.0')
-            usd_balance = Decimal('0.0')
-
-        return coin_balance, usd_balance
+# <><><><><><><><><><><><><><><><><><><><><>  RETIRED CODE <><><><><><><><><><><><><><><><><><><><><>

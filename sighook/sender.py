@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 
 import datetime
 
@@ -11,7 +12,7 @@ import time
 import ccxt.async_support as ccxt  # import ccxt as ccxt
 
 import pandas as pd
-
+from aiohttp import ClientSession as AsynchronousClientSession
 from alerts_msgs_webhooks import AlertSystem, SenderWebhook
 from async_functions import AsyncFunctions
 from config_manager import AppConfig
@@ -49,6 +50,7 @@ class TradeBot:
         self.market_data, self.ticker_cache, self.market_cache, self.current_prices = None, None, None, None
         self.filtered_balances, self.start_time, self.exchange_class, self.session = None, None, None, None
         self.db_initializer, self.database_ops_mngr = None, None
+        self.sleep_time = self.app_config.sleep_time
         self.web_url = self.app_config.web_url
         self.utility = None
         # self.initialize_components()
@@ -56,8 +58,9 @@ class TradeBot:
     async def start(self):
         """ Start the bot after initialization. """
         try:
-            await self.async_init()
-            await self.run_bot()
+            async with aiohttp.ClientSession() as self.http_session:
+                await self.async_init()
+                await self.run_bot()
         except Exception as e:
             print(f"Failed to start the bot: {e}")
         finally:
@@ -115,7 +118,7 @@ class TradeBot:
 
         self.db_initializer = DatabaseInitializer(self.database_session_mngr)
 
-        self.webhook = SenderWebhook(self.exchange, self.alerts, self.log_manager, self.app_config)
+        self.webhook = SenderWebhook(self.exchange, self.utility, self.alerts, self.log_manager, self.app_config)
 
         self.trading_strategy = TradingStrategy(self.webhook, self.ticker_manager, self.utility, self.exchange, self.alerts,
                                                 self.log_manager, self.ccxt_exceptions, self.market_metrics,
@@ -151,7 +154,6 @@ class TradeBot:
         self.market_cache = self.market_data['market_cache']
         self.current_prices = self.market_data['current_prices']
         self.filtered_balances = self.market_data['filtered_balances']
-
         try:
             while not AsyncFunctions.shutdown_event.is_set():
                 self.ticker_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
@@ -204,7 +206,7 @@ class TradeBot:
                 # PART VI:
                 # Profitability Analysis and Order Generation
                 print(f'Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
-                aggregated_df = await self.profit_manager.check_profit_level(holdings)
+                aggregated_df = await self.profit_manager.check_profit_level(holdings,  self.current_prices)
 
                 aggregated_df = pd.DataFrame()  # Debug place holder
                 self.utility.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
@@ -220,8 +222,9 @@ class TradeBot:
                 # PART VII: Database update and cleanup
                 print(f'Part VII: Database update and cleanup - Start Time:', datetime.datetime.now())
                 self.utility.print_elapsed_time(self.start_time, 'load bot components')
-                self.start_time = time.time()
 
+                await asyncio.sleep(int(self.sleep_time))
+                self.start_time = time.time()
                 print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
                 self.market_data = await self.market_manager.update_market_data()
                 await self.database_session_mngr.process_data(self.market_data, self.start_time)
@@ -238,8 +241,8 @@ class TradeBot:
         finally:
             await self.exchange.close()  # close the exchange connection
             if AsyncFunctions.shutdown_event.is_set():
-                await AsyncFunctions.shutdown(asyncio.get_running_loop(), database_manager=self.database_session_mngr,
-                                              http_session=self.http_session)
+                await AsyncFunctions.shutdown(asyncio.get_running_loop(), http_session=self.http_session)
+
             # self.save_data_on_exit(profit_data, ledger)  # Ensure this is awaited if it's an async function
             # self.alerts.callhome(f"Program has stopped running.", f'Time:{datetime.datetime.now()}')
             print("Program has exited.")
