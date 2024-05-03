@@ -50,17 +50,19 @@ class ProfitHelper:
             df, current_prices = await self.ticker_manager.parallel_fetch_and_update(aggregated_df, update_type)
 
             # Update the DataFrame with current prices
-            df['current_price'] = df['symbol'].map(current_prices).fillna(df['current_price'])
+            df['current_price'] = df['asset'].map(current_prices).fillna(df['current_price'])
 
-            # Calculate unrealized profit or loss
-            df['total_cost'] = df['average_cost'] * df['Balance']
-            df['market_value'] = df['Balance'] * df['current_price']
-            df['unrealized_profit_loss'] = (df['market_value'] - df['total_cost']).apply(
+            # Convert and calculate using Decimal for precision
+            df['total_cost'] = df['average_cost'].apply(Decimal) * df['Balance'].apply(Decimal)
+            df['market_value'] = df['Balance'].apply(Decimal) * df['current_price'].apply(Decimal)
+            df['unrealized_profit_loss'] = df['market_value'] - df['total_cost']
+            df['unrealized_profit_loss'] = df['unrealized_profit_loss'].apply(
                 lambda x: Decimal(x).quantize(Decimal('.01')))
 
-            # Calculate unrealized percent change
+            # Calculate unrealized percent change, handle NaN/inf, and ensure Decimal precision
             df['unrealized_pct_change'] = (
-                (df['unrealized_profit_loss'] / df['total_cost'] * 100).replace([pd.NA, pd.NaT, np.inf, -np.inf], 0))
+                    df['unrealized_profit_loss'] / df['total_cost'] * 100
+            ).fillna(0)  # Handle NaNs and infinities more robustly
             df['unrealized_pct_change'] = df['unrealized_pct_change'].apply(
                 lambda x: Decimal(x).quantize(Decimal('.01')) if not pd.isna(x) else Decimal(0))
 
@@ -98,56 +100,7 @@ class ProfitHelper:
                 market_prices[symbol] = bid
         return market_prices
 
-    def process_trade_data(self, trade):
-        """PART VI: Profitability Analysis and Order Generation """
-        try:
-            # Initialize fee_cost
-            fee_cost = None
 
-            # Extract the trade time, handling the case where 'info' may or may not be present
-            if 'info' in trade and 'trade_time' in trade['info']:
-                trade_time_str = trade['info']['trade_time']
-                # Truncate the string to limit the number of decimal places to 6
-                trade_time_str = trade_time_str.split('.')[0] + '.' + trade_time_str.split('.')[1][:6]
-                trade_time = datetime.fromisoformat(trade_time_str.rstrip("Z"))  # Assuming ISO format string
-            elif 'trade_time' in trade and isinstance(trade['trade_time'], datetime):
-                trade_time = trade['trade_time']  # Directly use the datetime object
-            else:
-                self.log_manager.sighook_logger.error(
-                    f"Unexpected or missing 'trade_time' in trade data for {trade.get('symbol')}")
-                trade_time = None  # Handle the unexpected format or missing 'trade_time'
-
-            # Handle the 'fee' field, which can be a dictionary or a direct numeric value
-            if 'fee' in trade:
-                fee = trade['fee']
-                if isinstance(fee, dict) and 'cost' in fee:
-                    fee_cost = fee['cost']
-                elif isinstance(fee, (Decimal, float, int)):
-                    fee_cost = fee
-                else:
-                    self.log_manager.sighook_logger.error(f"Unexpected 'fee' format in trade data for {trade.get('symbol')}")
-
-            # Construct the processed trade dictionary
-            processed_trade = {
-                'trade_time': trade_time,
-                'id': trade.get('id'),
-                'order_id': trade.get('order_id'),
-                'symbol': trade.get('symbol'),
-                'price': Decimal(trade['price']).quantize(Decimal('0.01'), ROUND_DOWN) if 'price' in trade else None,
-                'amount': Decimal(trade['amount']).quantize(Decimal('0.00000001'),
-                                                            ROUND_DOWN) if 'amount' in trade else None,
-                'cost': Decimal(trade['cost']).quantize(Decimal('0.01'), ROUND_DOWN) if 'cost' in trade else None,
-                'side': trade.get('side').lower() if 'side' in trade else None,
-                'fee': Decimal(str(fee_cost)).quantize(Decimal('0.01'), ROUND_DOWN) if fee_cost is not None else None,
-            }
-
-            return processed_trade
-        except Exception as e:
-            error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f'process_trade_data: {error_details}, {e}')
-            return None
-        # Perform any necessary validation or transformation on the extracted data
-        # For example, you might want to ensure that 'side' is either 'buy' or 'sell'
 
 
     #  <><><><><><><><><><><><><><><><><><><>><><><><><><><><><><><><><><><><><><><>><>><><><><><><><><><><><><><><><><><><><>
@@ -168,7 +121,7 @@ class ProfitHelper:
     def construct_profit_data_row(product_id, profit_loss, balance):
         # Simplified method signature by removing 'balance' as it's already part of 'profit_loss'
         return {
-            'Symbol': product_id,
+            'Asset': product_id,
             'Unrealized PCT': profit_loss['unrealized_pct'].quantize(Decimal('0.001'), ROUND_DOWN),
             'Profit/Loss': profit_loss['unrealized_profit_loss'].quantize(Decimal('0.01'), ROUND_DOWN),
             'Total Cost': profit_loss['total_cost'].quantize(Decimal('0.01'), ROUND_DOWN),

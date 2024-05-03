@@ -32,6 +32,7 @@ from trading_strategy import TradingStrategy
 from profit_manager import ProfitabilityManager
 from profit_helper import ProfitHelper
 from profit_extras import PerformanceManager
+from csv_manager import CsvManager
 
 # Event to signal that a shutdown has been requested
 shutdown_event = asyncio.Event()
@@ -40,7 +41,9 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     def __init__(self, bot_config):
         self.app_config = bot_config
+        self._csv_dir = self.app_config.csv_dir
         self.log_dir = self.app_config.log_dir
+        self.csv_manager = None
         self.max_concurrent_tasks = 10
         self.log_manager, self.alerts, self.ccxt_exceptions, self.custom_excep = None, None, None, None
         self.api401, self.exchange, self.market_metrics = None, None, None
@@ -49,11 +52,14 @@ class TradeBot:
         self.profit_manager, self.profit_helper, self.order_manager, self.market_manager = None, None, None, None
         self.market_data, self.ticker_cache, self.market_cache, self.current_prices = None, None, None, None
         self.filtered_balances, self.start_time, self.exchange_class, self.session = None, None, None, None
-        self.db_initializer, self.database_ops_mngr = None, None
+        self.db_initializer, self.database_ops_mngr, self.csv_manager, self.utility = None, None, None, None
         self.sleep_time = self.app_config.sleep_time
         self.web_url = self.app_config.web_url
-        self.utility = None
+
         # self.initialize_components()
+    @property
+    def csv_dir(self):
+        return self._csv_dir
 
     async def start(self):
         """ Start the bot after initialization. """
@@ -88,15 +94,58 @@ class TradeBot:
             self.start_time = time.time()
             print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
             self.market_data = await self.market_manager.update_market_data()
-            await self.database_session_mngr.process_data(self.market_data, self.start_time)
+            await self.database_session_mngr.process_data(self.market_data, self.start_time, self.csv_dir)
             self.utility.print_elapsed_time(self.start_time, 'Part I: Data Gathering and Database Loading is complete, '
                                                              'session closed')
         except Exception as e:
-            self.log_manager.error("Failed to initialize data on startup", exc_info=True)
+            self.log_manager.sighook_logger.error("Failed to initialize data on startup", exc_info=True)
         finally:
             await self.exchange.close()
 
     async def load_bot_components(self):
+        """ Initialize all components required by the TradeBot. """
+        self.log_manager = LoggerManager(self.app_config, log_dir=self.log_dir)
+        self.exchange = self.setup_exchange()
+        self.alerts = AlertSystem(self.app_config, self.log_manager)
+        self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
+        self.async_func = AsyncFunctions()
+        self.indicators = Indicators(self.log_manager, self.app_config)
+        self.utility = SenderUtils(self.log_manager, self.exchange, self.ccxt_exceptions)
+
+        self.ticker_manager = TickerManager(self.utility, self.log_manager, self.exchange, self.ccxt_exceptions,
+                                            self.max_concurrent_tasks)
+        self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
+                                                  self.max_concurrent_tasks)
+
+        self.database_ops_mngr = DatabaseOpsManager(self.utility, self.exchange, self.ccxt_exceptions, self.log_manager,
+                                                    self.ticker_manager, self.portfolio_manager, self.app_config)
+        self.csv_manager = CsvManager(self.database_ops_mngr, self.exchange, self.ccxt_exceptions, self.log_manager,
+                                      self.app_config)
+        self.database_session_mngr = DatabaseSessionManager(self.database_ops_mngr, self.csv_manager, self.log_manager,
+                                                            self.app_config)
+        self.db_initializer = DatabaseInitializer(self.database_session_mngr)
+
+        self.webhook = SenderWebhook(self.exchange, self.utility, self.alerts, self.log_manager, self.app_config)
+        self.trading_strategy = TradingStrategy(self.webhook, self.ticker_manager, self.utility, self.exchange, self.alerts,
+                                                self.log_manager, self.ccxt_exceptions, self.market_metrics,
+                                                self.app_config, self.max_concurrent_tasks)
+        self.profit_helper = ProfitHelper(self.utility, self.portfolio_manager, self.ticker_manager,
+                                          self.database_session_mngr, self.log_manager, self.app_config)
+        self.order_manager = OrderManager(self.trading_strategy, self.ticker_manager, self.exchange, self.webhook,
+                                          self.utility, self.alerts, self.log_manager, self.ccxt_exceptions,
+                                          self.profit_helper, self.app_config, self.max_concurrent_tasks)
+        self.market_manager = MarketManager(self.exchange, self.order_manager, self.trading_strategy, self.log_manager,
+                                            self.ccxt_exceptions, self.ticker_manager, self.utility,
+                                            self.max_concurrent_tasks)
+        self.profit_extras = PerformanceManager(self.exchange, self.ccxt_exceptions, self.utility, self.profit_helper,
+                                                self.order_manager, self.portfolio_manager, self.database_session_mngr,
+                                                self.log_manager, self.app_config)
+        self.profit_manager = ProfitabilityManager(self.exchange, self.ccxt_exceptions, self.utility, self.portfolio_manager,
+                                                   self.database_session_mngr, self.database_ops_mngr, self.order_manager,
+                                                   self.trading_strategy, self.profit_helper, self.profit_extras,
+                                                   self.log_manager, self.app_config)
+
+    async def old_load_bot_components(self):
 
         """ Initialize all components required by the TradeBot. """
         self.log_manager = LoggerManager(self.app_config, log_dir=self.log_dir)
@@ -106,23 +155,28 @@ class TradeBot:
         self.alerts = AlertSystem(self.app_config, self.log_manager)
         self.indicators = Indicators(self.log_manager, self.app_config)
         self.utility = SenderUtils(self.log_manager, self.exchange, self.ccxt_exceptions)
+
         self.ticker_manager = (TickerManager(self.utility, self.log_manager, self.exchange, self.ccxt_exceptions,
                                              self.max_concurrent_tasks))
 
         self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
                                                   self.max_concurrent_tasks)
 
-        self.database_ops_mngr = DatabaseOpsManager(self.utility, self.exchange, self.log_manager, self.ticker_manager,
-                                                    self.portfolio_manager, self.app_config)
-        self.database_session_mngr = DatabaseSessionManager(self.database_ops_mngr, self.log_manager, self.app_config)
+        self.database_session_mngr = DatabaseSessionManager(self.database_ops_mngr, self.csv_manager, self.log_manager,
+                                                            self.app_config)
 
         self.db_initializer = DatabaseInitializer(self.database_session_mngr)
+
+        self.csv_manager = CsvManager(self.database_ops_mngr, self.exchange, self.ccxt_exceptions, self.log_manager,
+                                      self.app_config)
+
 
         self.webhook = SenderWebhook(self.exchange, self.utility, self.alerts, self.log_manager, self.app_config)
 
         self.trading_strategy = TradingStrategy(self.webhook, self.ticker_manager, self.utility, self.exchange, self.alerts,
                                                 self.log_manager, self.ccxt_exceptions, self.market_metrics,
                                                 self.app_config, self.max_concurrent_tasks)
+
         self.profit_helper = ProfitHelper(self.utility, self.portfolio_manager, self.ticker_manager,
                                           self.database_session_mngr, self.log_manager,  self.app_config)
 
@@ -138,9 +192,12 @@ class TradeBot:
                                                 self.log_manager, self.app_config)
 
         self.profit_manager = ProfitabilityManager(self.exchange, self.ccxt_exceptions, self.utility, self.portfolio_manager,
-                                                   self.database_session_mngr, self.order_manager, self.trading_strategy,
-                                                   self.profit_helper, self.profit_extras, self.log_manager, self.app_config)
+                                                   self.database_session_mngr, self.database_ops_mngr, self.order_manager,
+                                                   self.trading_strategy, self.profit_helper, self.profit_extras,
+                                                   self.log_manager, self.app_config)
 
+        self.database_ops_mngr = DatabaseOpsManager(self.utility, self.exchange, self.ccxt_exceptions, self.log_manager,
+                                                    self.ticker_manager, self.portfolio_manager, self.app_config)
     async def run_bot(self):  # async
 
         profit_data = pd.DataFrame(columns=['Symbol', 'Unrealized PCT', 'Profit/Loss', 'Total Cost', 'Current Value',
@@ -169,6 +226,10 @@ class TradeBot:
                 self.market_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
 
                 self.webhook.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, web_url)
+
+                self.profit_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, self.web_url)
+
+                self.csv_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
 
                 # PART II:
                 #   Trade Database Updates and Portfolio Management

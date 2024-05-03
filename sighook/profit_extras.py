@@ -69,7 +69,7 @@ class PerformanceManager:
     def get_price_symbol(self, product_id):  # async
         try:
             ticker_info = self.ticker_cache.loc[self.ticker_cache['base'] == product_id].iloc[0]
-            return Decimal(ticker_info['info']['price']).quantize(Decimal('0.01'), ROUND_DOWN), ticker_info['symbol']
+            return Decimal(ticker_info['info']['price']).quantize(Decimal('0.01'), ROUND_DOWN), ticker_info['asset']
         except Exception as e:
             error_details = traceback.format_exc()
             self.log_manager.sighook_logger.error(f'get_current_price_and_symbol: {error_details}')

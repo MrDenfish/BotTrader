@@ -5,7 +5,8 @@
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
     "DATABASE_DIR": "data",
-    "DATABASE_FILE": "trades.db"
+    "DATABASE_FILE": "trades.db,",
+    "CSV_FILE": "data/Alltrades.csv"
   },
   "Manny": {
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
@@ -13,7 +14,8 @@
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
     "DATABASE_DIR": "data",
-    "DATABASE_FILE": "trades.db"
+    "DATABASE_FILE": "trades.db,",
+    "CSV_FILE": "data/Alltrades.csv"
   },
   "moe": {
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
@@ -21,7 +23,8 @@
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
     "DATABASE_DIR": "data",
-    "DATABASE_FILE": "trades.db"
+    "DATABASE_FILE": "trades.db",
+    "CSV_FILE": "data/Alltrades.csv"
   },
   "do_server": {
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
@@ -29,6 +32,7 @@
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
     "DATABASE_DIR": "data",
-    "DATABASE_FILE": "trades.db"
+    "DATABASE_FILE": "trades.db",
+    "CSV_FILE": "data/Alltrades.csv"
   }
 }

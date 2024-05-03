@@ -28,7 +28,7 @@ class PortfolioManager:
             since_unix = self.utility.time_unix(last_update_time)
             return await self.fetch_trades_for_symbol(symbol, since=since_unix)
         except Exception as e:
-            self.log_manager.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
+            self.log_manager.sighook_logger.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
             return []
 
     async def fetch_trades_for_symbol(self, symbol, since=None):
@@ -50,7 +50,7 @@ class PortfolioManager:
 
             return my_trades
         except Exception as e:
-            self.log_manager.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
+            self.log_manager.sighook_logger.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
             return []
 
     def get_portfolio_data(self, start_time, threshold=0.01):
@@ -66,7 +66,7 @@ class PortfolioManager:
             price_change = None
             # Preprocessing ticker_cache
             self.ticker_cache = self._preprocess_ticker_cache()
-            self.ticker_cache = self.ticker_cache.drop_duplicates(subset='symbol')
+            self.ticker_cache = self.ticker_cache.drop_duplicates(subset='asset')
             # Calculate average dollar volume total
             avg_dollar_vol_total = self.ticker_cache['quote_vol_24h'].mean() if not self.ticker_cache.empty else 0
 
@@ -183,7 +183,7 @@ class PortfolioManager:
         balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         if balance_decimal * price_decimal > Decimal(threshold):
-            return {'symbol': row['symbol'], 'Currency': row['base_currency'], 'Balance': balance_decimal}
+            return {'asset': row['asset'], 'Currency': row['base_currency'], 'Balance': balance_decimal}
         return None
 
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
@@ -193,7 +193,7 @@ class PortfolioManager:
         #  Extract list of unique cryptocurrencies from buy_sell_matrix
         unique_coins = buy_sell_matrix['coin'].unique()
         #  Filter ticker_cache to contain only rows with symbols in unique_coins The 'symbol' column in ticker_cache needs
-        self.ticker_cache['base_currency'] = self.ticker_cache['symbol'].apply(lambda x: x.split('/')[0])
+        self.ticker_cache['base_currency'] = self.ticker_cache['asset'].apply(lambda x: x.split('/')[0])
         # Filter rows where base_currency is in the list of unique_coins
         filtered_ticker_cache = self.ticker_cache[self.ticker_cache['base_currency'].isin(unique_coins)]
         return filtered_ticker_cache

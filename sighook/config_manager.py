@@ -25,6 +25,7 @@ class AppConfig:
         self._echo_sql, self._db_pool_size, self._db_max_overflow, self._db_echo = None, None, None, None
         self._ccxt_verbose = None
         self._database_dir = None
+        self._cvs_dir = None
         self._hodl = []
         if self._is_loaded:
             return
@@ -86,6 +87,7 @@ class AppConfig:
             with open(config_path, 'r') as f:
                 self._json_config = json.load(f)
             # Process loaded configuration here...
+            self._csv_dir = self._json_config[self.machine_type]['CSV_FILE']  # Extracting the CVS file path
         except Exception as e:
             print(f"Error loading JSON configuration: {e}")
             exit(1)
@@ -137,6 +139,10 @@ class AppConfig:
             print('Error: Could not determine machine type')
             exit(1)
         return machine_type, port
+
+    @property
+    def csv_dir(self):
+        return self._csv_dir
 
     @property
     def database_dir(self):

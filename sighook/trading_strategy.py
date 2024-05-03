@@ -47,21 +47,21 @@ class TradingStrategy:
     async def process_row(self, row, buy_sell_matrix, ohlcv_data_dict):
         """PART IV: Trading Strategies"""
         try:
-            symbol = row['symbol'].replace('-', '/')
+            asset = row['asset'].replace('-', '/')
             price_str = row['info']['price']
             price = float(price_str) if price_str else 0.0
-            if symbol == 'USD/USD':
+            if asset == 'USD/USD':
                 return None
-            ohlcv_data = ohlcv_data_dict.get(symbol)
+            ohlcv_data = ohlcv_data_dict.get(asset)
             if ohlcv_data is None:
                 return None
                 # Access the DataFrame directly from ohlcv_data
             ohlcv_df = ohlcv_data['data']
             bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
-            action_data = self.decide_action(ohlcv_df, bollinger_df, symbol, row['info']['price'], buy_sell_matrix)
+            action_data = self.decide_action(ohlcv_df, bollinger_df, asset, row['info']['price'], buy_sell_matrix)
 
             order_info = {
-                'symbol': symbol,
+                'asset': asset,
                 'action': action_data.get('action'),
                 'price': price,
                 'value': row['free'] * price,
@@ -75,7 +75,7 @@ class TradingStrategy:
             return {'order_info': order_info}
 
         except Exception as e:
-            return {"error": f"Error processing row for symbol {row['symbol']}:  {str(e)}"}
+            return {"error": f"Error processing row for symbol {row['asset']}:  {str(e)}"}
 
     def process_row_results(self, results, buy_sell_matrix):
         """PART IV: Trading Strategies
@@ -218,8 +218,14 @@ class TradingStrategy:
             buy_sell_data['sell_sig_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
 
             # ROC-based signals
-            buy_sell_data['buy_signal_roc'] = df['ROC'].iloc[-1] > 1  # ROC buy condition
-            buy_sell_data['sell_signal_roc'] = df['ROC'].iloc[-1] < -1  # ROC sell condition
+            buy_sell_data['buy_signal_roc'] = df['ROC'].iloc[-1] > 1 and df['ROC_Diff'].iloc[-1] > .3  # ROC buy condition
+            buy_sell_data['sell_signal_roc'] = df['ROC'].iloc[-1] < -1 and df['ROC_Diff'].iloc[-1] < -.3  # ROC sell
+            if buy_sell_data['buy_signal_roc']:
+                self.log_manager.sighook_logger.warning(f'ROC buy signal for {symbol} ROC: {df["ROC"].iloc[-1]} ROC_Diff:'
+                                                        f' {df["ROC_Diff"].iloc[-1]}')
+            if buy_sell_data['sell_signal_roc']:
+                self.log_manager.sighook_logger.warning(f'ROC sell signal for {symbol} ROC: {df["ROC"].iloc[-1]} ROC_Diff: '
+                                                        f'{df["ROC_Diff"].iloc[-1]}')
 
             # MACD-based signals
             # Check if the MACD line has crossed above the Signal Line for a buy signal
@@ -234,11 +240,9 @@ class TradingStrategy:
             buy_sell_data['sell_swing_signal'] = df['Sell Swing'].iloc[-1]
 
             # ROC-based signals with precedence
-            if df['ROC'].iloc[-1] > 1:  # ROC buy condition
-                buy_sell_data['buy_signal_roc'] = True
+            if buy_sell_data['buy_signal_roc']:  # ROC buy condition
                 buy_sell_data['buy_signal'] = 'bro'  # Set ROC as the primary trigger
-            elif df['ROC'].iloc[-1] < -1:  # ROC sell condition
-                buy_sell_data['sell_signal_roc'] = True
+            elif buy_sell_data['sell_signal_roc']:  # ROC sell condition
                 buy_sell_data['sell_signal'] = 'sro'  # Set ROC as the primary trigger
 
             # Function to add signals without leading hyphen for the first condition

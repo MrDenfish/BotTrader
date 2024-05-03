@@ -1,7 +1,7 @@
 version: '3.7'
 services:
   sighook:
-    image: denfish/bot-sighook:2.35
+    image: denfish/bot-sighook:2.37
     env_file:
       - ./.env_tradebot
     volumes:
@@ -19,7 +19,7 @@ services:
         max-size: "10m"   # Maximum log file size
         max-file: "3"     # Number of log files to retain
   webhook:
-    image: denfish/bot-webhook:2.35
+    image: denfish/bot-webhook:2.37
     env_file:
       - ./.env_tradebot
     volumes:

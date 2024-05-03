@@ -223,8 +223,8 @@ class OrderManager:
            PART VI: Profitability Analysis and Order Generation """
         await self.open_http_session()  # Ensure the session is open before handling actions
         try:
-            _, quote_deci = self.utility.fetch_precision(order['symbol'])
-            symbol = order['symbol']
+            _, quote_deci = self.utility.fetch_precision(order['asset'])
+            asset = order['asset']
             action_type = order['action']
             price = order['price']
             price = self.utility.float_to_decimal(price, quote_deci)
@@ -247,10 +247,10 @@ class OrderManager:
                     coin_balance = Decimal(balances['filtered'][coin]['free'])
                 usd_balance = Decimal(balances['filtered']['USD']['free'])
                 if action_type == 'buy':
-                    result = await self.handle_buy_action(symbol, price, coin_balance, usd_balance, band_ratio, trigger)
+                    result = await self.handle_buy_action(asset, price, coin_balance, usd_balance, band_ratio, trigger)
                     results.append(result)
                 elif action_type == 'sell' and value > self.min_sell_value:
-                    result = await self.handle_sell_action(holdings, symbol, price, trigger, sell_cond)
+                    result = await self.handle_sell_action(holdings, asset, price, trigger, sell_cond)
                     results.append(result)
 
             return results  # Process results as needed
@@ -272,7 +272,11 @@ class OrderManager:
                 buy_limit = price
                 buy_order = 'limit'
                 response = await self.webhook.send_webhook(self.http_session, buy_action, buy_pair, buy_limit, buy_order)
-                if response.status in [403, 429, 500]:  #
+                if response:
+                    if response.status in [403, 429, 500]:  #
+                        await self.close_http_session()
+                        return []
+                else:
                     await self.close_http_session()
                     return []
                 # await

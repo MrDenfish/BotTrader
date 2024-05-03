@@ -54,7 +54,7 @@ class MarketManager:
 
         open_orders = await self.order_manager.get_open_orders(holdings, usd_pairs)
         self.utility.print_elapsed_time(self.start_time, 'open_orders')
-        symbols = filtered_ticker_cache['symbol'].unique().tolist()
+        symbols = filtered_ticker_cache['asset'].unique().tolist()
         ohlcv_data_dict = await self.fetch_all_ohlcv_data(symbols)
         self.utility.print_elapsed_time(self.start_time, 'fetch_all_ohlcv_data')
         return open_orders, ohlcv_data_dict
@@ -113,7 +113,7 @@ class MarketManager:
                 if all_ohlcv:
                     df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
                     return {
-                        'symbol': symbol,
+                        'asset': symbol,
                         'data': df
                     }
             except Exception as e:

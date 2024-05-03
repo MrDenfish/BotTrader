@@ -98,7 +98,7 @@ class SenderUtils:
             # Iterate through market data cache
             for market in self.market_cache:
                 # Compare market symbol or product_id to the normalized ticker
-                if market['symbol'] == ticker_value or market['info']['product_id'] == ticker_value:
+                if market['asset'] == ticker_value or market['info']['product_id'] == ticker_value:
                     base_precision = market['precision']['price']  # Expected to be a float
                     quote_precision = market['precision']['amount']  # Expected to be a float
 

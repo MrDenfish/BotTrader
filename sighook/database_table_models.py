@@ -28,14 +28,16 @@ class Trade(Base):
     trade_id = Column(String, primary_key=True)  # id {str}
     order_id = Column(String, nullable=True)  # order {str}
     trade_time = Column(DateTime)  # datetime {str}
-    symbol = Column(String, nullable=True)  # symbol {str}
-    price = Column(Numeric)  # price {float}
-    amount = Column(Numeric)  # amount {float}
-    cost = Column(Numeric)  # cost {float}
-    side = Column(String, nullable=True)  # side {str}
-    fee = Column(Numeric, nullable=True)  # fee {float}
+    transaction_type = Column(String, nullable=True)
+    asset = Column(String, nullable=True)  # symbol {str}
+    amount = Column(Numeric)  # amount {decimal}
     currency = Column(String, ForeignKey('holdings.currency'))  # Link to Holdings via currency
+    price = Column(Numeric)  # price {decimal}
+    cost = Column(Numeric)  # cost {decimal}
+    total = Column(Numeric)  # total {decimal}
+    fee = Column(Numeric, nullable=True)  # fee {float}
     holding = relationship("Holding", back_populates="trades", overlaps="trades")
+    notes = Column(String, nullable=True)
 
 
 class NewTrade(Base):
@@ -48,16 +50,23 @@ class NewTrade(Base):
 
     trade_id = Column(String, primary_key=True)
     trade_time = Column(DateTime)
-    symbol = Column(String, nullable=True)
+    transaction_type = Column(String, nullable=True)
+    asset = Column(String, nullable=True)
+    amount = Column(Numeric)  # amount {decimal}
+    currency = Column(String, ForeignKey('holdings.currency'))  # Link to Holdings via currency
+    price = Column(Numeric)  # price {decimal}
     cost = Column(Numeric)
+    total = Column(Numeric)  # total {decimal}
     fee = Column(Numeric, nullable=True)
+    holding = relationship("Holding", back_populates="new_trades")
+    notes = Column(String, nullable=True)
 
 
 class TradeSummary(Base):
     """Summary of all trades for a specific symbol."""
     __tablename__ = 'trade_summary'
     id = Column(Integer, primary_key=True)
-    symbol = Column(String)
+    asset = Column(String)
     total_trades = Column(Integer)
     total_cost = Column(Numeric)
     total_fees = Column(Numeric)
@@ -71,8 +80,7 @@ class Holding(Base):
 
     __tablename__ = 'holdings'
     currency = Column(String, primary_key=True)
-    symbol = Column(String, nullable=False, index=True)
-    first_purchase_date = Column(DateTime)
+    asset = Column(String, nullable=False, index=True)
     purchase_date = Column(DateTime, default=func.now())
     purchase_price = Column(Numeric)
     current_price = Column(Numeric)
@@ -82,7 +90,8 @@ class Holding(Base):
     total_cost = Column(Numeric)
     unrealized_profit_loss = Column(Numeric)
     unrealized_pct_change = Column(Numeric)
-    trades = relationship("Trade", back_populates="holding", overlaps="holding")  # Correct relationship annotation
+    trades = relationship("Trade", back_populates="holding")
+    new_trades = relationship("NewTrade", back_populates="holding")
 
     @classmethod
     def create_from_trade(cls, trade):
@@ -91,7 +100,7 @@ class Holding(Base):
         currency = trade.symbol.split('/')[0]
         return cls(
             currency=currency,
-            ticker=trade.symbol,
+            ticker=trade.asset,
             purchase_date=trade.trade_time,
             purchase_price=trade.price,
             current_price=trade.price,  # Initial current price is the purchase price
