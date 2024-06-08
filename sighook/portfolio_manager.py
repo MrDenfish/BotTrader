@@ -1,6 +1,7 @@
-from datetime import datetime
+
 import asyncio
 import pandas as pd
+from datetime import timedelta
 from decimal import Decimal, ROUND_DOWN
 
 
@@ -25,7 +26,10 @@ class PortfolioManager:
         """PART I: Data Gathering and Database Loading. Process a single symbol's market data.
         Fetch trades for a single symbol up to the last update time."""
         try:
-            since_unix = self.utility.time_unix(last_update_time)
+            endpoint = 'private'
+            params = {'paginate': True, 'paginationCalls': 100}
+            adjusted_time = last_update_time + timedelta(milliseconds=99)
+            since_unix = self.utility.time_unix(adjusted_time)
             return await self.fetch_trades_for_symbol(symbol, since=since_unix)
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
@@ -35,19 +39,15 @@ class PortfolioManager:
         """PART I: Data Gathering and Database Loading. Fetch trades for a single symbol."""
         try:
             endpoint = 'private'
-            params = {'paginate': True, 'paginationCalls': 50, 'limit': 300}
+            params = {'paginate': True, 'paginationCalls': 100}
             my_trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol,
-                                                                 since=since, params=params)
-            # Convert the 'datetime' from ISO format to a Python datetime object
-            for trade in my_trades:
-                if 'datetime' in trade and trade['datetime']:
-                    trade_time_str = trade['datetime'].rstrip('Z')
-                    if '.' in trade_time_str:  # Handle fractional seconds properly
-                        trade_time_str, ms = trade_time_str.split('.')
-                        ms = ms.ljust(6, '0')[:6]  # Normalize to microseconds
-                        trade_time_str = f"{trade_time_str}.{ms}"
-                    trade['datetime'] = datetime.fromisoformat(trade_time_str)
+                                                                 since=since, limit=None, params=params)
 
+            if my_trades:
+                # Convert the 'datetime' from ISO format to a Python datetime object
+                for trade in my_trades:
+                    if 'datetime' in trade and trade['datetime']:
+                        trade['datetime'] = self.utility.standardize_timestamp(trade['datetime'])
             return my_trades
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
@@ -111,7 +111,7 @@ class PortfolioManager:
                 df = pd.DataFrame()  # Convert to empty DataFrame if it's not already a DataFrame
                 df = self._process_portfolio(threshold)  # filter coins with less than $0.1USD value
             # Handle the case when a specific symbol is provided
-            portfolio_df = df.sort_values(by='Currency', ascending=True) if df is not None else pd.DataFrame()
+            portfolio_df = df.sort_values(by='quote_currency', ascending=True) if df is not None else pd.DataFrame()
             # load
             holdings = portfolio_df.to_dict('records')
 
@@ -119,7 +119,7 @@ class PortfolioManager:
                     buy_sell_matrix, price_change)
 
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'get_portfolio_data df:{df}', exc_info=True)
+            self.log_manager.sighook_logger.error(f'get_portfolio_data df:{df}  {e}', exc_info=True)
 
     def _preprocess_ticker_cache(self):  # pull 24hr volume
         """PART II: Trade Database Updates and Portfolio Management"""
@@ -145,7 +145,7 @@ class PortfolioManager:
 
         price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-        return {'coin': row['base_currency'], 'price': price_decimal, 'base volume': row['info']['volume_24h'],
+        return {'coin': row['asset'], 'price': price_decimal, 'base volume': row['info']['volume_24h'],
                 'quote volume': row['quote_vol_24h'], 'price change %': row['info']['price_percentage_change_24h']}
 
     @staticmethod
@@ -165,7 +165,7 @@ class PortfolioManager:
     def _get_usd_pairs(df):
         """PART II: Trade Database Updates and Portfolio Management"""
 
-        return df[df['free'] == 0].apply(lambda x: {'id': f"{x['base_currency']}-USD", 'price': x['price']}, axis=1).tolist()
+        return df[df['free'] == 0].apply(lambda x: {'id': f"{x['asset']}-USD", 'price': x['price']}, axis=1).tolist()
 
     def _process_portfolio(self, threshold):
         """PART II: Trade Database Updates and Portfolio Management"""
@@ -180,10 +180,10 @@ class PortfolioManager:
     def _check_portfolio(row, threshold):
         """PART II: Trade Database Updates and Portfolio Management"""
 
-        balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+        balance_decimal = Decimal(row['total']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
         if balance_decimal * price_decimal > Decimal(threshold):
-            return {'asset': row['asset'], 'Currency': row['base_currency'], 'Balance': balance_decimal}
+            return {'asset': row['asset'], 'quote_currency': row['quote'], 'Balance': balance_decimal}
         return None
 
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
@@ -192,11 +192,63 @@ class PortfolioManager:
 
         #  Extract list of unique cryptocurrencies from buy_sell_matrix
         unique_coins = buy_sell_matrix['coin'].unique()
-        #  Filter ticker_cache to contain only rows with symbols in unique_coins The 'symbol' column in ticker_cache needs
-        self.ticker_cache['base_currency'] = self.ticker_cache['asset'].apply(lambda x: x.split('/')[0])
+        # Filter ticker_cache to contain only rows with symbols in unique_coins The 'symbol' column in ticker_cache needs
+        # self.ticker_cache['base_currency'] = self.ticker_cache['asset'].apply(lambda x: x.split('/')[0])
         # Filter rows where base_currency is in the list of unique_coins
-        filtered_ticker_cache = self.ticker_cache[self.ticker_cache['base_currency'].isin(unique_coins)]
+        filtered_ticker_cache = self.ticker_cache[self.ticker_cache['asset'].isin(unique_coins)]
         return filtered_ticker_cache
 
-    #<><><><><><><><><><><><><><><><><> RETIRED CODE DO NOT DELETE 4/22/24 <><><><><>><><><><><><><><><><><><><><><><><><><>
+    async def fetch_wallets(self):
+        """PART VI: Profitability Analysis and Order Generation
+        update ticker cache with wallet holdings and available balance."""
 
+        endpoint = 'private'
+        params = {'paginate': True, 'paginationCalls': 100}
+        wallets = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_accounts, endpoint, params)
+        filtered_wallets = self.filter_non_zero_wallets(wallets)
+        return self.update_ticker_cache(filtered_wallets)
+
+    # Function to filter wallets with non-zero balance
+    def filter_non_zero_wallets(self, wallets):
+        try:
+            non_zero_wallets = []
+            for wallet in wallets:
+                available_balance = Decimal(wallet['info']['available_balance']['value'])
+                hold_balance = Decimal(wallet['info']['hold']['value'])
+                total_balance = available_balance + hold_balance
+                if total_balance > 0:
+                    non_zero_wallets.append(wallet)
+            return non_zero_wallets
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f'filter_non_zero_wallets: {e}', exc_info=True)
+
+    # Function to update DataFrame with balances
+    def update_ticker_cache(self, wallets, threshold=0.01):
+        try:
+            for wallet in wallets:
+                currency = wallet['info']['currency']
+                available_balance = Decimal(wallet['info']['available_balance']['value'])
+                hold_balance = Decimal(wallet['info']['hold']['value'])
+                total_balance = available_balance + hold_balance
+                df = self.ticker_cache
+                # Check if the asset exists in the DataFrame
+                if not df[df['asset'] == currency].empty:
+                    df.loc[df['asset'] == currency, 'free'] = available_balance
+                    df.loc[df['asset'] == currency, 'total'] = total_balance
+
+                self.ticker_cache = df
+
+            df = self._process_portfolio(threshold)
+
+            # Ensure portfolio_df is a DataFrame
+            if not isinstance(df, pd.DataFrame):
+                df = pd.DataFrame()  # Convert to empty DataFrame if it's not already a DataFrame
+                df = self._process_portfolio(threshold)  # filter coins with less than $0.1USD value
+            # Handle the case when a specific symbol is provided
+            portfolio_df = df.sort_values(by='quote_currency', ascending=True) if df is not None else pd.DataFrame()
+            wallets = portfolio_df.to_dict('records')
+            return wallets
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f'update_ticker_cache: {e}', exc_info=True)
+
+    # <><><><><><><><><><><><><><><><><> RETIRED CODE DO NOT DELETE 4/22/24 <><><><><>><><><><><><><><><><><><><><><><><><><>

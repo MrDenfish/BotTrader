@@ -1,8 +1,8 @@
-from sqlalchemy import create_engine, Column, String, Numeric, DateTime, Integer, ForeignKey
+from sqlalchemy import create_engine, Column, String, Numeric, DateTime, Integer, ForeignKey, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
+from decimal import Decimal
 
 Base = declarative_base()
 
@@ -18,6 +18,7 @@ class Trade(Base):
         price (Numeric): Execution price of the trade.
         amount (Numeric): Quantity traded.
         cost (Numeric): Total cost of the trade (amount * price).
+        proceeds (Numeric): Total proceeds of the trade (amount * price).
         side (str): Trade side, 'buy' or 'sell', nullable if not applicable.
         fee (Numeric): Trading fee incurred, nullable if not applicable.
     """
@@ -25,19 +26,113 @@ class Trade(Base):
 
     __tablename__ = 'trades'
 
-    trade_id = Column(String, primary_key=True)  # id {str}
-    order_id = Column(String, nullable=True)  # order {str}
-    trade_time = Column(DateTime)  # datetime {str}
+    trade_id = Column(String, primary_key=True, nullable=False,unique=True)  # id {str}
+    order_id = Column(String, nullable=True, unique=False)  # order {str}
+    trade_time = Column(DateTime(timezone=True))  # datetime {str}
     transaction_type = Column(String, nullable=True)
     asset = Column(String, nullable=True)  # symbol {str}
-    amount = Column(Numeric)  # amount {decimal}
+    amount = Column(Float)  # Ensure amount is defined as Float  # amount {float}
+    balance = Column(Float)  # Remaining balance
     currency = Column(String, ForeignKey('holdings.currency'))  # Link to Holdings via currency
-    price = Column(Numeric)  # price {decimal}
-    cost = Column(Numeric)  # cost {decimal}
-    total = Column(Numeric)  # total {decimal}
-    fee = Column(Numeric, nullable=True)  # fee {float}
+    price = Column(Float)  # price {float}
+    cost = Column(Float, default=0)  # cost {float} only buy orders, defaults to 0
+    proceeds = Column(Float, default=0)  # Only sell trades, defaults to 0
+    fee = Column(Float, nullable=True)  # fee {float}
+    total = Column(Float)  # total {float}
     holding = relationship("Holding", back_populates="trades", overlaps="trades")
     notes = Column(String, nullable=True)
+
+    @classmethod
+    async def create_trade_from_row(cls, session, trade, asset, trade_time, csv=False):
+        """Create Trade objects from a CSV row."""
+        transaction_type = trade.get('Transaction Type', '').lower()
+        trade_id = trade.get('ID')
+        currency = trade.get('Price Currency')
+        try:
+            # Handle different transaction types
+            if 'convert' in transaction_type:
+                # Assume Notes field explains the conversion: "Converted X ETH to Y ETH2"
+                details = trade['Notes'].split()
+                from_amount = float(details[1])
+                asset_from = details[2]
+                amount_to = float(details[4])
+                asset_to = details[5]
+
+                # Log the conversion details
+                cls.log_manager.sighook_logger.debug(f"Creating conversion trades: from {asset_from} to {asset_to}")
+
+                # Create sell trade for the asset being converted from
+                sell_trade = cls(
+                    trade_time=trade_time,
+                    trade_id=trade_id,
+                    order_id=trade.get('order', 'na'),
+                    asset=asset['from_asset'],
+                    amount=-from_amount,
+                    balance=0,
+                    price=float(trade.get('Price at Transaction')),
+                    currency=currency,
+                    cost=0,
+                    proceeds=float(trade.get('Subtotal')),
+                    fee=float(trade.get('Fees and/or Spread', 0)),
+                    transaction_type='sell',
+                    total=float(trade.get('Subtotal')) - float(trade.get('Fees and/or Spread', 0))
+                )
+
+                # Create buy trade for the asset being converted to
+                buy_trade = cls(
+                    trade_time=trade_time,
+                    trade_id=trade_id + '-convert',
+                    order_id=trade.get('order', 'na'),
+                    asset=asset['to_asset'],
+                    amount=amount_to,
+                    balance=0,
+                    price=float(trade.get('Price at Transaction')),  # Assuming same price for simplification
+                    currency=currency,  # This needs to be adjusted if currency differs
+                    cost=float(trade.get('Subtotal')),
+                    proceeds=0,
+                    fee=float(trade.get('Fees and/or Spread', 0)),
+                    transaction_type='buy',
+                    total=float(trade.get('Subtotal')) + float(trade.get('Fees and/or Spread', 0))
+                )
+
+                cls.log_manager.sighook_logger.debug(f"Created sell trade: {sell_trade}")
+                cls.log_manager.sighook_logger.debug(f"Created buy trade: {buy_trade}")
+
+                return sell_trade, buy_trade
+
+            else:  # Process buy or sell normally
+                is_buy = 'buy' in transaction_type or 'Receive' in transaction_type
+                price = float(trade.get('Price at Transaction'))
+                amount = float(trade.get('Quantity Transacted'))
+                if amount == 0.0:
+                    cls.log_manager.sighook_logger.warning(f"Zero amount trade: {trade_id}")
+                fee = float(trade.get('Fees and/or Spread', 0))
+                cost = float(trade.get('Subtotal') if is_buy else 0)
+                proceeds = float(trade.get('Subtotal') if not is_buy else 0)
+
+                # Log the trade details
+                cls.log_manager.sighook_logger.debug(
+                    f"Creating trade: id={trade_id}, amount={amount}, cost={cost}, proceeds={proceeds}")
+
+                return cls(
+                    trade_time=trade_time,
+                    trade_id=trade_id,
+                    order_id=trade.get('order', 'na'),  # Consider handling 'order' ID extraction better
+                    asset=asset['asset'],
+                    price=price,
+                    amount=amount if is_buy else -amount,
+                    balance=0,
+                    currency=currency,
+                    cost=cost,
+                    proceeds=proceeds,
+                    transaction_type=transaction_type,
+                    fee=fee,
+                    total=cost - fee if is_buy else proceeds - fee
+                )
+        except Exception as e:
+            await session.rollback()
+            cls.log_manager.sighook_logger.error(f"Failed to create trade from row: {e}", exc_info=True)
+            raise ValueError(f"Failed to create trade from row: {e}")
 
 
 class NewTrade(Base):
@@ -49,15 +144,18 @@ class NewTrade(Base):
     __tablename__ = 'trades_new'
 
     trade_id = Column(String, primary_key=True)
-    trade_time = Column(DateTime)
+    order_id = Column(String, nullable=True)
+    trade_time = Column(DateTime(timezone=True))
     transaction_type = Column(String, nullable=True)
     asset = Column(String, nullable=True)
-    amount = Column(Numeric)  # amount {decimal}
+    amount = Column(Float)  # amount {float}
+    balance = Column(Float)  # Remaining balance
     currency = Column(String, ForeignKey('holdings.currency'))  # Link to Holdings via currency
-    price = Column(Numeric)  # price {decimal}
-    cost = Column(Numeric)
-    total = Column(Numeric)  # total {decimal}
-    fee = Column(Numeric, nullable=True)
+    price = Column(Float)  # price {float}
+    cost = Column(Float)  # buy orders only
+    proceeds = Column(Float, default=0)  # Only sell trades, defaults to 0
+    fee = Column(Float, nullable=True)
+    total = Column(Float)  # total {float}
     holding = relationship("Holding", back_populates="new_trades")
     notes = Column(String, nullable=True)
 
@@ -68,80 +166,71 @@ class TradeSummary(Base):
     id = Column(Integer, primary_key=True)
     asset = Column(String)
     total_trades = Column(Integer)
-    total_cost = Column(Numeric)
-    total_fees = Column(Numeric)
-    average_cost_without_fees = Column(Numeric)
-    average_cost_with_fees = Column(Numeric)
+    total_cost = Column(Float)
+    total_proceeds = Column(Float)
+    total_fees = Column(Float)
+    average_cost_without_fees = Column(Float)
+    average_cost_with_fees = Column(Float)
 
 
 class Holding(Base):
     """All current holdings are stored in this table."""
     """Holds all Current holdings."""
-
     __tablename__ = 'holdings'
+
+    # Using asset and currency as a composite primary key
     currency = Column(String, primary_key=True)
-    asset = Column(String, nullable=False, index=True)
-    purchase_date = Column(DateTime, default=func.now())
-    purchase_price = Column(Numeric)
-    current_price = Column(Numeric)
-    purchase_amount = Column(Numeric)
-    balance = Column(Numeric)
-    average_cost = Column(Numeric)
-    total_cost = Column(Numeric)
-    unrealized_profit_loss = Column(Numeric)
-    unrealized_pct_change = Column(Numeric)
+    asset = Column(String, primary_key=True)
+
+    purchase_date = Column(DateTime(timezone=True), default=func.now())
+    purchase_price = Column(Float)
+    current_price = Column(Float)
+    purchase_amount = Column(Float)
+    initial_investment = Column(Float)
+    market_value = Column(Float)
+    balance = Column(Float)
+    weighted_average_cost = Column(Float)
+    unrealized_profit_loss = Column(Float)
+    unrealized_pct_change = Column(Float)
+
+    # Relationships with other tables
     trades = relationship("Trade", back_populates="holding")
     new_trades = relationship("NewTrade", back_populates="holding")
 
-    @classmethod
-    def create_from_trade(cls, trade):
-        # used by old_database_manager
-        """Create a new Holding instance from a trade."""
-        currency = trade.symbol.split('/')[0]
-        return cls(
-            currency=currency,
-            ticker=trade.asset,
-            purchase_date=trade.trade_time,
-            purchase_price=trade.price,
-            current_price=trade.price,  # Initial current price is the purchase price
-            purchase_amount=trade.amount,
-            balance=trade.amount,
-            average_cost=trade.price,
-            total_cost=trade.cost,
-            unrealized_profit_loss=0,  # Initial unrealized profit/loss is 0
-            unrealized_pct_change=0  # Initial unrealized percentage change is 0
-        )
+    def __repr__(self):
+        return f"<Holding(asset={self.asset}, currency={self.currency})>"
 
-    @classmethod
-    def create_from_aggregated_data(cls, currency, aggregated_data, balance):
-        # used by old_database_manager
-        """
-        Create a new Holding instance from aggregated trade data.
-
-        Parameters:
-        - currency: The currency symbol of the holding.
-        - aggregated_data: A dictionary containing aggregated trade data,
-          including 'earliest_trade_time', 'total_amount', 'total_cost',
-          'average_cost', and 'purchase_price'.
-        - balance: The current balance of the cryptocurrency in the holding.
-
-        Returns:
-        - An instance of Holding initialized with the provided data.
-        """
-        return cls(
-            currency=currency,
-            first_purchase_date=aggregated_data['earliest_trade_time'],
-            purchase_date=aggregated_data['earliest_trade_time'],  # or use datetime.utcnow() if more appropriate
-            purchase_price=aggregated_data['purchase_price'],
-            current_price=aggregated_data['purchase_price'],
-            # Assuming current price is the purchase price; adjust as needed
-            purchase_amount=aggregated_data['total_amount'],
-            balance=balance,
-            average_cost=aggregated_data['average_cost'],
-            total_cost=aggregated_data['total_cost'],
-            unrealized_profit_loss=0,  # Initialize as 0; adjust based on your logic
-            unrealized_pct_change=0  # Initialize as 0; adjust based on your logic
-        )
+    # @classmethod
+    # def create_from_aggregated_data(cls, currency, aggregated_data, balance):
+    #     # used by old_database_manager
+    #     """
+    #     Create a new Holding instance from aggregated trade data.
+    #
+    #     Parameters:
+    #     - currency: The currency symbol of the holding.
+    #     - aggregated_data: A dictionary containing aggregated trade data,
+    #       including 'earliest_trade_time', 'total_amount', 'total_cost',
+    #       'average_cost', and 'purchase_price'.
+    #     - balance: The current balance of the cryptocurrency in the holding.
+    #
+    #     Returns:
+    #     - An instance of Holding initialized with the provided data.
+    #     """
+    #     return cls(
+    #         currency=currency,
+    #         first_purchase_date=aggregated_data['earliest_trade_time'],
+    #         purchase_date=aggregated_data['earliest_trade_time'],  # or use datetime.utcnow() if more appropriate
+    #         purchase_price=aggregated_data['purchase_price'],
+    #         current_price=aggregated_data['purchase_price'],
+    #         # Assuming current price is the purchase price; adjust as needed
+    #         purchase_amount=aggregated_data['total_amount'],
+    #         initial_investment=aggregated_data['total_cost'],
+    #         market_value=aggregated_data['total_amount'] * trade.price,
+    #         balance=balance,
+    #         weighted_average_cost=aggregated_data['weighted_average_cost'],
+    #         unrealized_profit_loss=0,  # Initialize as 0; adjust based on your logic
+    #         unrealized_pct_change=0  # Initialize as 0; adjust based on your logic
+    #     )
 
     def update_from_trade(self, trade):
         """Update the Holding instance based on a trade."""
@@ -171,7 +260,7 @@ class RealizedProfit(Base):
     profit_loss = Column(Numeric)  # Realized profit or loss for the trade
     sell_amount = Column(Numeric)  # The quantity of the cryptocurrency that was sold
     sell_price = Column(Numeric)  # The price at which the cryptocurrency was sold
-    timestamp = Column(DateTime, default=func.now())  # Timestamp of when the profit was realized
+    timestamp = Column(DateTime(timezone=True), default=func.now())  # Timestamp of when the profit was realized
 
 
 class ProfitData(Base):
@@ -191,4 +280,4 @@ class SymbolUpdate(Base):
     __tablename__ = 'symbol_updates'
 
     symbol = Column(String, primary_key=True)
-    last_update_time = Column(DateTime)
+    last_update_time = Column(DateTime(timezone=True))

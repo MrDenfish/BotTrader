@@ -28,7 +28,7 @@ class ValidateOrders:
 
     @property
     def min_sell_value(self):
-        return self._min_sell_value # Minimum value of a sell order
+        return self._min_sell_value  # Minimum value of a sell order
 
     @property
     def version(self):
@@ -57,8 +57,6 @@ class ValidateOrders:
                                                          f'valid. {validate_data["trading_pair"]} balance is {base_balance}')
 
             return None, False
-
-    from decimal import Decimal, InvalidOperation
 
     def validate_orders(self, validate_data):
         # Use a helper function to fetch and convert data safely
@@ -109,7 +107,6 @@ class ValidateOrders:
             valid_order = base_balance_value > Decimal('1.0')
 
         return base_balance, base_balance_value, valid_order
-
 
     def old_validate_orders(self, validate_data):
 

@@ -51,27 +51,24 @@ class ProfitHelper:
 
             # Update the DataFrame with current prices
             df['current_price'] = df['asset'].map(current_prices).fillna(df['current_price'])
-
             # Convert and calculate using Decimal for precision
-            df['total_cost'] = df['average_cost'].apply(Decimal) * df['Balance'].apply(Decimal)
-            df['market_value'] = df['Balance'].apply(Decimal) * df['current_price'].apply(Decimal)
-            df['unrealized_profit_loss'] = df['market_value'] - df['total_cost']
-            df['unrealized_profit_loss'] = df['unrealized_profit_loss'].apply(
-                lambda x: Decimal(x).quantize(Decimal('.01')))
+            df['market_value'] = df['Balance'].apply(float) * df['current_price'].apply(float)
+            df['unrealized_profit_loss'] = abs(df['market_value']) - abs(df['initial_investment'])
+            df['unrealized_profit_loss'] = df['unrealized_profit_loss'].apply(lambda x: round(float(x), 2))
 
             # Calculate unrealized percent change, handle NaN/inf, and ensure Decimal precision
-            df['unrealized_pct_change'] = (
-                    df['unrealized_profit_loss'] / df['total_cost'] * 100
-            ).fillna(0)  # Handle NaNs and infinities more robustly
+            df['unrealized_pct_change'] = ((df['market_value']-abs(df['initial_investment']))/((df[
+                                            'market_value'] + abs(df['initial_investment']))/2)).fillna(0)
+            # Handle NaNs and infinities more robustly
             df['unrealized_pct_change'] = df['unrealized_pct_change'].apply(
-                lambda x: Decimal(x).quantize(Decimal('.01')) if not pd.isna(x) else Decimal(0))
+                lambda x: round(float(x), 2) if not pd.isna(x) else 0.0)
 
             return df  # Return the updated DataFrame with all calculations
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error calculating unrealized profit/loss: {e}", exc_info=True)
             raise
 
-    def should_place_sell_order(self, holding, current_price):
+    def should_place_sell_order(self, asset, holding, current_price):
         """ PART VI: Profitability Analysis and Order Generation  operates directly on a holding object (an instance from
         the Holdings table) and the current_market_price,
         making decisions based on the latest available data.  unrealized profit and its percentage are calculated
@@ -81,11 +78,11 @@ class ProfitHelper:
             return False
 
         # Calculate current value and unrealized profit percentage
-        current_value = holding['Balance'] * Decimal(current_price)
-        unrealized_profit = current_value - (holding['Balance'] * holding['average_cost'])
-        unrealized_profit_pct = ((unrealized_profit / (
-                    holding['average_cost'] * holding['Balance'])) * 100) if holding['average_cost'] > 0 else Decimal('0')
-
+        current_value = holding['Balance'] * float(current_price)
+        v1 = holding['market_value'] - holding['initial_investment']
+        v2 = (holding['market_value'] + holding['initial_investment'])/2
+        unrealized_profit_pct = v1/v2
+        # print(f"Unrealized profit percentage for {asset}: {unrealized_profit_pct}") # debug
         # Decide to sell based on the calculated unrealized profit percentage
         return unrealized_profit_pct > self._take_profit or unrealized_profit_pct < self._stop_loss
 
@@ -94,12 +91,10 @@ class ProfitHelper:
 
         market_prices = {}
         for symbol in symbols:
-            _, bid, _ = await self.ticker_manager.fetch_ticker_data(symbol)  # await
-            # bid,ask
+            _, bid, _ = await self.ticker_manager.fetch_ticker_data(symbol['symbol'])  # Accessing symbol
             if bid:
-                market_prices[symbol] = bid
+                market_prices[symbol['asset']] = bid
         return market_prices
-
 
 
 
@@ -130,7 +125,7 @@ class ProfitHelper:
         }
 
     def is_stop_triggered(self, holding, current_price):
-        pass
+        pass  # debug
 
     @staticmethod
     def update_trailing_stop(current_price, trailing_stop_percentage, peak_price=None, stop_price=None):

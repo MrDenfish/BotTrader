@@ -22,8 +22,10 @@ class BotConfig:
             self._api_url, self._json_config, self._docker_staticip, self._tv_whitelist = None, None, None, None
             self._coin_whitelist, self._pagekite_whitelist, self._account_sid, self._auth_token = None, None, None, None
             self._account_phone, self._web_url, self._log_level, self._hodl = None, None, None, []
-            self._min_sell_value,self.port, self.machine_type, self.log_dir, self.sql_log_dir = None, None, None, None, None
+            self._min_sell_value, self.port, self.machine_type, self.log_dir, self.sql_log_dir = None, None, None, None, None
             self.flask_log_dir, self.active_trade_dir, self.portfolio_dir, self.profit_dir = None, None, None, None
+            self._stop_loss, self._take_profit, self._coinbase_api_key, self._coinbase_secret = None, None, None, None
+            self._coinbase_passphrase, self._cdp_api_key_path = None, None
 
             if not self._is_loaded:
                 # Check if running inside Docker by looking for a specific environment variable
@@ -42,6 +44,9 @@ class BotConfig:
     def load_environment_variables(self):
         self._version = os.getenv('VERSION')
         self._api_key = os.getenv('API_KEY')
+        self._coinbase_api_key = os.getenv('COINBASE_API_KEY')
+        self._coinbase_secret = os.getenv('COINBASE_API_SECRET')
+        self._coinbase_passphrase = os.getenv('COINBASE_PASSPHRASE')
         self._api_secret = os.getenv('API_SECRET')
         self._passphrase = os.getenv('API_PASS')
         self._api_url = os.getenv('API_URL')
@@ -54,6 +59,8 @@ class BotConfig:
         self._account_phone = os.getenv('ACCOUNT_PHONE')
         self._web_url = os.getenv('WEB_URL')
         self._log_level = os.getenv('LOG_LEVEL_WEBHOOK')
+        self._stop_loss = os.getenv('STOP_LOSS')
+        self._take_profit = os.getenv('TAKE_PROFIT')
         self._min_sell_value = Decimal(os.getenv('MIN_SELL_VALUE'))
         self._hodl = os.getenv('HODL')
         self.machine_type = self.determine_machine_type()
@@ -61,14 +68,12 @@ class BotConfig:
     def load_json_config(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(current_dir, 'config.json')
-
+        self._cdp_api_key_path = os.path.join(current_dir, 'cdp_api_key.json')
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
-            self._json_config = config
+                self._json_config = config
             if self.machine_type in config:
-                machine_path = config[self.machine_type]
-                # Load machine-specific settings
                 self.get_directory_paths()
             else:
                 print(f"Error: Machine type '{self.machine_type}' not found in config")
@@ -121,6 +126,14 @@ class BotConfig:
         return self._min_sell_value
 
     @property
+    def stop_loss(self):
+        return self._stop_loss
+
+    @property
+    def take_profit(self):
+        return self._take_profit
+
+    @property
     def program_version(self):
         return self._version
 
@@ -140,6 +153,18 @@ class BotConfig:
     @property
     def passphrase(self):
         return self._passphrase
+
+    @property
+    def coinbase_api_key(self):
+        return self._coinbase_api_key
+
+    @property
+    def coinbase_secret(self):
+        return self._coinbase_secret
+
+    @property
+    def coinbase_passphrase(self):
+        return self._coinbase_passphrase
 
     @property
     def api_url(self):
@@ -176,6 +201,10 @@ class BotConfig:
     @property
     def json_config(self):
         return self._json_config
+
+    @property
+    def cdp_api_key_path(self):
+        return self._cdp_api_key_path
 
     @property
     def is_loaded(self):

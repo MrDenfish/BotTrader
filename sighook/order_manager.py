@@ -75,7 +75,7 @@ class OrderManager:
             }
             # fetch all buy/sell open orders
             all_open_orders = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_open_orders, endpoint,
-                                                                       params=params)
+                                                                       limit=None, params=params)
 
             if len(all_open_orders) == 0:  # no open orders for coins in portfolio
                 self.log_manager.sighook_logger.debug(f'order_manager: get_open_orders: No open orders found.')
@@ -84,6 +84,7 @@ class OrderManager:
                 self.log_manager.sighook_logger.debug(f'order_manager: get_open_orders: Found {len(all_open_orders)}'
                                                       f' open orders.')
                 all_open_orders = self.format_open_orders(all_open_orders)
+
                 open_orders = await self.cancel_stale_orders(all_open_orders)  # await
                 return open_orders
         except Exception as gooe:
@@ -96,6 +97,7 @@ class OrderManager:
         try:
             # Fetch ticker data for unique symbols in open_orders
             symbols = set(open_orders['product_id'].str.replace('/', '-'))
+
             ticker_tasks = [self.fetch_ticker_data(symbol) for symbol in symbols]
             ticker_data = await asyncio.gather(*ticker_tasks)
 
@@ -112,13 +114,29 @@ class OrderManager:
             merged_orders['amount'] = merged_orders['amount'].apply(Decimal)
             merged_orders['ask'] = merged_orders['ask'].apply(Decimal)
             merged_orders['bid'] = merged_orders['bid'].apply(Decimal)
-
+            merged_orders['time active (minutes)'] = merged_orders['time active (minutes)'].str.replace(' minutes',
+                                                                                                        '').astype(int)
+            # Create the boolean column based on the comparison
+            merged_orders['time active > 5 minutes'] = merged_orders['time active (minutes)'] > 5
             # Calculate 'is_stale' using vectorized operations
-            merged_orders['is_stale'] = (((merged_orders['side'].str.upper() == 'BUY') &
-                                          ((merged_orders['amount'] * Decimal('1.02') < merged_orders['ask']) |
-                                           (merged_orders['amount'] * Decimal('0.98') > merged_orders['bid']))) |
-                                         ((merged_orders['side'].str.upper() == 'SELL') &
-                                          (merged_orders['amount'] < merged_orders['ask'] * Decimal('0.98'))))
+            # Perform the vectorized operation to determine if an order is stale
+            merged_orders['is_stale'] = (
+                    (
+                        # Condition for 'BUY' orders
+                            (merged_orders['side'] == 'BUY') &  # Check if side is 'BUY'
+                            (
+                                    (merged_orders['amount'] * Decimal('1.02') < merged_orders[
+                                        'ask']) |  # Condition 1 for 'BUY'
+                                    (merged_orders['amount'] * Decimal('0.98') > merged_orders['bid'])
+                                    # Condition 2 for 'BUY'
+                            ) & (merged_orders['time active > 5 minutes'])  # Check if older than 5 minutes
+                    ) |
+                    (
+                        # Condition for 'SELL' orders
+                        (merged_orders['side'] == 'SELL') &  # Check if side is 'SELL'
+                        (merged_orders['amount'] < merged_orders['ask'] * Decimal('0.98'))  # Condition for 'SELL'
+                    )
+            )
 
             # Filter stale orders
             stale_orders = merged_orders[merged_orders['is_stale']]
@@ -169,14 +187,21 @@ class OrderManager:
                 'size': order['amount'],
                 'amount': order['price'],
                 'filled': order['filled'],
-                'remaining': order['remaining']
+                'remaining': order['remaining'],
+                'time active': order['info']['created_time'],
             } for order in open_orders]
             df = pd.DataFrame(data_to_load)
             base_deci, quote_deci = self.utility.fetch_precision(df['product_id'])
+
             df['size'] = df.apply(lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['size']),
                                                                             'base'), axis=1)
             df['amount'] = df.apply(lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['amount']),
                                                                               'base'), axis=1)
+            df['time active (minutes)'] = df['time active'].apply(lambda x: self.utility.calculate_time_difference(x))
+            df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')  # Ensure numeric
+            df['time active > 5 minutes'] = df['time_temp'] > 5
+            df.drop(columns=['time_temp'], inplace=True)
+
             return df
         except Exception as e:
             self.log_manager.sighook_logger.error(f'Error formatting open orders: {e}', exc_info=True)
@@ -223,8 +248,9 @@ class OrderManager:
            PART VI: Profitability Analysis and Order Generation """
         await self.open_http_session()  # Ensure the session is open before handling actions
         try:
-            _, quote_deci = self.utility.fetch_precision(order['asset'])
-            asset = order['asset']
+            _, quote_deci = self.utility.fetch_precision(order['symbol'])
+            asset = order['symbol'].split('/')[0]
+            symbol = order['symbol']
             action_type = order['action']
             price = order['price']
             price = self.utility.float_to_decimal(price, quote_deci)
@@ -247,15 +273,18 @@ class OrderManager:
                     coin_balance = Decimal(balances['filtered'][coin]['free'])
                 usd_balance = Decimal(balances['filtered']['USD']['free'])
                 if action_type == 'buy':
-                    result = await self.handle_buy_action(asset, price, coin_balance, usd_balance, band_ratio, trigger)
+                    result = await self.handle_buy_action(symbol, price, coin_balance, usd_balance, band_ratio, trigger)
                     results.append(result)
                 elif action_type == 'sell' and value > self.min_sell_value:
-                    result = await self.handle_sell_action(holdings, asset, price, trigger, sell_cond)
+                    result = await self.handle_sell_action(holdings, symbol, price, trigger, sell_cond)
                     results.append(result)
 
             return results  # Process results as needed
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error fetching symbols from actions: {e}")
+            if "No market found" in str(e):
+                self.log_manager.sighook_logger.info(f"No market found: {e}")
+            else:
+                self.log_manager.sighook_logger.error(f"Error handling actions: {e}", exc_info=True)
             return []
 
     async def handle_buy_action(self, symbol, price, coin_balance, usd_balance, band_ratio, trigger):

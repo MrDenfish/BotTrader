@@ -12,6 +12,7 @@ from custom_exceptions import ApiExceptions
 from webhook_utils import TradeBotUtils
 from webhook_validate_orders import ValidateOrders
 from webhook_order_book import OrderBookManager
+# from test import TestOrderManager
 from webhook_order_manager import TradeOrderManager
 from webhook_manager import WebHookManager
 
@@ -20,19 +21,23 @@ class WebhookListener:
     def __init__(self, config):
         self.semaphore = asyncio.Semaphore(15)  # Control access to the session
         self.bot_config = config
+        self.api_key = self.bot_config.api_key
+        self.secret = self.bot_config.api_secret
+        self.base_url = self.bot_config.api_url
         self.trade_order_manager, self.order_book_manager, self.utility, self.webhook_manager = None, None, None, None
         self.alerts, self.ccxt_exceptions, self.api401, self.custom_excep = None, None, None, None
         self.exchange_class, self.exchange, self.accessory_tools, self.validate = None, None, None, None
-        self.log_manager = None
+        self.log_manager, self.test_order_manager = None, None
 
     async def setup(self):
         # Set up the exchange initiate the exchange session.
         self.exchange = ccxt.coinbase({
-            'apiKey': self.bot_config.api_key,
-            'secret': self.bot_config.api_secret,
+            'apiKey': self.api_key,
+            'secret': self.secret,
             'enableRateLimit': True,
             'verbose': False
         })
+
         # Asynchronously load components like databases, logging, etc.
         self.log_manager = LoggerManager(self.bot_config, log_dir=self.bot_config.log_dir)
         self.alerts = AlertSystem(self.log_manager)
@@ -43,6 +48,10 @@ class WebhookListener:
         self.trade_order_manager = TradeOrderManager(self.bot_config, self.exchange, self.utility, self.validate,
                                                      self.log_manager, self.alerts, self.ccxt_exceptions,
                                                      self.order_book_manager)
+
+        # self.test_order_manager = TestOrderManager(self.bot_config, self.exchange, self.utility, self.validate,
+        #                                            self.log_manager, self.alerts, self.ccxt_exceptions,
+        #                                            self.order_book_manager)
 
         self.webhook_manager = WebHookManager(self.log_manager, self.utility, self.trade_order_manager, self.alerts)
 
@@ -239,8 +248,8 @@ class WebhookListener:
 
 
 async def run_app(config):
+    listener = WebhookListener(config)
     try:
-        listener = WebhookListener(config)
         app = await listener.create_app()
         runner = web.AppRunner(app)
         await runner.setup()

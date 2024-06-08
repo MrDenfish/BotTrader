@@ -3,9 +3,8 @@ import functools
 import asyncio
 import inspect
 import traceback
-from contextlib import asynccontextmanager
 from ssl import SSLError
-from ccxt.base.errors import RequestTimeout,  ExchangeError, BadSymbol, RateLimitExceeded, ExchangeNotAvailable
+from ccxt.base.errors import RequestTimeout,  ExchangeError, BadSymbol, RateLimitExceeded
 
 
 class ApiRateLimiter:
@@ -60,16 +59,17 @@ class ApiExceptions:
 
     async def ccxt_api_call(self, func, endpoint_type, *args, **kwargs):
         """
-                Wrapper function for CCXT api(Coinbase) calls.
+        Wrapper function for CCXT API calls.
 
-                Parameters:
-                - func (callable): The CCXT api(Coinbase) function to call.
-                - *args: Positional arguments to pass to func.
-                - **kwargs: Keyword arguments to pass to func.
+        Parameters:
+        - func (callable): The CCXT API function to call.
+        - endpoint_type (str): The endpoint type ('private' or 'public').
+        - *args: Positional arguments to pass to func.
+        - **kwargs: Keyword arguments to pass to func.
 
-                Returns:
-                - The result of the api(Coinbase) call, or None if an exception was caught.
-                """
+        Returns:
+        - The result of the API call, or None if an exception was caught.
+        """
 
         if endpoint_type is None:
             self.log_manager.webhook_logger.error(f"Unknown endpoint type: {endpoint_type}")
@@ -79,89 +79,84 @@ class ApiExceptions:
         backoff_factor = 0.2
         rate_limit_wait = 1  # seconds to wait when rate limit is hit
 
-        # async with (ApiCallContext(self)) as context:
         try:
             for attempt in range(1, retries + 1):  # Start counting attempts from 1
                 try:
-                    try:
-                        caller = inspect.stack()[1]  # debug
-                        caller_function_name = caller.function  # debug
-                        if caller_function_name == 'place_limit_order':
-                            self.log_manager.webhook_logger.debug(f'Calling {caller_function_name} with args: {args}')
-                        # Check if 'func' is a coroutine function and await it directly
-                        response = None  # Initialize response before the try block
-                        if asyncio.iscoroutinefunction(func):
-                            response = await func(*args, **kwargs)
-                            # return response
+                    caller = inspect.stack()[1]  # debug
+                    caller_function_name = caller.function  # debug
+                    if caller_function_name == 'place_limit_order':
+                        self.log_manager.webhook_logger.debug(f'Calling {caller_function_name} with args: {args}')
+                    # Check if 'func' is a coroutine function and await it directly
+                    response = None  # Initialize response before the try block
+                    if asyncio.iscoroutinefunction(func):
+                        response = await func(*args, **kwargs)
+                    else:
+                        # Run blocking function in a separate thread
+                        response = await asyncio.to_thread(func, *args, **kwargs)
+
+                    return response
+
+                except (RequestTimeout, BadSymbol, RateLimitExceeded, SSLError) as e:
+                    self.log_manager.webhook_logger.error(f"Attempt {attempt}: Error during API call "
+                                                          f"{type(e).__name__}: {str(e)}")
+
+                    if isinstance(e, SSLError):
+                        self.log_manager.webhook_logger.error("SSL Error encountered", exc_info=True)
+                        return None
+                    if isinstance(e, RequestTimeout):
+                        self.log_manager.webhook_logger.error("Request Timeout encountered", exc_info=True)
+                        await asyncio.sleep(1)
+                    if isinstance(e, BadSymbol):
+                        self.log_manager.webhook_logger.info(f'Bad Symbol error: {e}')
+                        return None
+
+                except ExchangeError as ex:
+                    if hasattr(self.exchange, 'last_http_response'):
+                        last_response = self.exchange.last_http_response
+                        if 'INVALID_LIMIT_PRICE_POST_ONLY' in str(last_response):
+                            return 'amend'  # Amend the order
+                        elif 'must be greater than minimum amount precision' in str(last_response) or \
+                             'must be greater than minimum amount precision' in str(ex):
+                            return 'order_size_too_small'
+
+                        elif 'Rate limit exceeded' in str(ex):
+                            # Dynamic wait time based on the attempt number, considering both standard and burst rates
+                            caller = inspect.stack()[1]
+                            caller_function_name = caller.function
+                            self.log_manager.webhook_logger.info(
+                                f'Rate limit exceeded {caller_function_name}, args: {args}: '
+                                f'Retrying in {rate_limit_wait} seconds...')
+                            await self.handle_rate_limit_exceeded(attempt)
+
+                        elif 'INSUFFICIENT_FUND' in str(last_response):
+                            self.log_manager.webhook_logger.info(f'Exchange error: {ex}', exc_info=True)
+                            return 'insufficient_funds'
+                        elif 'USD/USD' in str(ex):
+                            self.log_manager.webhook_logger.debug(f'USD/USD: {ex}', exc_info=True)
                         else:
-                            # Run blocking function in a separate thread
-                            response = await asyncio.to_thread(func, *args, **kwargs)
-                            # return response
-
-                        return response
-
-                    except (RequestTimeout, BadSymbol, RateLimitExceeded, SSLError) as e:
-                        self.log_manager.webhook_logger.error(f"Attempt {attempt}: Error during API call "
-                                                              f"{type(e).__name__}: {str(e)}")
-
-                        if isinstance(e, SSLError):
-                            self.log_manager.webhook_logger.error("SSL Error encountered", exc_info=True)
-                            return None
-                        if isinstance(e, RequestTimeout):
-                            self.log_manager.webhook_logger.error("Request Timeout encountered", exc_info=True)
-                            await asyncio.sleep(1)
-                        if isinstance(e, BadSymbol):
-                            self.log_manager.webhook_logger.info(f'Bad Symbol error: {e}')
-                            return None
-
-                    except ExchangeError as ex:
-                        if hasattr(self.exchange, 'last_http_response'):
-                            last_response = self.exchange.last_http_response
-                            if 'INVALID_LIMIT_PRICE_POST_ONLY' in str(last_response):
-                                return 'amend'  # Amend the order
-                            elif 'must be greater than minimum amount precision' in str(last_response) or \
-                                 'must be ''greater than minimum amount precision' in str(ex):
-                                return 'order_size_too_small'
-
-                            elif 'Rate limit exceeded' in str(ex):
-                                # Dynamic wait time based on the attempt number, considering both standard and burst rates
-                                # Get the name of the calling function using inspect.stack()
-                                caller = inspect.stack()[1]
-                                caller_function_name = caller.function
-                                self.log_manager.webhook_logger.info(
-                                    f'Rate limit exceeded {caller_function_name}, args: {args}: '
-                                    f'Retrying in {rate_limit_wait} seconds...')
-                                await self.handle_rate_limit_exceeded(attempt)
-
-                            elif 'INSUFFICIENT_FUND' in str(last_response):
-                                self.log_manager.webhook_logger.info(f'Exchange error: {ex}', exc_info=True)
-                                return 'insufficient_funds'
-                            elif 'USD/USD' in str(ex):
-                                self.log_manager.webhook_logger.debug(f'USD/USD: {ex}', exc_info=True)
+                            if 'coinbase does not have market symbol' in str(ex):
+                                self.log_manager.webhook_logger.error(f'Exchange error: {ex}')
+                                return None
                             else:
-                                if 'coinbase does not have market symbol' in str(ex):
-                                    self.log_manager.webhook_logger.error(f'Exchange error: {ex}')
-                                    return None
-                                else:
-                                    caller = inspect.stack()[1]
-                                    if hasattr(self.exchange, 'last_http_response'):
-                                        self.log_manager.webhook_logger.debug(
-                                            f"Last HTTP Response: {self.exchange.last_http_response}")
-                                    self.log_manager.webhook_logger.error(f"Exchange error details: {vars(ex)}")
-                                    self.log_manager.webhook_logger.error(
-                                        f'Exchange error during {caller.function}  params: {args}, {kwargs}. Error: {ex}')
-                                    self.log_manager.webhook_logger.error(f'Exchange error: {ex}\nDetails: '
-                                                                          f'{caller.function}', exc_info=True)
+                                caller = inspect.stack()[1]
+                                if hasattr(self.exchange, 'last_http_response'):
+                                    self.log_manager.webhook_logger.debug(
+                                        f"Last HTTP Response: {self.exchange.last_http_response}")
+                                self.log_manager.webhook_logger.error(f"Exchange error details: {vars(ex)}")
+                                self.log_manager.webhook_logger.error(
+                                    f'Exchange error during {caller.function}  params: {args}, {kwargs}. Error: {ex}')
+                                self.log_manager.webhook_logger.error(f'Exchange error: {ex}\nDetails: '
+                                                                      f'{caller.function}', exc_info=True)
+                                break  # Break out of the loop for non-rate limit related errors
+                except asyncio.TimeoutError:
+                    if attempt == retries:
+                        self.log_manager.webhook_logger.error(f"Request timed out after {retries} attempts")
+                        break  # Exit the loop if this was the last attempt
+                    await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
 
-                                    break  # Break out of the loop for non-rate limit related errors
-                    except asyncio.TimeoutError:
-                        if attempt == retries:
-                            self.log_manager.webhook_logger.error(f"Request timed out after {retries} attempts")
-                            break  # Exit the loop if this was the last attempt
-                        await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
-
-                    except RateLimitExceeded as ex:
-                        await self.handle_rate_limit_exceeded(attempt)
+                except RateLimitExceeded as ex:
+                    self.log_manager.webhook_logger.error(f"Rate limit exceeded: {ex}")
+                    await self.handle_rate_limit_exceeded(attempt)
                 except IndexError as e:
                     error_details = traceback.format_exc()
                     if args is not None:
@@ -176,18 +171,17 @@ class ApiExceptions:
                     error_details = traceback.format_exc()
                     self.log_manager.webhook_logger.error(
                         f'Request timeout error: {timeout_error}\nDetails: {error_details}')
-                    await asyncio.sleep(wait_time)  # await  Use the calculated wait_time
+                    await asyncio.sleep(wait_time)  # Use the calculated wait_time
 
                 except Exception as e:
                     max_wait_time = 60  # Maximum wait time of 60 seconds
                     wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
                     error_details = traceback.format_exc()
                     self.log_manager.webhook_logger.error(f"Error in API call: {e}\nDetails: {error_details}")
-                    await asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
+                    await asyncio.sleep(wait_time)  # Use the calculated wait_time here
 
             return None
         finally:
-            # print(f'API call completed for {func.__name__}') # debug
             pass
 
     async def handle_rate_limit_exceeded(self, attempt):

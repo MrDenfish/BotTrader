@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN
 
 
 import traceback

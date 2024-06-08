@@ -87,7 +87,7 @@ class AppConfig:
             with open(config_path, 'r') as f:
                 self._json_config = json.load(f)
             # Process loaded configuration here...
-            self._csv_dir = self._json_config[self.machine_type]['CSV_FILE']  # Extracting the CVS file path
+            self._csv_dir = self._json_config[self.machine_type]['CHUNKS_DIR']  # Extracting the CVS file path
         except Exception as e:
             print(f"Error loading JSON configuration: {e}")
             exit(1)

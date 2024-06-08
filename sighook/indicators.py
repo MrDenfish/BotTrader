@@ -77,12 +77,12 @@ class Indicators:
 
     @staticmethod
     def calculate_roc(df, roc_len=3):
-        # rate of change for the closing price compared to roc_len days ago.
-        df['ROC'] = ((df['close'] - df['close'].shift(roc_len)) / df['close'].shift(roc_len)) * 100
+        # rate of change for the closing price compared to roc_len bars ago.
+        df['ROC'] = ((df['close'] - df['close'].shift(roc_len)) / df['close'].shift(roc_len)) * 100 # rate of change in %
         # rate of change of the closing price from the start of the roc_len period prior to the current roc_len period
         roc_previous = ((df['close'].shift(3) - df['close'].shift(3 + roc_len)) / df['close'].shift(3 + roc_len)) * 100
         # difference between the current period's ROC and the previous period's ROC.
-        df['ROC_Diff'] = df['ROC'] - roc_previous
+        df['ROC_Diff'] = df['ROC'] - roc_previous  # positive is good, negative is bad
 
         return df
 

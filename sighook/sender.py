@@ -3,23 +3,22 @@ import aiohttp
 
 import datetime
 
-import os
-
 from decimal import Decimal
 
 import time
 
 import ccxt.async_support as ccxt  # import ccxt as ccxt
 
+from tabulate import tabulate
 import pandas as pd
-from aiohttp import ClientSession as AsynchronousClientSession
 from alerts_msgs_webhooks import AlertSystem, SenderWebhook
-from async_functions import AsyncFunctions
 from config_manager import AppConfig
 from logging_manager import LoggerManager
 from indicators import Indicators
 from database_ops import DatabaseOpsManager
+from database_table_models import Trade
 from database_session_manager import DatabaseSessionManager
+from debug_functions import DebugDataLoader
 from database_initialize import DatabaseInitializer
 from ticker_manager import TickerManager
 from async_functions import AsyncFunctions
@@ -46,13 +45,14 @@ class TradeBot:
         self.csv_manager = None
         self.max_concurrent_tasks = 10
         self.log_manager, self.alerts, self.ccxt_exceptions, self.custom_excep = None, None, None, None
-        self.api401, self.exchange, self.market_metrics = None, None, None
+        self.api401, self.exchange, self.market_metrics, self.utility = None, None, None, None
         self.profit_extras, self.database_session_mngr, self.async_func, self.indicators = None, None, None, None
         self.ticker_manager, self.portfolio_manager, self.webhook, self.trading_strategy = None, None, None, None
         self.profit_manager, self.profit_helper, self.order_manager, self.market_manager = None, None, None, None
         self.market_data, self.ticker_cache, self.market_cache, self.current_prices = None, None, None, None
         self.filtered_balances, self.start_time, self.exchange_class, self.session = None, None, None, None
-        self.db_initializer, self.database_ops_mngr, self.csv_manager, self.utility = None, None, None, None
+        self.db_initializer, self.database_ops_mngr, self.csv_manager, self.db_tables = None, None, None, None
+        self.debug_data_loader = None
         self.sleep_time = self.app_config.sleep_time
         self.web_url = self.app_config.web_url
 
@@ -94,11 +94,11 @@ class TradeBot:
             self.start_time = time.time()
             print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
             self.market_data = await self.market_manager.update_market_data()
+            self.utility.print_elapsed_time(self.start_time, 'Part I: market data update is complete')
             await self.database_session_mngr.process_data(self.market_data, self.start_time, self.csv_dir)
-            self.utility.print_elapsed_time(self.start_time, 'Part I: Data Gathering and Database Loading is complete, '
-                                                             'session closed')
+            self.utility.print_elapsed_time(self.start_time, 'Part I: Database Loading is complete, session closed')
         except Exception as e:
-            self.log_manager.sighook_logger.error("Failed to initialize data on startup", exc_info=True)
+            self.log_manager.sighook_logger.error(f'Failed to initialize data on startup {e}', exc_info=True)
         finally:
             await self.exchange.close()
 
@@ -117,12 +117,21 @@ class TradeBot:
         self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
                                                   self.max_concurrent_tasks)
 
-        self.database_ops_mngr = DatabaseOpsManager(self.utility, self.exchange, self.ccxt_exceptions, self.log_manager,
-                                                    self.ticker_manager, self.portfolio_manager, self.app_config)
-        self.csv_manager = CsvManager(self.database_ops_mngr, self.exchange, self.ccxt_exceptions, self.log_manager,
-                                      self.app_config)
+        self.db_tables = Trade()
+
+        self.debug_data_loader = DebugDataLoader(self.db_tables, self.log_manager)
+
+        self.database_ops_mngr = DatabaseOpsManager(self.debug_data_loader, self.db_tables, self.utility, self.exchange,
+                                                    self.ccxt_exceptions, self.log_manager, self.ticker_manager,
+                                                    self.portfolio_manager, self.app_config)
+
+        self.csv_manager = CsvManager(self.utility, self.db_tables, self.database_ops_mngr, self.exchange,
+                                      self.ccxt_exceptions,
+                                      self.log_manager, self.app_config)
+
         self.database_session_mngr = DatabaseSessionManager(self.database_ops_mngr, self.csv_manager, self.log_manager,
                                                             self.app_config)
+
         self.db_initializer = DatabaseInitializer(self.database_session_mngr)
 
         self.webhook = SenderWebhook(self.exchange, self.utility, self.alerts, self.log_manager, self.app_config)
@@ -145,59 +154,6 @@ class TradeBot:
                                                    self.trading_strategy, self.profit_helper, self.profit_extras,
                                                    self.log_manager, self.app_config)
 
-    async def old_load_bot_components(self):
-
-        """ Initialize all components required by the TradeBot. """
-        self.log_manager = LoggerManager(self.app_config, log_dir=self.log_dir)
-        self.exchange = self.setup_exchange()
-        self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
-        self.async_func = AsyncFunctions()
-        self.alerts = AlertSystem(self.app_config, self.log_manager)
-        self.indicators = Indicators(self.log_manager, self.app_config)
-        self.utility = SenderUtils(self.log_manager, self.exchange, self.ccxt_exceptions)
-
-        self.ticker_manager = (TickerManager(self.utility, self.log_manager, self.exchange, self.ccxt_exceptions,
-                                             self.max_concurrent_tasks))
-
-        self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
-                                                  self.max_concurrent_tasks)
-
-        self.database_session_mngr = DatabaseSessionManager(self.database_ops_mngr, self.csv_manager, self.log_manager,
-                                                            self.app_config)
-
-        self.db_initializer = DatabaseInitializer(self.database_session_mngr)
-
-        self.csv_manager = CsvManager(self.database_ops_mngr, self.exchange, self.ccxt_exceptions, self.log_manager,
-                                      self.app_config)
-
-
-        self.webhook = SenderWebhook(self.exchange, self.utility, self.alerts, self.log_manager, self.app_config)
-
-        self.trading_strategy = TradingStrategy(self.webhook, self.ticker_manager, self.utility, self.exchange, self.alerts,
-                                                self.log_manager, self.ccxt_exceptions, self.market_metrics,
-                                                self.app_config, self.max_concurrent_tasks)
-
-        self.profit_helper = ProfitHelper(self.utility, self.portfolio_manager, self.ticker_manager,
-                                          self.database_session_mngr, self.log_manager,  self.app_config)
-
-        self.order_manager = OrderManager(self.trading_strategy, self.ticker_manager, self.exchange, self.webhook,
-                                          self.utility, self.alerts, self.log_manager, self.ccxt_exceptions,
-                                          self.profit_helper, self.app_config, self.max_concurrent_tasks)
-
-        self.market_manager = MarketManager(self.exchange, self.order_manager,  self.trading_strategy, self.log_manager,
-                                            self.ccxt_exceptions, self.ticker_manager, self.utility,
-                                            self.max_concurrent_tasks)
-        self.profit_extras = PerformanceManager(self.exchange, self.ccxt_exceptions, self.utility, self.profit_helper,
-                                                self.order_manager, self.portfolio_manager, self.database_session_mngr,
-                                                self.log_manager, self.app_config)
-
-        self.profit_manager = ProfitabilityManager(self.exchange, self.ccxt_exceptions, self.utility, self.portfolio_manager,
-                                                   self.database_session_mngr, self.database_ops_mngr, self.order_manager,
-                                                   self.trading_strategy, self.profit_helper, self.profit_extras,
-                                                   self.log_manager, self.app_config)
-
-        self.database_ops_mngr = DatabaseOpsManager(self.utility, self.exchange, self.ccxt_exceptions, self.log_manager,
-                                                    self.ticker_manager, self.portfolio_manager, self.app_config)
     async def run_bot(self):  # async
 
         profit_data = pd.DataFrame(columns=['Symbol', 'Unrealized PCT', 'Profit/Loss', 'Total Cost', 'Current Value',
@@ -237,6 +193,7 @@ class TradeBot:
                 (holdings, usd_coins, avg_vol_total, buy_sell_matrix, price_change) = \
                     self.portfolio_manager.get_portfolio_data(self.start_time)
 
+                # Filter to include only coins that have a buy or sell signal, all others omitted.
                 filtered_ticker_cache = self.portfolio_manager.filter_ticker_cache_matrix(buy_sell_matrix)
 
                 self.utility.print_elapsed_time(self.start_time, 'Part II: Trade Database Updates/Portfolio Management')
@@ -266,19 +223,13 @@ class TradeBot:
 
                 # PART VI:
                 # Profitability Analysis and Order Generation
+                wallets = await self.portfolio_manager.fetch_wallets()
                 print(f'Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
-                aggregated_df = await self.profit_manager.check_profit_level(holdings,  self.current_prices)
-
-                aggregated_df = pd.DataFrame()  # Debug place holder
+                aggregated_df = await self.profit_manager.check_profit_level(wallets,  self.current_prices)
                 self.utility.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:
                     await self.exchange.close()
-                self.print_data(open_orders, buy_sell_matrix, avg_vol_total, submitted_orders, aggregated_df)
-                #  debugging remove when done testing
-                # if AsyncFunctions.shutdown_event.is_set():
-                #     await AsyncFunctions.shutdown(asyncio.get_running_loop(), database_manager=self.database_session_mngr ,
-                #                                   http_session=self.http_session)
-                # break
+                self.print_data(open_orders, buy_sell_matrix, avg_vol_total, submitted_orders, aggregated_df)  # Debug
 
                 # PART VII: Database update and cleanup
                 print(f'Part VII: Database update and cleanup - Start Time:', datetime.datetime.now())
@@ -293,7 +244,11 @@ class TradeBot:
                                                                  'session closed')
                 # if need_to_refresh_session():
                 #     await self.refresh_session()
-
+                #  debugging remove when done testing
+                # if AsyncFunctions.shutdown_event.is_set():
+                #     await AsyncFunctions.shutdown(asyncio.get_running_loop(), database_manager=self.database_session_mngr,
+                #                                   http_session=self.http_session)
+                # break
         except asyncio.CancelledError:
             self.save_data_on_exit(profit_data, ledger)
         except Exception as e:
@@ -313,14 +268,16 @@ class TradeBot:
         if open_orders is not None and len(open_orders) > 0:
             print(f'')
             print(f'Open orders:')
-            print(open_orders.to_string(index=False))
+            print(tabulate(open_orders, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
+                           numalign='center'))
             print(f'')
         else:
             print(f'No open orders found')
         if submitted_orders is not None and len(submitted_orders) > 0:
             print(f'')
             print(f'Orders Submitted:')
-            print(submitted_orders.to_string(index=False))
+            print(tabulate(submitted_orders, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
+                           numalign='center'))
             print(f'')
         else:
             print(f'No Orders were Submitted')
@@ -334,7 +291,8 @@ class TradeBot:
         print("<><><><<><>" * 20)
         print(intro_text)
         print(f'                        24h           24h       24h                                              (Need 3)')
-        print(filtered_matrix.to_string(index=False))
+        print(tabulate(filtered_matrix, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
+                       numalign='center'))
         print(f'')
         if aggregated_df is not None and not aggregated_df.empty:
             print(f'Holdings with changes: {aggregated_df.to_string(index=False)}')

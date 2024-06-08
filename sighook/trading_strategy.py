@@ -47,7 +47,7 @@ class TradingStrategy:
     async def process_row(self, row, buy_sell_matrix, ohlcv_data_dict):
         """PART IV: Trading Strategies"""
         try:
-            asset = row['asset'].replace('-', '/')
+            asset = row['symbol']
             price_str = row['info']['price']
             price = float(price_str) if price_str else 0.0
             if asset == 'USD/USD':
@@ -61,7 +61,7 @@ class TradingStrategy:
             action_data = self.decide_action(ohlcv_df, bollinger_df, asset, row['info']['price'], buy_sell_matrix)
 
             order_info = {
-                'asset': asset,
+                'symbol': asset,
                 'action': action_data.get('action'),
                 'price': price,
                 'value': row['free'] * price,
@@ -127,19 +127,19 @@ class TradingStrategy:
             updates[coin] = {
                 'Buy Ratio': buy_sell_data['buy_sig_ratio'],
                 'Buy Touch': buy_sell_data['buy_sig_touch'],
-                'W-Bottom Signal': buy_sell_data['w_bottom_signal'],
-                'Buy RSI': buy_sell_data['buy_signal_rsi'],
+                'W-Bottom Signal': buy_sell_data['w_bottom'],
+                'Buy RSI': buy_sell_data['buy_rsi'],
                 'Buy ROC': buy_sell_data['buy_signal_roc'],
                 'Buy MACD': buy_sell_data['buy_signal_macd'],  # Include MACD buy signal
-                'Buy Swing': buy_sell_data['buy_swing_signal'],
+                'Buy Swing': buy_sell_data['buy_swing'],
                 'Buy Signal': buy_sell_data['buy_signal'],
                 'Sell Ratio': buy_sell_data['sell_sig_ratio'],
                 'Sell Touch': buy_sell_data['sell_sig_touch'],
                 'M-Top Signal': buy_sell_data['m_top_signal'],
-                'Sell RSI': buy_sell_data['sell_signal_rsi'],
+                'Sell RSI': buy_sell_data['sell_rsi'],
                 'Sell ROC': buy_sell_data['sell_signal_roc'],
-                'Sell MACD': buy_sell_data['sell_signal_macd'],  # Include MACD sell signal
-                'Sell Swing': buy_sell_data['sell_swing_signal'],
+                'Sell MACD': buy_sell_data['sell_macd'],  # Include MACD sell signal
+                'Sell Swing': buy_sell_data['sell_swing'],
                 'Sell Signal': buy_sell_data['sell_signal']
             }
         action = buy_sell_data['action']
@@ -179,16 +179,16 @@ class TradingStrategy:
             'sell_sig_touch': False,
             'buy_sig_ratio': False,
             'sell_sig_ratio': False,
-            'w_bottom_signal': False,
+            'w_bottom': False,
             'm_top_signal': False,
-            'buy_signal_rsi': False,
-            'sell_signal_rsi': False,
+            'buy_rsi': False,
+            'sell_rsi': False,
             'buy_signal_roc': False,
             'sell_signal_roc': False,
             'buy_signal_macd': False,
-            'sell_signal_macd': False,
-            'buy_swing_signal': False,
-            'sell_swing_signal': False
+            'sell_macd': False,
+            'buy_swing': False,
+            'sell_swing': False
         }
         trigger = None
         try:
@@ -210,7 +210,7 @@ class TradingStrategy:
             buy_sell_data['sell_sig_touch'] = last_row['close'] > last_row['upper']
 
             # bottom buy, top sell
-            buy_sell_data['w_bottom_signal'], buy_sell_data['m_top_signal'] = (
+            buy_sell_data['w_bottom'], buy_sell_data['m_top_signal'] = (
                 self.indicators.algorithmic_trading_strategy(bollinger_df))
 
             # RSI-based signals
@@ -218,8 +218,12 @@ class TradingStrategy:
             buy_sell_data['sell_sig_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
 
             # ROC-based signals
-            buy_sell_data['buy_signal_roc'] = df['ROC'].iloc[-1] > 1 and df['ROC_Diff'].iloc[-1] > .3  # ROC buy condition
-            buy_sell_data['sell_signal_roc'] = df['ROC'].iloc[-1] < -1 and df['ROC_Diff'].iloc[-1] < -.3  # ROC sell
+            buy_sell_data['buy_signal_roc'] = ((df['ROC'].iloc[-1] > 5) and
+                               (df['ROC_Diff'].iloc[-1] > 0.3) and
+                               (df['RSI'].iloc[-1] < 30))
+            buy_sell_data['sell_signal_roc'] = ((df['ROC'].iloc[-1] < -2.5) and
+                                (df['ROC_Diff'].iloc[-1] < -0.2) and
+                                (df['RSI'].iloc[-1] > 70 ))
             if buy_sell_data['buy_signal_roc']:
                 self.log_manager.sighook_logger.warning(f'ROC buy signal for {symbol} ROC: {df["ROC"].iloc[-1]} ROC_Diff:'
                                                         f' {df["ROC_Diff"].iloc[-1]}')
@@ -233,11 +237,11 @@ class TradingStrategy:
                                                 df['MACD'].iloc[-1] > df['Signal_Line'].iloc[-1])
 
             # Check if the MACD line has crossed below the Signal Line for a sell signal
-            buy_sell_data['sell_signal_macd'] = (df['MACD'].iloc[-2] > df['Signal_Line'].iloc[-2] and
+            buy_sell_data['sell_macd'] = (df['MACD'].iloc[-2] > df['Signal_Line'].iloc[-2] and
                                                  df['MACD'].iloc[-1] < df['Signal_Line'].iloc[-1])
             # swing trade signals
-            buy_sell_data['buy_swing_signal'] = df['Buy Swing'].iloc[-1]
-            buy_sell_data['sell_swing_signal'] = df['Sell Swing'].iloc[-1]
+            buy_sell_data['buy_swing'] = df['Buy Swing'].iloc[-1]
+            buy_sell_data['sell_swing'] = df['Sell Swing'].iloc[-1]
 
             # ROC-based signals with precedence
             if buy_sell_data['buy_signal_roc']:  # ROC buy condition
@@ -256,13 +260,13 @@ class TradingStrategy:
                     buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bsr')
                 if buy_sell_data['buy_sig_touch']:
                     buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bst')
-                if buy_sell_data['w_bottom_signal']:
+                if buy_sell_data['w_bottom']:
                     buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'wbs')
-                if buy_sell_data['buy_signal_rsi']:
+                if buy_sell_data['buy_rsi']:
                     buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'brs')
                 if buy_sell_data['buy_signal_macd']:
                     buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bmc')
-                if buy_sell_data['buy_swing_signal']:  # Assuming this is a boolean
+                if buy_sell_data['buy_swing']:  # Assuming this is a boolean
                     buy_sell_data['buy_signal'] = add_signal(buy_sell_data['buy_signal'], 'bss')
 
             if not buy_sell_data['sell_signal']:
@@ -273,11 +277,11 @@ class TradingStrategy:
                     buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'sst')
                 if buy_sell_data['m_top_signal']:
                     buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'mts')
-                if buy_sell_data['sell_signal_rsi']:
+                if buy_sell_data['sell_rsi']:
                     buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'srs')
-                if buy_sell_data['sell_signal_macd']:
+                if buy_sell_data['sell_macd']:
                     buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'smc')
-                if buy_sell_data['sell_swing_signal']:
+                if buy_sell_data['sell_swing']:
                     buy_sell_data['sell_signal'] = add_signal(buy_sell_data['sell_signal'], 'sss')
 
             # More robust way to count conditions: Count hyphens and add one for the first condition
@@ -305,7 +309,7 @@ class TradingStrategy:
             if isinstance(holdings, pd.DataFrame):
                 holdings = holdings.to_dict('records')
             coin = symbol.split('/')[0]
-            if any(item['Currency'] == coin for item in holdings):
+            if any(item['quote_currency'] == coin for item in holdings):
                 sell_action = 'close_at_limit'
                 sell_pair = symbol
                 sell_limit = price

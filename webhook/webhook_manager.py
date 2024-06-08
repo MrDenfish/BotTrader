@@ -46,7 +46,7 @@ class WebHookManager:
             base_currency = webhook_data['pair'][:-3]  # Extract base currency
             pair = webhook_data['pair'][:-3] + '/' + webhook_data['pair'][-3:]
             orig = webhook_data['origin']
-            time = self.utility.convert_timestamp_to_datetime(webhook_data['timestamp'])
+            the_time = self.utility.convert_timestamp_to_datetime(webhook_data['timestamp'])
             if side == 'buy':
                 quote_amount = webhook_data['order_size']  # Extract order size
                 if quote_amount is not None:
@@ -56,8 +56,8 @@ class WebHookManager:
             else:
                 quote_amount = None
 
-            trade_data = {'time': time, 'action': action, 'side': side, 'trading_pair': pair, 'quote_currency': quote_currency,
-                          'base_currency': base_currency, 'quote_amount': quote_amount, 'orig': orig}
+            trade_data = {'time': the_time, 'action': action, 'side': side, 'trading_pair': pair, 'quote_currency':
+                          quote_currency, 'base_currency': base_currency, 'quote_amount': quote_amount, 'orig': orig}
 
             return trade_data
         except Exception as e:

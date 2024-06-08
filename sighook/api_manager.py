@@ -82,7 +82,8 @@ class ApiExceptions:
                         try:
                             # Check if 'func' is a coroutine function and await it directly
                             if asyncio.iscoroutinefunction(func):
-                                return await func(*args, **kwargs)
+                                response = await func(*args, **kwargs)
+                                return response
                             else:
                                 # If 'func' is not a coroutine, run it in the executor
                                 loop = asyncio.get_event_loop()
@@ -90,7 +91,8 @@ class ApiExceptions:
 
                         except asyncio.TimeoutError:
                             if attempt == retries:
-                                self.log_manager.sighook_logger.error(f"Request timed out after {retries} attempts")
+                                self.log_manager.sighook_logger.error(f"Request timed out after {retries} attempts",
+                                                                      exc_info=True)
                                 break  # Exit the loop if this was the last attempt
                             await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
 
@@ -113,7 +115,8 @@ class ApiExceptions:
                                 caller = inspect.stack()[1]
                                 caller_function_name = caller.function
                                 self.log_manager.sighook_logger.info(f'Rate limit exceeded {caller_function_name}, args: '
-                                                                     f'{args}: Retrying in {wait_time} seconds...')
+                                                                     f'{args}: Retrying in {wait_time} seconds...',
+                                                                     exc_info=True)
                                 await asyncio.sleep(wait_time)
                             elif 'Insufficient funds' in str(ex):
                                 self.log_manager.sighook_logger.info(f'Exchange error: {ex}', exc_info=True)
@@ -144,6 +147,20 @@ class ApiExceptions:
                         await asyncio.sleep(wait_time)  # await Use the calculated wait_time
 
                     except Exception as e:
+                        # Handle specific status codes
+                        if response.status in [403, 429, 500, 502]:  # Rate limit exceeded or server error
+                            if response.status == 403:
+                                self.log_manager.sighook_logger.error(
+                                    f"There may be an issue with LocalTunnel check "
+                                    f" limits: {response.status}", exc_info=True)
+                            elif response.status == 502:
+                                if 'Bad Gateway' in str(ex):
+                                    self.log_manager.sighook_logger.info(f"INFO:  Coinbase may be having issues "
+                                                                         f"{response.status}", exc_info=True)
+                            else:
+                                self.log_manager.sighook_logger.error(
+                                    f"Error {response.status}: check webhook listener is listening")
+                            return response
                         max_wait_time = 60  # Maximum wait time of 60 seconds
                         wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
                         error_details = traceback.format_exc()

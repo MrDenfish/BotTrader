@@ -1,6 +1,7 @@
 
 import asyncio
 import pandas as pd
+from decimal import Decimal
 from datetime import datetime, timedelta
 from ccxt.base.errors import RequestTimeout
 
@@ -54,7 +55,7 @@ class MarketManager:
 
         open_orders = await self.order_manager.get_open_orders(holdings, usd_pairs)
         self.utility.print_elapsed_time(self.start_time, 'open_orders')
-        symbols = filtered_ticker_cache['asset'].unique().tolist()
+        symbols = filtered_ticker_cache['symbol'].unique().tolist()
         ohlcv_data_dict = await self.fetch_all_ohlcv_data(symbols)
         self.utility.print_elapsed_time(self.start_time, 'fetch_all_ohlcv_data')
         return open_orders, ohlcv_data_dict
@@ -120,3 +121,5 @@ class MarketManager:
                 self.log_manager.sighook_logger.error(f"Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
 
             return None
+
+

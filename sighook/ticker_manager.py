@@ -38,11 +38,17 @@ class TickerManager:
             async with self.semaphore:
                 now = datetime.datetime.utcnow()
                 endpoint = 'public'  # for rate limiting
+                params = {
+                    'paginate': True,  # Enable automatic pagination
+                    'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+                    'limit': 300  # Set the max number of items to return
+                }
                 should_fetch = self.start_time is None or (
                             now - datetime.datetime.utcfromtimestamp(self.start_time)).seconds >= refresh_time
 
                 if should_fetch:
-                    market_data = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets, endpoint)
+                    market_data = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets, endpoint,
+                                                                           params=params)  # await
                     if not market_data:
                         raise Exception('No market data available, check the web connection.')
 
@@ -77,7 +83,9 @@ class TickerManager:
         """PART I: Data Gathering and Database Loading"""
         return [
             {
-                'asset': item['symbol'],
+                'asset': item['base'],
+                'quote': item['quote'],
+                'symbol': item['symbol'],
                 'precision': item['precision'],
                 'info': {key: item['info'][key] for key in ['product_id', 'price', 'volume_24h',
                                                             'price_percentage_change_24h']}
@@ -88,7 +96,7 @@ class TickerManager:
     def extract_usd_tickers(self, filtered_market_data):
         """PART I: Data Gathering and Database Loading"""
         try:
-            usd_tickers = [market for market in filtered_market_data if market['asset'].endswith('/USD')]
+            usd_tickers = [market for market in filtered_market_data if market['quote'] == 'USD']
             tickers_dict = {market['asset']: market for market in usd_tickers}
             return usd_tickers, tickers_dict
         except Exception as e:
@@ -134,9 +142,8 @@ class TickerManager:
         avail_qty = {k: v.get('free', 0) for k, v in balances['filtered'].items()}
         total_qty = {k: v.get('total', 0) for k, v in balances['filtered'].items()}
         df = pd.DataFrame.from_dict(tickers_dict, orient='index')
-        df['base_currency'] = df['asset'].str.split('/').str[0]
-        df['free'] = df['base_currency'].map(avail_qty).fillna(0)
-        df['total'] = df['base_currency'].map(total_qty).fillna(0)
+        df['free'] = df['asset'].map(avail_qty).fillna(0)
+        df['total'] = df['asset'].map(total_qty).fillna(0)
         df['volume_24h'] = df['info'].apply(lambda x: x.get('volume_24h', 0))
 
         # Calculating usd_total and usd_free using utility function
@@ -144,8 +151,8 @@ class TickerManager:
         usd_free = self.utility.float_to_decimal(Decimal(balances['usd_free']), 2)
 
         usd_row = pd.DataFrame({
-            'asset': ['USD/USD'],
-            'base_currency': ['USD'],
+            'symbol': ['USD/USD'],
+            'asset': ['USD'],
             'free': [usd_free],
             'total': [usd_total],
             'volume_24h': [0]
@@ -160,7 +167,7 @@ class TickerManager:
         try:
             current_prices = {}  # Dictionary to store the current prices
             chunk_size = 50  # Adjust based on your rate limits and performance
-            symbols = [str(symbol) for symbol in df['asset'].tolist() if '/' in str(symbol)]
+            symbols = [str(symbol) for symbol in df['symbol'].tolist() if '/' in str(symbol)]
             chunks = [symbols[i:i + chunk_size] for i in range(0, len(symbols), chunk_size)]
             tasks = []
             for chunk in chunks:
@@ -180,13 +187,13 @@ class TickerManager:
                     self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
                     continue
 
-                # Locate the row in the DataFrame where the symbol matches and update the price
-                if symbol in df['asset'].values:
+                # Locate the row in the DataFrame where the symbol matches and update the price.
+                if symbol in df['symbol'].values:
                     if update_type == 'bid_ask':
-                        df.loc[df['asset'] == symbol, ['bid', 'ask']] = [bid, ask]
+                        df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
                     elif update_type == 'current_price':
-                        df.loc[df['asset'] == symbol, 'current_price'] = Decimal(ask)
-                    current_prices[symbol] = Decimal(ask)
+                        df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
+                    current_prices[symbol] = float(ask)
                 else:
                     self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
 

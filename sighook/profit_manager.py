@@ -1,14 +1,10 @@
-from datetime import datetime
+
 from decimal import Decimal
-from sqlalchemy.future import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
 
 
 class ProfitabilityManager:
     def __init__(self, exchange, ccxt_api, utility, portfolio_manager, database_session_mngr, database_ops_mngr,
                  order_manager, trading_strategy, profit_helper, profit_extras, logmanager, app_config):
-
 
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
@@ -40,7 +36,6 @@ class ProfitabilityManager:
         self.market_cache = market_cache
         self.web_url = web_url
 
-
     @property
     def stop_loss(self):
         return self._stop_loss
@@ -56,7 +51,8 @@ class ProfitabilityManager:
             # Update and process holdings
             aggregated_df = await self.update_and_process_holdings(holdings, current_prices)  # await
             # Fetch current market prices for these symbols
-            symbols = [holding['asset'] for holding in holdings]
+            symbols = [{'asset': holding['asset'], 'symbol': f"{holding['asset']}/{holding['quote_currency']}"} for holding
+                       in holdings]
             current_market_prices = await self.profit_helper.fetch_current_market_prices(symbols)  # await
             # self.profit_extras.create_performance_snapshot(session, current_market_prices)  # Create a snapshot
             # of current portfolio performance
@@ -68,7 +64,6 @@ class ProfitabilityManager:
     async def update_and_process_holdings(self, holdings_list, current_prices):
         """PART VI: Profitability Analysis and Order Generation """
         try:
-
             # Load or update holdings
 
             aggregated_df = await self.database_manager.process_holding_db(holdings_list, current_prices)
@@ -76,40 +71,32 @@ class ProfitabilityManager:
             await self.check_and_execute_sell_orders(updated_holdings_df, current_prices)  # await
 
             # # # Fetch new trades for all currencies in holdings
-
-            currency = updated_holdings_df['Currency'].tolist()
-            assets = updated_holdings_df['asset'].tolist()
-            all_new_trades = await self.database_manager.fetch_new_trades_for_symbols(assets)  # await
-            # #
-            # # # Process new trades for each currency from the dictionary of all new trades
-            # for currency, new_trades in all_new_trades.items():
-            #     self.process_new_trades_for_currency(currency, new_trades)
-            # return aggregated_df
-
+            symbols = updated_holdings_df['symbol'].tolist()
+            all_new_trades = await self.database_manager.fetch_new_trades_for_symbols(symbols)  # await
+            #  need to process further
         except Exception as e:
             self.log_manager.sighook_logger.error(f'update_and_process_holdings: {e}', exc_info=True)
-
-    import pandas as pd
-    from decimal import Decimal
 
     async def check_and_execute_sell_orders(self, updated_holdings_df, current_prices):
         """PART VI: Profitability Analysis and Order Generation"""
         try:
             realized_profit = 0
             sell_orders = []
+
             updated_holdings_list = updated_holdings_df.to_dict('records')  # Convert DataFrame to list of dictionaries
 
             for holding in updated_holdings_list:
-                asset = holding['asset'].split('/')[0]
+                asset = holding['symbol'].split('/')[0]
                 current_market_price = holding['current_price']
-                if self.profit_helper.should_place_sell_order(holding, current_market_price):
+                if self.profit_helper.should_place_sell_order(asset, holding, current_market_price):
                     sell_amount = holding['Balance']
-                    sell_price = Decimal(current_market_price)
+                    sell_price = current_market_price
                     sell_orders.append((asset, sell_amount, sell_price, holding))
 
                     trigger = 'profit' if realized_profit > 0 else 'loss'
                     order = {
                         'asset': holding['asset'],
+                        'symbol': holding['symbol'],
                         'action': 'sell',
                         'price': sell_price,
                         'trigger': trigger,
@@ -118,20 +105,21 @@ class ProfitabilityManager:
                             'action': 'sell',
                             'trigger': trigger,
                             'updates': {
-                                holding['Currency']: {
+                                holding['quote_currency']: {
                                     'Sell Signal': trigger
                                 }
                             },
                             'sell_cond': trigger
                         },
-                        'value': holding['Balance'] * sell_price  # Calculate the value of the order
+                        'value': holding['Balance'] * float(sell_price)  # Calculate the value of the order
                     }
 
                     # Here, handle_actions needs to accept order and holdings_list
                     await self.order_manager.handle_actions(order, updated_holdings_list)
                     # Process all sell orders in a single operation
             if sell_orders:
-                realized_profit = await self.database_manager.process_sell_orders_fifo(sell_orders, updated_holdings_list,
+                realized_profit = await self.database_manager.process_sell_orders_fifo(self.market_cache, sell_orders,
+                                                                                       updated_holdings_list,
                                                                                        current_prices)
 
             if updated_holdings_list:
@@ -152,7 +140,7 @@ class ProfitabilityManager:
             if processed_trade['side'] == 'buy':
                 self.profit_helper.update_holding_from_buy(session, symbol, processed_trade)
             elif processed_trade['side'] == 'sell':
-                pass
+                pass  # debug
                 # call handle_action to process the sell trade
 
         # Implement logic to handle sell trades, potentially recording realized profits

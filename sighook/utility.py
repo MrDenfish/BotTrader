@@ -2,6 +2,8 @@ import time
 import pandas as pd
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime
+from dateutil import parser
+import pytz
 import math
 import socket
 
@@ -26,10 +28,33 @@ class SenderUtils:
         self.market_cache = market_cache
 
     @staticmethod
+    # Function to standardize any timestamp input
+    def standardize_timestamp(timestamp_str):
+        dt = parser.parse(timestamp_str)
+        if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+            dt = dt.replace(tzinfo=pytz.UTC)  # Handle naive timestamps as UTC
+        return dt.astimezone(pytz.UTC)
+
+    # Usage example
+    # standard_timestamp = standardize_timestamp("your_timestamp_here")
+
+    @staticmethod
     def get_my_ip_address():
         hostname = socket.gethostname()
         ip_address = socket.gethostbyname(hostname)
         return ip_address
+
+    def calculate_time_difference(self, time_string):
+        try:
+            time_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+            order_time = datetime.strptime(time_string, time_format)
+            current_time = datetime.utcnow()
+            difference = current_time - order_time
+            difference_in_minutes = difference.total_seconds() / 60
+            return f"{int(difference_in_minutes)} minutes"
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f"Error calculating time difference: {e}", exc_info=True)
+            return None
 
     @staticmethod
     def print_elapsed_time(start_time=None, func_name=None):
@@ -98,7 +123,7 @@ class SenderUtils:
             # Iterate through market data cache
             for market in self.market_cache:
                 # Compare market symbol or product_id to the normalized ticker
-                if market['asset'] == ticker_value or market['info']['product_id'] == ticker_value:
+                if market['symbol'] == ticker_value or market['info']['product_id'] == ticker_value:
                     base_precision = market['precision']['price']  # Expected to be a float
                     quote_precision = market['precision']['amount']  # Expected to be a float
 
@@ -116,13 +141,16 @@ class SenderUtils:
                     return base_decimal_places, quote_decimal_places
 
             # If no matching market found
-            raise LookupError(f"No market found for symbol {symbol}.")
+            raise LookupError(f"No market found for symbol {symbol} check format.")
 
         except ValueError as e:
             self.log_manager.sighook_logger.error(f"fetch_precision: {e}", exc_info=True)
             return None, None
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}', exc_info=True)
+            if "No market found" in str(e):
+                self.log_manager.sighook_logger.info(f"No market found for symbol {symbol}.")
+            else:
+                self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}', exc_info=True)
 
         raise ValueError(f"Symbol {symbol} not found in exchange markets.")
 
