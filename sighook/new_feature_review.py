@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 
 
-"""This feature may be utilized ata later date to imporve sending webhooks, since AIOHTTP.CLientSession has been removed."""
+"""This feature may be utilized at a later date to imporve sending webhooks, since AIOHTTP.CLientSession has been removed."""
 
 
 class WebhookSender:
@@ -26,7 +26,7 @@ class WebhookSender:
 
     async def run(self):
         while True:
-            # Your logic to decide when to send a webhook
+            # logic to decide when to send a webhook
             await self.send_webhook("http://example.com/webhook", {"data": "value"})
             await asyncio.sleep(10)  # Example delay
 

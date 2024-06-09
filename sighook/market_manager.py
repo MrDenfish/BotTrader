@@ -1,7 +1,6 @@
 
 import asyncio
 import pandas as pd
-from decimal import Decimal
 from datetime import datetime, timedelta
 from ccxt.base.errors import RequestTimeout
 
@@ -121,5 +120,3 @@ class MarketManager:
                 self.log_manager.sighook_logger.error(f"Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
 
             return None
-
-

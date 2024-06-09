@@ -19,7 +19,3 @@ class DatabaseInitializer:
                 raise  # Re-raise the exception after logging for further handling if needed.
 
 
-    # async def main(self):
-    #     db_manager = DatabaseSessionManager(...)
-    #     await self.create_tables()
-

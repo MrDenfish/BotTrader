@@ -14,7 +14,7 @@ class AppConfig:
         return cls._instance
 
     def __init__(self):
-        self.db_type, self.port, self.machine_type, self.profit_dir, self.portfolio_dir  = None, None, None, None, None
+        self.db_type, self.port, self.machine_type, self.profit_dir, self.portfolio_dir = None, None, None, None, None
         self.active_trade_dir, self._min_sell_value, self.sqlite_db_path, self.sqlite_db_file = None, None, None, None
         self.log_dir, self._json_config, self._take_profit, self._stop_loss, self._sleep_time = None, None, None, None, None
         self._my_email, self._e_mailpass, self._email, self._phone, self._web_url = None, None, None, None, None
@@ -23,13 +23,11 @@ class AppConfig:
         self._digital_ocean_database_path, self._cmc_api_url, self._cmc_api_key, self._api_url = None, None, None, None
         self._passphrase, self._api_secret, self._api_key, self._version, self._log_level = None, None, None, None, None
         self._echo_sql, self._db_pool_size, self._db_max_overflow, self._db_echo = None, None, None, None
-        self._ccxt_verbose = None
-        self._database_dir = None
-        self._cvs_dir = None
+        self._ccxt_verbose, self.db_name, self.db_file,  self._database_dir = None, None, None, None
+        self._csv_dir = None
         self._hodl = []
         if self._is_loaded:
             return
-
         self.load_dotenv_settings()
         self.machine_type, self.port = self.determine_machine_type()
         self.load_json_config()

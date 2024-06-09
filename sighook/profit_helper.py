@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+
 class ProfitHelper:
 
     def __init__(self, utility, portfolio_manager, ticker_manager, database_manager, logmanager, config):

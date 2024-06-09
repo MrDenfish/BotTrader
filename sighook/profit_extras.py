@@ -47,6 +47,7 @@ class PerformanceManager:
         self.web_url = web_url
         self.holdings = hist_holdings
 
+    #  <><><><><><><><><><><><><><><><><><><>><> Not yet implimented <><><><><><><><>><>><><><><><><><><><><><><><><><><><>
     @staticmethod
     def create_performance_snapshot(session, current_market_prices):
         """"takes a high-level view of the portfolio's performance, aggregating realized and unrealized profits to create

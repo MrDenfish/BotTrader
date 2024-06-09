@@ -7,13 +7,11 @@ import pytz
 import math
 import socket
 
+
 class SenderUtils:
     _instance_count = 0
 
     def __init__(self, logmanager, exchange,ccxt_api):
-        # self.id = SenderUtils._instance_count
-        # SenderUtils._instance_count += 1
-        # print(f"SenderUtils Instance ID: {self.id}")
         self.log_manager = logmanager
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
@@ -150,7 +148,8 @@ class SenderUtils:
             if "No market found" in str(e):
                 self.log_manager.sighook_logger.info(f"No market found for symbol {symbol}.")
             else:
-                self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}', exc_info=True)
+                self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}',
+                                                      exc_info=True)
 
         raise ValueError(f"Symbol {symbol} not found in exchange markets.")
 

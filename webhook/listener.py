@@ -14,6 +14,7 @@ from webhook_validate_orders import ValidateOrders
 from webhook_order_book import OrderBookManager
 # from test import TestOrderManager
 from webhook_order_manager import TradeOrderManager
+from webhook_order_types import OrderTypeManager
 from webhook_manager import WebHookManager
 
 
@@ -27,7 +28,7 @@ class WebhookListener:
         self.trade_order_manager, self.order_book_manager, self.utility, self.webhook_manager = None, None, None, None
         self.alerts, self.ccxt_exceptions, self.api401, self.custom_excep = None, None, None, None
         self.exchange_class, self.exchange, self.accessory_tools, self.validate = None, None, None, None
-        self.log_manager, self.test_order_manager = None, None
+        self.order_type_manager, self.log_manager, self.test_order_manager = None, None, None
 
     async def setup(self):
         # Set up the exchange initiate the exchange session.
@@ -40,14 +41,27 @@ class WebhookListener:
 
         # Asynchronously load components like databases, logging, etc.
         self.log_manager = LoggerManager(self.bot_config, log_dir=self.bot_config.log_dir)
+
         self.alerts = AlertSystem(self.log_manager)
+
         self.ccxt_exceptions = ApiExceptions(self.exchange, self.log_manager, self.alerts, self.semaphore)
+
         self.utility = TradeBotUtils(self.bot_config, self.log_manager, self.exchange, self.ccxt_exceptions, self.alerts)
+
         self.validate = ValidateOrders(self.log_manager, self.utility, self.bot_config)
+
         self.order_book_manager = OrderBookManager(self.exchange, self.utility, self.log_manager, self.ccxt_exceptions)
+
+        self.order_type_manager = OrderTypeManager(self.bot_config, self.exchange, self.utility, self.validate,
+                                                   self.log_manager, self.alerts, self.ccxt_exceptions,
+                                                   self.order_book_manager)
+
         self.trade_order_manager = TradeOrderManager(self.bot_config, self.exchange, self.utility, self.validate,
                                                      self.log_manager, self.alerts, self.ccxt_exceptions,
-                                                     self.order_book_manager)
+                                                     self.order_book_manager, self.order_type_manager)
+
+
+
 
         # self.test_order_manager = TestOrderManager(self.bot_config, self.exchange, self.utility, self.validate,
         #                                            self.log_manager, self.alerts, self.ccxt_exceptions,

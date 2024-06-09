@@ -148,7 +148,6 @@ class TradingStrategy:
 
         return {'action': action, 'band_ratio': band_ratio, 'trigger': trigger, 'updates': updates, 'sell_cond': sell_cond}
 
-
     @staticmethod
     def is_valid_bollinger_df(bollinger_df):
         """PART III: Order cancellation and Data Collection"""
@@ -218,12 +217,11 @@ class TradingStrategy:
             buy_sell_data['sell_sig_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
 
             # ROC-based signals
-            buy_sell_data['buy_signal_roc'] = ((df['ROC'].iloc[-1] > 5) and
-                               (df['ROC_Diff'].iloc[-1] > 0.3) and
-                               (df['RSI'].iloc[-1] < 30))
-            buy_sell_data['sell_signal_roc'] = ((df['ROC'].iloc[-1] < -2.5) and
-                                (df['ROC_Diff'].iloc[-1] < -0.2) and
-                                (df['RSI'].iloc[-1] > 70 ))
+            buy_sell_data['buy_signal_roc'] = ((df['ROC'].iloc[-1] > 5) and (df['ROC_Diff'].iloc[-1] > 0.3) and
+                                                                            (df['RSI'].iloc[-1] < 30))
+            buy_sell_data['sell_signal_roc'] = ((df['ROC'].iloc[-1] < -2.5) and (df['ROC_Diff'].iloc[-1] < -0.2) and
+                                                (df['RSI'].iloc[-1] > 70))
+
             if buy_sell_data['buy_signal_roc']:
                 self.log_manager.sighook_logger.warning(f'ROC buy signal for {symbol} ROC: {df["ROC"].iloc[-1]} ROC_Diff:'
                                                         f' {df["ROC_Diff"].iloc[-1]}')
@@ -238,7 +236,7 @@ class TradingStrategy:
 
             # Check if the MACD line has crossed below the Signal Line for a sell signal
             buy_sell_data['sell_macd'] = (df['MACD'].iloc[-2] > df['Signal_Line'].iloc[-2] and
-                                                 df['MACD'].iloc[-1] < df['Signal_Line'].iloc[-1])
+                                          df['MACD'].iloc[-1] < df['Signal_Line'].iloc[-1])
             # swing trade signals
             buy_sell_data['buy_swing'] = df['Buy Swing'].iloc[-1]
             buy_sell_data['sell_swing'] = df['Sell Swing'].iloc[-1]

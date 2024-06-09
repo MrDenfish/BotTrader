@@ -16,16 +16,13 @@ class TradeOrderManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book):
+    def get_instance(cls, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book, order_types):
         if cls._instance is None:
-            cls._instance = cls(config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book)
+            cls._instance = cls(config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book,
+                                order_types)
         return cls._instance
 
-    def __init__(self, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book):
-        # self.id = TradeOrderManager._instance_count
-        # TradeOrderManager._instance_count += 1
-        # print(f"TradeOrderManager Instance ID: {self.id}")
-        # Placeholder for exchange instance creation
+    def __init__(self, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book, order_types):
         self._take_profit = Decimal(config.take_profit)
         self._stop_loss = Decimal(config.stop_loss)
         self._min_sell_value = Decimal(config.min_sell_value)
@@ -34,6 +31,7 @@ class TradeOrderManager:
         self.base_url = config.api_url
         self.log_manager = logmanager
         self.validate = validate
+        self.order_types = order_types
         self.order_book = order_book
         self.ccxt_exceptions = ccxt_api
         self.alerts = alerts
@@ -145,49 +143,14 @@ class TradeOrderManager:
             f'Attempt {attempt}: Order {side} for {trading_pair} of size {order_size} at price {order_price} failed.'
         )
 
-    async def place_limit_order(self, order_data):
-        """
-        Attempts to place a limit order and returns the response.
-        If the order fails, it logs the error and returns None.
-        """
-
-        try:
-            trading_pair = order_data['trading_pair']
-            side = order_data['side']
-            adjusted_size = order_data['adjusted_size']
-            adjusted_price = order_data['adjusted_price']
-            endpoint = 'private'
-            response = await self.ccxt_exceptions.ccxt_api_call(self.exchange.create_limit_order, endpoint, trading_pair,
-                                                                side, adjusted_size, adjusted_price, {'post_only': True})
-            if response:
-                if response == 'amend':
-                    return 'amend'  # Order needs amendment
-                elif response == 'insufficient base balance':
-                    return 'insufficient base balance'
-                elif response == 'order_size_too_small':
-                    return 'order_size_too_small'
-                elif response['id']:
-                    return response  # order placed successfully
-            else:
-                return 'amaend'
-        except Exception as ex:
-            error_details = traceback.format_exc()
-            self.log_manager.webhook_logger.error(f'place_limit_order: {error_details}')
-            if 'coinbase createOrder() has failed, check your arguments and parameters' in str(ex):
-                self.log_manager.webhook_logger.info(f'Limit order was not accepted, placing new limit order for '
-                                                     f'{trading_pair}')
-                return 'amend'
-            else:
-                self.log_manager.webhook_logger.error(f'Error placing limit order: {ex}')
-                return 'amend'
-        return None  # Return None indicating the order was not successfully placed
-
 
     async def attempt_order_placement(self, order_data):
         # if order_data['side'] == 'sell':
-        #     response = await self.place_sell_bracket_order(order_data)
+        #     response = await self.order_types.place_sell_bracket_order(order_data)
         # else:
-        response = await self.place_limit_order(order_data)
+        #  response = await self.order_types.place_market_order(order_data)
+
+        response = await self.order_types.place_limit_order(order_data)
 
         order_placed = False
         try:
@@ -307,54 +270,6 @@ class TradeOrderManager:
             'bid': highest_bid
         }
 
-# <><><><><><><><><><><><><><><>NOT IMPLIMENTED YET 04/04/2024 <>><><><><><><><><><><><><><><><><><><><><><><>
-
-#   async def place_sell_bracket_order(self, order_data, self_trade_prevention_id=None, leverage=None, margin_type=None,
-#                                      retail_portfolio_id=None):
-#     try:
-#         client_order_id = f'client_{int(time.time() * 1000)}'
-#         trading_pair = order_data['trading_pair'].replace('/', '-')
-#         side = order_data['side'].lower()
-#         adjusted_size = str(order_data['adjusted_size'])
-#         adjusted_price = str(order_data['adjusted_price'])
-#         stop_loss_price = str(order_data['stop_loss_price'])
-#
-#         # Log the request parameters
-#         self.log_manager.webhook_logger.info(f'Placing trigger bracket order with params: '
-#                                               f'client_order_id={client_order_id}, '
-#                                               f'product_id={trading_pair}, '
-#                                               f'side={side}, '
-#                                               f'base_size={adjusted_size}, '
-#                                               f'limit_price={adjusted_price}, '
-#                                               f'stop_trigger_price={stop_loss_price}')
-#
-#         response = await self.client.trigger_bracket_order_gtc(
-#             client_order_id=client_order_id,
-#             product_id=trading_pair,
-#             side=side,
-#             base_size=adjusted_size,
-#             limit_price=adjusted_price,
-#             stop_trigger_price=stop_loss_price,
-#             self_trade_prevention_id=self_trade_prevention_id,
-#             leverage=leverage,
-#             margin_type=margin_type,
-#             retail_portfolio_id=retail_portfolio_id
-#         )
-#         return response
-#     except Exception as ex:
-#         self.log_manager.webhook_logger.debug(f'Error placing trigger bracket order: {ex}', exc_info=True)
-#         return None
-#
-#         if response.status_code == 200:
-#             return response.json()
-#         else:
-#             print(f'Error: {response.status_code}, {response.text}')
-#             return None
-#     except Exception as ex:
-#         error_details = traceback.format_exc()
-#         self.log_manager.webhook_logger.error(f'place_bracket_order: {error_details}')
-#         self.log_manager.webhook_logger.error(f'Error placing bracket order: {ex}', exc_info=True)
-#         return None
     async def fetch_order_status(self, base_deci, quote_deci, quote_currency, trading_pair,  side, adjusted_price, retries):
         """
         Determine if order placed. free balance < $10 indicates sell order was placed
@@ -370,7 +285,6 @@ class TradeOrderManager:
 
         all_open_orders = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_open_orders, endpoint, None,
                                                                    params=params)
-
 
         try:
             if len(all_open_orders) != 0:
@@ -406,165 +320,4 @@ class TradeOrderManager:
         except Exception as ex:
             self.log_manager.webhook_logger.error(f'fetch_order_status: Error processing balances: {ex}')
             return False
-
-    def place_market_order(self, trading_pair, side, adjusted_size, adjusted_price):
-        """
-               This function coordinates the process. It calculates the order parameters, attempts to place
-               an order, checks if the order is accepted, and retries if necessary."""
-        response = None
-        try:
-            endpoint = 'private'
-            response = self.ccxt_exceptions.ccxt_api_call(self.exchange.create_market_order(trading_pair, side,
-                                                          adjusted_size, adjusted_price), endpoint, trading_pair)
-            if response:
-                return response
-        except Exception as ex:
-            if 'coinbase createOrder() has failed, check your arguments and parameters' in str(ex):
-                self.log_manager.webhook_logger.info(f'Limit order was not accepted, placing new limit order for '
-                                                     f'{trading_pair}')
-                return response
-            else:
-                self.log_manager.webhook_logger.error(f'Error placing limit order: {ex}')
-
-        return None  # Return None indicating the order was not successfully pla
-
-    # <><><><><><><><><><><><><><><>old ready to delete <>><><><><><><><><><><><><><><><><><><><><><><>
-
-    # async def old_place_order(self, order_data):
-    #     handle_order_data = {}
-    #     try:
-    #
-    #         quote_bal, base_balance, open_orders = await self.utils.get_open_orders(order_data)
-    #         open_orders = open_orders if isinstance(open_orders, pd.DataFrame) else pd.DataFrame()
-    #         if order_data['side'] == 'sell' and base_balance == 0.0:
-    #
-    #             return False  # not a valid order nothing to sell
-    #
-    #         if (order_data['side'] == 'sell') or (order_data['side'] == 'buy' and quote_bal >= order_data['quote_amount']):
-    #             if open_orders is not None and not open_orders.empty:
-    #                 await self.order_book.cancel_stale_orders(order_data, open_orders)
-    #
-    #             order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book(order_data)
-    #             validate_data = {
-    #                 'base_balance': base_balance,
-    #                 'quote_balance': quote_bal,
-    #                 'base_decimal': order_data['base_decimal'],
-    #                 'quote_decimal': order_data['quote_decimal'],
-    #                 'base_currency': order_data['base_currency'],
-    #                 'quote_currency': order_data['quote_currency'],
-    #                 'trading_pair': order_data['trading_pair'],
-    #                 'side': order_data['side'],
-    #                 'highest_bid': highest_bid,
-    #                 'lower_ask': lowest_ask,
-    #                 'spread': spread,
-    #                 'open_order': open_orders,
-    #                 'quote_amount': order_data['quote_amount'],
-    #                 'quote_price': order_data['quote_price']
-    #                 }
-    #
-    #             available_coin_balance, valid_order = (self.validate.fetch_and_validate_rules(validate_data))
-    #             price_size_data = validate_data.copy()
-    #             price_size_data['available_coin_balance'] = available_coin_balance
-    #             price_size_data['base_increment'] = order_data['base_increment']
-    #             price_size_data['valid_order'] = valid_order
-    #
-    #             if valid_order:
-    #                 adjusted_price, adjusted_size = (self.utils.adjust_price_and_size(price_size_data, order_book))
-    #
-    #                 self.log_manager.webhook_logger.debug(f'place_order: adjusted_price: {adjusted_price}, adjusted_size: '
-    #                                                       f'{adjusted_size}')
-    #                 handle_order_data = {
-    #                     'base_increment': order_data['base_increment'],
-    #                     'base_decimal': order_data['base_decimal'],
-    #                     'quote_decimal': order_data['quote_decimal'],
-    #                     'trading_pair': order_data['trading_pair'],
-    #                     'open_orders': open_orders,
-    #                     'side': order_data['side'],
-    #                     'adjusted_size': adjusted_size,
-    #                     'quote_amount': order_data['quote_amount'],
-    #                     'available_coin_balance': available_coin_balance,
-    #                     'quote_balance': quote_bal,
-    #                     'adjusted_price': adjusted_price,
-    #                     'quote_price': order_data['quote_price']
-    #                 }
-    #
-    #                 return await self.handle_order(handle_order_data)
-    #             else:
-    #                 return False  # not a valid order
-    #         elif order_data['side'] == 'buy' and quote_bal < order_data['quote_amount']:
-    #             self.log_manager.webhook_logger.info(f'Insufficient Balance {quote_bal}{order_data["quote_currency"]}: '
-    #                                                  f'{order_data["trading_pair"]} {order_data["side"]} order requires '
-    #                                                  f'{order_data["quote_amount"]} {order_data["quote_currency"]} ')
-    #             return False  # not a valid order
-    #         elif order_data['base_price'] * base_balance > self.min_sell_value:
-    #             self.log_manager.webhook_logger.info(f'Existing balance: {order_data["side"]} order will not be placed for '
-    #                                                  f'{order_data["trading_pair"]} there is an existing balance of '
-    #                                                  f'{base_balance} {order_data["base_currency"]}')
-    #             return False  # not a valid order
-    #
-    #         else:
-    #             self.log_manager.webhook_logger.info(f'Insufficient Balance {quote_bal}{order_data["quote_currency"]}: '
-    #                                                  f'{order_data["trading_pair"]} {order_data["side"]} order requires '
-    #                                                  f'{order_data["quote_amount"]} {order_data["quote_currency"]} ')
-    #
-    #         return False  # not a valid order
-    #     except Exception as ex:
-    #         error_details = traceback.format_exc()
-    #         self.log_manager.webhook_logger.error(f'place_order: Error details: {error_details}')
-    #         self.log_manager.webhook_logger.error(f'place_order: Error placing order: {ex}')
-    #         return False
-    #
-    #
-    #
-    # async def old_handle_order(self, handle_order_data, retries=10):
-    #     """
-    #     Coordinates the process of placing an order. It calculates the order parameters,
-    #     attempts to place an order, checks if the order is accepted, and retries if necessary.
-    #     """
-    #
-    #     trading_pair = handle_order_data['trading_pair']
-    #     side = handle_order_data['side']
-    #     adjusted_size = Decimal(handle_order_data['adjusted_size'])
-    #     adjusted_price = Decimal(handle_order_data['adjusted_price'])
-    #     quote_balance = Decimal(handle_order_data['quote_balance'])
-    #     quote_amount = Decimal(handle_order_data['quote_amount'])
-    #     coin_balance = Decimal(handle_order_data['available_coin_balance'])
-    #     available_coin_value = coin_balance * adjusted_price
-    #     open_orders = handle_order_data['open_orders']
-    #
-    #     available_to_sell, _ = await self.staked_coins(trading_pair)
-    #
-    #     if side == 'sell' and (available_to_sell * adjusted_price < self.min_sell_value):
-    #         return False  # Not a valid order due to insufficient value
-    #
-    #     for attempt in range(1, retries + 1):
-    #         print(f'Attempt {attempt} of {retries}', end='\r')
-    #         if not self.is_order_feasible(side, quote_amount, available_coin_value, quote_balance, trading_pair):
-    #             continue
-    #
-    #         # Fetch order book details
-    #         order_book, highest_bid, lowest_ask, spread = await self.order_book.get_order_book(handle_order_data)
-    #
-    #         # Adjust price and size based on the market data
-    #         adjusted_price, adjusted_size = self.utils.adjust_price_and_size(handle_order_data, order_book)
-    #
-    #         if open_orders.empty or not (open_orders['product_id'] == trading_pair).any():
-    #             order_placed, response = await self.try_place_order(trading_pair, side, adjusted_size, adjusted_price)
-    #
-    #
-    #             if order_placed:
-    #                 print(f'\nOrder placed on attempt {attempt}.')
-    #                 return True
-    #             elif response == 'order_size_too_small':
-    #                 print(f'Order size too small for {trading_pair} @ {adjusted_price}')
-    #                 return False
-    #         else:
-    #             print(f'Skipping attempt {attempt} as open orders exist.')
-    #
-    #         # Log failed attempt
-    #         self.log_order_attempt(attempt, trading_pair, side, adjusted_size, adjusted_price)
-    #
-    #     # After all retries
-    #     print(f'\nAll attempts exhausted for {trading_pair}.')
-    #     return False
 

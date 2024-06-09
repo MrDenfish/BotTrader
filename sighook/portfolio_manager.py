@@ -251,4 +251,3 @@ class PortfolioManager:
         except Exception as e:
             self.log_manager.sighook_logger.error(f'update_ticker_cache: {e}', exc_info=True)
 
-    # <><><><><><><><><><><><><><><><><> RETIRED CODE DO NOT DELETE 4/22/24 <><><><><>><><><><><><><><><><><><><><><><><><><>

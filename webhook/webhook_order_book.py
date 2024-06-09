@@ -16,9 +16,6 @@ class OrderBookManager:
         return cls._instance
 
     def __init__(self, exchange_client, utility, logmanager, ccxt_exceptions):
-        # self.id = OrderBookManager._instance_count
-        # OrderBookManager._instance_count += 1
-        # print(f"OrderBookManager Instance ID: {self.id}")
         self.exchange = exchange_client
         self.log_manager = logmanager
         self.ccxt_exceptions = ccxt_exceptions

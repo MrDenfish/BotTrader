@@ -130,21 +130,5 @@ class ProfitabilityManager:
             self.log_manager.sighook_logger.error(f'check_and_execute_sell_orders:  {e}', exc_info=True)
             raise
 
-    #  <><><><><><><><><><><><><><><><><><><>><><><><><><><><><><><><><><><><><><><>><>><><><><><><><><><><><><><><><><><><><>
 
-    def process_trade(self, session, symbol, new_trades):
-        for trade in new_trades:
-            #  'process_trade_data' converts API trade data to the application's format
-            processed_trade = self.profit_helper.process_trade_data(trade)
 
-            if processed_trade['side'] == 'buy':
-                self.profit_helper.update_holding_from_buy(session, symbol, processed_trade)
-            elif processed_trade['side'] == 'sell':
-                pass  # debug
-                # call handle_action to process the sell trade
-
-        # Implement logic to handle sell trades, potentially recording realized profits
-
-        # Consider adding the processed_trade to your Trade table here
-
-        # Update Holding's last update time, average cost, etc., outside this loop for efficiency

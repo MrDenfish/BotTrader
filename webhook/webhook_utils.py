@@ -25,9 +25,6 @@ class TradeBotUtils:
         return cls._instance
 
     def __init__(self, botconfig, logmanager, exchange_client, ccxt_api, order_book, webhook_listener=None):
-        # self.id = TradeBotUtils._instance_count
-        # TradeBotUtils._instance_count += 1
-        # print(f"TradeBotUtils Instance ID: {self.id}")
         self.exchange = exchange_client
         self.webhook_listener = webhook_listener
         self.bot_config = botconfig

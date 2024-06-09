@@ -1,11 +1,11 @@
 
-from async_functions import AsyncFunctions
+
 import smtplib
 import aiohttp
-import socket
 import asyncio
 import random
 import time
+
 
 class AlertSystem:
     _instance = None
@@ -72,7 +72,7 @@ class SenderWebhook:
             'limit_price': str(lim_price),
             'origin': "SIGHOOK",
             'order_size': str(order_size) if order_size is not None else '100',
-            'verified': "valid or not valid " # this will be used to verify the order
+            'verified': "valid or not valid "  # this will be used to verify the order
         }
         if send_action == 'close_at_limit':
             payload['order_type'] = send_order
@@ -94,10 +94,11 @@ class SenderWebhook:
                         self.log_manager.sighook_logger.error(f"There may be an issue with NGROK or LocalTunnel check "
                                                               f"monthly limits: {response.status}", exc_info=True)
                     else:
-                        self.log_manager.sighook_logger.error(f"Error {response.status}: check webhook listener is listening")
+                        self.log_manager.sighook_logger.error(f"Error {response.status}: check webhook listener is online")
                     return response
                 elif response.status == 502:  # Not found
-                    self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status}", exc_info=True)
+                    self.log_manager.sighook_logger.error(f"Error:  Check Listener is online {response.status}",
+                                                          exc_info=True)
                 elif response.status == 503:  # Service Unavailable
                     my_ip = self.utils.get_my_ip_address()
                     self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status} "

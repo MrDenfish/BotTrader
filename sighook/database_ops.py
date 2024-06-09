@@ -442,16 +442,9 @@ class DatabaseOpsManager:
             total_cost = sum(order['cost'] for order in trades_by_order.values())
             total_proceeds = sum(order['proceeds'] for order in trades_by_order.values())
 
-            self.log_manager.sighook_logger.debug(f'Total amount for all trades: {total_amount}')
-            self.log_manager.sighook_logger.debug(f'Total cost for all trades: {total_cost}')
-            self.log_manager.sighook_logger.debug(f'Total proceeds for all trades: {total_proceeds}')
-
             # Separate purchases and sales for further analysis
             purchase_amount = sum(order['amount'] for order in trades_by_order.values() if order['amount'] > 0)
             sold_amount = sum(order['amount'] for order in trades_by_order.values() if order['amount'] < 0)
-
-            self.log_manager.sighook_logger.debug(f'Purchase amount for all trades: {purchase_amount}')
-            self.log_manager.sighook_logger.debug(f'Sold amount for all trades: {sold_amount}')
 
             if aggregation and aggregation.purchase_amount and aggregation.purchase_amount > 0:
                 # Calculate net balance
@@ -478,11 +471,6 @@ class DatabaseOpsManager:
                     'entry_price': purchase_price,
                 }
             else:
-                # Log if no valid trades found
-                self.log_manager.sighook_logger.debug(
-                    f"No valid trades found for asset {asset}. Total amount: "
-                    f"{aggregation.purchase_amount if aggregation else 'None'}")
-
                 return None
         except Exception as e:
             self.log_manager.sighook_logger.debug(f'aggregate_trade_data_for_symbol error: {e}', exc_info=True)
@@ -518,9 +506,6 @@ class DatabaseOpsManager:
                 flag_modified(buy_trade, "balance")
                 remaining_sell_amount -= available_for_sale
 
-                self.log_manager.sighook_logger.debug(
-                    f"Updated buy trade after update: {buy_trade.trade_id}, new balance: {buy_trade.balance}")
-
                 # Log realized profit
                 new_realized_profit = RealizedProfit(
                     currency=asset,
@@ -542,12 +527,6 @@ class DatabaseOpsManager:
         try:
             trades = await session.execute(select(Trade))
             trades = trades.scalars().all()
-            for trade in trades:
-                if trade.asset == 'BTC' or trade.asset == 'MNDE':
-                    if trade.amount == 0:
-                        self.log_manager.sighook_logger.debug(f"{log_point} - Asset: {trade.asset} Trade ID:"
-                                                              f" {trade.trade_id}, Amount: {trade.amount}, Transaction Type:"
-                                                              f" {trade.transaction_type}")
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error logging all trades at {log_point}: {e}")
 
@@ -714,7 +693,3 @@ class DatabaseOpsManager:
         except Exception as e:
             self.log_manager.sighook_logger.error(f'process_trade_data: {e}', exc_info=True)
             return None
-        # Perform any necessary validation or transformation on the extracted data
-        # For example, you might want to ensure that 'side' is either 'buy' or 'sell'
-
-    # <><><>><><><> TRouble shooting functions that may be deleted when no longer needed <><><><><

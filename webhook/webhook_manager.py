@@ -17,9 +17,6 @@ class WebHookManager:
         return cls._instance
 
     def __init__(self, logmanager, utility, trade_order_manager, alerts):
-        # self.id = ValidateOrders._instance_count
-        # ValidateOrders._instance_count += 1
-        # print(f"ValidateOrders Instance ID: {self.id}")
         self.alerts = alerts
         self.utility = utility
         self.trade_order_manager = trade_order_manager
