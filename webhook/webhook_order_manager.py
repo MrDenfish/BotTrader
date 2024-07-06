@@ -1,5 +1,4 @@
 from custom_exceptions import CoinbaseAPIError
-from coinbase.rest import RESTClient
 from decimal import Decimal, getcontext
 import pandas as pd
 import time
@@ -38,7 +37,7 @@ class TradeOrderManager:
         self.utils = utility
 
         # Initialize the REST client using credentials from the config
-        self.client = RESTClient(key_file=config.cdp_api_key_path, verbose=True)
+        # self.client = RESTClient(key_file=config.cdp_api_key_path, verbose=True)
 
     @property
     def hodl(self):
@@ -68,12 +67,13 @@ class TradeOrderManager:
             order_book_details = await self.order_book.get_order_book(order_data)
             validate_data = self.build_validate_data(order_data, quote_bal, base_balance, open_orders, order_book_details)
 
-            available_coin_balance, valid_order = self.validate.fetch_and_validate_rules(validate_data)
+            available_coin_balance, valid_order, condition = self.validate.fetch_and_validate_rules(validate_data)
             if not valid_order:
-                self.log_manager.webhook_logger.info("Validation failed for the order.")
+                self.log_manager.webhook_logger.info(f"Validation failed for the order. - {condition}")
                 return False
 
             return await self.handle_order(validate_data, order_book_details)
+
 
         except Exception as ex:
             self.log_manager.webhook_logger.debug(ex, exc_info=True)
@@ -148,7 +148,7 @@ class TradeOrderManager:
         # if order_data['side'] == 'sell':
         #     response = await self.order_types.place_sell_bracket_order(order_data)
         # else:
-        #  response = await self.order_types.place_market_order(order_data)
+        #     response = await self.order_types.place_market_order(order_data)
 
         response = await self.order_types.place_limit_order(order_data)
 
@@ -175,7 +175,7 @@ class TradeOrderManager:
             return ex
 
     async def staked_coins(self, trading_pair):
-        currencies =[]
+        currencies = []
 
         currencies = [trading_pair.split('/')[0], trading_pair.split('/')[1]]
         accounts = await self.utils.get_account_balance(currencies, get_staked=True)
@@ -252,7 +252,7 @@ class TradeOrderManager:
         return balance * quote_price * adjusted_price
 
     @staticmethod
-    def log_order_attempts(order_records,msg=None):
+    def log_order_attempts(order_records, msg=None):
         df = pd.DataFrame(order_records)
         if not df.empty:
             print(f'\n{msg}:')
@@ -270,7 +270,7 @@ class TradeOrderManager:
             'bid': highest_bid
         }
 
-    async def fetch_order_status(self, base_deci, quote_deci, quote_currency, trading_pair,  side, adjusted_price, retries):
+    async def fetch_order_status(self, base_deci, quote_deci, quote_currency, trading_pair, side, adjusted_price, retries):
         """
         Determine if order placed. free balance < $10 indicates sell order was placed
         total balance > $10 indicates buy order was placed
@@ -285,7 +285,6 @@ class TradeOrderManager:
 
         all_open_orders = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_open_orders, endpoint, None,
                                                                    params=params)
-
         try:
             if len(all_open_orders) != 0:
                 open_orders = self.utils.format_open_orders(all_open_orders)

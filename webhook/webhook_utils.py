@@ -25,6 +25,9 @@ class TradeBotUtils:
         return cls._instance
 
     def __init__(self, botconfig, logmanager, exchange_client, ccxt_api, order_book, webhook_listener=None):
+        if TradeBotUtils._instance is not None:
+            raise Exception("This class is a singleton!")
+        TradeBotUtils._instance = self
         self.exchange = exchange_client
         self.webhook_listener = webhook_listener
         self.bot_config = botconfig
@@ -33,20 +36,32 @@ class TradeBotUtils:
         self.order_book = order_book
 
     def refresh_authentication(self):
-        # Instantiate BotConfig to access the configuration
-        # bot_config = BotConfig()
-        self.bot_config.reload_config()  # Reload the configuration
+        try:
+            # Reload the configuration
+            self.bot_config.reload_config()
 
-        # Fetch new API key and secret from BotConfig
-        new_api_key = self.bot_config.api_key
-        new_api_secret = self.bot_config.api_secret
+            # Fetch new API key and secret from BotConfig
+            new_api_key = self.bot_config.api_key
+            new_api_secret = self.bot_config.api_secret
 
-        # Update the exchange client with new credentials
-        self.exchange.apiKey = new_api_key
-        self.exchange.secret = new_api_secret
+            # Update the exchange client with new credentials
+            if new_api_key and new_api_secret:
+                self.exchange.apiKey = new_api_key
+                self.exchange.secret = new_api_secret
 
-        # Log the refresh action
-        self.log_manager.webhook_logger.info("Authentication refreshed.")
+                # Log the refresh action
+                if self.log_manager and hasattr(self.log_manager, 'webhook_logger'):
+                    self.log_manager.webhook_logger.info("Authentication refreshed.")
+                else:
+                    print("Authentication refreshed.")  # Fallback logging
+            else:
+                raise ValueError("API key or secret is missing.")
+        except Exception as e:
+            error_message = f"Failed to refresh authentication: {e}"
+            if self.log_manager and hasattr(self.log_manager, 'webhook_logger'):
+                self.log_manager.webhook_logger.error(error_message)
+            else:
+                print(error_message)  # Fallback logging
 
     @staticmethod
     def get_my_ip_address():
@@ -62,15 +77,16 @@ class TradeBotUtils:
         :return: A tuple containing base and quote decimal places.
         """
         try:
+            markets = []
             endpoint = 'public'  # for rate limiting
-            # params = {
-            #     'offset': 0,  # Skip the first 0 items
-            #     'paginate': True,  # Enable automatic pagination
-            #     'paginationCalls': 10,  # Set the max number of pagination calls if necessary
-            #     'limit': 300  # Set the max number of items to return
-            # }
+            params = {
+                'offset': 0,  # Skip the first 0 items
+                'paginate': True,  # Enable automatic pagination
+                'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+                'limit': 1000  # Set the max number of items to return
+            }
             # Run the synchronous fetch_markets method in the default executor
-            markets = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets, endpoint)
+            markets = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_markets, endpoint, params=params)
             if markets is None:
                 raise ValueError("Failed to fetch markets.")
 
@@ -112,7 +128,6 @@ class TradeBotUtils:
                                                                            params=params)
 
             # Ensure format_open_orders returns a DataFrame
-
             all_open_orders = await self.format_open_orders(fetched_open_orders) if fetched_open_orders else pd.DataFrame()
 
             coin = order_data['trading_pair'].split('/')[0]
@@ -177,7 +192,7 @@ class TradeBotUtils:
             params = {
                 'offset': 0,  # Skip the first 0 items
                 'paginate': True,  # Enable automatic pagination
-                'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+                'paginationCalls': 50,  # Set the max number of pagination calls if necessary
                 'limit': 300  # Set the max number of items to return
             }
             accounts = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_balance, endpoint, params=params)
@@ -194,8 +209,8 @@ class TradeBotUtils:
                     balances[currency] = float(account['free']) if account['free'] is not None else None
                 else:
                     balances[currency] = None
-                    self.log_manager.webhook_logger.info(f'get_account_balance: {currency} not found in accounts')
-            print(f'balances: {balances}')
+                    self.log_manager.webhook_logger.debug(f'get_account_balance: {currency} not found in accounts')
+            # print(f'balances: {balances}')
             return balances
         except Exception as e:
             my_ip = self.get_my_ip_address()
@@ -226,11 +241,10 @@ class TradeBotUtils:
     async def fetch_spot(self, symbol):
         try:
             endpoint = 'public'
-            # ticker = await self.exchange.fetch_ticker(symbol, endpoint)
             ticker = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, endpoint, symbol)
             if ticker is None or 'last' not in ticker:
                 self.log_manager.webhook_logger.error(f"Failed to fetch ticker or 'last' price missing for {symbol}")
-                return None  # Or handle this scenario appropriately
+                return None
             # Extract the spot price (last price)
             spot_price = ticker['last']
             self.log_manager.webhook_logger.debug(f'fetch_spot: {symbol} spot price: {spot_price}')
@@ -281,7 +295,7 @@ class TradeBotUtils:
         spread = best_ask_price - best_bid_price
 
         # Dynamic adjustment factor based on a percentage of the spread
-        adjustment_percentage = Decimal('0.005')  # 0.25%
+        adjustment_percentage = Decimal('0.005')  # 0.5%
         adjustment_factor = spread * adjustment_percentage
         # Ensure the adjustment is significant given the currency's precision
         exponential_str = '1e-{}'.format(quote_deci)
@@ -295,6 +309,7 @@ class TradeBotUtils:
                 print(f'adjusted_price: {adjusted_price}')
                 best_ask_price = best_ask_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_UP)
                 print(f'best_ask_price: {best_ask_price}')
+                print(f'Best_bid_price: {best_bid_price}')
                 quote_amount = Decimal(quote_amount) / quote_price
                 adjusted_size = quote_amount / adjusted_price
 
@@ -311,12 +326,12 @@ class TradeBotUtils:
                 print(f'adjusted_price: {adjusted_price}')
                 best_bid_price = best_bid_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_UP)
                 print(f'best_bid_price: {best_bid_price}')
+                print(f'best_ask_price: {best_ask_price}')
                 adjusted_size = Decimal(available_coin_balance)
 
             # Apply quantization based on market precision rules
             adjusted_price = adjusted_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_UP)
             print(f'adjusted_price: {adjusted_price}')
-            # adjusted_size = Decimal(available_coin_balance).quantize(base_incri, rounding=ROUND_DOWN)
             if response is not None and 'insufficient base balance' in response:
                 adjusted_size = adjusted_size - (adjusted_size * Decimal(0.01))  # reduce size by 1%
                 adjusted_size = adjusted_size.quantize(base_incri, rounding=ROUND_DOWN)
@@ -364,3 +379,4 @@ class TradeBotUtils:
         # Create datetime object from timestamp
         dt = datetime.fromtimestamp(timestamp_s)
         return dt
+

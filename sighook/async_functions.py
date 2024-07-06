@@ -35,4 +35,3 @@ class AsyncFunctions:
 # Registering signal handlers
 signal.signal(signal.SIGINT, AsyncFunctions.signal_handler)
 signal.signal(signal.SIGTERM, AsyncFunctions.signal_handler)
-

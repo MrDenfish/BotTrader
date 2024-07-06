@@ -4,6 +4,9 @@ from logging.handlers import TimedRotatingFileHandler
 import platform
 from datetime import datetime
 
+VERBOSE_LEVEL_NUM = 25
+logging.addLevelName(VERBOSE_LEVEL_NUM, "VERBOSE")
+
 
 class CustomLogger(logging.Logger):
     # Define custom logging levels
@@ -16,6 +19,10 @@ class CustomLogger(logging.Logger):
 
     logging.addLevelName(BUY_LEVEL_NUM, "BUY")
     logging.addLevelName(SELL_LEVEL_NUM, "SELL")
+
+    def verbose(self, message, *args, **kwargs):
+        if self.isEnabledFor(VERBOSE_LEVEL_NUM):
+            self._log(VERBOSE_LEVEL_NUM, message, args, **kwargs)
 
     def sell(self, message, *args, **kwargs):
         if self.isEnabledFor(self.SELL_LEVEL_NUM):
@@ -66,7 +73,8 @@ class CustomFormatter(logging.Formatter):
         CustomLogger.PROFIT_LEVEL_NUM: green + format + reset,
         CustomLogger.LOSS_LEVEL_NUM: red + format + reset,
         CustomLogger.INSUFFICIENT_FUNDS: yellow + format + reset,
-        CustomLogger.STOP_LOSS_LEVEL_NUM: yellow + format + reset
+        CustomLogger.STOP_LOSS_LEVEL_NUM: yellow + format + reset,
+        VERBOSE_LEVEL_NUM: grey + format + reset
     }
 
     def format(self, record):
@@ -91,6 +99,7 @@ class LoggerManager:
         if not self._is_initialized:
             self._log_level = config.log_level
             self.sighook_logger = None
+            self.verbose_logger = None  # verbose logger
             self.log_dir = log_dir if log_dir else os.getenv('SENDER_ERROR_LOG_DIR', 'logs')
             self.setup_logging()
             self._is_initialized = True
@@ -117,17 +126,20 @@ class LoggerManager:
         constant_log_file_path = os.path.join(sighook_log_dir, "sighook.log")
 
         self.sighook_logger = self.get_logger('sighook_logger', log_file_path, constant_log_file_path)
+        self.verbose_logger = self.get_logger('verbose_logger', log_file_path, constant_log_file_path,
+                                              level=VERBOSE_LEVEL_NUM)  # verbose logger
 
-    def get_logger(self, name, log_file_path, constant_log_file_path):
+    def get_logger(self, name, log_file_path, constant_log_file_path, level=None):
+        """ This method creates a logger object and sets up the logging for the logger.  It creates a console handler"""
 
         logger = logging.getLogger(name)
-        logger.setLevel(self.log_level)
+        logger.setLevel(level if level else self.log_level)
 
         if not logger.handlers:
             # Handler for console output
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(CustomFormatter())
-            console_handler.setLevel(self.log_level)  # Use the dynamic log level
+            console_handler.setLevel(level if level else self.log_level)
             logger.addHandler(console_handler)
 
             # File handler for rotating logs
@@ -135,13 +147,13 @@ class LoggerManager:
             file_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)")
             timed_file_handler.setFormatter(file_formatter)
-            timed_file_handler.setLevel(self.log_level)  # Use the dynamic log level
+            timed_file_handler.setLevel(level if level else self.log_level)
             logger.addHandler(timed_file_handler)
 
             # File handler for constant log file
             constant_file_handler = logging.FileHandler(constant_log_file_path)
             constant_file_handler.setFormatter(file_formatter)
-            constant_file_handler.setLevel(self.log_level)  # Use the dynamic log level
+            constant_file_handler.setLevel(level if level else self.log_level)
             logger.addHandler(constant_file_handler)
 
         return logger

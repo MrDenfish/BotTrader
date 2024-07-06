@@ -15,6 +15,7 @@ import datetime
 
 
 class DatabaseOpsManager:
+
     def __init__(self, debugger_function, db_tables, utility, exchange, ccxt_api,  log_manager, ticker_manager,
                  portfolio_manager, app_config):
 
@@ -31,7 +32,7 @@ class DatabaseOpsManager:
         self.market_cache = None
         self.start_time = None
         self.web_url = None
-
+        self.session_lock = asyncio.Lock()
         # Set up the database engine with more flexible configuration
         self.engine = create_async_engine(
             self.app_config.database_url
@@ -95,6 +96,13 @@ class DatabaseOpsManager:
     async def clear_new_trades(session: AsyncSession):
         """Clear all entries in the trades_new table."""
         await session.execute(delete(NewTrade))
+        await session.execute(delete(SymbolUpdate))
+        await session.commit()
+
+    @staticmethod
+    async def clear_symbol_updates(session: AsyncSession):
+        """Clear all entries in the symbol_updates table."""
+        await session.execute(delete(SymbolUpdate))
         await session.commit()
 
     @staticmethod
@@ -121,10 +129,10 @@ class DatabaseOpsManager:
                 last_update_time = last_update_by_symbol.get(market_symbol, default_date)
                 task = self.process_symbol(session, market, last_update_time)
                 tasks.append(task)
-
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for result in results:
                 if isinstance(result, Exception):
+                    self.log_manager.sighook_logger.error(f"Error processing market data: {result}", exc_info=True)
                     continue
                 symbol, last_processed_time = result
                 if symbol not in ["USDT/USDT", "USD/USD"] and last_processed_time != default_date:
@@ -135,20 +143,23 @@ class DatabaseOpsManager:
             await session.rollback()
             raise
 
+    async def process_symbol_with_new_session(self, market, last_update_time):
+        async with self.AsyncSessionLocal() as session:
+            return await self.process_symbol(session, market, last_update_time)
+
     async def process_symbol(self, session: AsyncSession, market, last_update_time):
         """PART I: Data Gathering and Database Loading. Process a single symbol's market data."""
         try:
-            # await self.log_all_trades(session, "Before processing symbol") # debug
             most_recent_trade_time = None
             trades = await self.portfolio_manager.get_my_trades(market['symbol'], last_update_time)
             if not trades:
-                return market['symbol'], last_update_time  # No new trades, return current last_update_time
+                self.log_manager.sighook_logger.debug(f"No trades found for {market['symbol']} since {last_update_time}")
+                return market['symbol'], last_update_time
 
-            self.log_manager.sighook_logger.debug(f"Fetched {len(trades)} trades for {market['symbol']}")  # debug
+            self.log_manager.sighook_logger.debug(f"Fetched {len(trades)} trades for {market['symbol']}")
             trade_objects = []
             temp_trade_objects = []
 
-            # Get the last trade for this asset to determine the starting balance
             last_trade_query = (
                 select(Trade)
                 .filter(Trade.asset == market['asset'].split('/')[0])
@@ -160,23 +171,19 @@ class DatabaseOpsManager:
             starting_balance = last_trade.balance if last_trade else 0.0
 
             for trade in trades:
-                self.log_manager.sighook_logger.debug(f"Processing trade: {trade}")  # debug
                 if 'id' not in trade or not trade['id']:
                     self.log_manager.sighook_logger.error("Missing trade ID")
                     continue
 
-                # Round trade times to the nearest second for comparison
                 trade_time = trade['datetime'].replace(microsecond=0)
                 trade_amount = float(trade['amount'])
                 trade_price = float(trade['price'])
                 trade_amount = trade_amount if trade['side'].lower() == 'buy' else -trade_amount
 
-                # Log the trade data being compared
                 self.log_manager.sighook_logger.debug(
                     f"Comparing trade: time={trade_time}, asset={market['asset'].split('/')[0]}, amount={trade_amount}, "
                     f"price={trade_price}")
 
-                # Check for existing trade using key attributes with tolerance for timestamp and numeric values
                 existing_trade_query = (
                     select(Trade)
                     .filter(
@@ -191,20 +198,18 @@ class DatabaseOpsManager:
                 existing_trade_result = await session.execute(existing_trade_query)
                 existing_trade = existing_trade_result.scalar()
 
-                # Log the existing trade data
                 if existing_trade:
                     self.log_manager.sighook_logger.debug(
                         f"Existing trade found: time={existing_trade.trade_time}, asset={existing_trade.asset}, "
                         f"amount={existing_trade.amount}, price={existing_trade.price}")
-                else:
-                    self.log_manager.sighook_logger.debug("No matching trade found.")
-
-                if existing_trade:
                     continue
 
-                # Calculate the new balance
                 starting_balance += trade_amount
-                trade_obj = await self.create_trade_object(trade, market['asset'], starting_balance)  # Create a Trade object
+                trade_obj = await self.create_trade_object(trade, market['asset'], starting_balance)
+                if trade_obj is None:
+                    self.log_manager.sighook_logger.error(f"Failed to create trade object: {trade}")
+                    continue
+
                 if trade_obj.amount == 0.0:
                     self.log_manager.sighook_logger.error(f"Trade amount is zero: {trade}")
                     continue
@@ -212,21 +217,128 @@ class DatabaseOpsManager:
                 trade_objects.append(trade_obj)
 
                 if trade['datetime'] > last_update_time:
-                    temp_trade_object = self.create_temp_trade(trade_obj)  # Add to temporary table
+                    temp_trade_object = self.create_temp_trade(trade_obj)
                     temp_trade_objects.append(temp_trade_object)
-                # Update most recent trade time if this trade is newer
+
                 if not most_recent_trade_time or trade_obj.trade_time > most_recent_trade_time:
                     most_recent_trade_time = trade_obj.trade_time
 
-            if trade_objects:
-                session.add_all(trade_objects)  # add all trade objects to the session trades table
-                self.log_manager.sighook_logger.debug(f"Added {len(trade_objects)} trade objects to session")
+            async with self.session_lock:
+                if trade_objects:
+                    for trade_obj in trade_objects:
+                        self.log_manager.sighook_logger.debug(f"Adding trade object to session: {trade_obj}")
+                        session.add(trade_obj)
+                    self.log_manager.sighook_logger.debug(f"Added {len(trade_objects)} trade objects to session")
 
-            if temp_trade_objects:
-                session.add_all(temp_trade_objects)  # add all trade objects to the session trades_new table
-                self.log_manager.sighook_logger.debug(f"Added {len(temp_trade_objects)} temp trade objects to session")
+                if temp_trade_objects:
+                    for temp_trade_obj in temp_trade_objects:
+                        self.log_manager.sighook_logger.debug(f"Adding temp trade object to session: {temp_trade_obj}")
+                        session.add(temp_trade_obj)
+                    self.log_manager.sighook_logger.debug(f"Added {len(temp_trade_objects)} temp trade objects to session")
 
-            # await self.log_all_trades(session, "After processing symbol") # debug
+                await session.flush()
+                self.log_manager.sighook_logger.debug("Session flushed successfully")
+
+            return market['symbol'], most_recent_trade_time if most_recent_trade_time else last_update_time
+
+        except Exception as e:
+            self.log_manager.sighook_logger.error(f"Error processing symbol {market['asset']}: {e}", exc_info=True)
+            await session.rollback()
+            raise
+
+    async def old_process_symbol(self, session: AsyncSession, market, last_update_time):
+        """PART I: Data Gathering and Database Loading. Process a single symbol's market data."""
+
+        try:
+            most_recent_trade_time = None
+            trades = await self.portfolio_manager.get_my_trades(market['symbol'], last_update_time)
+            if not trades:
+                self.log_manager.sighook_logger.info(f"No trades found for {market['symbol']} since {last_update_time}")
+                return market['symbol'], last_update_time
+
+            self.log_manager.sighook_logger.debug(f"Fetched {len(trades)} trades for {market['symbol']}")
+            trade_objects = []
+            temp_trade_objects = []
+
+            last_trade_query = (
+                select(Trade)
+                .filter(Trade.asset == market['asset'].split('/')[0])
+                .order_by(Trade.trade_time.desc())
+                .limit(1)
+            )
+            last_trade_result = await session.execute(last_trade_query)
+            last_trade = last_trade_result.scalar_one_or_none()
+            starting_balance = last_trade.balance if last_trade else 0.0
+
+            for trade in trades:
+                self.log_manager.sighook_logger.debug(f"Processing trade: {trade}")
+                if 'id' not in trade or not trade['id']:
+                    self.log_manager.sighook_logger.error("Missing trade ID")
+                    continue
+
+                trade_time = trade['datetime'].replace(microsecond=0)
+                trade_amount = float(trade['amount'])
+                trade_price = float(trade['price'])
+                trade_amount = trade_amount if trade['side'].lower() == 'buy' else -trade_amount
+
+                self.log_manager.sighook_logger.debug(
+                    f"Comparing trade: time={trade_time}, asset={market['asset'].split('/')[0]}, amount={trade_amount}, "
+                    f"price={trade_price}")
+
+                existing_trade_query = (
+                    select(Trade)
+                    .filter(
+                        and_(
+                            func.strftime('%Y-%m-%d %H:%M:%S', Trade.trade_time) == trade_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            Trade.asset == market['asset'].split('/')[0],
+                            func.abs(Trade.amount - Decimal(trade_amount)) < Decimal('1e-8'),
+                            func.abs(Trade.price - Decimal(trade_price)) < Decimal('1e-8')
+                        )
+                    )
+                )
+                existing_trade_result = await session.execute(existing_trade_query)
+                existing_trade = existing_trade_result.scalar()
+
+                if existing_trade:
+                    self.log_manager.sighook_logger.debug(
+                        f"Existing trade found: time={existing_trade.trade_time}, asset={existing_trade.asset}, "
+                        f"amount={existing_trade.amount}, price={existing_trade.price}")
+                    continue
+
+                starting_balance += trade_amount
+                trade_obj = await self.create_trade_object(trade, market['asset'], starting_balance)
+                if trade_obj is None:
+                    self.log_manager.sighook_logger.error(f"Failed to create trade object: {trade}")
+                    continue
+
+                if trade_obj.amount == 0.0:
+                    self.log_manager.sighook_logger.error(f"Trade amount is zero: {trade}")
+                    continue
+
+                trade_objects.append(trade_obj)
+
+                if trade['datetime'] > last_update_time:
+                    temp_trade_object = self.create_temp_trade(trade_obj)
+                    temp_trade_objects.append(temp_trade_object)
+
+                if not most_recent_trade_time or trade_obj.trade_time > most_recent_trade_time:
+                    most_recent_trade_time = trade_obj.trade_time
+
+            async with self.session_lock:
+                if trade_objects:
+                    for trade_obj in trade_objects:
+                        self.log_manager.sighook_logger.debug(f"Adding trade object to session: {trade_obj}")
+                        session.add(trade_obj)
+                    self.log_manager.sighook_logger.debug(f"Added {len(trade_objects)} trade objects to session")
+
+                if temp_trade_objects:
+                    for temp_trade_obj in temp_trade_objects:
+                        self.log_manager.sighook_logger.debug(f"Adding temp trade object to session: {temp_trade_obj}")
+                        session.add(temp_trade_obj)
+                    self.log_manager.sighook_logger.debug(f"Added {len(temp_trade_objects)} temp trade objects to session")
+
+                await session.flush()
+                self.log_manager.sighook_logger.debug("Session flushed successfully")
 
             return market['symbol'], most_recent_trade_time if most_recent_trade_time else last_update_time
 
@@ -262,6 +374,7 @@ class DatabaseOpsManager:
                 fee=fee,
                 total=total
             )
+
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error creating trade object: {e}", exc_info=True)
             return None
@@ -412,8 +525,6 @@ class DatabaseOpsManager:
                     f'Most recent buy trade: {most_recent_buy.trade_time}, amount: {most_recent_buy.amount}')
                 self.log_manager.sighook_logger.debug(
                     f'Most recent sell trade: {most_recent_sell.trade_time}, amount: {most_recent_sell.amount}')
-            if most_recent_buy.amount == 0.0:
-                pass
             # Fetch all trades for the asset to verify totals
             all_trades_query = (
                 select(Trade)
@@ -430,21 +541,23 @@ class DatabaseOpsManager:
             for trade_tuple in all_trades:
                 trade = trade_tuple[0]
                 trades_by_order[trade.order_id]['amount'] += float(trade.amount)
-                if trade.amount == 0.0:
-                    pass
                 trades_by_order[trade.order_id]['cost'] += float(trade.cost)
                 trades_by_order[trade.order_id]['proceeds'] += float(trade.proceeds)
 
             total_amount = sum(order['amount'] for order in trades_by_order.values())
-            if total_amount == 0.0:
-                print(f"Total amount is zero for asset {asset}")
-                pass  # debug
             total_cost = sum(order['cost'] for order in trades_by_order.values())
             total_proceeds = sum(order['proceeds'] for order in trades_by_order.values())
+
+            self.log_manager.sighook_logger.debug(f'Total amount for all trades: {total_amount}')
+            self.log_manager.sighook_logger.debug(f'Total cost for all trades: {total_cost}')
+            self.log_manager.sighook_logger.debug(f'Total proceeds for all trades: {total_proceeds}')
 
             # Separate purchases and sales for further analysis
             purchase_amount = sum(order['amount'] for order in trades_by_order.values() if order['amount'] > 0)
             sold_amount = sum(order['amount'] for order in trades_by_order.values() if order['amount'] < 0)
+
+            self.log_manager.sighook_logger.debug(f'Purchase amount for all trades: {purchase_amount}')
+            self.log_manager.sighook_logger.debug(f'Sold amount for all trades: {sold_amount}')
 
             if aggregation and aggregation.purchase_amount and aggregation.purchase_amount > 0:
                 # Calculate net balance
@@ -471,6 +584,11 @@ class DatabaseOpsManager:
                     'entry_price': purchase_price,
                 }
             else:
+                # Log if no valid trades found
+                self.log_manager.sighook_logger.debug(
+                    f"No valid trades found for asset {asset}. Total amount: "
+                    f"{aggregation.purchase_amount if aggregation else 'None'}")
+
                 return None
         except Exception as e:
             self.log_manager.sighook_logger.debug(f'aggregate_trade_data_for_symbol error: {e}', exc_info=True)
@@ -506,6 +624,9 @@ class DatabaseOpsManager:
                 flag_modified(buy_trade, "balance")
                 remaining_sell_amount -= available_for_sale
 
+                self.log_manager.sighook_logger.debug(
+                    f"Updated buy trade after update: {buy_trade.trade_id}, new balance: {buy_trade.balance}")
+
                 # Log realized profit
                 new_realized_profit = RealizedProfit(
                     currency=asset,
@@ -527,6 +648,12 @@ class DatabaseOpsManager:
         try:
             trades = await session.execute(select(Trade))
             trades = trades.scalars().all()
+            for trade in trades:
+                if trade.asset == 'BTC' or trade.asset == 'MNDE':
+                    if trade.amount == 0:
+                        self.log_manager.sighook_logger.debug(f"{log_point} - Asset: {trade.asset} Trade ID:"
+                                                              f" {trade.trade_id}, Amount: {trade.amount}, Transaction Type:"
+                                                              f" {trade.transaction_type}")
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error logging all trades at {log_point}: {e}")
 
@@ -638,7 +765,7 @@ class DatabaseOpsManager:
             # Update the last update time if new trades were fetched
             latest_time = self.utility.convert_timestamp(last_update_unix)
             if new_trades:
-                print(f'New trades since {latest_time} for {symbol}')
+                # print(f'New trades since {latest_time} for {symbol}')  # debug
                 await self.set_last_update_time(session, symbol, new_trades[-1]['trade_time'])
             return new_trades
 
@@ -651,12 +778,17 @@ class DatabaseOpsManager:
         try:
             # Initialize fee_cost
             fee_cost = None
+            if trade is None:
+                return None
 
             # Extract the trade time, handling the case where 'info' may or may not be present
             if 'info' in trade and 'trade_time' in trade['info']:
                 trade_time_str = trade['info']['trade_time']
-                # Truncate the string to limit the number of decimal places to 6
-                trade_time_str = trade_time_str.split('.')[0] + '.' + trade_time_str.split('.')[1][:6]
+                # Check if the trade_time_str contains a decimal part
+                if '.' in trade_time_str:
+                    trade_time_str = trade_time_str.split('.')[0] + '.' + trade_time_str.split('.')[1][:6]
+                else:
+                    trade_time_str = trade_time_str.rstrip("Z")
                 trade_time = dt.fromisoformat(trade_time_str.rstrip("Z"))  # Assuming ISO format string
             elif 'trade_time' in trade and isinstance(trade['trade_time'], dt):
                 trade_time = trade['trade_time']  # Directly use the datetime object
@@ -693,3 +825,8 @@ class DatabaseOpsManager:
         except Exception as e:
             self.log_manager.sighook_logger.error(f'process_trade_data: {e}', exc_info=True)
             return None
+
+        # Perform any necessary validation or transformation on the extracted data
+        # For example, you might want to ensure that 'side' is either 'buy' or 'sell'
+
+    # <><><>><><><> TRouble shooting functions that may be deleted when no longer needed <><><><><

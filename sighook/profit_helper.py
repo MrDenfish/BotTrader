@@ -1,8 +1,5 @@
 from decimal import Decimal, ROUND_DOWN
-import traceback
 import pandas as pd
-import numpy as np
-from datetime import datetime
 
 
 class ProfitHelper:
@@ -37,9 +34,6 @@ class ProfitHelper:
     @property
     def take_profit(self):
         return self._take_profit
-
-    import pandas as pd
-    from decimal import Decimal
 
     async def calculate_unrealized_profit_loss(self, aggregated_df):
         """PART VI: Profitability Analysis and Order Generation
@@ -91,13 +85,13 @@ class ProfitHelper:
         """ PART VI: Profitability Analysis and Order Generation"""
 
         market_prices = {}
+        tickers = await self.ticker_manager.fetch_bids_asks()
         for symbol in symbols:
-            _, bid, _ = await self.ticker_manager.fetch_ticker_data(symbol['symbol'])  # Accessing symbol
-            if bid:
-                market_prices[symbol['asset']] = bid
+            symbol_name = symbol['symbol']
+            if symbol_name in tickers:
+                market_prices[symbol_name] = tickers[symbol_name]['bid']
+
         return market_prices
-
-
 
     #  <><><><><><><><><><><><><><><><><><><>><><><><><><><><><><><><><><><><><><><>><>><><><><><><><><><><><><><><><><><><><>
 

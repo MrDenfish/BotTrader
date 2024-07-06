@@ -40,6 +40,7 @@ class DatabaseSessionManager:
             try:
                 # load all historical trades into the database
                 await self.database_ops.clear_new_trades(session)  # clear out the new_trades table every time before the
+
                 # db is loaded
 
                 # load the new trades into the database
@@ -49,10 +50,8 @@ class DatabaseSessionManager:
                     # await self.csv_manager.process_csv_data(session, csv_dir)
                     # await session.commit()
                     await self.database_ops.process_market_data(session, market_data['market_cache'])
-
-                # load holdings into the holdings table
-
                 await session.commit()
+                self.log_manager.sighook_logger.debug("Session committed successfully")
                 # load the most recent trade for each symbol into the database symbol_updates table
                 # summarize the trades for each symbol and load the summary into the trade_summary table
 
@@ -162,8 +161,8 @@ class DatabaseSessionManager:
                     # Fetch new trades from the exchange since the last update time
                     raw_trades = await self.database_ops.fetch_trades(session, symbol, last_update)
 
-                    # Process raw trade data into a standardized format
-                    new_trades = [self.database_ops.process_trade_data(trade) for trade in raw_trades]
+                    # Process raw trade data into a standardized format, filtering out None values
+                    new_trades = [self.database_ops.process_trade_data(trade) for trade in raw_trades if trade is not None]
 
                     # Update the last update time for the symbol if new trades were fetched
                     if new_trades:
@@ -179,3 +178,4 @@ class DatabaseSessionManager:
 
             finally:
                 await session.close()
+

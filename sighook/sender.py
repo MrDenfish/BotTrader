@@ -38,12 +38,16 @@ shutdown_event = asyncio.Event()
 
 
 class TradeBot:
+    _exchange_instance_count = 0
+
     def __init__(self, bot_config):
         self.app_config = bot_config
+        self.cb_api = self.app_config.load_sighook_api_key()
         self._csv_dir = self.app_config.csv_dir
         self.log_dir = self.app_config.log_dir
         self.csv_manager = None
         self.max_concurrent_tasks = 10
+        self.tradebot = None
         self.log_manager, self.alerts, self.ccxt_exceptions, self.custom_excep = None, None, None, None
         self.api401, self.exchange, self.market_metrics, self.utility = None, None, None, None
         self.profit_extras, self.database_session_mngr, self.async_func, self.indicators = None, None, None, None
@@ -53,6 +57,7 @@ class TradeBot:
         self.filtered_balances, self.start_time, self.exchange_class, self.session = None, None, None, None
         self.db_initializer, self.database_ops_mngr, self.csv_manager, self.db_tables = None, None, None, None
         self.debug_data_loader = None
+        self._min_volume = Decimal(self.app_config.min_volume)
         self.sleep_time = self.app_config.sleep_time
         self.web_url = self.app_config.web_url
 
@@ -61,24 +66,17 @@ class TradeBot:
     def csv_dir(self):
         return self._csv_dir
 
-    async def start(self):
-        """ Start the bot after initialization. """
-        try:
-            async with aiohttp.ClientSession() as self.http_session:
-                await self.async_init()
-                await self.run_bot()
-        except Exception as e:
-            print(f"Failed to start the bot: {e}")
-        finally:
-            if hasattr(self, 'database_manager') and self.database_manager.engine:
-                await self.database_manager.engine.dispose()  # Clean up the engine
-            print("Program has exited.")
+    @property
+    def min_volume(self):
+        return self._min_volume
 
     def setup_exchange(self):
-        exchange_class = getattr(ccxt, 'coinbase')
-        return exchange_class({
-            'apiKey': self.app_config.api_key,
-            'secret': self.app_config.api_secret,
+        self.exchange = getattr(ccxt, 'coinbase')
+        TradeBot._exchange_instance_count += 1
+        print(f"Exchange instance created. Total instances: {TradeBot._exchange_instance_count}")  # debug
+        return self.exchange({
+            'apiKey': self.cb_api.get('name'),
+            'secret': self.cb_api.get('privateKey'),
             'enableRateLimit': True,
             'verbose': False
         })
@@ -90,9 +88,11 @@ class TradeBot:
 
     async def load_initial_data(self):
         try:
+
             """PART I: Data Gathering and Database Loading"""
             self.start_time = time.time()
             print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
+
             self.market_data = await self.market_manager.update_market_data()
             self.utility.print_elapsed_time(self.start_time, 'Part I: market data update is complete')
             await self.database_session_mngr.process_data(self.market_data, self.start_time, self.csv_dir)
@@ -101,6 +101,8 @@ class TradeBot:
             self.log_manager.sighook_logger.error(f'Failed to initialize data on startup {e}', exc_info=True)
         finally:
             await self.exchange.close()
+            TradeBot._exchange_instance_count -= 1
+            print(f"Exchange instance closed. Total instances: {TradeBot._exchange_instance_count}")
 
     async def load_bot_components(self):
         """ Initialize all components required by the TradeBot. """
@@ -110,12 +112,13 @@ class TradeBot:
         self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
         self.async_func = AsyncFunctions()
         self.indicators = Indicators(self.log_manager, self.app_config)
+        self.tradebot = TradeBot(self.app_config)
         self.utility = SenderUtils(self.log_manager, self.exchange, self.ccxt_exceptions)
 
         self.ticker_manager = TickerManager(self.utility, self.log_manager, self.exchange, self.ccxt_exceptions,
                                             self.max_concurrent_tasks)
         self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
-                                                  self.max_concurrent_tasks)
+                                                  self.max_concurrent_tasks, self.app_config)
 
         self.db_tables = Trade()
 
@@ -143,7 +146,8 @@ class TradeBot:
         self.order_manager = OrderManager(self.trading_strategy, self.ticker_manager, self.exchange, self.webhook,
                                           self.utility, self.alerts, self.log_manager, self.ccxt_exceptions,
                                           self.profit_helper, self.app_config, self.max_concurrent_tasks)
-        self.market_manager = MarketManager(self.exchange, self.order_manager, self.trading_strategy, self.log_manager,
+        self.market_manager = MarketManager(self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
+                                            self.log_manager,
                                             self.ccxt_exceptions, self.ticker_manager, self.utility,
                                             self.max_concurrent_tasks)
         self.profit_extras = PerformanceManager(self.exchange, self.ccxt_exceptions, self.utility, self.profit_helper,
@@ -153,6 +157,19 @@ class TradeBot:
                                                    self.database_session_mngr, self.database_ops_mngr, self.order_manager,
                                                    self.trading_strategy, self.profit_helper, self.profit_extras,
                                                    self.log_manager, self.app_config)
+
+    async def start(self):
+        """ Start the bot after initialization. """
+        try:
+            async with aiohttp.ClientSession() as self.http_session:
+                await self.async_init()
+                await self.run_bot()
+        except Exception as e:
+            print(f"Failed to start the bot: {e}")
+        finally:
+            if hasattr(self, 'database_manager') and self.database_manager.engine:
+                await self.database_manager.engine.dispose()  # Clean up the engine
+            print("Program has exited.")
 
     async def run_bot(self):  # async
 
@@ -190,7 +207,7 @@ class TradeBot:
                 # PART II:
                 #   Trade Database Updates and Portfolio Management
                 print(f'Part II: Trade Database Updates and Portfolio Management - Start Time:', datetime.datetime.now())
-                (holdings, usd_coins, avg_vol_total, buy_sell_matrix, price_change) = \
+                (holdings, usd_coins, ticker_cache_avg_dollar_vol, buy_sell_matrix, price_change) = \
                     self.portfolio_manager.get_portfolio_data(self.start_time)
 
                 # Filter to include only coins that have a buy or sell signal, all others omitted.
@@ -200,11 +217,14 @@ class TradeBot:
 
                 # PART III:
                 #   Order cancellation and Data Collection
+                print(f"Exchange instance. Total instances: {TradeBot._exchange_instance_count}")
                 print(f'Part III: Order cancellation and Data Collection - Start Time:', datetime.datetime.now())
 
                 if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
-                    open_orders, ohlcv_data_dict = await self.market_manager.fetch_ohlcv(
-                        holdings, usd_coins, avg_vol_total, buy_sell_matrix, filtered_ticker_cache)
+                    open_orders = await self.order_manager.get_open_orders(holdings, usd_coins)
+                    self.utility.print_elapsed_time(self.start_time, 'open_orders')
+                    ohlcv_data_dict = await self.market_manager.fetch_ohlcv(filtered_ticker_cache)
+
                 self.utility.print_elapsed_time(self.start_time, 'Part III: Order cancellation and Data Collection')
 
                 # PART IV:
@@ -229,7 +249,8 @@ class TradeBot:
                 self.utility.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:
                     await self.exchange.close()
-                self.print_data(open_orders, buy_sell_matrix, avg_vol_total, submitted_orders, aggregated_df)  # Debug
+                self.print_data(self.min_volume, open_orders, buy_sell_matrix, ticker_cache_avg_dollar_vol,
+                                submitted_orders, aggregated_df)
 
                 # PART VII: Database update and cleanup
                 print(f'Part VII: Database update and cleanup - Start Time:', datetime.datetime.now())
@@ -254,17 +275,16 @@ class TradeBot:
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error in main loop: {e}", exc_info=True)
             await self.exchange.close()  # close the exchange connection
+            TradeBot._exchange_instance_count -= 1  # debug
         finally:
-            await self.exchange.close()  # close the exchange connection
+            await self.exchange.close()
+            TradeBot._exchange_instance_count -= 1
             if AsyncFunctions.shutdown_event.is_set():
                 await AsyncFunctions.shutdown(asyncio.get_running_loop(), http_session=self.http_session)
-
-            # self.save_data_on_exit(profit_data, ledger)  # Ensure this is awaited if it's an async function
-            # self.alerts.callhome(f"Program has stopped running.", f'Time:{datetime.datetime.now()}')
             print("Program has exited.")
 
     @staticmethod
-    def print_data(open_orders, buy_sell_matrix, avg_vol_total, submitted_orders, aggregated_df):
+    def print_data(min_volume, open_orders, buy_sell_matrix, ticker_cache_avg_dollar_vol, submitted_orders, aggregated_df):
         if open_orders is not None and len(open_orders) > 0:
             print(f'')
             print(f'Open orders:')
@@ -281,19 +301,20 @@ class TradeBot:
             print(f'')
         else:
             print(f'No Orders were Submitted')
-        no_buy = (buy_sell_matrix['Buy Signal'].notna()) & (buy_sell_matrix['Buy Signal'] != '')
-        no_sell = (buy_sell_matrix['Sell Signal'].notna()) & (buy_sell_matrix['Sell Signal'] != '')
-        filtered_matrix = buy_sell_matrix[no_buy | no_sell]
-        intro_text = (
-            f"{len(filtered_matrix)} Currencies trading with a buy or sell signal and Volume greater "
-            f"than"
-            f" {min(avg_vol_total, Decimal(1000000))}:")
-        print("<><><><<><>" * 20)
-        print(intro_text)
-        print(f'                        24h           24h       24h                                              (Need 3)')
-        print(tabulate(filtered_matrix, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
-                       numalign='center'))
-        print(f'')
+        if buy_sell_matrix is not None and len(buy_sell_matrix) > 0:
+            no_buy = (buy_sell_matrix['Buy Signal'].notna()) & (buy_sell_matrix['Buy Signal'] != '')
+            no_sell = (buy_sell_matrix['Sell Signal'].notna()) & (buy_sell_matrix['Sell Signal'] != '')
+            filtered_matrix = buy_sell_matrix[no_buy | no_sell]
+            intro_text = (
+                f"{len(filtered_matrix)} Currencies trading with a buy or sell signal and Volume greater "
+                f"than"
+                f" {min(ticker_cache_avg_dollar_vol, min_volume)}:")
+            print("<><><><<><>" * 20)
+            print(intro_text)
+            print(f'                        24h           24h       24h                                              (Need 3)')
+            print(tabulate(filtered_matrix, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
+                           numalign='center'))
+            print(f'')
         if aggregated_df is not None and not aggregated_df.empty:
             print(f'Holdings with changes: {aggregated_df.to_string(index=False)}')
         else:

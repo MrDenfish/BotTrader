@@ -14,7 +14,7 @@ class OrderManager:
         self.ticker_manager = ticker_manager
         self.alerts = alerts
         self.log_manager = logmanager
-        self.ccxt_exceptions = ccxt_api
+        self.ccxt_api = ccxt_api
         self.utility = utility
         self.profit_helper = profit_helper
         self._version = config.program_version
@@ -55,38 +55,24 @@ class OrderManager:
         """PART III: Trading Strategies"""
         """ Fetch open orders for ALL USD paired coins  and process the data to determine if the order should be
         cancelled."""
-        endpoint = 'private'  # for rate limiting
+        endpoint = 'private'
         try:
-            symbols_to_check = []
-            if fetch_all:
-                symbols_to_check = usd_pairs
-                for symbol_dict in symbols_to_check:
-                    if 'id' in symbol_dict:
-                        symbol_dict['id'] = symbol_dict['id'].replace('-', '/')  # change format so it will
-                # work with filtered orders
-            else:  # check only coins in portfolio
-                for symbol in holdings:
-                    if symbol['id']:
-                        symbols_to_check.append(symbol['id'].replace('-', '/'))
+            symbols_to_check = usd_pairs if fetch_all else [symbol['id'].replace('-', '/') for symbol in holdings if
+                                                            symbol['id']]
+            params = {'paginate': True, 'paginationCalls': 10}
 
-            params = {
-                'paginate': True,  # Enable automatic pagination
-                'paginationCalls': 10  # Set the max number of pagination calls if necessary
-            }
-            # fetch all buy/sell open orders
-            all_open_orders = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_open_orders, endpoint,
-                                                                       limit=None, params=params)
+            all_open_orders = await self.ccxt_api.ccxt_api_call(
+                self.exchange.fetch_open_orders, endpoint, None, params=params)
 
-            if len(all_open_orders) == 0:  # no open orders for coins in portfolio
-                self.log_manager.sighook_logger.debug(f'order_manager: get_open_orders: No open orders found.')
+            if not all_open_orders:
+                self.log_manager.sighook_logger.debug('order_manager: get_open_orders: No open orders found.')
                 return None
-            else:  # open orders exist
-                self.log_manager.sighook_logger.debug(f'order_manager: get_open_orders: Found {len(all_open_orders)}'
-                                                      f' open orders.')
-                all_open_orders = self.format_open_orders(all_open_orders)
 
-                open_orders = await self.cancel_stale_orders(all_open_orders)  # await
-                return open_orders
+            self.log_manager.sighook_logger.debug(
+                f'order_manager: get_open_orders: Found {len(all_open_orders)} open orders.')
+            all_open_orders = self.format_open_orders(all_open_orders)
+            open_orders = await self.cancel_stale_orders(all_open_orders)
+            return open_orders
         except Exception as gooe:
             self.log_manager.sighook_logger.error(f'get_open_orders: {gooe}', exc_info=True)
             return None
@@ -94,58 +80,39 @@ class OrderManager:
     async def cancel_stale_orders(self, open_orders):
         """PART III: Trading Strategies """
         """Cancel stale orders based on pre-fetched ticker data."""
+        ticker_data = []
         try:
-            # Fetch ticker data for unique symbols in open_orders
             symbols = set(open_orders['product_id'].str.replace('/', '-'))
-
-            ticker_tasks = [self.fetch_ticker_data(symbol) for symbol in symbols]
+            ticker_tasks = [self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol) for symbol in symbols]
             ticker_data = await asyncio.gather(*ticker_tasks)
-
-            # Create a DataFrame from the fetched ticker data
             ticker_df = pd.DataFrame(
-                [(symbol, Decimal(ticker['ask']), Decimal(ticker['bid'])) for symbol, ticker in ticker_data if ticker],
+                [(symbol, Decimal(ticker['ask']), Decimal(ticker['bid'])) for symbol, ticker in zip(symbols, ticker_data) if
+                 ticker],
                 columns=['symbol', 'ask', 'bid'])
 
-            # Merge open_orders with ticker_df
             merged_orders = pd.merge(open_orders, ticker_df, left_on=open_orders['product_id'].str.replace('/', '-'),
                                      right_on='symbol', how='left')
 
-            # Ensure all relevant columns are converted to Decimal
             merged_orders['amount'] = merged_orders['amount'].apply(Decimal)
             merged_orders['ask'] = merged_orders['ask'].apply(Decimal)
             merged_orders['bid'] = merged_orders['bid'].apply(Decimal)
             merged_orders['time active (minutes)'] = merged_orders['time active (minutes)'].str.replace(' minutes',
                                                                                                         '').astype(int)
-            # Create the boolean column based on the comparison
             merged_orders['time active > 5 minutes'] = merged_orders['time active (minutes)'] > 5
-            # Calculate 'is_stale' using vectorized operations
-            # Perform the vectorized operation to determine if an order is stale
+
             merged_orders['is_stale'] = (
-                    (
-                        # Condition for 'BUY' orders
-                            (merged_orders['side'] == 'BUY') &  # Check if side is 'BUY'
-                            (
-                                    (merged_orders['amount'] * Decimal('1.02') < merged_orders[
-                                        'ask']) |  # Condition 1 for 'BUY'
-                                    (merged_orders['amount'] * Decimal('0.98') > merged_orders['bid'])
-                                    # Condition 2 for 'BUY'
-                            ) & (merged_orders['time active > 5 minutes'])  # Check if older than 5 minutes
-                    ) |
-                    (
-                        # Condition for 'SELL' orders
-                        (merged_orders['side'] == 'SELL') &  # Check if side is 'SELL'
-                        (merged_orders['amount'] < merged_orders['ask'] * Decimal('0.98'))  # Condition for 'SELL'
-                    )
+                    ((merged_orders['side'] == 'BUY') &
+                     ((merged_orders['amount'] * Decimal('1.02') < merged_orders['ask']) |
+                      (merged_orders['amount'] * Decimal('0.98') > merged_orders['bid'])) &
+                     (merged_orders['time active > 5 minutes'])) |
+                    ((merged_orders['side'] == 'SELL') &
+                     (merged_orders['amount'] < merged_orders['ask'] * Decimal('0.98')))
             )
 
-            # Filter stale orders
             stale_orders = merged_orders[merged_orders['is_stale']]
-
-            # Concurrently cancel stale orders
             cancel_tasks = [self.cancel_order(order_id) for order_id in stale_orders['order_id']]
             await asyncio.gather(*cancel_tasks)
 
-            # Return non-stale orders
             non_stale_orders = merged_orders[~merged_orders['is_stale']].drop(columns=['is_stale', 'symbol', 'ask', 'bid'])
             return non_stale_orders
 
@@ -153,21 +120,11 @@ class OrderManager:
             self.log_manager.sighook_logger.error(f'Error cancelling stale orders: {e}', exc_info=True)
             return None
 
-    async def fetch_ticker_data(self, symbol):
-        """PART III: Order cancellation and Data Collection """
-        """Fetch ticker data for a symbol."""
-        try:
-            endpoint = 'public'  # for rate limiting
-            ticker = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, endpoint, symbol)
-            return symbol, ticker
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error fetching ticker for {symbol}: {e}', exc_info=True)
-            return symbol, None
-
     async def cancel_order(self, order_id):
         """PART III: Trading Strategies """
-        endpoint = 'private'  # for rate limiting
-        await self.ccxt_exceptions.ccxt_api_call(self.exchange.cancel_order, endpoint, order_id)
+        endpoint = 'private'
+        async with self.ccxt_api.get_semaphore(endpoint):
+            await self.ccxt_api.ccxt_api_call(self.exchange.cancel_order, endpoint, order_id)
 
     def format_open_orders(self, open_orders: list) -> pd.DataFrame:
         """PART III: Trading Strategies """
@@ -193,12 +150,12 @@ class OrderManager:
             df = pd.DataFrame(data_to_load)
             base_deci, quote_deci = self.utility.fetch_precision(df['product_id'])
 
-            df['size'] = df.apply(lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['size']),
-                                                                            'base'), axis=1)
-            df['amount'] = df.apply(lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['amount']),
-                                                                              'base'), axis=1)
+            df['size'] = df.apply(
+                lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['size']), 'base'), axis=1)
+            df['amount'] = df.apply(
+                lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['amount']), 'base'), axis=1)
             df['time active (minutes)'] = df['time active'].apply(lambda x: self.utility.calculate_time_difference(x))
-            df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')  # Ensure numeric
+            df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')
             df['time active > 5 minutes'] = df['time_temp'] > 5
             df.drop(columns=['time_temp'], inplace=True)
 
@@ -213,6 +170,8 @@ class OrderManager:
             # Initialize an empty DataFrame for orders
             orders_df = pd.DataFrame(columns=['symbol', 'action', 'trigger'])
             for result in results:
+                if result is None or isinstance(result, Exception) or "error" in result:
+                    continue  # Skip this result and move on to the next
                 if 'order_info' in result and result['order_info']['action'] in ['buy', 'sell']:
                     execution_tasks.append(self.handle_actions(result['order_info'], holdings))
 

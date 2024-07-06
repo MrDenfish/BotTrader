@@ -35,15 +35,13 @@ class TradingStrategy:
     async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, ohlcv_data_dict):
         """PART IV: Trading Strategies"""
 
-        tasks = [self.process_row(row, buy_sell_matrix, ohlcv_data_dict) for _, row in
-                 filtered_ticker_cache.iterrows()]
+        tasks = [self.process_row(row, buy_sell_matrix, ohlcv_data_dict) for _, row in filtered_ticker_cache.iterrows()]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         buy_sell_matrix = self.process_row_results(results, buy_sell_matrix)
         self.utility.print_elapsed_time(self.start_time, 'process all row')
         return results, buy_sell_matrix  # Return both the results and the aggregated orders
 
-    # @profile
     async def process_row(self, row, buy_sell_matrix, ohlcv_data_dict):
         """PART IV: Trading Strategies"""
         try:
@@ -55,7 +53,7 @@ class TradingStrategy:
             ohlcv_data = ohlcv_data_dict.get(asset)
             if ohlcv_data is None:
                 return None
-                # Access the DataFrame directly from ohlcv_data
+            # Access the DataFrame directly from ohlcv_data
             ohlcv_df = ohlcv_data['data']
             bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
             action_data = self.decide_action(ohlcv_df, bollinger_df, asset, row['info']['price'], buy_sell_matrix)
@@ -68,7 +66,6 @@ class TradingStrategy:
                 'trigger': action_data.get('trigger'),
                 'band_ratio': action_data.get('band_ratio'),
                 'sell_cond': action_data.get('sell_cond'),
-                # Include bollinger_df and action_data for further use
                 'bollinger_df': bollinger_df.to_dict('list'),  # Convert DataFrame to a more serializable format
                 'action_data': action_data
             }
@@ -82,15 +79,18 @@ class TradingStrategy:
         enter results from indicators and Order cancellation and Data Collection into the buy_sell_matrix"""
         try:
             for result in results:
-                if isinstance(result, Exception) or "error" in result:
+                if result is None or isinstance(result, Exception) or "error" in result:
                     continue  # Skip this result and move on to the next
 
-                    # Skip the iteration if the item is not a dictionary
+                # Skip the iteration if the item is not a dictionary
                 if not isinstance(result, dict):
                     continue
+                if not result.get('order_info'):
+                    continue
 
-                symbol = result.get('symbol')
-                action_data = result['order_info']['action_data']
+                order_info = result.get('order_info')
+                symbol = order_info.get('symbol')
+                action_data = order_info.get('action_data')
                 if action_data and 'updates' in action_data:
                     updates = action_data['updates']
                     # load indicator results into the buy_sell_matrix

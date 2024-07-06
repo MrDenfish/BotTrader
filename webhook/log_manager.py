@@ -73,13 +73,9 @@ class LoggerManager:
 
     def __init__(self, config, log_dir=None):
         self._log_level = config.log_level
-        # self.id = LoggerManager._instance_count
-        # LoggerManager._instance_count += 1
-        # print(f"LoggerManager Instance ID: {self.id}")
 
         if not self._is_initialized:
             self.webhook_logger = None
-            self.flask_logger = None
             self.log_dir = log_dir if log_dir else os.getenv('WEBHOOK_ERROR_LOG_DIR', 'logs')
             self.setup_logging()
             self._is_initialized = True
@@ -99,10 +95,9 @@ class LoggerManager:
 
         # Directories for listener and Flask logs
         webhook_log_dir = os.path.join(self.log_dir, 'listener_logs')
-        flask_log_dir = os.path.join(self.log_dir, 'flask_logs')
 
         # Create directories if they don't exist
-        for directory in [webhook_log_dir, flask_log_dir]:
+        for directory in [webhook_log_dir]:
             if not os.path.exists(directory):
                 os.makedirs(directory)
 
@@ -111,12 +106,6 @@ class LoggerManager:
         listener_log_file_path = os.path.join(webhook_log_dir, listener_log_filename)
         listener_constant_log_file_path = os.path.join(webhook_log_dir, "webhook.log")
         self.webhook_logger = self.get_logger('webhook_logger', listener_log_file_path, listener_constant_log_file_path)
-
-        # Flask log setup
-        flask_log_filename = f"flask.log.{current_platform}.{current_date}"
-        flask_log_file_path = os.path.join(flask_log_dir, flask_log_filename)
-        flask_constant_log_file_path = os.path.join(flask_log_dir, "flask.log")
-        self.flask_logger = self.get_logger('flask_logger', flask_log_file_path, flask_constant_log_file_path)
 
     def get_logger(self, name, log_file_path, constant_log_file_path):
 

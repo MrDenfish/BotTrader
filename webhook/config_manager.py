@@ -1,6 +1,3 @@
-"""The BotConfig class has been outlined with methods for loading configuration
-from environment variables and providing getters for accessing these configurations.
-This class  encapsulates the configuration management for the trading bot."""
 import os
 import json
 from decimal import Decimal
@@ -23,9 +20,8 @@ class BotConfig:
             self._coin_whitelist, self._pagekite_whitelist, self._account_sid, self._auth_token = None, None, None, None
             self._account_phone, self._web_url, self._log_level, self._hodl = None, None, None, []
             self._min_sell_value, self.port, self.machine_type, self.log_dir, self.sql_log_dir = None, None, None, None, None
-            self.flask_log_dir, self.active_trade_dir, self.portfolio_dir, self.profit_dir = None, None, None, None
-            self._stop_loss, self._take_profit, self._coinbase_api_key, self._coinbase_secret = None, None, None, None
-            self._coinbase_passphrase, self._cdp_api_key_path = None, None
+            self.active_trade_dir, self.portfolio_dir, self.profit_dir = None, None, None
+            self._stop_loss, self._take_profit, self._webhook_api_key_path = None, None, None
 
             if not self._is_loaded:
                 # Check if running inside Docker by looking for a specific environment variable
@@ -43,12 +39,6 @@ class BotConfig:
 
     def load_environment_variables(self):
         self._version = os.getenv('VERSION')
-        self._api_key = os.getenv('API_KEY')
-        self._coinbase_api_key = os.getenv('COINBASE_API_KEY')
-        self._coinbase_secret = os.getenv('COINBASE_API_SECRET')
-        self._coinbase_passphrase = os.getenv('COINBASE_PASSPHRASE')
-        self._api_secret = os.getenv('API_SECRET')
-        self._passphrase = os.getenv('API_PASS')
         self._api_url = os.getenv('API_URL')
         self._docker_staticip = os.getenv('DOCKER_STATICIP')
         self._tv_whitelist = os.getenv('TV_WHITELIST')
@@ -63,12 +53,14 @@ class BotConfig:
         self._take_profit = os.getenv('TAKE_PROFIT')
         self._min_sell_value = Decimal(os.getenv('MIN_SELL_VALUE'))
         self._hodl = os.getenv('HODL')
+        self._api_key = os.getenv('API_KEY')
+        self._api_secret = os.getenv('API_SECRET')
         self.machine_type = self.determine_machine_type()
 
     def load_json_config(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(current_dir, 'config.json')
-        self._cdp_api_key_path = os.path.join(current_dir, 'cdp_api_key.json')
+        self._webhook_api_key_path = os.path.join(current_dir, 'webhook_api_key.json')
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
@@ -95,27 +87,30 @@ class BotConfig:
             print(f"Invalid path {os.getcwd()}")
 
         if machine_type in ['moe', 'Manny']:  # laptop, desktop
-            # For 'moe' and 'manny', use the specified port (default 80)
-
             print(f'webhook: determine_machine_type: Machine type: {machine_type}')
         elif machine_type == 'docker':  # container
-            # For Docker containers, also use the specified port (default 80)
             pass
-
         else:
             print('Error: Could not determine machine type')
             exit(1)
         return machine_type
 
     def get_directory_paths(self):
-        base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
+        base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '')
         self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['TRADERBOT_ERROR_LOG_DIR'])
-        self.flask_log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['FLASK_ERROR_LOG_DIR'])
 
         # Create the directories if they don't exist
-        for dir_path in [self.log_dir, self.flask_log_dir]:
+        for dir_path in [self.log_dir]:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
+
+    @property
+    def api_key(self):
+        return self._api_key
+
+    @property
+    def api_secret(self):
+        return self._api_secret
 
     @property
     def hodl(self):
@@ -140,31 +135,6 @@ class BotConfig:
     @property
     def log_level(self):
         return self._log_level
-
-    @property  # read only
-    def api_key(self):
-        return self._api_key
-
-    # Define the rest of the getters
-    @property
-    def api_secret(self):
-        return self._api_secret
-
-    @property
-    def passphrase(self):
-        return self._passphrase
-
-    @property
-    def coinbase_api_key(self):
-        return self._coinbase_api_key
-
-    @property
-    def coinbase_secret(self):
-        return self._coinbase_secret
-
-    @property
-    def coinbase_passphrase(self):
-        return self._coinbase_passphrase
 
     @property
     def api_url(self):
@@ -203,8 +173,8 @@ class BotConfig:
         return self._json_config
 
     @property
-    def cdp_api_key_path(self):
-        return self._cdp_api_key_path
+    def webhook_api_key_path(self):
+        return self._webhook_api_key_path
 
     @property
     def is_loaded(self):
@@ -218,3 +188,11 @@ class BotConfig:
         # Force reload of configuration
         self._is_loaded = False
         self.__init__()
+
+    def load_webhook_api_key(self):
+        try:
+            with open(self._webhook_api_key_path, 'r') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading CDP API key JSON: {e}")
+            exit(1)

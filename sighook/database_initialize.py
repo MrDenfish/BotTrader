@@ -17,5 +17,3 @@ class DatabaseInitializer:
             except Exception as e:
                 print(f"Failed to create tables: {e}")
                 raise  # Re-raise the exception after logging for further handling if needed.
-
-

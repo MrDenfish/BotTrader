@@ -1,18 +1,14 @@
 {
   "docker": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener",
-    "FLASK_ERROR_LOG_DIR": "logs/flask_logs"
+    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
   },
   "Manny": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener",
-    "FLASK_ERROR_LOG_DIR": "logs/flask_logs"
+    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
   },
   "moe": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener",
-    "FLASK_ERROR_LOG_DIR": "logs/flask_logs"
+    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
   },
   "do_server": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener",
-    "FLASK_ERROR_LOG_DIR": "logs/flask_logs"
+    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
   }
 }

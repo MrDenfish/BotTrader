@@ -1,10 +1,33 @@
 import time
 import functools
-import asyncio
 import inspect
 import traceback
-from ssl import SSLError
-from ccxt.base.errors import RequestTimeout,  ExchangeError, BadSymbol, RateLimitExceeded
+import logging
+from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError
+import asyncio
+from contextlib import asynccontextmanager
+from contextlib import contextmanager
+
+
+# Dummy implementation for missing classes and imports
+class LoggerManager:
+    def __init__(self, config, log_dir):
+        self.webhook_logger = logging.getLogger(__name__)
+        self.webhook_new_logger = logging.getLogger(__name__)
+
+
+class AlertSystem:
+    def __init__(self, log_manager):
+        pass
+
+
+class BotConfig:
+    def load_webhook_api_key(self):
+        return {'name': 'test', 'privateKey': 'key'}
+
+    @property
+    def log_dir(self):
+        return "/path/to/log"
 
 
 class ApiRateLimiter:
@@ -14,48 +37,52 @@ class ApiRateLimiter:
         self.rate = rate
         self.last_time = asyncio.get_event_loop().time()
 
+    async def wait(self):
+        current_time = asyncio.get_event_loop().time()
+        elapsed = current_time - self.last_time
+        self.last_time = current_time
 
-async def wait(self):
-    current_time = asyncio.get_event_loop().time()
-    elapsed = current_time - self.last_time
-    self.last_time = current_time
+        # Refill tokens based on elapsed time
+        self.tokens = min(self.burst, self.tokens + elapsed * self.rate)
 
-    # Refill tokens based on elapsed time
-    self.tokens = min(self.burst, self.tokens + elapsed * self.rate)
-
-    if self.tokens < 1:
-        # Wait for enough tokens to accumulate
-        await asyncio.sleep((1 - self.tokens) / self.rate)
-        self.tokens = 0
-    else:
-        self.tokens -= 1
+        if self.tokens < 1:
+            # Wait for enough tokens to accumulate
+            await asyncio.sleep((1 - self.tokens) / self.rate)
+            self.tokens = 0
+        else:
+            self.tokens -= 1
 
 
 class ApiCallContext:
     def __init__(self, api_exceptions):
         self.api_exceptions = api_exceptions
 
-    # @asynccontextmanager
-    # async def limit(self, endpoint_type):
-    #     semaphore = self.api_exceptions.get_semaphore(endpoint_type)
-    #     async with semaphore:
-    #         yield
+    @asynccontextmanager
+    async def limit(self, endpoint_type):
+        semaphore = self.api_exceptions.get_semaphore(endpoint_type)
+        async with semaphore:
+            yield
 
 
 class ApiExceptions:
-    def __init__(self, exchange_client, logmanager, alerts, semaphore):
+    def __init__(self, exchange_client, logmanager, alerts):
         self.exchange = exchange_client
-        self.semaphore = semaphore  # Semaphore passed from WebhookListener
+        #self.semaphore = semaphore  # Semaphore passed from WebhookListener
         self.log_manager = logmanager
         self.alert_system = alerts
         # self.semaphores = {
-        #     'public': asyncio.Semaphore(10),
-        #     'private': asyncio.Semaphore(15),
-        #     'fills': asyncio.Semaphore(10)
+        #     'public': asyncio.Semaphore(9),
+        #     'private': asyncio.Semaphore(14),
+        #     'fills': asyncio.Semaphore(9)
         # }
+        self.semaphores = {
+            'public': 9,
+            'private': 14,
+            'fills': 9
+        }
 
-    # def get_semaphore(self, endpoint_type):
-    #     return self.semaphores.get(endpoint_type, asyncio.Semaphore(1))  # Fallback to a default semaphore
+    def get_semaphore(self, endpoint_type):
+        return self.semaphores.get(endpoint_type, 1)  # asyncio.Semaphore(1)
 
     async def ccxt_api_call(self, func, endpoint_type, *args, **kwargs):
         """
@@ -75,10 +102,10 @@ class ApiExceptions:
             self.log_manager.webhook_logger.error(f"Unknown endpoint type: {endpoint_type}")
             return None
 
-        retries = 5
-        backoff_factor = 0.2
+        retries = 3
+        backoff_factor = 0.5
         rate_limit_wait = 1  # seconds to wait when rate limit is hit
-
+        response = None  # Initialize response before the try block
         try:
             for attempt in range(1, retries + 1):  # Start counting attempts from 1
                 try:
@@ -87,25 +114,29 @@ class ApiExceptions:
                     if caller_function_name == 'place_limit_order':
                         self.log_manager.webhook_logger.debug(f'Calling {caller_function_name} with args: {args}')
                     # Check if 'func' is a coroutine function and await it directly
-                    response = None  # Initialize response before the try block
-                    if asyncio.iscoroutinefunction(func):
-                        response = await func(*args, **kwargs)
-                    else:
+
+                    # if asyncio.iscoroutinefunction(func):
+                    # if False:  # Placeholder for coroutine check
+                    #
+                    #     #response = await func(*args, **kwargs)
+                    #     pass
+                    #
+                    # else:
                         # Run blocking function in a separate thread
-                        response = await asyncio.to_thread(func, *args, **kwargs)
+                        # response = await asyncio.to_thread(func, *args, **kwargs)
+                    response = func(*args, **kwargs)
 
                     return response
 
-                except (RequestTimeout, BadSymbol, RateLimitExceeded, SSLError) as e:
+                except (RequestTimeout, BadSymbol, RateLimitExceeded) as e:
                     self.log_manager.webhook_logger.error(f"Attempt {attempt}: Error during API call "
                                                           f"{type(e).__name__}: {str(e)}")
 
-                    if isinstance(e, SSLError):
-                        self.log_manager.webhook_logger.error("SSL Error encountered", exc_info=True)
-                        return None
+                    # if isinstance(e, SSLError):
+                    #     self.log_manager.webhook_logger.error("SSL Error encountered", exc_info=True)
+                    #     return None
                     if isinstance(e, RequestTimeout):
                         self.log_manager.webhook_logger.error("Request Timeout encountered", exc_info=True)
-                        await asyncio.sleep(1)
                     if isinstance(e, BadSymbol):
                         self.log_manager.webhook_logger.info(f'Bad Symbol error: {e}')
                         return None
@@ -116,7 +147,7 @@ class ApiExceptions:
                         if 'INVALID_LIMIT_PRICE_POST_ONLY' in str(last_response):
                             return 'amend'  # Amend the order
                         elif 'must be greater than minimum amount precision' in str(last_response) or \
-                             'must be greater than minimum amount precision' in str(ex):
+                                'must be greater than minimum amount precision' in str(ex):
                             return 'order_size_too_small'
 
                         elif 'Rate limit exceeded' in str(ex):
@@ -126,7 +157,8 @@ class ApiExceptions:
                             self.log_manager.webhook_logger.info(
                                 f'Rate limit exceeded {caller_function_name}, args: {args}: '
                                 f'Retrying in {rate_limit_wait} seconds...')
-                            await self.handle_rate_limit_exceeded(attempt)
+                            # await self.handle_rate_limit_exceeded(attempt)
+                            self.handle_rate_limit_exceeded(attempt)
 
                         elif 'INSUFFICIENT_FUND' in str(last_response):
                             self.log_manager.webhook_logger.info(f'Exchange error: {ex}', exc_info=True)
@@ -148,15 +180,18 @@ class ApiExceptions:
                                 self.log_manager.webhook_logger.error(f'Exchange error: {ex}\nDetails: '
                                                                       f'{caller.function}', exc_info=True)
                                 break  # Break out of the loop for non-rate limit related errors
-                except asyncio.TimeoutError:
+                # except asyncio.TimeoutError:
+                except TimeoutError:
                     if attempt == retries:
                         self.log_manager.webhook_logger.error(f"Request timed out after {retries} attempts")
                         break  # Exit the loop if this was the last attempt
-                    await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
+                    # await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
+                    time.sleep(backoff_factor * 2 ** (attempt - 1))
 
                 except RateLimitExceeded as ex:
                     self.log_manager.webhook_logger.error(f"Rate limit exceeded: {ex}")
-                    await self.handle_rate_limit_exceeded(attempt)
+                    # await self.handle_rate_limit_exceeded(attempt)
+                    self.handle_rate_limit_exceeded(attempt)
                 except IndexError as e:
                     error_details = traceback.format_exc()
                     if args is not None:
@@ -171,26 +206,30 @@ class ApiExceptions:
                     error_details = traceback.format_exc()
                     self.log_manager.webhook_logger.error(
                         f'Request timeout error: {timeout_error}\nDetails: {error_details}')
-                    await asyncio.sleep(wait_time)  # Use the calculated wait_time
+                    # await asyncio.sleep(wait_time)  # Use the calculated wait_time
+                    time.sleep(wait_time)
 
                 except Exception as e:
                     max_wait_time = 60  # Maximum wait time of 60 seconds
                     wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
                     error_details = traceback.format_exc()
                     self.log_manager.webhook_logger.error(f"Error in API call: {e}\nDetails: {error_details}")
-                    await asyncio.sleep(wait_time)  # Use the calculated wait_time here
+                    # await asyncio.sleep(wait_time)  # Use the calculated wait_time here
+                    time.sleep(wait_time)
 
             return None
         finally:
             pass
 
-    async def handle_rate_limit_exceeded(self, attempt):
+    # async def handle_rate_limit_exceeded(self, attempt):
+    def handle_rate_limit_exceeded(self, attempt):
         """Handle actions required when a rate limit is exceeded."""
         burst_multiplier = 1.5 if attempt <= 3 else 1  # Use burst rate for the first few attempts
         backoff_factor = 0.2
         wait_time = min((2 ** (attempt - 1)) * backoff_factor * burst_multiplier, 60)
         self.log_manager.webhook_logger.info(f'Rate limit exceeded, retrying in {wait_time} seconds...')
-        await asyncio.sleep(wait_time)
+        # await asyncio.sleep(wait_time)
+        time.sleep(wait_time)
 
     def handle_general_error(self, ex):
         error_message = str(ex)
@@ -225,7 +264,9 @@ class UnauthorizedError(Exception):
                     except Exception as e:
                         raise e
                 return None
+
             return wrapper_retry
+
         return decorator_retry
 
 
@@ -254,7 +295,7 @@ class CoinbaseAPIError(Exception):
 
 
 class SizeTooSmallException(Exception):
-    def __init__(self, message="Order size is to accurate. Order could not be placed."):
+    def __init__(self, message="Order size is too accurate. Order could not be placed."):
         self.message = message
         super().__init__(self.message)
 

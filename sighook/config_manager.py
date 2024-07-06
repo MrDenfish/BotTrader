@@ -24,7 +24,7 @@ class AppConfig:
         self._passphrase, self._api_secret, self._api_key, self._version, self._log_level = None, None, None, None, None
         self._echo_sql, self._db_pool_size, self._db_max_overflow, self._db_echo = None, None, None, None
         self._ccxt_verbose, self.db_name, self.db_file,  self._database_dir = None, None, None, None
-        self._csv_dir = None
+        self._csv_dir, self._sighook_api_key_path, self._min_volume = None, None, None
         self._hodl = []
         if self._is_loaded:
             return
@@ -47,9 +47,6 @@ class AppConfig:
         self.db_file = os.getenv('DB_FILE', 'trades.db')  # Default SQLite file name
         self._version = os.getenv('VERSION')
         self._async_mode = os.getenv('ASYNC_MODE')
-        self._api_key = os.getenv('API_KEY')
-        self._api_secret = os.getenv('API_SECRET')
-        self._passphrase = os.getenv('API_PASS')
         self._api_url = os.getenv('API_URL')
         self._cmc_api_key = os.getenv('CMC_API_KEY')  # PLACEHOLDER NOT USABLE CODE
         self._cmc_api_url = os.getenv('CMC_API_URL')  # PLACEHOLDER NOT USABLE CODE
@@ -68,6 +65,7 @@ class AppConfig:
         self._my_email = os.getenv('MY_EMAIL')
         self._sleep_time = os.getenv('SLEEP')
         self._min_sell_value = Decimal(os.getenv('MIN_SELL_VALUE'))
+        self._min_volume = Decimal(os.getenv('MIN_VOLUME'))
         self._hodl = os.getenv('HODL')
         self._stop_loss = os.getenv('STOP_LOSS')
         self._take_profit = os.getenv('TAKE_PROFIT')
@@ -80,8 +78,10 @@ class AppConfig:
         return f"sqlite+aiosqlite:///{db_path}"
 
     def load_json_config(self):
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        self._sighook_api_key_path = os.path.join(current_dir, 'sighook_api_key.json')
         try:
-            config_path = os.path.join(os.path.dirname(__file__), 'config.json')
             with open(config_path, 'r') as f:
                 self._json_config = json.load(f)
             # Process loaded configuration here...
@@ -178,6 +178,10 @@ class AppConfig:
         return self._min_sell_value
 
     @property
+    def min_volume(self):
+        return self._min_volume
+
+    @property
     def program_version(self):
         return self._version
 
@@ -202,28 +206,8 @@ class AppConfig:
         return self._take_profit
 
     @property
-    def api_key(self):
-        return self._api_key
-
-    @property
-    def api_secret(self):
-        return self._api_secret
-
-    @property
-    def cmc_api_key(self):
-        return self._cmc_api_key
-
-    @property
-    def passphrase(self):
-        return self._passphrase
-
-    @property
     def api_url(self):
         return self._api_url
-
-    @property
-    def cmc_api_url(self):
-        return self._cmc_api_url
 
     @property
     def docker_staticip(self):
@@ -254,6 +238,10 @@ class AppConfig:
         return self._json_config
 
     @property
+    def sighook_api_key_path(self):
+        return self._sighook_api_key_path
+
+    @property
     def is_loaded(self):
         return self._is_loaded
 
@@ -281,3 +269,11 @@ class AppConfig:
         # Force reload of configuration
         self._is_loaded = False
         self.__init__()
+
+    def load_sighook_api_key(self):
+        try:
+            with open(self._sighook_api_key_path, 'r') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading CDP API key JSON: {e}")
+            exit(1)

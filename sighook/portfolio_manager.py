@@ -6,7 +6,8 @@ from decimal import Decimal, ROUND_DOWN
 
 
 class PortfolioManager:
-    def __init__(self, utility, logmanager, ccxt_api, exchange, max_concurrent_tasks):
+    def __init__(self, utility, logmanager, ccxt_api, exchange, max_concurrent_tasks, app_config):
+        self._min_volume = Decimal(app_config.min_volume)
         self.exchange = exchange
         self.ledger_cache = None
         self.log_manager = logmanager
@@ -22,27 +23,43 @@ class PortfolioManager:
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
 
+    @property
+    def min_volume(self):
+        return self._min_volume
+
     async def get_my_trades(self, symbol, last_update_time):
         """PART I: Data Gathering and Database Loading. Process a single symbol's market data.
         Fetch trades for a single symbol up to the last update time."""
         try:
-            endpoint = 'private'
-            params = {'paginate': True, 'paginationCalls': 100}
             adjusted_time = last_update_time + timedelta(milliseconds=99)
-            since_unix = self.utility.time_unix(adjusted_time)
-            return await self.fetch_trades_for_symbol(symbol, since=since_unix)
+            since_unix = self.utility.time_unix(adjusted_time.strftime("%Y-%m-%d %H:%M:%S.%f")) \
+                if last_update_time else None
+            # since_unix = self.utility.time_unix(adjusted_time)
+            my_trades = await self.fetch_trades_for_symbol_with_rate_limit(symbol, since=since_unix)
+            return my_trades
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
             return []
 
+    async def fetch_trades_for_symbol_with_rate_limit(self, symbol, since):
+        """Fetch Trades data with rate limiting to avoid hitting API limits."""
+
+        rate_limit = 150/1000  # private API requests per second per IP: 15
+        await asyncio.sleep(rate_limit)
+        return await self.fetch_trades_for_symbol(symbol, since)
+
     async def fetch_trades_for_symbol(self, symbol, since=None):
         """PART I: Data Gathering and Database Loading. Fetch trades for a single symbol."""
         try:
-            endpoint = 'private'
-            params = {'paginate': True, 'paginationCalls': 100}
-            my_trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol,
-                                                                 since=since, limit=None, params=params)
-
+            my_trades = []
+            # Parameters for the API call
+            params = {'paginate': True, 'paginationCalls': 20}
+            endpoint = 'private'  # For rate limiting
+            if symbol is not None:
+                my_trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol=symbol,
+                                                                     since=since,  params=params)
+            else:
+                self.log_manager.sighook_logger.error(f"Symbol is None. Unable to fetch trades.")
             if my_trades:
                 # Convert the 'datetime' from ISO format to a Python datetime object
                 for trade in my_trades:
@@ -56,7 +73,7 @@ class PortfolioManager:
     def get_portfolio_data(self, start_time, threshold=0.01):
         """PART II: Trade Database Updates and Portfolio Management"""
         usd_pairs = []
-        avg_dollar_vol_total = 0.0
+        ticker_cache_avg_dollar_vol = 0.0
         price_change, df = pd.DataFrame(), pd.DataFrame()
 
         try:
@@ -68,7 +85,8 @@ class PortfolioManager:
             self.ticker_cache = self._preprocess_ticker_cache()
             self.ticker_cache = self.ticker_cache.drop_duplicates(subset='asset')
             # Calculate average dollar volume total
-            avg_dollar_vol_total = self.ticker_cache['quote_vol_24h'].mean() if not self.ticker_cache.empty else 0
+            ticker_cache_avg_dollar_vol = self.ticker_cache['quote_vol_24h'].mean() if not self.ticker_cache.empty \
+                else 0
 
             # Generate rows_to_add from ticker_cache
             rows_list = self.ticker_cache.apply(self._create_row, axis=1).tolist()
@@ -97,7 +115,8 @@ class PortfolioManager:
                 price_change = rows_to_add[rows_to_add['price change %'] >= Decimal('2.1')]
                 # dataframe of coins with 2.1% or greater price change and quote volume greater than 1 million
                 buy_sell_matrix = rows_to_add[(rows_to_add['price change %'] >= 2.1) &
-                                              (rows_to_add['quote volume'] >= min(avg_dollar_vol_total, Decimal(1000000)))]
+                                              (rows_to_add['quote volume'] >= min(ticker_cache_avg_dollar_vol,
+                                                                                  self.min_volume))]
 
             else:
                 buy_sell_matrix = pd.DataFrame()  # If the column doesn't exist, create an empty DataFrame
@@ -115,7 +134,7 @@ class PortfolioManager:
             # load
             holdings = portfolio_df.to_dict('records')
 
-            return (holdings, usd_pairs, avg_dollar_vol_total,
+            return (holdings, usd_pairs, ticker_cache_avg_dollar_vol,
                     buy_sell_matrix, price_change)
 
         except Exception as e:
@@ -213,6 +232,8 @@ class PortfolioManager:
         try:
             non_zero_wallets = []
             for wallet in wallets:
+                if wallet['code'] == 'MNDE':
+                    pass
                 available_balance = Decimal(wallet['info']['available_balance']['value'])
                 hold_balance = Decimal(wallet['info']['hold']['value'])
                 total_balance = available_balance + hold_balance
@@ -250,4 +271,3 @@ class PortfolioManager:
             return wallets
         except Exception as e:
             self.log_manager.sighook_logger.error(f'update_ticker_cache: {e}', exc_info=True)
-

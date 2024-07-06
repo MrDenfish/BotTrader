@@ -1,7 +1,5 @@
 from datetime import datetime, timedelta
 from decimal import ROUND_DOWN
-
-
 import traceback
 
 
@@ -26,7 +24,6 @@ class OrderBookManager:
         endpoint = 'public'
         order_book = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_order_book, endpoint, order_data[
                                                               'trading_pair'], limit=50)
-
         highest_bid, lowest_ask, spread = self.analyze_spread(order_data, order_book)
         order_details = {
             'order_book': order_book,
@@ -38,7 +35,6 @@ class OrderBookManager:
         return order_details
 
     async def cancel_stale_orders(self, order_data, open_orders):
-
         now = datetime.utcnow()
         symbol = None
         # iterate through open orders dataframe
@@ -53,7 +49,6 @@ class OrderBookManager:
                 # Fetch detailed order information
                 detailed_order = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_order, endpoint, order_id,
                                                                           symbol)
-
                 # Extract timestamp and convert to datetime
                 if detailed_order['timestamp']:
                     order_time = datetime.utcfromtimestamp(detailed_order['timestamp'] / 1000)  # Assuming  milliseconds
@@ -84,7 +79,6 @@ class OrderBookManager:
     def analyze_spread(self, order_data, order_book):
         # Convert quote_deci to a format string for quantization
         try:
-
             quote_deci = order_data['quote_decimal']
             quantize_format = self.tradebot_utils.get_decimal_format(quote_deci)
             highest_bid_float = order_book['bids'][0][0] if order_book['bids'] else None
@@ -104,3 +98,4 @@ class OrderBookManager:
         except Exception as e:
             self.log_manager.webhook_logger.error(f'analyze_spread: An error occurred: {e}', exc_info=True)
             return None, None, None
+

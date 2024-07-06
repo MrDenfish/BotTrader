@@ -1,5 +1,4 @@
 
-from coinbase.rest import RESTClient
 from decimal import Decimal
 import traceback
 
@@ -36,7 +35,7 @@ class OrderTypeManager:
         self.utils = utility
 
         # Initialize the REST client using credentials from the config
-        self.client = RESTClient(key_file=config.cdp_api_key_path, verbose=True)
+        #self.client = RESTClient(key_file=config.cdp_api_key_path, verbose=True)
 
     @property
     def hodl(self):
@@ -62,13 +61,13 @@ class OrderTypeManager:
         trading_pair = order_data['trading_pair']
 
         try:
-
             side = order_data['side']
             adjusted_size = order_data['adjusted_size']
             adjusted_price = order_data['adjusted_price']
             endpoint = 'private'
             response = await self.ccxt_exceptions.ccxt_api_call(self.exchange.create_limit_order, endpoint, trading_pair,
                                                                 side, adjusted_size, adjusted_price, {'post_only': True})
+
             if response:
                 if response == 'amend':
                     return 'amend'  # Order needs amendment
@@ -79,7 +78,7 @@ class OrderTypeManager:
                 elif response['id']:
                     return response  # order placed successfully
             else:
-                return 'amaend'
+                return 'amend'
         except Exception as ex:
             error_details = traceback.format_exc()
             self.log_manager.webhook_logger.error(f'place_limit_order: {error_details}')
@@ -92,26 +91,28 @@ class OrderTypeManager:
                 return 'amend'
         return None  # Return None indicating the order was not successfully placed
 
-    def place_market_order(self, trading_pair, side, adjusted_size, adjusted_price):
+    async def place_market_order(self, trading_pair, side, adjusted_size, adjusted_price):
         """
-               This function coordinates the process. It calculates the order parameters, attempts to place
-               an order, checks if the order is accepted, and retries if necessary."""
+        This function coordinates the process. It calculates the order parameters, attempts to place
+        an order, checks if the order is accepted, and retries if necessary.
+        """
         response = None
         try:
             endpoint = 'private'
-            response = self.ccxt_exceptions.ccxt_api_call(self.exchange.create_market_order(trading_pair, side,
-                                                          adjusted_size, adjusted_price), endpoint, trading_pair)
+            response = await self.ccxt_exceptions.ccxt_api_call(self.exchange.create_market_order(trading_pair, side,
+                                                                adjusted_size, adjusted_price), endpoint, trading_pair)
             if response:
                 return response
         except Exception as ex:
             if 'coinbase createOrder() has failed, check your arguments and parameters' in str(ex):
-                self.log_manager.webhook_logger.info(f'Limit order was not accepted, placing new limit order for '
+                self.log_manager.webhook_logger.info(f'Market order was not accepted, placing new market order for '
                                                      f'{trading_pair}')
                 return response
             else:
-                self.log_manager.webhook_logger.error(f'Error placing limit order: {ex}')
+                self.log_manager.webhook_logger.error(f'Error placing market order: {ex}')
 
-        return None  # Return None indicating the order was not successfully pla
+        return None  # Return None
+
 
     # <><><><><><><><><><><><><><><>NOT IMPLIMENTED YET 04/04/2024 <>><><><><><><><><><><><><><><><><><><><><><><>
 

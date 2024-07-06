@@ -26,7 +26,7 @@ class Trade(Base):
 
     __tablename__ = 'trades'
 
-    trade_id = Column(String, primary_key=True, nullable=False,unique=True)  # id {str}
+    trade_id = Column(String, primary_key=True, nullable=False, unique=True)  # id {str}
     order_id = Column(String, nullable=True, unique=False)  # order {str}
     trade_time = Column(DateTime(timezone=True))  # datetime {str}
     transaction_type = Column(String, nullable=True)

@@ -1,6 +1,6 @@
 
 import asyncio
-import inspect
+from inspect import stack
 import traceback
 from contextlib import asynccontextmanager
 from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError
@@ -44,10 +44,13 @@ class ApiExceptions:
     def __init__(self, logmanager, alerts):
         self.log_manager = logmanager
         self.alerts = alerts
+        self.rate_limiter = ApiRateLimiter(burst=10, rate=1)  # Adjust burst and rate as needed
+        self.request_count = 0
         self.semaphores = {
-            'public': asyncio.Semaphore(10),
-            'private': asyncio.Semaphore(15),
-            'fills': asyncio.Semaphore(10)
+            'public': asyncio.Semaphore(9),
+            'private': asyncio.Semaphore(14),
+            'fills': asyncio.Semaphore(9),
+            'default': asyncio.Semaphore(1)  # Fallback to a default semaphore
         }
 
     def get_semaphore(self, endpoint_type):
@@ -71,103 +74,126 @@ class ApiExceptions:
             self.log_manager.sighook_logger.error(f"Unknown endpoint type: {endpoint_type}")
             return None
 
-        retries = 5
-        backoff_factor = 0.2
-        rate_limit_wait = 1  # seconds
+        retries = 3
+        initial_delay = 1
+        max_delay = 60
+        delay = initial_delay  # seconds
 
         async with ApiCallContext(self).limit(endpoint_type):
             try:
-                for attempt in range(1, retries + 1):  # Start counting attempts from 1
+                response = None
+                for attempt in range(retries):  # Start counting attempts from 1
                     try:
-                        try:
-                            # Check if 'func' is a coroutine function and await it directly
-                            if asyncio.iscoroutinefunction(func):
-                                response = await func(*args, **kwargs)
-                                return response
-                            else:
-                                # If 'func' is not a coroutine, run it in the executor
-                                loop = asyncio.get_event_loop()
-                                return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+                        caller = stack()[1]
+                        caller_function_name = caller.function
+                        self.log_manager.sighook_logger.debug(
+                            f"Attempt {attempt + 1} for {func.__name__}, waiting {delay} seconds")
+                        self.log_manager.sighook_logger.debug(f"Calling {func.__name__} from {caller_function_name}")
 
-                        except asyncio.TimeoutError:
-                            if attempt == retries:
-                                self.log_manager.sighook_logger.error(f"Request timed out after {retries} attempts",
-                                                                      exc_info=True)
-                                break  # Exit the loop if this was the last attempt
-                            await asyncio.sleep(backoff_factor * 2 ** (attempt - 1))
+                        await self.rate_limiter.wait()  # Use rate limiter to control the rate of API calls
 
-                        except BadSymbol as ex:
-                            # Handle the case where the symbol is not recognized by the exchange
-                            self.log_manager.sighook_logger.info(f'Invalid Symbol: {ex}')
-                            return None
+                        if asyncio.iscoroutinefunction(func):
+                            self.log_manager.sighook_logger.debug(f"Function {func.__name__} is a coroutine")
 
-                        except RateLimitExceeded as ex:
-                            wait_time = min(rate_limit_wait * (2 ** attempt), 60)
-                            self.log_manager.sighook_logger.info(f'Rate limit exceeded: Retrying in {wait_time} seconds...')
-                            await asyncio.sleep(wait_time)
+                            response = await func(*args, **kwargs)
+                            self.log_manager.sighook_logger.debug(
+                                f"Received response for {caller_function_name}: {response}")
+                            if response:
+                                self.log_manager.sighook_logger.debug(f"Response is not None for {caller_function_name}")
+                            elif 'symbol' in kwargs and kwargs['symbol'] is None:
+                                self.log_manager.sighook_logger.error(f"Response is None for {caller_function_name} "
+                                                                      f"**kwargs: {kwargs})")
+                                break  # Break out of the loop if the symbol is None
 
-                        except ExchangeError as ex:
-                            if 'Rate limit exceeded' in str(ex):
-                                # Dynamic wait time based on the attempt number, considering both standard and burst rates
-                                burst_multiplier = 1.5 if attempt <= 3 else 1  # Use burst rate for the first few attempts
-                                wait_time = min((2 ** (attempt - 1)) * backoff_factor * burst_multiplier, 60)
-                                # Get the name of the calling function using inspect.stack()
-                                caller = inspect.stack()[1]
-                                caller_function_name = caller.function
-                                self.log_manager.sighook_logger.info(f'Rate limit exceeded {caller_function_name}, args: '
-                                                                     f'{args}: Retrying in {wait_time} seconds...',
-                                                                     exc_info=True)
-                                await asyncio.sleep(wait_time)
-                            elif 'Insufficient funds' in str(ex):
-                                self.log_manager.sighook_logger.info(f'Exchange error: {ex}', exc_info=True)
-                            elif 'USD/USD' in str(ex):
-                                self.log_manager.sighook_logger.debug(f'USD/USD: {ex}', exc_info=True)
-                            else:
-                                if 'coinbase does not have market symbol' in str(ex):
-                                    self.log_manager.sighook_logger.error(f'Exchange error: {ex}')
-                                    return None
-                                else:
-                                    self.log_manager.sighook_logger.error(f'Exchange error: {ex}\nDetails:', exc_info=True)
-                                    break  # Break out of the loop for non-rate limit related errors
-                            await asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
-                    except IndexError as e:
-                        error_details = traceback.format_exc()
-                        if args is not None:
-                            return None
                         else:
-                            self.log_manager.sighook_logger.error(f'IndexError: {args}\nDetails: {e},   {error_details}')
-                            self.log_manager.sighook_logger.debug(f'Index error Trading is unavailable for {args}: {e}')
+                            self.log_manager.sighook_logger.debug(f"Function {func.__name__} is not a coroutine")
+                            loop = asyncio.get_event_loop()
+                            response = await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+                            self.log_manager.sighook_logger.debug(
+                                f"Received response for {caller_function_name}: {response}")
+                        self.request_count += 1  # Increment the request counter
+                        self.log_manager.sighook_logger.debug(
+                            f"Total requests made: {self.request_count}")  # Log the counter
+                        return response
+                    except asyncio.TimeoutError:
+                        self.log_manager.sighook_logger.error(f"TimeoutError on attempt {attempt} for {func.__name__}",
+                                                              exc_info=True)
+                        if attempt == retries:
+                            self.log_manager.sighook_logger.error(f"Request timed out after {retries} attempts",
+                                                                  exc_info=True)
+                            break  # Exit the loop if this was the last attempt
+                        self.log_manager.sighook_logger.warning(
+                            f"Timeout error, retrying in {delay} seconds")
+                        await asyncio.sleep(delay)
 
-                    except RequestTimeout as timeout_error:
-                        max_wait_time = 60  # Maximum wait time of 60 seconds
-                        wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
-                        error_details = traceback.format_exc()
-                        self.log_manager.sighook_logger.error(f'Request timeout error: {timeout_error}\nDetails: '
-                                                              f'{error_details}')
-                        await asyncio.sleep(wait_time)  # await Use the calculated wait_time
+                    except RateLimitExceeded as ex:
+                        if attempt < retries - 1:
+                            self.log_manager.sighook_logger.info(
+                                f'Rate limit exceeded on attempt # {attempt + 1}: {caller_function_name}, semaphore:'
+                                f' {self.semaphores} Retrying in'
+                                f' {delay} seconds...{ex}', exc_info=True)
+                            self.log_manager.verbose_logger.verbose(
+                                f"Rate limit exceeded at attempt {attempt}. Function: {func.__name__} in "
+                                f"{caller_function_name}, Args: {args}, Kwargs: {kwargs}", exc_info=True)
+                            await asyncio.sleep(delay)
+                            delay = min(max_delay, delay + 1)
+                        else:
+                            self.log_manager.sighook_logger.error(f"Rate limit exceeded after {retries} attempts.")
+                            raise
 
-                    except Exception as e:
-                        # Handle specific status codes
-                        if response.status in [403, 429, 500, 502]:  # Rate limit exceeded or server error
-                            if response.status == 403:
+                    except (BadSymbol, RequestTimeout) as ex:
+                        self.log_manager.sighook_logger.error(f"Exception {ex} on attempt {attempt + 1} for {func.__name__}",
+                                                              exc_info=True)
+                        if attempt < retries - 1:
+                            await asyncio.sleep(delay)
+                            delay = min(max_delay, delay + 1)
+                        else:
+                            raise
+
+                    except ExchangeError as ex:
+                        error_message = str(ex)
+                        if 'Rate limit exceeded' in error_message:
+                            if attempt < retries - 1:
                                 self.log_manager.sighook_logger.error(
-                                    f"There may be an issue with LocalTunnel check "
-                                    f" limits: {response.status}", exc_info=True)
-                            elif response.status == 502:
-                                if 'Bad Gateway' in str(ex):
-                                    self.log_manager.sighook_logger.info(f"INFO:  Coinbase may be having issues "
-                                                                         f"{response.status}", exc_info=True)
+                                    f"ExchangeError on attempt {attempt} Function: {func.__name__} in "
+                                    f"{caller_function_name},Args: {args}, Kwargs: {kwargs}: {error_message}", exc_info=True)
+                                delay = min(max_delay, delay + 1)
+                        if 'circuit breaker' in error_message or '503' in error_message:
+                            wait_time = 600  # 10 minutes to cool off
+                            self.log_manager.sighook_logger.warning(
+                                f"Service unavailable (circuit breaker), retrying in {wait_time} seconds...", exc_info=True)
+                        elif 'Rate limit exceeded' in error_message:
+                            print(f'{args}, {kwargs}')
+                            if attempt < retries - 1:
+                                self.log_manager.sighook_logger.info(
+                                    f"ExchangeError: {func.__name__} rate limit exceeded, retrying in {delay} "
+                                    f"seconds...{ex}")
+                                await asyncio.sleep(delay)
+                                delay = min(max_delay, delay + 1)
                             else:
                                 self.log_manager.sighook_logger.error(
-                                    f"Error {response.status}: check webhook listener is listening")
-                            return response
-                        max_wait_time = 60  # Maximum wait time of 60 seconds
-                        wait_time = min(rate_limit_wait * (2 ** attempt), max_wait_time)
-                        error_details = traceback.format_exc()
-                        self.log_manager.sighook_logger.error(f"Error in API call: {e}\nDetails: {error_details}")
-                        await asyncio.sleep(wait_time)  # await   # Use the calculated wait_time here
+                                    f"ExchangeError rate limit exceeded after {retries} attempts.")
+                                raise
+                        elif 'Insufficient funds' in error_message:
+                            self.log_manager.sighook_logger.info(f'Exchange error: {error_message}', exc_info=True)
+                        elif 'USD/USD' in error_message:
+                            self.log_manager.sighook_logger.debug(f'USD/USD: {error_message}', exc_info=True)
+                        else:
+                            self.log_manager.sighook_logger.error(f'Exchange error: {ex}\nDetails:', exc_info=True)
+                            raise
+                        await asyncio.sleep(wait_time)
 
-                return None
-            finally:
-                # print(f'API call completed for {func.__name__}') # debug
-                pass
+                    except Exception as ex:
+                        if 'symbol' in kwargs:
+                            self.log_manager.sighook_logger.error(f"Unexpected error:{caller_function_name},  "
+                                                                  f"{kwargs['symbol']}, {ex}\nDetails: "
+                                                                  f"{traceback.format_exc()}")
+                        else:
+                            self.log_manager.sighook_logger.error(f"Unexpected error:{caller_function_name}, {ex}\nDetails:"
+                                                                  f" {traceback.format_exc()}")
+
+                        raise
+
+            except Exception as e:
+                self.log_manager.sighook_logger.error(f"Error in ccxt_api_call: {e}", exc_info=True)
+                raise
