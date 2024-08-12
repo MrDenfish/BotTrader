@@ -5,7 +5,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from collections import defaultdict
 from sqlalchemy.sql import func, and_
 from sqlalchemy import delete, case
-from database_table_models import Trade, SymbolUpdate, NewTrade, Holding, RealizedProfit
+from database_table_models import Trade, SymbolUpdate, NewTrade, Holding, RealizedProfit, ProfitData
 from datetime import datetime as dt
 import pytz
 from typing import Optional, List
@@ -97,6 +97,7 @@ class DatabaseOpsManager:
         """Clear all entries in the trades_new table."""
         await session.execute(delete(NewTrade))
         await session.execute(delete(SymbolUpdate))
+        # await session.execute(delete(ProfitData))
         await session.commit()
 
     @staticmethod
@@ -127,7 +128,7 @@ class DatabaseOpsManager:
             for market in market_cache:
                 market_symbol = market['symbol']
                 last_update_time = last_update_by_symbol.get(market_symbol, default_date)
-                task = self.process_symbol(session, market, last_update_time)
+                task = self.process_symbol_with_new_session(market, last_update_time)
                 tasks.append(task)
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for result in results:
@@ -143,7 +144,7 @@ class DatabaseOpsManager:
             await session.rollback()
             raise
 
-    async def process_symbol_with_new_session(self, market, last_update_time):
+    async def process_symbol_with_new_session(self, market: object, last_update_time: object) -> object:
         async with self.AsyncSessionLocal() as session:
             return await self.process_symbol(session, market, last_update_time)
 
@@ -151,12 +152,13 @@ class DatabaseOpsManager:
         """PART I: Data Gathering and Database Loading. Process a single symbol's market data."""
         try:
             most_recent_trade_time = None
+
             trades = await self.portfolio_manager.get_my_trades(market['symbol'], last_update_time)
             if not trades:
                 self.log_manager.sighook_logger.debug(f"No trades found for {market['symbol']} since {last_update_time}")
                 return market['symbol'], last_update_time
-
-            self.log_manager.sighook_logger.debug(f"Fetched {len(trades)} trades for {market['symbol']}")
+            if market['symbol'] == "SOL/USD":
+                print(f"Fetched {len(trades)} trades for {market['symbol']}")  # debug
             trade_objects = []
             temp_trade_objects = []
 
@@ -238,108 +240,8 @@ class DatabaseOpsManager:
 
                 await session.flush()
                 self.log_manager.sighook_logger.debug("Session flushed successfully")
-
-            return market['symbol'], most_recent_trade_time if most_recent_trade_time else last_update_time
-
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error processing symbol {market['asset']}: {e}", exc_info=True)
-            await session.rollback()
-            raise
-
-    async def old_process_symbol(self, session: AsyncSession, market, last_update_time):
-        """PART I: Data Gathering and Database Loading. Process a single symbol's market data."""
-
-        try:
-            most_recent_trade_time = None
-            trades = await self.portfolio_manager.get_my_trades(market['symbol'], last_update_time)
-            if not trades:
-                self.log_manager.sighook_logger.info(f"No trades found for {market['symbol']} since {last_update_time}")
-                return market['symbol'], last_update_time
-
-            self.log_manager.sighook_logger.debug(f"Fetched {len(trades)} trades for {market['symbol']}")
-            trade_objects = []
-            temp_trade_objects = []
-
-            last_trade_query = (
-                select(Trade)
-                .filter(Trade.asset == market['asset'].split('/')[0])
-                .order_by(Trade.trade_time.desc())
-                .limit(1)
-            )
-            last_trade_result = await session.execute(last_trade_query)
-            last_trade = last_trade_result.scalar_one_or_none()
-            starting_balance = last_trade.balance if last_trade else 0.0
-
-            for trade in trades:
-                self.log_manager.sighook_logger.debug(f"Processing trade: {trade}")
-                if 'id' not in trade or not trade['id']:
-                    self.log_manager.sighook_logger.error("Missing trade ID")
-                    continue
-
-                trade_time = trade['datetime'].replace(microsecond=0)
-                trade_amount = float(trade['amount'])
-                trade_price = float(trade['price'])
-                trade_amount = trade_amount if trade['side'].lower() == 'buy' else -trade_amount
-
-                self.log_manager.sighook_logger.debug(
-                    f"Comparing trade: time={trade_time}, asset={market['asset'].split('/')[0]}, amount={trade_amount}, "
-                    f"price={trade_price}")
-
-                existing_trade_query = (
-                    select(Trade)
-                    .filter(
-                        and_(
-                            func.strftime('%Y-%m-%d %H:%M:%S', Trade.trade_time) == trade_time.strftime('%Y-%m-%d %H:%M:%S'),
-                            Trade.asset == market['asset'].split('/')[0],
-                            func.abs(Trade.amount - Decimal(trade_amount)) < Decimal('1e-8'),
-                            func.abs(Trade.price - Decimal(trade_price)) < Decimal('1e-8')
-                        )
-                    )
-                )
-                existing_trade_result = await session.execute(existing_trade_query)
-                existing_trade = existing_trade_result.scalar()
-
-                if existing_trade:
-                    self.log_manager.sighook_logger.debug(
-                        f"Existing trade found: time={existing_trade.trade_time}, asset={existing_trade.asset}, "
-                        f"amount={existing_trade.amount}, price={existing_trade.price}")
-                    continue
-
-                starting_balance += trade_amount
-                trade_obj = await self.create_trade_object(trade, market['asset'], starting_balance)
-                if trade_obj is None:
-                    self.log_manager.sighook_logger.error(f"Failed to create trade object: {trade}")
-                    continue
-
-                if trade_obj.amount == 0.0:
-                    self.log_manager.sighook_logger.error(f"Trade amount is zero: {trade}")
-                    continue
-
-                trade_objects.append(trade_obj)
-
-                if trade['datetime'] > last_update_time:
-                    temp_trade_object = self.create_temp_trade(trade_obj)
-                    temp_trade_objects.append(temp_trade_object)
-
-                if not most_recent_trade_time or trade_obj.trade_time > most_recent_trade_time:
-                    most_recent_trade_time = trade_obj.trade_time
-
-            async with self.session_lock:
-                if trade_objects:
-                    for trade_obj in trade_objects:
-                        self.log_manager.sighook_logger.debug(f"Adding trade object to session: {trade_obj}")
-                        session.add(trade_obj)
-                    self.log_manager.sighook_logger.debug(f"Added {len(trade_objects)} trade objects to session")
-
-                if temp_trade_objects:
-                    for temp_trade_obj in temp_trade_objects:
-                        self.log_manager.sighook_logger.debug(f"Adding temp trade object to session: {temp_trade_obj}")
-                        session.add(temp_trade_obj)
-                    self.log_manager.sighook_logger.debug(f"Added {len(temp_trade_objects)} temp trade objects to session")
-
-                await session.flush()
-                self.log_manager.sighook_logger.debug("Session flushed successfully")
-
+            if market['symbol'] == "SOL/USD":
+                pass
             return market['symbol'], most_recent_trade_time if most_recent_trade_time else last_update_time
 
         except Exception as e:
@@ -392,30 +294,76 @@ class DatabaseOpsManager:
 
         return trade_datetime > last_update_time
 
-    async def initialize_holding_db(self, session, holdings, current_prices=None):
+    async def initialize_holding_db(self, session, holdings, current_prices, sell_orders=None, open_orders=None):
         """Handle the initialization or update of holdings in the database based on provided data."""
         try:
-            for holding in holdings:
-                await self.update_single_holding(session, holding, current_prices)
-            pass
+            sell_orders_exist = sell_orders is not None and len(sell_orders) > 0
+            open_orders_exist = open_orders is not None and len(open_orders) > 0
+            # Process sell_orders first
+            if sell_orders_exist:
+                for (asset, sell_amount, sell_price, holding) in sell_orders:
+                    await self.update_single_holding(session, holding, current_prices)
+
+            # Process open_orders next
+            if open_orders_exist:
+                # Add 'asset' column to open_orders DataFrame
+                open_orders['asset'] = open_orders['product_id'].str.split('-').str[0]
+
+                for holding in holdings:
+                    # Filter open orders by holding asset
+                    asset_orders = open_orders[open_orders['asset'] == holding['asset']]
+                    trailing_stop = asset_orders[asset_orders['trigger_status'] == 'STOP_PENDING']
+
+                    # Pass the trailing stop info to update_single_holding
+                    await self.update_single_holding(session, holding, current_prices, trailing_stop)
+
+            # If only holdings are provided without any sell_orders or open_orders
+            if not sell_orders_exist and not open_orders_exist:
+                for holding in holdings:
+                    await self.update_single_holding(session, holding, current_prices)
+
         except Exception as e:
             self.log_manager.sighook_logger.error(f'initialize_holding_db: {e}', exc_info=True)
             await session.rollback()
 
-    async def update_single_holding(self, session, holding, current_prices):
+    async def update_single_holding(self, session, holding, current_prices, open_orders=None, sell_orders=None):
         """PART V: Order Execution"""
-        """PART VI: Profitability Analysis and Order Generation """
+        """PART VI: Profitability Analysis and Order Generation"""
         try:
-
+            trailing_stop = 0
             aggregated_data = await self.aggregate_trade_data_for_symbol(session, holding['asset'])
             if aggregated_data is None:
                 return
+
+            # If open_orders is provided, process them
+            if open_orders is not None:
+                open_orders['asset'] = open_orders['product_id'].str.split('-').str[0]
+                # Filter open orders by holding asset
+                asset_orders = open_orders[open_orders['asset'] == holding['asset']]
+                # Check for STOP_PENDING status
+                stop_pending_orders = asset_orders[asset_orders['trigger_status'] == 'STOP_PENDING']
+
+                if len(stop_pending_orders) > 0:
+                    trailing_stop = stop_pending_orders
+                else:
+                    trailing_stop = 0
+
+            # If sell_orders is provided, adjust the holding accordingly
+            if sell_orders is not None:
+                for (asset, sell_amount, sell_price, sell_holding) in sell_orders:
+                    if asset == holding['asset']:
+                        # Adjust balance and calculate the new market value and profit/loss
+                        holding['Balance'] -= sell_amount
+                        holding['unrealized_profit_loss'] = (sell_price - aggregated_data['purchase_price']) * sell_amount
+                        holding['unrealized_pct_change'] = (sell_price - aggregated_data['purchase_price']) / \
+                                                           aggregated_data['purchase_price'] * 100
 
             stmt = select(Holding).where(Holding.asset == holding['asset'], Holding.currency == holding['quote_currency'])
             result = await session.execute(stmt)
             existing_holding = result.scalars().first()
             symbol = holding['asset'] + '/' + holding['quote_currency']
             current_price = current_prices.get(symbol)
+
             if not existing_holding:
                 # Create new holding if it does not exist
                 new_holding = Holding(
@@ -431,25 +379,24 @@ class DatabaseOpsManager:
                     weighted_average_cost=aggregated_data['weighted_average_cost'],
                     unrealized_profit_loss=holding.get('unrealized_profit_loss', 0),
                     unrealized_pct_change=holding.get('unrealized_pct_change', 0),
-
+                    trailing_stop=trailing_stop
                 )
                 session.add(new_holding)
             else:
                 # Get from current_prices or fallback to existing
-
-                # Update existing holding with new data
                 update_fields = {
                     'purchase_date': aggregated_data['most_recent_trade_time'],
                     'purchase_price': aggregated_data['purchase_price'],
                     'balance': holding['Balance'],
                     'current_price': current_price,
                     # Use existing price as fallback
-                    'initial_investment': aggregated_data['purchase_price']*holding['Balance'],
+                    'initial_investment': aggregated_data['purchase_price'] * holding['Balance'],
                     'weighted_average_cost': aggregated_data.get('weighted_average_cost',
                                                                  existing_holding.weighted_average_cost),
                     'market_value': holding['Balance'] * current_price,
                     'unrealized_profit_loss': holding.get('unrealized_profit_loss', existing_holding.unrealized_profit_loss),
                     'unrealized_pct_change': holding.get('unrealized_pct_change', existing_holding.unrealized_pct_change),
+                    'trailing_stop': trailing_stop
                 }
                 for key, value in update_fields.items():
                     setattr(existing_holding, key, value)

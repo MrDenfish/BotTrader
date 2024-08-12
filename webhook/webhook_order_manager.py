@@ -21,7 +21,10 @@ class TradeOrderManager:
                                 order_types)
         return cls._instance
 
-    def __init__(self, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book, order_types):
+    def __init__(self, config, coinbase_api, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book,
+                 order_types):
+        self.bot_config = config
+        self.coinbase_api = coinbase_api
         self._take_profit = Decimal(config.take_profit)
         self._stop_loss = Decimal(config.stop_loss)
         self._min_sell_value = Decimal(config.min_sell_value)
@@ -56,39 +59,62 @@ class TradeOrderManager:
         return self._min_sell_value
 
 
-    async def place_order(self, order_data):
+    async def place_order(self, order_data, precision_data, session):
         try:
-            quote_bal, base_balance, open_orders = await self.utils.get_open_orders(order_data)
-            open_orders = open_orders if isinstance(open_orders, pd.DataFrame) else pd.DataFrame()
+            quote_bal, base_balance, all_open_orders, _ = await self.utils.get_open_orders(order_data)
+            open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
 
-            if not self.validate_order_conditions(order_data, quote_bal, base_balance):
+            if not self.validate_order_conditions(order_data, quote_bal, base_balance, open_orders):
                 return False
 
             order_book_details = await self.order_book.get_order_book(order_data)
             validate_data = self.build_validate_data(order_data, quote_bal, base_balance, open_orders, order_book_details)
 
-            available_coin_balance, valid_order, condition = self.validate.fetch_and_validate_rules(validate_data)
+            base_coin_balance, valid_order, condition = self.validate.fetch_and_validate_rules(validate_data)
             if not valid_order:
                 self.log_manager.webhook_logger.info(f"Validation failed for the order. - {condition}")
                 return False
 
-            return await self.handle_order(validate_data, order_book_details)
+            return await self.handle_order(validate_data, order_book_details, precision_data, session)
 
 
         except Exception as ex:
             self.log_manager.webhook_logger.debug(ex, exc_info=True)
             return False
 
-    def validate_order_conditions(self, order_data, quote_bal, base_balance):
-        side, quote_amount = order_data['side'], order_data['quote_amount']
-        if side == 'sell' and base_balance == 0:
-            self.log_manager.webhook_logger.info("No base balance to sell.")
+    def validate_order_conditions(self, order_data, quote_bal, base_balance, open_orders):
+        try:
+            side = order_data['side']
+            quote_amount = order_data['quote_amount']
+            symbol = order_data['trading_pair'].replace('/', '-')
+
+            # Check if there's an active trailing stop order for the symbol
+            try:
+                trailing_stop_active = open_orders[
+                    (open_orders['product_id'] == symbol) &
+                    (open_orders['trigger_status'] == 'STOP_PENDING')
+                ].any().any()
+            except Exception as e:
+                self.log_manager.webhook_logger.error(f"Error checking trailing stop orders: {e}", exc_info=True)
+                return False
+
+            if side == 'sell' and trailing_stop_active:
+                self.log_manager.webhook_logger.info("Active trailing stop order found.")
+                return True
+            elif side == 'sell' and base_balance == 0:
+                self.log_manager.webhook_logger.info(f"Insufficient base balance to sell. Available: {base_balance}")
+                return False
+            if side == 'buy' and quote_bal < quote_amount:
+                self.log_manager.webhook_logger.info(
+                    f"Insufficient quote balance to buy. Required: {quote_amount}, Available: {quote_bal}")
+                return False
+            return True
+        except KeyError as ke:
+            self.log_manager.webhook_logger.error(f"KeyError: Missing key in order_data or open_orders: {ke}", exc_info=True)
             return False
-        if side == 'buy' and quote_bal < quote_amount:
-            self.log_manager.webhook_logger.info(
-                f"Insufficient quote balance to buy. Required: {quote_amount}, Available: {quote_bal}")
+        except Exception as e:
+            self.log_manager.webhook_logger.error(f"Unexpected error: {e}", exc_info=True)
             return False
-        return True
 
     def build_validate_data(self, order_data, quote_bal, base_balance, open_orders, order_book_details):
 
@@ -102,21 +128,27 @@ class TradeOrderManager:
             'open_orders': open_orders
         }
 
-    async def handle_order(self, validate_data, order_book_details):
+    async def handle_order(self, validate_data, order_book_details, precision_data, session):
         try:
             highest_bid = Decimal(order_book_details['highest_bid'])
             lowest_ask = Decimal(order_book_details['lowest_ask'])
             spread = Decimal(order_book_details['spread'])
+            base_deci, quote_deci, _, _ = precision_data
             adjusted_price, adjusted_size = self.utils.adjust_price_and_size(validate_data, order_book_details)
-
             self.log_manager.webhook_logger.debug(f"Adjusted price: {adjusted_price}, Adjusted size: {adjusted_size}")
+
             # Calculate take profit and stop loss prices
             if validate_data['side'] == 'buy':
                 take_profit_price = adjusted_price * (1 + self.take_profit)
+                adjusted_take_profit_price = self.utils.adjust_precision(base_deci, quote_deci, take_profit_price,
+                                                                         convert='quote')
                 stop_loss_price = adjusted_price * (1 + self.stop_loss)
             else:  # side == 'sell'
-                take_profit_price = adjusted_price * (1 - self.take_profit)
-                stop_loss_price = adjusted_price * (1 - self.stop_loss)
+                take_profit_price = adjusted_price * (1 + self.take_profit)
+                adjusted_take_profit_price = self.utils.adjust_precision(base_deci, quote_deci, take_profit_price,
+                                                                         convert='quote')
+
+                stop_loss_price = adjusted_price * (1 + self.stop_loss)
 
             order_data = {
                 **validate_data,
@@ -125,15 +157,30 @@ class TradeOrderManager:
                 'trading_pair': validate_data['trading_pair'],
                 'side': validate_data['side'],
                 'stop_loss_price': stop_loss_price,
-                'take_profit_price': take_profit_price
+                'take_profit_price': take_profit_price,
 
             }
 
-            # Attempt to place the bracket order
-            return await self.attempt_order_placement(order_data)
+            # Decide whether to place a bracket order or a trailing stop order
+            if self.should_use_trailing_stop(adjusted_price, highest_bid, lowest_ask):
+                return await self.attempt_order_placement(validate_data, order_data, order_book_details, session,
+                                                          order_type='trailing_stop')
+            else:
+                return await self.attempt_order_placement(validate_data, order_data, order_book_details, session,
+                                                          order_type='bracket')
         except Exception as ex:
             self.log_manager.webhook_logger.debug(ex)
             return False
+        except Exception as ex:
+            self.log_manager.webhook_logger.debug(ex)
+            return False
+
+    def should_use_trailing_stop(self, adjusted_price, highest_bid, lowest_ask):
+        # Initial thought for using a trailing stop order is when ROC trigger is met. Signal will come from  sighook.
+
+        # Placeholder logic:
+        return True # while developing
+        # return adjusted_price > (highest_bid + lowest_ask) / 2
 
     async def log_order_attempt(self, attempt, trading_pair, side, order_size, order_price):
         """
@@ -144,35 +191,51 @@ class TradeOrderManager:
         )
 
 
-    async def attempt_order_placement(self, order_data):
-        # if order_data['side'] == 'sell':
-        #     response = await self.order_types.place_sell_bracket_order(order_data)
-        # else:
-        #     response = await self.order_types.place_market_order(order_data)
-
-        response = await self.order_types.place_limit_order(order_data)
-
+    async def attempt_order_placement(self, validate_data, order_data, order_book_details, session, order_type):
+        currencies = []
         order_placed = False
+        response = None
         try:
-            if response == 'amend':
-                order_placed = False
-            elif response == 'insufficient base balance':
-                order_placed = False
-            elif response == 'order_size_too_small':
-                order_placed = False
-            elif response['id']:
-                order_placed = True
-                self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'])
+            if order_data['side'] == 'buy':
+                response = await self.order_types.beta_place_limit_order(validate_data, order_data)
 
+                if response is False:
+                    order_placed = False
+                elif response == 'amend':
+                    order_placed = False
+            elif order_type == 'bracket':
+                try:
+                    currencies = [order_data['trading_pair'].split('/')[0], order_data['trading_pair'].split('/')[1]]
+                    accounts = await self.utils.get_account_balance(currencies, get_staked=False)
+                    quote_balance, base_balance, _, open_order = await self.utils.get_open_orders(order_data)
+                    if not open_order:
+                        response = await self.order_types.beta_place_bracket_order(session, order_data, order_book_details)
+                        order_placed = True
+                        self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'])
+                    else:
+                        self.log_manager.webhook_logger.info(f'Order already exists for {order_data["trading_pair"]}')
+                        order_placed = False    # Order already exists
+                except Exception as ex_bracket:
+                    self.log_manager.webhook_logger.error(f'Error placing limit order: {ex_bracket}', exc_info=True)
+                    return ex_bracket
+            elif order_type == 'trailing_stop':
+                try:
+                    response = await self.order_types.place_trailing_stop_order(session, order_data, order_book_details,
+                                                                                order_data[
+                                                                                'adjusted_price'])
+                    if response:
+                        self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'])
+                        return True, response
+                    else:
+                        return False, response
+                except Exception as ex_trailing:
+                    self.log_manager.webhook_logger.error(f'Error placing trailing stop order: {ex_trailing}', exc_info=True)
+                    return ex_trailing
             return order_placed, response
 
-        except CoinbaseAPIError as eapi:
-            return self.handle_coinbase_api_error(eapi, response)
-        except Exception as ex:
-            error_details = traceback.format_exc()
-            self.log_manager.webhook_logger.error(f'try_place_order: Error placing order: {error_details}')
-            self.log_manager.webhook_logger.error(f'Error placing limit order: {ex}')
-            return ex
+        except Exception as ex_limit:
+            self.log_manager.webhook_logger.error(f'Error placing limit order: {ex_limit}', exc_info=True)
+            return ex_limit
 
     async def staked_coins(self, trading_pair):
         currencies = []

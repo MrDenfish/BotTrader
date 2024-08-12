@@ -128,7 +128,7 @@ class ApiExceptions:
 
                     except RateLimitExceeded as ex:
                         if attempt < retries - 1:
-                            self.log_manager.sighook_logger.info(
+                            self.log_manager.sighook_logger.warning(
                                 f'Rate limit exceeded on attempt # {attempt + 1}: {caller_function_name}, semaphore:'
                                 f' {self.semaphores} Retrying in'
                                 f' {delay} seconds...{ex}', exc_info=True)
@@ -144,7 +144,11 @@ class ApiExceptions:
                     except (BadSymbol, RequestTimeout) as ex:
                         self.log_manager.sighook_logger.error(f"Exception {ex} on attempt {attempt + 1} for {func.__name__}",
                                                               exc_info=True)
-                        if attempt < retries - 1:
+                        if 'does not have market symbol' in str(ex):
+                            self.log_manager.sighook_logger.info(f"Bad symbol: {ex}", exc_info=True)
+                            break  # Exit the loop if symbol is not traded
+
+                        elif attempt < retries - 1:
                             await asyncio.sleep(delay)
                             delay = min(max_delay, delay + 1)
                         else:
@@ -190,7 +194,7 @@ class ApiExceptions:
                                                                   f"{traceback.format_exc()}")
                         else:
                             self.log_manager.sighook_logger.error(f"Unexpected error:{caller_function_name}, {ex}\nDetails:"
-                                                                  f" {traceback.format_exc()}")
+                                                                  f" {traceback.format_exc()}", exc_info=True)
 
                         raise
 

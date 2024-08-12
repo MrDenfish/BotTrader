@@ -1,8 +1,7 @@
-version: '3.9'
 
 services:
   sighook:
-    image: denfish/bot-sighook:2.41
+    image: denfish/bot-sighook:2.44
     build:
       context: ./sighook
       dockerfile: Dockerfile
@@ -17,7 +16,7 @@ services:
       - traderbot_network
 
   webhook:
-    image: denfish/bot-webhook:2.41
+    image: denfish/bot-webhook:2.44
     build:
       context: ./webhook
       dockerfile: Dockerfile

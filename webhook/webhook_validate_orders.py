@@ -46,7 +46,8 @@ class ValidateOrders:
                     if not validate_data['open_orders'].empty:
                         self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: '
                                                              f'{validate_data["side"]} order will not be placed '
-                                                             f'for {validate_data["trading_pair"]} there is an open order.')
+                                                             f'for {validate_data["trading_pair"]} there is an open order '
+                                                             f'to {validate_data.get("side")}.')
                         return None, False, condition  # not a valid order
                 else:
                     self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: {validate_data["side"]} order not '
@@ -96,8 +97,8 @@ class ValidateOrders:
                     condition = 'open order exists'
                     return base_balance, base_balance_value, valid_order, condition  # Order is not valid if open order
                     # exists
-        else:
-            condition = f'there is a balance of {base_balance_value} '
+                else:
+                    condition = f'there is a balance of {base_balance_value} '
 
         hodling = base_currency in self.hodl
         if side == 'buy':

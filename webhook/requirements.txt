@@ -5,10 +5,11 @@ aiosqlite==0.20.0
 async-timeout==4.0.3
 attrs==23.2.0
 bottleneck
-ccxt==4.3.54
+ccxt==4.3.59
 certifi==2024.6.2
 cffi==1.16.0
 charset-normalizer==3.3.2
+coinbase-advanced==1.4.3
 cryptography==42.0.8
 frozenlist==1.4.1
 greenlet==3.0.3

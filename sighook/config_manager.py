@@ -24,7 +24,8 @@ class AppConfig:
         self._passphrase, self._api_secret, self._api_key, self._version, self._log_level = None, None, None, None, None
         self._echo_sql, self._db_pool_size, self._db_max_overflow, self._db_echo = None, None, None, None
         self._ccxt_verbose, self.db_name, self.db_file,  self._database_dir = None, None, None, None
-        self._csv_dir, self._sighook_api_key_path, self._min_volume = None, None, None
+        self._csv_dir, self._sighook_api_key_path, self._min_volume, self._roc_24hr = None, None, None, None
+        self._order_size = None
         self._hodl = []
         if self._is_loaded:
             return
@@ -69,6 +70,9 @@ class AppConfig:
         self._hodl = os.getenv('HODL')
         self._stop_loss = os.getenv('STOP_LOSS')
         self._take_profit = os.getenv('TAKE_PROFIT')
+        self._roc_24hr = os.getenv('ROC_24HR')
+        self._order_size = os.getenv('ORDER_SIZE')
+        self._trailing_percentage = Decimal(os.getenv('TRAILING_PERCENTAGE', '0.5'))  # Default trailing stop at 0.5%
         self._log_level = os.getenv('LOG_LEVEL_SIGHOOK')
         if self.machine_type in ['moe', 'Manny', 'docker']:
             self.port = os.getenv('SIGHOOK_PORT')  # Example usage
@@ -202,8 +206,20 @@ class AppConfig:
         return self._stop_loss
 
     @property
+    def roc_24hr(self):
+        return self._roc_24hr
+
+    @property
+    def order_size(self):
+        return self._order_size
+
+    @property
     def take_profit(self):
         return self._take_profit
+
+    @property
+    def trailing_percentage(self):
+        return self._trailing_percentage
 
     @property
     def api_url(self):

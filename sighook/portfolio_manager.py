@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_DOWN
 class PortfolioManager:
     def __init__(self, utility, logmanager, ccxt_api, exchange, max_concurrent_tasks, app_config):
         self._min_volume = Decimal(app_config.min_volume)
+        self._roc_24hr = Decimal(app_config.roc_24hr)
         self.exchange = exchange
         self.ledger_cache = None
         self.log_manager = logmanager
@@ -26,6 +27,10 @@ class PortfolioManager:
     @property
     def min_volume(self):
         return self._min_volume
+
+    @property
+    def roc_24hr(self):
+        return self._roc_24hr
 
     async def get_my_trades(self, symbol, last_update_time):
         """PART I: Data Gathering and Database Loading. Process a single symbol's market data.
@@ -112,9 +117,9 @@ class PortfolioManager:
                 rows_to_add['price change %'] = pd.to_numeric(rows_to_add['price change %'], errors='coerce')
                 rows_to_add['price change %'] = rows_to_add['price change %'].fillna(0)
                 # dataframe of coins with 2.1% or greater price change
-                price_change = rows_to_add[rows_to_add['price change %'] >= Decimal('2.1')]
+                price_change = rows_to_add[rows_to_add['price change %'] >= self.roc_24hr]
                 # dataframe of coins with 2.1% or greater price change and quote volume greater than 1 million
-                buy_sell_matrix = rows_to_add[(rows_to_add['price change %'] >= 2.1) &
+                buy_sell_matrix = rows_to_add[(rows_to_add['price change %'] >= self.roc_24hr) &
                                               (rows_to_add['quote volume'] >= min(ticker_cache_avg_dollar_vol,
                                                                                   self.min_volume))]
 
@@ -207,7 +212,7 @@ class PortfolioManager:
 
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
         """PART II: Trade Database Updates and Portfolio Management
-        Filter ticker cache by volume > 1 million and price change > 2.1% """
+        Filter ticker cache by volume > 1 million and price change > roc_24hr %. """
 
         #  Extract list of unique cryptocurrencies from buy_sell_matrix
         unique_coins = buy_sell_matrix['coin'].unique()

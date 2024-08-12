@@ -1,8 +1,8 @@
-from sqlalchemy import create_engine, Column, String, Numeric, DateTime, Integer, ForeignKey, Float
+from sqlalchemy import Column, String, Numeric, DateTime, Integer, ForeignKey, Float, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from decimal import Decimal
+
 
 Base = declarative_base()
 
@@ -192,6 +192,7 @@ class Holding(Base):
     weighted_average_cost = Column(Float)
     unrealized_profit_loss = Column(Float)
     unrealized_pct_change = Column(Float)
+    trailing_stop = Column(String, default=False)  # newly added
 
     # Relationships with other tables
     trades = relationship("Trade", back_populates="holding")
@@ -249,6 +250,24 @@ class Holding(Base):
             self.balance -= trade.amount
             # Recalculate total cost based on the new balance
             self.total_cost = self.average_cost * self.balance
+
+
+class OHLCVData(Base):
+    """Stores OHLCV data for each symbol."""
+    __tablename__ = 'ohlcv_data'
+
+    id = Column(Integer, primary_key=True)
+    symbol = Column(String, index=True)
+    time = Column(DateTime(timezone=True), index=True)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Float)
+
+    __table_args__ = (
+        UniqueConstraint('symbol', 'time', name='_symbol_time_uc'),
+    )
 
 
 class RealizedProfit(Base):

@@ -1,14 +1,15 @@
 import logging
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
+from sqlalchemy.future import select
+from database_table_models import ProfitData, Holding, Trade
 from decimal import Decimal, ROUND_DOWN
 import datetime
 import traceback
 
 
 class PerformanceManager:
-    def __init__(self, exchange, ccxt_api, utility, profit_helper, order_manager, portfolio_manager, database_session_mngr,
-                 logmanager, config):
+    def __init__(self, exchange, ccxt_api, utility, order_manager, portfolio_manager, logmanager, config):
 
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
@@ -18,18 +19,20 @@ class PerformanceManager:
         self.sqlite_db_path = config.sqlite_db_path
         self.ledger_cache = None
         self.utility = utility
-        self.database_manager = database_session_mngr
         self.order_manager = order_manager
         self.portfolio_manager = portfolio_manager
-        self.profit_helper = profit_helper
         self.log_manager = logmanager
         self.ticker_cache = None
         self.session = None
-        self.market_cache = None
+        self.current_prices = None
         self.start_time = None
         self.web_url = None
         self.holdings = None
 
+    def set_trade_parameters(self, start_time, ticker_cache, current_prices):
+        self.start_time = start_time
+        self.ticker_cache = ticker_cache
+        self.current_prices = current_prices  # current market prices
 
     @property
     def stop_loss(self):
@@ -39,33 +42,50 @@ class PerformanceManager:
     def take_profit(self):
         return self._take_profit
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url, hist_holdings):
-        self.start_time = start_time
-        # self.session = session
-        self.ticker_cache = ticker_cache
-        self.market_cache = market_cache
-        self.web_url = web_url
-        self.holdings = hist_holdings
+    async def performance_snapshot(self, session: AsyncSession):
+        try:
+            total_realized_profit = await self.calculate_realized_gains(session)
+            total_unrealized_profit = await self.calculate_unrealized_gains(session)
+            portfolio_value_query = select(func.sum(Holding.market_value))
+            portfolio_value_result = await session.execute(portfolio_value_query)
+            portfolio_value = portfolio_value_result.scalar() or 0
 
-    #  <><><><><><><><><><><><><><><><><><><>><> Not yet implimented <><><><><><><><>><>><><><><><><><><><><><><><><><><><>
+            profit_data = {
+                'realized profit': total_realized_profit,
+                'unrealized profit': total_unrealized_profit,
+                'portfolio value': portfolio_value
+            }
+
+            snapshot = ProfitData(
+                snapshot_date=datetime.datetime.now(),
+                total_realized_profit=total_realized_profit,
+                total_unrealized_profit=total_unrealized_profit,
+                portfolio_value=portfolio_value
+            )
+            session.add(snapshot)
+            formatted_data = {k: f"{v:.2f}" if k == 'unrealized profit' else f"{v:.2f}" for k, v in profit_data.items()}
+            return formatted_data
+        except Exception as e:
+            await session.rollback()
+            print(f"Exception in performance_snapshot: {e}")
+            raise
+
     @staticmethod
-    def create_performance_snapshot(session, current_market_prices):
-        """"takes a high-level view of the portfolio's performance, aggregating realized and unrealized profits to create
-        periodic snapshots."""
-        total_realized_profit = session.query(func.sum(ProfitData.total_realized_profit)).scalar() or 0
-        total_unrealized_profit = session.query(func.sum(ProfitData.total_unrealized_profit)).scalar() or 0
-        portfolio_value = sum(
-            holding.quantity * current_market_prices[holding.symbol] for holding in session.query(Holding).all()
+    async def calculate_realized_gains(session: AsyncSession):
+        realized_gains_query = select(
+            func.sum(Trade.total))
+        realized_gains_result = await session.execute(realized_gains_query)
+        gains = realized_gains_result.scalar() or 0
+        return gains
+
+    @staticmethod
+    async def calculate_unrealized_gains(session: AsyncSession):
+        unrealized_gains_query = select(
+            func.sum(Holding.unrealized_profit_loss)
         )
-        date = datetime.datetime.now()
-        snapshot = ProfitData(
-            snapshot_date=date,
-            total_realized_profit=total_realized_profit,
-            total_unrealized_profit=total_unrealized_profit,
-            portfolio_value=portfolio_value
-        )
-        session.add(snapshot)
-        session.commit()
+        unrealized_gains_result = await session.execute(unrealized_gains_query)
+        gains = unrealized_gains_result.scalar() or 0
+        return gains
 
     def get_price_symbol(self, product_id):  # async
         try:

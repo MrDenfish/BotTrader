@@ -3,7 +3,7 @@ import asyncio
 import pandas as pd
 
 from ccxt import AuthenticationError
-from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError
+from ccxt.base.errors import BadSymbol
 import traceback
 
 import datetime
@@ -28,13 +28,19 @@ class TickerManager:
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
 
-    async def update_ticker_cache(self, start_time=None):
+    async def update_ticker_cache(self, open_orders=None, start_time=None):
         """PART I: Data Gathering and Database Loading"""
-        refresh_time = 300  # 5 minutes
-        empty_df = pd.DataFrame()
-        empty_market_data = []
-
         try:
+            if open_orders is not None:
+                if len(open_orders) > 0 and not open_orders[open_orders['trigger_status'] == 'STOP_PENDING'].empty:
+                    refresh_time = 0  # 0 minutes
+                else:
+                    refresh_time = 300
+            else:
+                refresh_time = 300  # 5 minutes
+
+            empty_df = pd.DataFrame()
+            empty_market_data = []
             now = datetime.datetime.utcnow()
             endpoint = 'public'  # for rate limiting
             params = {
@@ -163,24 +169,31 @@ class TickerManager:
                 return df, current_prices
 
             for symbol in df['symbol'].tolist():
-                ticker = tickers.get(symbol)
-                if ticker:
-                    bid = ticker.get('bid')
-                    ask = ticker.get('ask')
-                    if bid is None or ask is None:
-                        self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
-                        continue
+                try:
+                    ticker = tickers.get(symbol)
+                    if ticker:
+                        bid = ticker.get('bid')
+                        ask = ticker.get('ask')
+                        if bid is None or ask is None:
+                            self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
+                            continue
 
-                    if symbol in df['symbol'].values:
-                        if update_type == 'bid_ask':
-                            df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
-                        elif update_type == 'current_price':
-                            df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
-                        current_prices[symbol] = float(ask)
+                        if symbol in df['symbol'].values:
+                            if update_type == 'bid_ask':
+                                df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
+                            elif update_type == 'current_price':
+                                df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
+                            current_prices[symbol] = float(ask)
+                        else:
+                            self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
                     else:
-                        self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
-                else:
-                    self.log_manager.sighook_logger.info(f"No ticker data for symbol: {symbol}")
+                        self.log_manager.sighook_logger.info(f"No ticker data for symbol: {symbol}")
+                except BadSymbol as bs:
+                    self.log_manager.sighook_logger.error(f"Bad symbol: {bs}")
+                    continue
+                except Exception as e:
+                    self.log_manager.sighook_logger.error(f"Error processing symbol {symbol}: {e}", exc_info=True)
+                    continue
 
             return df, current_prices
         except Exception as e:
@@ -200,60 +213,6 @@ class TickerManager:
         except Exception as e:
             self.log_manager.sighook_logger.error(f"Error fetching bids and asks: {e}", exc_info=True)
             return {}
-
-    async def old_parallel_fetch_and_update(self, df, update_type='current_price'):
-        """PART I: Data Gathering and Database Loading
-            PART VI: Profitability Analysis and Order Generation """
-        try:
-            current_prices = {}
-            symbols = [str(symbol) for symbol in df['symbol'].tolist() if '/' in str(symbol)]
-            results = []
-            delay = 1  # Calculate delay based on rate limit per minute
-
-            for symbol in symbols:
-                result = await self.fetch_ticker_data_with_delay(symbol, update_type='prices', delay=delay)
-                results.append(result)
-
-            for result in results:
-                if not result or len(result) < 3:
-                    self.log_manager.sighook_logger.info(f"Invalid result: {result}")
-                    continue
-                if isinstance(result, Exception):
-                    self.log_manager.sighook_logger.error(f"Error in parallel_fetch_and_update: {result}", exc_info=True)
-                    continue
-                symbol, bid, ask = result
-                if bid is None or ask is None:
-                    self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
-                    continue
-
-                if symbol in df['symbol'].values:
-                    if update_type == 'bid_ask':
-                        df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
-                    elif update_type == 'current_price':
-                        df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
-                    current_prices[symbol] = float(ask)
-                else:
-                    self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
-
-            return df, current_prices
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}', exc_info=True)
-
-    async def old_fetch_ticker_data_with_delay(self, symbol, update_type='prices', delay=1):
-        """Fetch ticker data with a delay to manage rate limits."""
-        try:
-            result = await self.fetch_ticker_data(symbol, return_type=update_type)
-            print(result)
-            await asyncio.sleep(delay/4)  # Add delay between API calls
-            return result
-        except (BadSymbol, RequestTimeout) as ex:
-            self.log_manager.sighook_logger.info(
-                f'Rate limit exceeded for {symbol}. Waiting for {delay} seconds before retry...')
-            await asyncio.sleep(delay)
-            return await self.fetch_ticker_data_with_delay(symbol, update_type, delay)
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error fetching ticker data for {symbol}: {e}", exc_info=True)
-            return symbol, None, None
 
     async def fetch_ticker_data(self, symbol: str, return_type='full'):
         """PART I: Data Gathering and Database Loading

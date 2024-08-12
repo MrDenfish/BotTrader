@@ -1,20 +1,22 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_scoped_session
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
 from database_table_models import Trade
+from database_table_models import OHLCVData
+
 import pandas as pd
-import asyncio
 
 
 class DatabaseSessionManager:
     """Handles the creation and management of database sessions."""
     """Handles the creation and management of database sessions."""
 
-    def __init__(self, database_ops, csv_manager, logmanager, app_config):
+    def __init__(self, database_ops, csv_manager, logmanager, profit_extras, app_config):
         self.log_manager = logmanager
         self.csv_manager = csv_manager
         self.app_config = app_config
         self.database_ops = database_ops
+        self.profit_extras = profit_extras
 
         # Check if the database URL is properly set
         if not self.app_config.database_url:
@@ -66,17 +68,39 @@ class DatabaseSessionManager:
                 await session.close()
         return
 
-    async def process_holding_db(self, holdings_list, current_prices):
+    async def check_ohlcv_initialized(self):
+        """PART III - Order Cancellation and Data Collection. Check if the OHLCV data is initialized in the database."""
+        async with self.AsyncSessionLocal() as session:
+            result = await session.execute(select(OHLCVData).limit(1))
+            return result.first() is not None
+
+    async def create_performance_snapshot(self):
+        async with self.AsyncSessionLocal() as session:
+            try:
+                profit_data = await self.profit_extras.performance_snapshot(session)
+                await session.commit()
+                return profit_data
+            except Exception as e:
+                await session.rollback()
+                self.log_manager.sighook_logger.error(f"Failed to create performance snapshot: {e}")
+                raise
+            finally:
+                await session.close()
+
+    async def process_holding_db(self, holdings_list, current_prices, open_orders):
         """PART V, PART VI: Order Execution Process data using a database session."""
         async with self.AsyncSessionLocal() as session:
             try:
                 # Initialize and potentially update holdings in the database
                 await self.database_ops.clear_holdings(session)
-                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices)
+                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices,
+                                                              open_orders=open_orders)
                 await session.commit()
                 # Fetch the updated contents of the holdings table
                 # Fetch the updated contents of the holdings table
                 updated_holdings = await self.database_ops.get_updated_holdings(session)
+                trailing_stop_orders = open_orders[open_orders['trigger_status'] == 'STOP_PENDING']
+
                 # Convert holdings data to a DataFrame
                 df = pd.DataFrame([{
                     'symbol': holding.asset + '/' + holding.currency,
@@ -87,7 +111,8 @@ class DatabaseSessionManager:
                     'weighted_average_cost': holding.weighted_average_cost,
                     'initial_investment': holding.initial_investment,
                     'unrealized_profit_loss': holding.unrealized_profit_loss,
-                    'unrealized_pct_change': holding.unrealized_pct_change
+                    'unrealized_pct_change': holding.unrealized_pct_change,
+                    'trailing_stop': trailing_stop_orders
                 } for holding in updated_holdings])
 
                 return df
@@ -98,12 +123,13 @@ class DatabaseSessionManager:
             finally:
                 await session.close()
 
-    async def batch_update_holdings(self, holdings_to_update, current_prices):
+    async def batch_update_holdings(self, holdings_to_update, current_prices, open_orders):
+        """PART VI: Profitability Analysis and Order Generation"""
         async with self.AsyncSessionLocal() as session:
             try:
                 await self.database_ops.clear_new_trades(session)
                 for holding in holdings_to_update:
-                    await self.database_ops.update_single_holding(session, holding, current_prices)
+                    await self.database_ops.update_single_holding(session, holding, current_prices, open_orders)
                 await session.commit()
             except Exception as e:
                 await session.rollback()
@@ -113,6 +139,7 @@ class DatabaseSessionManager:
                 await session.close()
 
     async def process_sell_orders_fifo(self, market_cache, sell_orders, holdings_list, current_prices):
+        """PART VI: Profitability Analysis and Order Generation"""
         async with self.AsyncSessionLocal() as session:
             await self.log_trade_amounts(session, "Before process_market_data")  # Log before calling the function
             await self.database_ops.process_market_data(session, market_cache)  # update trades
@@ -125,7 +152,8 @@ class DatabaseSessionManager:
                     realized_profit += profit
                     await session.commit()
                     break  # debug
-                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices)
+                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices,
+                                                              sell_orders=sell_orders, open_orders=None)
                 await session.commit()
                 return realized_profit
             except Exception as e:
@@ -136,6 +164,7 @@ class DatabaseSessionManager:
                 await session.close()
 
     async def log_trade_amounts(self, session, log_point):
+        """PART VI: Profitability Analysis and Order Generation"""
         try:
             trades = await session.execute(select(Trade))
             trades = trades.scalars().all()
@@ -178,4 +207,3 @@ class DatabaseSessionManager:
 
             finally:
                 await session.close()
-

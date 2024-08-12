@@ -1,5 +1,6 @@
 import os
 import json
+from coinbase.rest import RESTClient
 from decimal import Decimal
 from dotenv import load_dotenv
 
@@ -20,8 +21,10 @@ class BotConfig:
             self._coin_whitelist, self._pagekite_whitelist, self._account_sid, self._auth_token = None, None, None, None
             self._account_phone, self._web_url, self._log_level, self._hodl = None, None, None, []
             self._min_sell_value, self.port, self.machine_type, self.log_dir, self.sql_log_dir = None, None, None, None, None
-            self.active_trade_dir, self.portfolio_dir, self.profit_dir = None, None, None
-            self._stop_loss, self._take_profit, self._webhook_api_key_path = None, None, None
+            self.active_trade_dir, self.portfolio_dir, self.profit_dir, self._stop_loss = None, None, None, None
+            self._take_profit, self._webhook_api_key_path, self._tb_api_key_path, self.rest_client = (None, None,
+                                                                                                           None, None)
+            self._trailing_percentage, self._roc_24hr = None, None
 
             if not self._is_loaded:
                 # Check if running inside Docker by looking for a specific environment variable
@@ -49,18 +52,22 @@ class BotConfig:
         self._account_phone = os.getenv('ACCOUNT_PHONE')
         self._web_url = os.getenv('WEB_URL')
         self._log_level = os.getenv('LOG_LEVEL_WEBHOOK')
+        self._roc_24hr = os.getenv('ROC_24HR')
         self._stop_loss = os.getenv('STOP_LOSS')
         self._take_profit = os.getenv('TAKE_PROFIT')
+        self._trailing_percentage = Decimal(os.getenv('TRAILING_PERCENTAGE', '0.5'))  # Default trailing stop at 0.5%
         self._min_sell_value = Decimal(os.getenv('MIN_SELL_VALUE'))
         self._hodl = os.getenv('HODL')
         self._api_key = os.getenv('API_KEY')
         self._api_secret = os.getenv('API_SECRET')
+        self._passphrase = os.getenv('PASSPHRASE')
         self.machine_type = self.determine_machine_type()
 
     def load_json_config(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(current_dir, 'config.json')
         self._webhook_api_key_path = os.path.join(current_dir, 'webhook_api_key.json')
+        self._tb_api_key_path = os.path.join(current_dir, 'tb_api_key.json')
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
@@ -104,6 +111,10 @@ class BotConfig:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
 
+    def setup_rest_client(self, api_key, api_secret):
+        self.rest_client = RESTClient(api_key=api_key, api_secret=api_secret)
+        return self.rest_client
+
     @property
     def api_key(self):
         return self._api_key
@@ -111,6 +122,10 @@ class BotConfig:
     @property
     def api_secret(self):
         return self._api_secret
+
+    @property
+    def passphrase(self):
+        return self._passphrase
 
     @property
     def hodl(self):
@@ -127,6 +142,10 @@ class BotConfig:
     @property
     def take_profit(self):
         return self._take_profit
+
+    @property
+    def trailing_percentage(self):
+        return self._trailing_percentage
 
     @property
     def program_version(self):
@@ -177,6 +196,10 @@ class BotConfig:
         return self._webhook_api_key_path
 
     @property
+    def tb_api_key_path(self):
+        return self._tb_api_key_path
+
+    @property
     def is_loaded(self):
         return self._is_loaded
 
@@ -192,6 +215,14 @@ class BotConfig:
     def load_webhook_api_key(self):
         try:
             with open(self._webhook_api_key_path, 'r') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading CDP API key JSON: {e}")
+            exit(1)
+
+    def load_tb_api_key(self):
+        try:
+            with open(self._tb_api_key_path, 'r') as file:
                 return json.load(file)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             print(f"Error loading CDP API key JSON: {e}")

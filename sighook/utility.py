@@ -11,7 +11,7 @@ import socket
 class SenderUtils:
     _instance_count = 0
 
-    def __init__(self, logmanager, exchange,ccxt_api):
+    def __init__(self, logmanager, exchange, ccxt_api):
         self.log_manager = logmanager
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
@@ -105,8 +105,6 @@ class SenderUtils:
             self.log_manager.sighook_logger.error(f"Error converting timestamp to unix: {e}", exc_info=True)
             return None
 
-    import math
-
     def fetch_precision(self, symbol: str) -> tuple:
         """
         Fetch the precision for base and quote currencies of a given symbol.
@@ -173,6 +171,13 @@ class SenderUtils:
         except Exception as e:
             self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}', exc_info=True)
             return None
+
+    @staticmethod
+    def string_default(obj):
+        """used to format json.dumps."""
+        if isinstance(obj, Decimal):
+            return str(obj)
+        raise TypeError
 
     def float_to_decimal(self, value: float, decimal_places: int) -> Decimal:
         """

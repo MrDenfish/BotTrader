@@ -1,7 +1,6 @@
 import requests
 
 
-
 class CoinMarketAPI:
     def __init__(self, api_key, api_url, logmanager):
         self.log_manager = logmanager

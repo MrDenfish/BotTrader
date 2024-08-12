@@ -8,6 +8,7 @@ class ProfitHelper:
         self.portfolio_manager = portfolio_manager
         self._take_profit = Decimal(config.take_profit)
         self._stop_loss = Decimal(config.stop_loss)
+        self._trailing_percentage = Decimal(config.trailing_percentage)
         self.utility = utility
         self.ticker_manager = ticker_manager
         self.database_manager = database_manager
@@ -34,6 +35,10 @@ class ProfitHelper:
     @property
     def take_profit(self):
         return self._take_profit
+
+    @property
+    def trailing_percentage(self):
+        return self._trailing_percentage
 
     async def calculate_unrealized_profit_loss(self, aggregated_df):
         """PART VI: Profitability Analysis and Order Generation
@@ -119,27 +124,5 @@ class ProfitHelper:
             'Balance': str(balance)
         }
 
-    def is_stop_triggered(self, holding, current_price):
-        pass  # debug
 
-    @staticmethod
-    def update_trailing_stop(current_price, trailing_stop_percentage, peak_price=None, stop_price=None):
-        """
-        Update the trailing stop based on the current price.
 
-        :param current_price: The current market price of the asset.
-        :param trailing_stop_percentage: The percentage from the peak price at which the stop is set.
-        :param peak_price: The highest price reached since the position was opened.
-        :param stop_price: The current stop price.
-        :return: Updated peak price and stop price.
-        """
-
-        # If peak_price is not defined or current_price is higher, update peak_price
-        if peak_price is None or current_price > peak_price:
-            peak_price = current_price
-            # Calculate new stop price using the updated peak price
-            stop_price = peak_price * (1 - trailing_stop_percentage / 100)
-
-        # If current price is dropping but hasn't reached the new stop price, the stop price remains unchanged
-        #  return the current peak_price and stop_price
-        return peak_price, stop_price

@@ -60,10 +60,10 @@ class WebHookManager:
         except Exception as e:
             self.log_manager.webhook_logger.error(f'parse_webhook_data: {webhook_data}An error occurred: {e}', exc_info=True)
 
-    async def handle_action(self, order_data):
+    async def handle_action(self, order_data, precision_data, session):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro."""
         try:
-            await self.trade_order_manager.place_order(order_data)
+            await self.trade_order_manager.place_order(order_data, precision_data, session)
         except InsufficientFundsException:
             self.log_manager.webhook_logger.info(f'handle_action: Insufficient funds')
             self.alerts.callhome('Insufficient funds', f'Insufficient funds  {order_data["trading_pair"]} at '
@@ -80,10 +80,11 @@ class WebHookManager:
             # Maybe implement a retry logic
         except Exception as e:
             # Catch-all for other exceptions
+            await self.handle_webhook_error(e, order_data, precision_data, session)
             self.log_manager.webhook_logger.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
 
-    async def handle_webhook_error(self, e, order_data):
-        """Handle errors that occur while processing a old_webhook request."""
+    async def handle_webhook_error(self, e, order_data, precision_data, session):
+        """Handle errors that occur while processing an old_webhook request."""
         exception_map = {
             429: RateLimitException,
             400: BadRequestException,
@@ -108,7 +109,7 @@ class WebHookManager:
             self.log_manager.webhook_logger.error(f'warning', 'handle_webhook_error: Rate limit hit. '
                                                   'Retrying in 60 seconds...')
             time.sleep(60)
-            await self.handle_action(order_data)
+            await self.handle_action(order_data, precision_data, session)
 
         except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
             self.log_manager.webhook_logger.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')

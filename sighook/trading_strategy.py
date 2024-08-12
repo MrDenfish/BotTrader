@@ -2,13 +2,15 @@
 
 import asyncio
 import pandas as pd
+from sqlalchemy import select
 from indicators import Indicators
+from database_table_models import OHLCVData
 
 
 class TradingStrategy:
     """focus on decision-making based on data provided by MarketManager"""
     def __init__(self, webhook, tickermanager, utility, exchange, alerts, logmanager, ccxt_api, metrics, config,
-                 max_concurrent_tasks):
+                 max_concurrent_tasks, database_session_mngr):
 
         self._version = config.program_version
         self.exchange = exchange
@@ -25,6 +27,7 @@ class TradingStrategy:
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
+        self.db_manager = database_session_mngr
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache):
@@ -32,17 +35,15 @@ class TradingStrategy:
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
 
-    async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, ohlcv_data_dict):
+    async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix):
         """PART IV: Trading Strategies"""
-
-        tasks = [self.process_row(row, buy_sell_matrix, ohlcv_data_dict) for _, row in filtered_ticker_cache.iterrows()]
+        tasks = [self.process_row(row, buy_sell_matrix) for _, row in filtered_ticker_cache.iterrows()]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
         buy_sell_matrix = self.process_row_results(results, buy_sell_matrix)
         self.utility.print_elapsed_time(self.start_time, 'process all row')
         return results, buy_sell_matrix  # Return both the results and the aggregated orders
 
-    async def process_row(self, row, buy_sell_matrix, ohlcv_data_dict):
+    async def process_row(self, row, buy_sell_matrix):
         """PART IV: Trading Strategies"""
         try:
             asset = row['symbol']
@@ -50,11 +51,31 @@ class TradingStrategy:
             price = float(price_str) if price_str else 0.0
             if asset == 'USD/USD':
                 return None
-            ohlcv_data = ohlcv_data_dict.get(asset)
+
+            # Fetch OHLCV data from the database
+            ohlcv_data = await self.fetch_ohlcv_data_from_db(asset)
             if ohlcv_data is None:
                 return None
-            # Access the DataFrame directly from ohlcv_data
-            ohlcv_df = ohlcv_data['data']
+
+            # Convert the list of SQLAlchemy objects to a DataFrame
+            ohlcv_df = pd.DataFrame([{
+                'time': data.time,
+                'open': data.open,
+                'high': data.high,
+                'low': data.low,
+                'close': data.close,
+                'volume': data.volume
+            } for data in ohlcv_data])
+
+            # Check if DataFrame contains valid data
+            if ohlcv_df.isnull().values.any():
+                print(f"DataFrame contains NaN values for {asset}")
+                return None
+
+            # Ensure the DataFrame is sorted by time
+            ohlcv_df.sort_values(by='time', inplace=True)
+
+            # Calculate Bollinger Bands
             bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
             action_data = self.decide_action(ohlcv_df, bollinger_df, asset, row['info']['price'], buy_sell_matrix)
 
@@ -67,12 +88,24 @@ class TradingStrategy:
                 'band_ratio': action_data.get('band_ratio'),
                 'sell_cond': action_data.get('sell_cond'),
                 'bollinger_df': bollinger_df.to_dict('list'),  # Convert DataFrame to a more serializable format
-                'action_data': action_data
+                'action_data': action_data,
+                'trailing_stop': 'trailing_stop' in row['info']
             }
             return {'order_info': order_info}
 
         except Exception as e:
-            return {"error": f"Error processing row for symbol {row['asset']}:  {str(e)}"}
+            return {"error": f"Error processing row for symbol {row['symbol']}: {str(e)}"}
+
+    async def fetch_ohlcv_data_from_db(self, asset):
+        """Fetch OHLCV data from the database for a given asset."""
+        async with self.db_manager.AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(OHLCVData).filter(OHLCVData.symbol == asset).order_by(OHLCVData.time.desc()).limit(1440)
+            )
+            ohlcv_data = result.scalars().all()
+            if ohlcv_data:
+                return ohlcv_data
+            return None
 
     def process_row_results(self, results, buy_sell_matrix):
         """PART IV: Trading Strategies
@@ -115,7 +148,7 @@ class TradingStrategy:
 
         df = self.indicators.calculate_trends(df)  # Calculate 50, 200 volatility and sma trends
         df = self.indicators.calculate_rsi(df)  # Calculate RSI
-        df = self.indicators.calculate_roc(df)  # Calculate ROC
+        df = self.indicators.calculate_roc(df, symbol)  # Calculate ROC
         df = self.indicators.calculate_macd(df)  # Calculate MACD
         df = self.indicators.swing_trading_signals(df)
         if self.is_valid_bollinger_df(bollinger_df):
@@ -298,6 +331,7 @@ class TradingStrategy:
         except Exception as e:
             self.log_manager.sighook_logger.error(f'Error in buy_sell() {symbol}: {e}', exc_info=True)
         return buy_sell_data, None
+
 
     def sell_signal_from_indicators(self, symbol, price, trigger, holdings):
         """PART V: Order Execution"""
