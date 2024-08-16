@@ -19,13 +19,14 @@ class OrderTypeManager:
 
     @classmethod
     def get_instance(cls, config, coinbase_api, exchange_client, utility, validate, logmanager, alerts, ccxt_api,
-                     order_book):
+                     order_book, session):
         if cls._instance is None:
             cls._instance = cls(config, coinbase_api, exchange_client, utility, validate, logmanager, alerts, ccxt_api,
-                                order_book)
+                                order_book, session)
         return cls._instance
 
-    def __init__(self, config, coinbase_api, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book):
+    def __init__(self, config, coinbase_api, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book,
+                 session):
         self._take_profit = Decimal(config.take_profit)
         self._stop_loss = Decimal(config.stop_loss)
         self._trailing_percentage = Decimal(config.trailing_percentage)
@@ -40,6 +41,7 @@ class OrderTypeManager:
         self.ccxt_exceptions = ccxt_api
         self.alerts = alerts
         self.utils = utility
+        self.session = session  # Store the session as an attribute
 
     @property
     def hodl(self):
@@ -157,8 +159,7 @@ class OrderTypeManager:
                         break
             return response
         except Exception as ex:
-            error_details = traceback.format_exc()
-            self.log_manager.webhook_logger.error(f'place_limit_order: Error placing limit order: {error_details}')
+            self.log_manager.webhook_logger.error(f'place_limit_order: Error placing limit order: {ex}', exc_info=True)
             return False
 
     async def place_market_order(self, trading_pair, side, adjusted_size, adjusted_price):
@@ -185,49 +186,48 @@ class OrderTypeManager:
 
     # <><><><><><><><><><><><><><><>NOT YET IMPLEMENTED in CCXT 07/26/2024 <>><><><><><><><><><><><><><><><><><><><><><><>
 
-    async def place_trailing_stop_order(self, session, order_data, order_book, initial_price):
-        """Places a trailing stop order."""
+    async def place_trailing_stop_order(self, order_data, order_book, initial_price):
         try:
             client_order_id = str(uuid.uuid4())
             trailing_percentage = self.trailing_percentage
 
-            # Adjust price and size
             adjusted_price, adjusted_size = self.utils.adjust_price_and_size(order_data, order_book)
             market_price = await self.utils.fetch_spot(order_data['trading_pair'])
             market_price = self.utils.float_to_decimal(market_price, 2)
-            trailing_price = market_price * (1 - trailing_percentage / 100) \
-                if order_data['side'].upper() == 'BUY' else market_price * (1 + trailing_percentage / 100)
 
-            # Adjust limit and stop prices to the correct precision
-            # adjusted_limit_price = self.utils.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'],
-            #                                                    adjusted_price, 'quote')
-            adjusted_trailing_price = self.utils.adjust_precision(order_data['base_decimal'], order_data[
-                'quote_decimal'], trailing_price, convert='quote')
+            trailing_price = market_price * (1 + trailing_percentage / 100) \
+                if order_data['side'].upper() == 'SELL' else market_price * (1 - trailing_percentage / 100)
+            adjusted_trailing_price = self.utils.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'],
+                                                                  trailing_price, convert='quote')
 
+            if order_data['side'].upper() == 'SELL' and adjusted_trailing_price >= market_price:
+                adjusted_trailing_price = market_price * Decimal('1.0002')
+
+            adjusted_trailing_price = self.utils.float_to_decimal(adjusted_trailing_price, 2)
             symbol = order_data['trading_pair'].replace('/', '-')
 
-            payload = {
-                "client_order_id": client_order_id,
-                "product_id": symbol,
-                "side": "SELL" if order_data['side'].upper() == 'SELL' else "BUY",
-                "order_configuration": {
-                    "stop_limit_stop_limit_gtd": {
-                        "base_size": str(order_data['adjusted_size']),
-                        "stop_price": str(adjusted_trailing_price),
-                        "limit_price": str(adjusted_trailing_price),
-                        "end_time": (datetime.utcnow() + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        "stop_direction": "STOP_DIRECTION_STOP_DOWN"
-                        if order_data['side'].upper() == 'BUY' else "STOP_DIRECTION_STOP_UP"
+            if order_data['side'] == 'sell' and market_price < adjusted_trailing_price:
+                payload = {
+                    "client_order_id": client_order_id,
+                    "product_id": symbol,
+                    "side": "SELL",
+                    "order_configuration": {
+                        "stop_limit_stop_limit_gtd": {
+                            "base_size": str(adjusted_size),
+                            "stop_price": str(market_price),
+                            "limit_price": str(adjusted_trailing_price),
+                            "end_time": (datetime.utcnow() + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            "stop_direction": "STOP_DIRECTION_STOP_UP"
+                        }
                     }
                 }
-            }
-            response = await self.coinbase_api.create_order(session, payload)
-            return response
+                return await self.coinbase_api.create_order(payload)
+
         except Exception as e:
             self.log_manager.webhook_logger.error(f"Error placing trailing stop order: {str(e)}", exc_info=True)
             return None
 
-    async def beta_place_bracket_order(self, session, order_data, order_book):
+    async def beta_place_bracket_order(self, order_data, order_book):
         """
         Attempts to place a sell bracket order and returns the response.
         If the order fails, it logs the error and returns None. Bracket orders are market orders and will incur larger fees.
@@ -273,7 +273,7 @@ class OrderTypeManager:
                     }
                 }
             }
-            response = await self.coinbase_api.create_order(session, payload)
+            response = await self.coinbase_api.create_order(self.session, payload)
             return response
         except Exception as e:
             self.log_manager.webhook_logger.error(f"Error placing bracket order: {str(e)}", exc_info=True)

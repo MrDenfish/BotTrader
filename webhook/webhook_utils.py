@@ -312,30 +312,57 @@ class TradeBotUtils:
             return None
 
     def adjust_price_and_size(self, order_data, order_book, response=None) -> object:
+        try:
+            side = order_data['side'].upper()
+
+            if side == 'SELL':
+                adjusted_price = Decimal(order_book['highest_bid'])
+                adjusted_size = Decimal(order_data.get('base_balance', order_data.get('quote_amount', 0)))
+            elif side == 'BUY':
+                adjusted_price = Decimal(order_book['lowest_ask'])
+                adjusted_size = Decimal(order_data.get('quote_amount', 0)) / adjusted_price
+            else:
+                raise ValueError(f"Unsupported side: {side}")
+
+            best_bid_price = Decimal(order_book['highest_bid'])
+
+            best_ask_price = Decimal(order_book['lowest_ask'])
+
+            spread = best_ask_price - best_bid_price
+
+            # Dynamic adjustment factor based on a percentage of the spread
+            adjustment_percentage = Decimal('0.005')  # 0.5%
+            adjustment_factor = spread * adjustment_percentage
+            # Ensure the adjustment is significant given the currency's precision
+            exponential_str = '1e-{}'.format(order_data.get('quote_decimal'))
+            adjustment_factor = max(adjustment_factor, Decimal(exponential_str))
+            print(f'adjustment_factor: {adjustment_factor}')
+
+            return adjusted_price, adjusted_size
+        except Exception as e:
+            self.log_manager.webhook_logger.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
+            return None, None
+
+    def old_adjust_price_and_size(self, order_data, order_book, response=None) -> object:
         """ Calculate and adjust price and size
                 # Return adjusted_price and adjusted_size """
+        try:
+            side = order_data['side']
+            available_coin_balance = order_data.get('base_balance', order_data.get('quote_amount'))
+            best_bid_price = Decimal(order_book['highest_bid'])
+            best_ask_price = Decimal(order_book['lowest_ask'])
+            spread = best_ask_price - best_bid_price
 
-        quote_price = order_data['quote_price']
-        quote_deci = order_data['quote_decimal']
-        quote_amount = order_data['quote_amount']
-        base_deci = order_data['base_decimal']
-        side = order_data['side']
-        available_coin_balance = order_data['base_balance']
-        base_incri = order_data['base_increment']
-
-        best_bid_price = Decimal(order_book['highest_bid'])
-
-        best_ask_price = Decimal(order_book['lowest_ask'])
-
-        spread = best_ask_price - best_bid_price
-
-        # Dynamic adjustment factor based on a percentage of the spread
-        adjustment_percentage = Decimal('0.005')  # 0.5%
-        adjustment_factor = spread * adjustment_percentage
-        # Ensure the adjustment is significant given the currency's precision
-        exponential_str = '1e-{}'.format(quote_deci)
-        adjustment_factor = max(adjustment_factor, Decimal(exponential_str))
-        print(f'adjustment_factor: {adjustment_factor}')
+            # Dynamic adjustment factor based on a percentage of the spread
+            adjustment_percentage = Decimal('0.005')  # 0.5%
+            adjustment_factor = spread * adjustment_percentage
+            # Ensure the adjustment is significant given the currency's precision
+            exponential_str = '1e-{}'.format(order_data['quote_decimal'])
+            adjustment_factor = max(adjustment_factor, Decimal(exponential_str))
+            print(f'adjustment_factor: {adjustment_factor}')
+        except Exception as e:
+            self.log_manager.webhook_logger.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
+            return None, None
         try:
             if side == 'buy':
                 # Adjust the buy price to be slightly higher than the best bid
@@ -345,7 +372,7 @@ class TradeBotUtils:
                 best_ask_price = best_ask_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_DOWN)
                 print(f'best_ask_price: {best_ask_price}')
                 print(f'Best_bid_price: {best_bid_price}')
-                quote_amount = Decimal(quote_amount) / quote_price
+                quote_amount = Decimal(order_data['quote_amount']) / order_data['quote_price']
                 adjusted_size = quote_amount / adjusted_price
 
                 if None in (adjusted_price, adjusted_size):
@@ -357,7 +384,8 @@ class TradeBotUtils:
             else:
                 # Adjust the sell price to be slightly lower than the best ask
                 adjusted_price = best_ask_price - adjustment_factor
-                adjusted_price = self.adjust_precision(base_deci, quote_deci, adjusted_price, convert='quote')
+                adjusted_price = self.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'],
+                                                       adjusted_price, convert='quote')
                 print(f'adjusted_price: {adjusted_price}')
                 best_bid_price = best_bid_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_DOWN)
                 print(f'best_bid_price: {best_bid_price}')
@@ -369,7 +397,7 @@ class TradeBotUtils:
             print(f'adjusted_price: {adjusted_price}')
             if response is not None and 'insufficient base balance' in response:
                 adjusted_size = adjusted_size - (adjusted_size * Decimal(0.01))  # reduce size by 1%
-                adjusted_size = adjusted_size.quantize(base_incri, rounding=ROUND_DOWN)
+                adjusted_size = adjusted_size.quantize(order_data['base_increment'], rounding=ROUND_DOWN)
             if None in (adjusted_price, adjusted_size):
                 error_details = traceback.format_exc()
                 self.log_manager.webhook_logger.error(f'adjusted_price_and_size: Error placing order: {error_details}')
@@ -383,7 +411,7 @@ class TradeBotUtils:
             # Log the error and the values that caused it
             self.log_manager.webhook_logger.error(f'Invalid operation encountered during quantization: {e}')
             self.log_manager.webhook_logger.error(
-                f'available_coin_balance: {available_coin_balance}, base_incri: {base_incri}')
+                f'available_coin_balance: {available_coin_balance}, base_incri: {order_data["base_increment"]}')
 
             return None, None
         except Exception as e:

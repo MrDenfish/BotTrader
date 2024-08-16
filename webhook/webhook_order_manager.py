@@ -15,14 +15,15 @@ class TradeOrderManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book, order_types):
+    def get_instance(cls, config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book,
+                     order_types, session):
         if cls._instance is None:
             cls._instance = cls(config, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book,
-                                order_types)
+                                order_types, session)
         return cls._instance
 
     def __init__(self, config, coinbase_api, exchange_client, utility, validate, logmanager, alerts, ccxt_api, order_book,
-                 order_types):
+                 order_types, session):
         self.bot_config = config
         self.coinbase_api = coinbase_api
         self._take_profit = Decimal(config.take_profit)
@@ -38,6 +39,7 @@ class TradeOrderManager:
         self.ccxt_exceptions = ccxt_api
         self.alerts = alerts
         self.utils = utility
+        self.session = session
 
         # Initialize the REST client using credentials from the config
         # self.client = RESTClient(key_file=config.cdp_api_key_path, verbose=True)
@@ -59,7 +61,7 @@ class TradeOrderManager:
         return self._min_sell_value
 
 
-    async def place_order(self, order_data, precision_data, session):
+    async def place_order(self, order_data, precision_data):
         try:
             quote_bal, base_balance, all_open_orders, _ = await self.utils.get_open_orders(order_data)
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
@@ -75,7 +77,7 @@ class TradeOrderManager:
                 self.log_manager.webhook_logger.info(f"Validation failed for the order. - {condition}")
                 return False
 
-            return await self.handle_order(validate_data, order_book_details, precision_data, session)
+            return await self.handle_order(validate_data, order_book_details, precision_data)
 
 
         except Exception as ex:
@@ -128,7 +130,7 @@ class TradeOrderManager:
             'open_orders': open_orders
         }
 
-    async def handle_order(self, validate_data, order_book_details, precision_data, session):
+    async def handle_order(self, validate_data, order_book_details, precision_data):
         try:
             highest_bid = Decimal(order_book_details['highest_bid'])
             lowest_ask = Decimal(order_book_details['lowest_ask'])
@@ -163,10 +165,10 @@ class TradeOrderManager:
 
             # Decide whether to place a bracket order or a trailing stop order
             if self.should_use_trailing_stop(adjusted_price, highest_bid, lowest_ask):
-                return await self.attempt_order_placement(validate_data, order_data, order_book_details, session,
+                return await self.attempt_order_placement(validate_data, order_data, order_book_details,
                                                           order_type='trailing_stop')
             else:
-                return await self.attempt_order_placement(validate_data, order_data, order_book_details, session,
+                return await self.attempt_order_placement(validate_data, order_data, order_book_details,
                                                           order_type='bracket')
         except Exception as ex:
             self.log_manager.webhook_logger.debug(ex)
@@ -191,7 +193,7 @@ class TradeOrderManager:
         )
 
 
-    async def attempt_order_placement(self, validate_data, order_data, order_book_details, session, order_type):
+    async def attempt_order_placement(self, validate_data, order_data, order_book_details, order_type):
         currencies = []
         order_placed = False
         response = None
@@ -209,7 +211,7 @@ class TradeOrderManager:
                     accounts = await self.utils.get_account_balance(currencies, get_staked=False)
                     quote_balance, base_balance, _, open_order = await self.utils.get_open_orders(order_data)
                     if not open_order:
-                        response = await self.order_types.beta_place_bracket_order(session, order_data, order_book_details)
+                        response = await self.order_types.beta_place_bracket_order(order_data, order_book_details)
                         order_placed = True
                         self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'])
                     else:
@@ -220,11 +222,12 @@ class TradeOrderManager:
                     return ex_bracket
             elif order_type == 'trailing_stop':
                 try:
-                    response = await self.order_types.place_trailing_stop_order(session, order_data, order_book_details,
+                    response = await self.order_types.place_trailing_stop_order(order_data, order_book_details,
                                                                                 order_data[
                                                                                 'adjusted_price'])
                     if response:
-                        self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'])
+                        self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'],
+                                         response.text)
                         return True, response
                     else:
                         return False, response

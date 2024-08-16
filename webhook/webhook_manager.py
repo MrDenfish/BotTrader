@@ -1,3 +1,9 @@
+
+import asyncio
+import json
+from coinbase.websocket import WSClient
+from coinbase.rest import RESTClient
+
 from decimal import ROUND_HALF_UP
 import time
 
@@ -11,16 +17,17 @@ class WebHookManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager, utility, trade_order_manager, alerts):
+    def get_instance(cls, logmanager, utility, trade_order_manager, alerts, session):
         if cls._instance is None:
-            cls._instance = cls(logmanager, utility, trade_order_manager, alerts)
+            cls._instance = cls(logmanager, utility, trade_order_manager, alerts, session)
         return cls._instance
 
-    def __init__(self, logmanager, utility, trade_order_manager, alerts):
+    def __init__(self, logmanager, utility, trade_order_manager, alerts, session):
         self.alerts = alerts
         self.utility = utility
         self.trade_order_manager = trade_order_manager
         self.log_manager = logmanager
+        self.session = session
 
     def calculate_order_size(self, side, usd_amount, quote_price, base_price, base_decimal):
         # Convert USD to BTC
@@ -60,10 +67,10 @@ class WebHookManager:
         except Exception as e:
             self.log_manager.webhook_logger.error(f'parse_webhook_data: {webhook_data}An error occurred: {e}', exc_info=True)
 
-    async def handle_action(self, order_data, precision_data, session):
+    async def handle_action(self, order_data, precision_data):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro."""
         try:
-            await self.trade_order_manager.place_order(order_data, precision_data, session)
+            await self.trade_order_manager.place_order(order_data, precision_data)
         except InsufficientFundsException:
             self.log_manager.webhook_logger.info(f'handle_action: Insufficient funds')
             self.alerts.callhome('Insufficient funds', f'Insufficient funds  {order_data["trading_pair"]} at '
@@ -80,10 +87,10 @@ class WebHookManager:
             # Maybe implement a retry logic
         except Exception as e:
             # Catch-all for other exceptions
-            await self.handle_webhook_error(e, order_data, precision_data, session)
+            await self.handle_webhook_error(e, order_data, precision_data)
             self.log_manager.webhook_logger.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
 
-    async def handle_webhook_error(self, e, order_data, precision_data, session):
+    async def handle_webhook_error(self, e, order_data, precision_data):
         """Handle errors that occur while processing an old_webhook request."""
         exception_map = {
             429: RateLimitException,
@@ -109,7 +116,7 @@ class WebHookManager:
             self.log_manager.webhook_logger.error(f'warning', 'handle_webhook_error: Rate limit hit. '
                                                   'Retrying in 60 seconds...')
             time.sleep(60)
-            await self.handle_action(order_data, precision_data, session)
+            await self.handle_action(order_data, precision_data)
 
         except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
             self.log_manager.webhook_logger.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
