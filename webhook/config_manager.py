@@ -64,6 +64,23 @@ class BotConfig:
 
         self.machine_type = self.determine_machine_type()
 
+    def get_whitelist(self):
+        """
+        Combine all whitelist information into one list, ensuring strings are split into lists.
+        """
+        # Convert each whitelist string to a list, splitting by ','.
+        tv_whitelist_list = self._tv_whitelist.split(',') if isinstance(self._tv_whitelist, str) else self._tv_whitelist
+        coin_whitelist_list = self._coin_whitelist.split(',') if isinstance(self._coin_whitelist,
+                                                                            str) else self._coin_whitelist
+        docker_staticip_list = self._docker_staticip.split(',') if isinstance(self._docker_staticip,
+                                                                              str) else self._docker_staticip
+        pagekite_whitelist_list = self._pagekite_whitelist.split(',') if isinstance(self._pagekite_whitelist,
+                                                                                    str) else self._pagekite_whitelist
+
+        # Combine all whitelist information into a single list, excluding empty values
+        whitelist = tv_whitelist_list + coin_whitelist_list + docker_staticip_list + pagekite_whitelist_list
+        return [item for item in whitelist if item]  # Exclude empty strings or None values
+
     def load_json_config(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         config_path = os.path.join(current_dir, 'config.json')
@@ -107,7 +124,7 @@ class BotConfig:
 
     def get_directory_paths(self):
         base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '')
-        self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['TRADERBOT_ERROR_LOG_DIR'])
+        self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['LISTENER_ERROR_LOG_DIR'])
 
         # Create the directories if they don't exist
         for dir_path in [self.log_dir]:

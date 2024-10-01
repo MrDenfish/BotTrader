@@ -1,13 +1,11 @@
 from custom_exceptions import CoinbaseAPIError
 import asyncio
 from datetime import datetime
-from decimal import Decimal, ROUND_DOWN, ROUND_HALF_DOWN, InvalidOperation
-# from .shared.api_related import retry_on_401  # shared module
+from decimal import Decimal, ROUND_DOWN
 
 import socket
 import pandas as pd
 import math
-import traceback
 
 # Define the TradeBotUtils class
 
@@ -17,23 +15,23 @@ class TradeBotUtils:
     _instance = None
 
     @classmethod
-    def get_instance(cls, botconfig, logmanager, exchange_client, ccxt_api, webhook_listener=None):
+    def get_instance(cls, botconfig, logmanager, coinbase_api, exchange_client, ccxt_api, alerts,order_tracker):
         if cls._instance is None:
-            cls._instance = cls(botconfig, logmanager, exchange_client, ccxt_api, webhook_listener)
-        else:
-            cls._instance.webhook_listener = webhook_listener
+            cls._instance = cls(botconfig, logmanager, coinbase_api, exchange_client, ccxt_api, alerts,order_tracker)
+
         return cls._instance
 
-    def __init__(self, botconfig, logmanager, exchange_client, ccxt_api, order_book, webhook_listener=None):
+    def __init__(self, botconfig, logmanager, coinbase_api, exchange_client, ccxt_api, alerts, order_tracker):
         if TradeBotUtils._instance is not None:
             raise Exception("This class is a singleton!")
         TradeBotUtils._instance = self
         self.exchange = exchange_client
-        self.webhook_listener = webhook_listener
+        self.coinbase_api = coinbase_api
         self.bot_config = botconfig
         self.log_manager = logmanager
         self.ccxt_exceptions = ccxt_api
-        self.order_book = order_book
+        self.alerts = alerts
+        self.order_tracker = order_tracker
 
     def refresh_authentication(self):
         try:
@@ -51,7 +49,7 @@ class TradeBotUtils:
 
                 # Log the refresh action
                 if self.log_manager and hasattr(self.log_manager, 'webhook_logger'):
-                    self.log_manager.webhook_logger.info("Authentication refreshed.")
+                    self.log_manager.info("Authentication refreshed.")
                 else:
                     print("Authentication refreshed.")  # Fallback logging
             else:
@@ -59,7 +57,7 @@ class TradeBotUtils:
         except Exception as e:
             error_message = f"Failed to refresh authentication: {e}"
             if self.log_manager and hasattr(self.log_manager, 'webhook_logger'):
-                self.log_manager.webhook_logger.error(error_message)
+                self.log_manager.error(error_message)
             else:
                 print(error_message)  # Fallback logging
 
@@ -107,18 +105,18 @@ class TradeBotUtils:
 
                     return base_decimal_places, quote_decimal_places, base_increment, quote_increment
         except self.exchange.NetworkError as e:
-            self.log_manager.webhook_logger.error(f"Network issue when fetching markets: {e}")
+            self.log_manager.error(f"Network issue when fetching markets: {e}")
         except self.exchange.ExchangeError as e:
-            self.log_manager.webhook_logger.error(f"Exchange issue encountered: {e}")
+            self.log_manager.error(f"Exchange issue encountered: {e}")
         except Exception as e:
-            self.log_manager.webhook_logger.error(f"Unexpected error in fetch_precision: {e}", exc_info=True)
+            self.log_manager.error(f"Unexpected error in fetch_precision: {e}", exc_info=True)
 
         return None, None, None, None  # Default return on error
 
     async def get_open_orders(self, order_data):
         base_balance = Decimal(0)
         quote_bal = Decimal(0)
-        open_order = False
+        open_order = []
         try:
             endpoint = 'private'
             params = {
@@ -130,15 +128,16 @@ class TradeBotUtils:
 
             # Ensure format_open_orders returns a DataFrame
             all_open_orders = await self.format_open_orders(fetched_open_orders) if fetched_open_orders else pd.DataFrame()
-
-            coin = order_data['trading_pair'].split('/')[0]
-            accounts, balances = await self.get_account_balance([coin, order_data['quote_currency']])
+            coin = self.get_symbol_or_trading_pair(order_data)
+            base_currency = coin.split('/')[0]
+            quote_currency = coin.split('/')[1]
+            accounts, balances = await self.get_account_balance([base_currency, quote_currency])
 
             if None in accounts.values():
-                self.log_manager.webhook_logger.warning(
+                self.log_manager.warning(
                     'None values detected in balances. Refreshing authentication and retrying.')
                 self.refresh_authentication()
-                accounts, balances = await self.get_account_balance([coin, order_data['quote_currency']])
+                accounts, balances = await self.get_account_balance([base_currency, quote_currency])
 
             base_value = accounts.get(order_data['trading_pair'].split('/')[0], 0)
             base_balance = self.float_to_decimal(base_value['free'], order_data['base_decimal']) \
@@ -149,7 +148,7 @@ class TradeBotUtils:
 
             # Check if all_open_orders DataFrame is empty
             if all_open_orders.empty or all_open_orders is None:
-                self.log_manager.webhook_logger.debug(
+                self.log_manager.debug(
                     f'get_open_orders: No open orders found for {order_data["trading_pair"]}. Coin Balance: '
                     f'{base_balance}', exc_info=True)
 
@@ -159,11 +158,56 @@ class TradeBotUtils:
                 open_order = symbol in all_open_orders['product_id'].values
             return quote_balance, base_balance, all_open_orders, open_order
         except CoinbaseAPIError as e:
-            self.log_manager.webhook_logger.error(f'get_open_orders: Coinbase API Error occurred: {e}', exc_info=True)
-            return None, None, None
+            self.log_manager.error(f'get_open_orders: Coinbase API Error occurred: {e}', exc_info=True)
+            return None, None, None, None
         except Exception as e:  # Basic but it does not seem to catch errors
-            self.log_manager.webhook_logger.exception(f'get_open_orders: Error occurred: {e}', exc_info=True)
-            return None, None, None
+            self.log_manager.exception(f'get_open_orders: Error occurred: {e} {order_data}', exc_info=True)
+            return None, None, None, None
+
+    async def check_order_status(self, symbol, order_id):
+        """
+        Check the status of an order using the order_id.
+        Returns the status as a string (e.g., 'OPEN', 'FILLED', 'CANCELED').
+        """
+        try:
+            # Extract order details
+
+            endpoint = 'private'
+
+            # Fetch detailed order information
+            order_info = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_order, endpoint, order_id, symbol)
+
+            if order_info:
+                return order_info.get('status', 'UNKNOWN')  # return raw order info if available
+            else:
+                print(f"Order {order_id} not found.")
+                return 'NOT_FOUND'
+        except Exception as e:
+            print(f"Error checking order status for {order_id}: {e}")
+            return 'ERROR'
+
+    async def check_funds(self, required_amount):
+        account_balance = await self.coinbase_api.get_account_balance()  # Implement this method to fetch account balance
+        if account_balance >= required_amount:
+            return True
+        else:
+            print(f"Insufficient funds. Required: {required_amount}, Available: {account_balance}")
+            return False
+
+
+    @staticmethod
+    def get_symbol_or_trading_pair(order):
+        # Check if 'symbol' is in the dictionary (for nested structures)
+        if isinstance(order, dict):
+            for key, value in order.items():
+                if isinstance(value, dict):
+                    if 'symbol' in value:
+                        return value['symbol']
+                elif key == 'trading_pair':
+                    return order['trading_pair']
+
+        # If 'symbol' or 'trading_pair' was not found at this point, raise an exception or return None
+        return None
 
     @staticmethod
     async def format_open_orders(open_orders: list) -> pd.DataFrame:
@@ -233,7 +277,7 @@ class TradeBotUtils:
                 return accounts, wallets  # Return the full accounts object
             # Check if accounts is None
             if wallets is None:
-                self.log_manager.webhook_logger.error('get_account_balance: Failed to fetch accounts', exc_info=True)
+                self.log_manager.error('get_account_balance: Failed to fetch accounts', exc_info=True)
                 return accounts, {currency: None for currency in currencies}
 
             for wallet in wallets:
@@ -244,12 +288,12 @@ class TradeBotUtils:
                     break
                 else:
                     balances = None
-                    self.log_manager.webhook_logger.debug(f'get_account_balance: {wallet} not found in accounts')
+                    self.log_manager.debug(f'get_account_balance: {wallet} not found in accounts')
             # print(f'balances: {balances}')
             return accounts, balances
         except Exception as e:
             my_ip = self.get_my_ip_address()
-            self.log_manager.webhook_logger.debug(
+            self.log_manager.debug(
                 f'get_account_balance: Exception occurred during API call from IP {my_ip}: {e}', exc_info=True)
             return accounts, {currency: None for currency in currencies}
 
@@ -269,7 +313,7 @@ class TradeBotUtils:
 
             return value_decimal
         except Exception as e:
-            self.log_manager.webhook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
+            self.log_manager.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
                                                   f'Decimal places: {decimal_places}', exc_info=True)
             raise
 
@@ -278,16 +322,16 @@ class TradeBotUtils:
             endpoint = 'public'
             ticker = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_ticker, endpoint, symbol)
             if ticker is None or 'last' not in ticker:
-                self.log_manager.webhook_logger.error(f"Failed to fetch ticker or 'last' price missing for {symbol}")
+                self.log_manager.error(f"Failed to fetch ticker or 'last' price missing for {symbol}")
                 return None
             # Extract the spot price (last price)
             spot_price = ticker['last']
-            self.log_manager.webhook_logger.debug(f'fetch_spot: {symbol} spot price: {spot_price}')
+            self.log_manager.debug(f'fetch_spot: {symbol} spot price: {spot_price}')
             return spot_price
         except asyncio.CancelledError:
-            self.log_manager.webhook_logger.error(f"fetch_ticker: Task was cancelled for {symbol}")
+            self.log_manager.error(f"fetch_ticker: Task was cancelled for {symbol}")
         except Exception as ex:
-            self.log_manager.webhook_logger.error(f'fetch_spot: Error fetching ticker {symbol}: {ex}', exc_info=True)
+            self.log_manager.error(f'fetch_spot: Error fetching ticker {symbol}: {ex}', exc_info=True)
 
     def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
 
@@ -308,117 +352,48 @@ class TradeBotUtils:
 
             return adjusted_precision
         except Exception as e:
-            self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}')
+            self.log_manager.error(f'adjust_precision: An error occurred: {e}')
             return None
 
-    def adjust_price_and_size(self, order_data, order_book, response=None) -> object:
+    def adjust_price_and_size(self, order_data, order_book, response=None) -> tuple[Decimal, Decimal]:
         try:
             side = order_data['side'].upper()
 
             if side == 'SELL':
                 adjusted_price = Decimal(order_book['highest_bid'])
-                adjusted_size = Decimal(order_data.get('base_balance', order_data.get('quote_amount', 0)))
+                adjusted_size = Decimal(order_data.get('base_balance', 0))
             elif side == 'BUY':
                 adjusted_price = Decimal(order_book['lowest_ask'])
-                adjusted_size = Decimal(order_data.get('quote_amount', 0)) / adjusted_price
+                quote_amount = Decimal(order_data.get('quote_amount', 0))
+                if adjusted_price == 0:
+                    raise ValueError("Adjusted price cannot be zero for BUY order.")
+                adjusted_size = quote_amount / adjusted_price
             else:
                 raise ValueError(f"Unsupported side: {side}")
 
-            best_bid_price = Decimal(order_book['highest_bid'])
-
-            best_ask_price = Decimal(order_book['lowest_ask'])
-
-            spread = best_ask_price - best_bid_price
-
-            # Dynamic adjustment factor based on a percentage of the spread
-            adjustment_percentage = Decimal('0.005')  # 0.5%
-            adjustment_factor = spread * adjustment_percentage
-            # Ensure the adjustment is significant given the currency's precision
-            exponential_str = '1e-{}'.format(order_data.get('quote_decimal'))
-            adjustment_factor = max(adjustment_factor, Decimal(exponential_str))
-            print(f'adjustment_factor: {adjustment_factor}')
-
-            return adjusted_price, adjusted_size
-        except Exception as e:
-            self.log_manager.webhook_logger.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
-            return None, None
-
-    def old_adjust_price_and_size(self, order_data, order_book, response=None) -> object:
-        """ Calculate and adjust price and size
-                # Return adjusted_price and adjusted_size """
-        try:
-            side = order_data['side']
-            available_coin_balance = order_data.get('base_balance', order_data.get('quote_amount'))
+            # Capture best bid/ask prices
             best_bid_price = Decimal(order_book['highest_bid'])
             best_ask_price = Decimal(order_book['lowest_ask'])
             spread = best_ask_price - best_bid_price
 
             # Dynamic adjustment factor based on a percentage of the spread
-            adjustment_percentage = Decimal('0.005')  # 0.5%
+            adjustment_percentage = Decimal('0.0015')  # 0.2%
             adjustment_factor = spread * adjustment_percentage
+
             # Ensure the adjustment is significant given the currency's precision
-            exponential_str = '1e-{}'.format(order_data['quote_decimal'])
-            adjustment_factor = max(adjustment_factor, Decimal(exponential_str))
-            print(f'adjustment_factor: {adjustment_factor}')
-        except Exception as e:
-            self.log_manager.webhook_logger.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
-            return None, None
-        try:
-            if side == 'buy':
-                # Adjust the buy price to be slightly higher than the best bid
-                adjusted_price = best_bid_price + adjustment_factor
-                adjusted_price = adjusted_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_DOWN)
-                print(f'adjusted_price: {adjusted_price}')
-                best_ask_price = best_ask_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_DOWN)
-                print(f'best_ask_price: {best_ask_price}')
-                print(f'Best_bid_price: {best_bid_price}')
-                quote_amount = Decimal(order_data['quote_amount']) / order_data['quote_price']
-                adjusted_size = quote_amount / adjusted_price
+            precision_str = '1e-{}'.format(order_data.get('quote_decimal', 2))
+            adjustment_factor = max(adjustment_factor, Decimal(precision_str))
+            print(f'Calculated adjustment_factor: {adjustment_factor}')
 
-                if None in (adjusted_price, adjusted_size):
-                    self.log_manager.webhook_logger.info(
-                        f'adjusted_price_and_size: {side}, best_ask_price: {best_ask_price}, adjusted_price: '
-                        f'{adjusted_price}, adjusted_size: {adjusted_size}')
-
-                    return None, None
-            else:
-                # Adjust the sell price to be slightly lower than the best ask
-                adjusted_price = best_ask_price - adjustment_factor
-                adjusted_price = self.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'],
-                                                       adjusted_price, convert='quote')
-                print(f'adjusted_price: {adjusted_price}')
-                best_bid_price = best_bid_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_DOWN)
-                print(f'best_bid_price: {best_bid_price}')
-                print(f'best_ask_price: {best_ask_price}')
-                adjusted_size = Decimal(available_coin_balance)
-
-            # Apply quantization based on market precision rules
-            adjusted_price = adjusted_price.quantize(Decimal(exponential_str), rounding=ROUND_HALF_DOWN)
-            print(f'adjusted_price: {adjusted_price}')
-            if response is not None and 'insufficient base balance' in response:
-                adjusted_size = adjusted_size - (adjusted_size * Decimal(0.01))  # reduce size by 1%
-                adjusted_size = adjusted_size.quantize(order_data['base_increment'], rounding=ROUND_DOWN)
-            if None in (adjusted_price, adjusted_size):
-                error_details = traceback.format_exc()
-                self.log_manager.webhook_logger.error(f'adjusted_price_and_size: Error placing order: {error_details}')
-                self.log_manager.webhook_logger.error(
-                    f'adjusted_price_and_size: {side}, best_bid_price: {best_bid_price}, adjusted_price: '
-                    f'{adjusted_price},adjusted_size: {adjusted_size} order book{order_book} {order_book["asks"][0][0]}')
-                return None, None
+            # Apply the adjustment factor depending on the side
+            if side == 'BUY':
+                adjusted_price += adjustment_factor  # Slightly increase the buy price
+            elif side == 'SELL':
+                adjusted_price -= adjustment_factor  # Slightly decrease the sell price
 
             return adjusted_price, adjusted_size
-        except InvalidOperation as e:
-            # Log the error and the values that caused it
-            self.log_manager.webhook_logger.error(f'Invalid operation encountered during quantization: {e}')
-            self.log_manager.webhook_logger.error(
-                f'available_coin_balance: {available_coin_balance}, base_incri: {order_data["base_increment"]}')
-
-            return None, None
         except Exception as e:
-            error_details = traceback.format_exc()
-            self.log_manager.webhook_logger.error(
-                f'adjusted_price_and_size: An error occurred:{side},best_ask_price:{best_ask_price},'
-                f'best_bid_price:{best_bid_price}, {e}\nDetails: {error_details}')
+            self.log_manager.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
             return None, None
 
     @staticmethod

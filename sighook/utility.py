@@ -51,7 +51,7 @@ class SenderUtils:
             difference_in_minutes = difference.total_seconds() / 60
             return f"{int(difference_in_minutes)} minutes"
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error calculating time difference: {e}", exc_info=True)
+            self.log_manager.error(f"Error calculating time difference: {e}", exc_info=True)
             return None
 
     @staticmethod
@@ -98,11 +98,11 @@ class SenderUtils:
             return int(parsed_timestamp.timestamp() * 1000)
         except ValueError as e:
             # Log error if parsing fails
-            self.log_manager.sighook_logger.error(f"Error parsing timestamp: {e}")
+            self.log_manager.error(f"Error parsing timestamp: {e}")
             return None
         except Exception as e:
             # Log unexpected errors
-            self.log_manager.sighook_logger.error(f"Error converting timestamp to unix: {e}", exc_info=True)
+            self.log_manager.error(f"Error converting timestamp to unix: {e}", exc_info=True)
             return None
 
     def fetch_precision(self, symbol: str) -> tuple:
@@ -140,13 +140,13 @@ class SenderUtils:
             raise LookupError(f"No market found for symbol {symbol} check format.")
 
         except ValueError as e:
-            self.log_manager.sighook_logger.error(f"fetch_precision: {e}", exc_info=True)
+            self.log_manager.error(f"fetch_precision: {e}", exc_info=True)
             return None, None
         except Exception as e:
             if "No market found" in str(e):
-                self.log_manager.sighook_logger.info(f"No market found for symbol {symbol}.")
+                self.log_manager.info(f"No market found for symbol {symbol}.")
             else:
-                self.log_manager.sighook_logger.error(f'fetch_precision: Error processing order for {symbol}: {e}',
+                self.log_manager.error(f'fetch_precision: Error processing order for {symbol}: {e}',
                                                       exc_info=True)
 
         raise ValueError(f"Symbol {symbol} not found in exchange markets.")
@@ -197,6 +197,6 @@ class SenderUtils:
             return value_decimal
         except Exception as e:
 
-            self.log_manager.sighook_logger.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
+            self.log_manager.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
                                                   f'Decimal places: {decimal_places}', exc_info=True)
             raise

@@ -28,10 +28,10 @@ class AccessoryTools:
                 jitter = random.uniform(0.5, 1.5)
                 sleep_time = wait_time * jitter
 
-                self.log_manager.webhook_logger.warning(f"Rate limit hit. Retrying in {sleep_time:.2f} "
+                self.log_manager.warning(f"Rate limit hit. Retrying in {sleep_time:.2f} "
                                                         f"seconds...- retry_request")
                 time.sleep(sleep_time)
                 retries += 1
 
-        self.log_manager.webhook_logger.error(f"Max retries ({max_retries}) reached. Giving up.- retry_request")
+        self.log_manager.error(f"Max retries ({max_retries}) reached. Giving up.- retry_request")
         # Maybe raise an exception here or return None

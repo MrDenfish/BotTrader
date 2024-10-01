@@ -1,14 +1,14 @@
 {
   "docker": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   },
   "Manny": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   },
   "moe": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   },
   "do_server": {
-    "TRADERBOT_ERROR_LOG_DIR": "logs/listener"
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   }
 }

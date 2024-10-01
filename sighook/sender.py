@@ -1,4 +1,6 @@
 import asyncio
+# import cProfile # debugging
+# import threading # debugging
 import aiohttp
 
 import datetime
@@ -13,7 +15,7 @@ from tabulate import tabulate
 import pandas as pd
 from alerts_msgs_webhooks import AlertSystem, SenderWebhook
 from config_manager import AppConfig
-from logging_manager import LoggerManager
+from Utils.logging_manager import LoggerManager
 from indicators import Indicators
 from database_ops import DatabaseOpsManager
 from database_table_models import Trade
@@ -32,6 +34,7 @@ from profit_manager import ProfitabilityManager
 from profit_helper import ProfitHelper
 from profit_extras import PerformanceManager
 from csv_manager import CsvManager
+import logging
 
 # Event to signal that a shutdown has been requested
 shutdown_event = asyncio.Event()
@@ -45,23 +48,31 @@ class TradeBot:
         self.cb_api = self.app_config.load_sighook_api_key()
         self._csv_dir = self.app_config.csv_dir
         self.log_dir = self.app_config.log_dir
-        self.csv_manager = None
+        self.log_manager, self.csv_manager, self.tradebot = None, None, None
         self.max_concurrent_tasks = 10
-        self.tradebot = None
-        self.log_manager, self.alerts, self.ccxt_exceptions, self.custom_excep = None, None, None, None
-        self.api401, self.exchange, self.market_metrics, self.utility = None, None, None, None
-        self.profit_extras, self.database_session_mngr, self.async_func, self.indicators = None, None, None, None
+        self.alerts, self.ccxt_exceptions, self.custom_excep, self.db_initializer = None, None, None, None
+        self.api401,  self.market_metrics, self.utility, self.db_tables = None, None, None, None
+        self.profit_extras, self.async_func, self.indicators, self.debug_data_loader = None, None, None, None
         self.ticker_manager, self.portfolio_manager, self.webhook, self.trading_strategy = None, None, None, None
         self.profit_manager, self.profit_helper, self.order_manager, self.market_manager = None, None, None, None
         self.market_data, self.ticker_cache, self.market_cache, self.current_prices = None, None, None, None
         self.filtered_balances, self.start_time, self.exchange_class, self.session = None, None, None, None
-        self.db_initializer, self.database_ops_mngr, self.csv_manager, self.db_tables = None, None, None, None
-        self.debug_data_loader = None
         self._min_volume = Decimal(self.app_config.min_volume)
         self.sleep_time = self.app_config.sleep_time
         self.web_url = self.app_config.web_url
+        # Initialize components to None
+        self.initialize_components()
 
-        # self.initialize_components()
+    def initialize_components(self):
+        """Initialize all components to None to ensure proper cleanup."""
+        self.log_manager = None
+        self.exchange = None
+        self.csv_manager = None
+        self.database_session_mngr = None
+        self.database_ops = None
+        self.db_initializer = None
+
+    # self.initialize_components()
     @property
     def csv_dir(self):
         return self._csv_dir
@@ -93,11 +104,30 @@ class TradeBot:
             self.start_time = time.time()
             print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
             self.market_data = await self.market_manager.update_market_data(open_orders=None)
-            self.utility.print_elapsed_time(self.start_time, 'Part I: market data update is complete')
-            await self.database_session_mngr.process_data(self.market_data, self.start_time, self.csv_dir)
-            self.utility.print_elapsed_time(self.start_time, 'Part I: Database Loading is complete, session closed')
+            # Set ticker_cache, market_cache, and other relevant data
+            self.ticker_cache = self.market_data['ticker_cache']
+            self.market_cache = self.market_data['market_cache']
+            self.current_prices = self.market_data['current_prices']
+            self.filtered_balances = self.market_data['filtered_balances']
+            self.utility.print_elapsed_time(self.start_time, 'Part Ia: Market data update is complete')
+
+            self.utility.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
+            self.ticker_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
+            self.portfolio_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
+            self.trading_strategy.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
+            self.order_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, self.web_url)
+            self.market_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
+            self.webhook.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, self.web_url)
+            self.profit_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, self.web_url)
+            self.profit_extras.set_trade_parameters(self.start_time, self.ticker_cache, self.current_prices)
+            self.csv_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
+            (holdings_list, _, _, _, _) = self.portfolio_manager.get_portfolio_data(self.start_time)
+            holdings_df = await self.portfolio_manager.fetch_wallets()
+            await self.database_session_mngr.process_data(self.market_data, holdings_list, holdings_df, self.market_data[
+                'current_prices'])
+            self.utility.print_elapsed_time(self.start_time, 'Part Ib: Database Loading is complete, session closed')
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Failed to initialize data on startup {e}', exc_info=True)
+            self.log_manager.error(f'Failed to initialize data on startup {e}', exc_info=True)
         finally:
             await self.exchange.close()
             TradeBot._exchange_instance_count -= 1
@@ -105,55 +135,87 @@ class TradeBot:
 
     async def load_bot_components(self):
         """ Initialize all components required by the TradeBot. """
-        self.log_manager = LoggerManager(self.app_config, log_dir=self.log_dir)
+
+        # Step 1: Initialize essential components first
+        log_config = {"log_level": logging.INFO}
+        self.sighook_logger = LoggerManager(log_config) # Assign the logger
+        self.log_manager = self.sighook_logger.get_logger('sighook_logger')
         self.exchange = self.setup_exchange()
         self.alerts = AlertSystem(self.app_config, self.log_manager)
         self.ccxt_exceptions = ApiExceptions(self.log_manager, self.alerts)
         self.async_func = AsyncFunctions()
         self.indicators = Indicators(self.log_manager, self.app_config)
-        self.tradebot = TradeBot(self.app_config)
         self.utility = SenderUtils(self.log_manager, self.exchange, self.ccxt_exceptions)
-
-        self.ticker_manager = TickerManager(self.utility, self.log_manager, self.exchange, self.ccxt_exceptions,
-                                            self.max_concurrent_tasks)
-        self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
-                                                  self.max_concurrent_tasks, self.app_config)
-
         self.db_tables = Trade()
 
+        # Step 2: Initialize database session manager with dependencies
+        self.database_session_mngr = DatabaseSessionManager(
+            None,  # Placeholder for csv_manager, will be set later
+            self.log_manager,
+            None,  # Placeholder for profit_extras, will be set later
+            self.app_config
+        )
+
+        # Step 3: Initialize the remaining components that do not depend on DatabaseOpsManager
+        self.portfolio_manager = PortfolioManager(self.utility, self.log_manager, self.ccxt_exceptions, self.exchange,
+                                                  self.max_concurrent_tasks, self.app_config)
+        self.ticker_manager = TickerManager(self.utility, self.log_manager, self.exchange, self.ccxt_exceptions,
+                                            self.max_concurrent_tasks, self.app_config)
         self.debug_data_loader = DebugDataLoader(self.db_tables, self.log_manager)
 
-        self.profit_extras = PerformanceManager(self.exchange, self.ccxt_exceptions, self.utility, self.order_manager,
+        # Step 4: Now initialize csv_manager and profit_extras so that they can be passed to DatabaseOpsManager
+        self.csv_manager = CsvManager(self.utility, self.db_tables, None,  # Placeholder for database_ops
+                                      self.exchange, self.ccxt_exceptions, self.log_manager, self.app_config)
+        self.profit_extras = PerformanceManager(self.exchange, self.ccxt_exceptions, self.utility, None,
+                                                # Placeholder for order_manager
                                                 self.portfolio_manager, self.log_manager, self.app_config)
 
-        self.database_ops_mngr = DatabaseOpsManager(self.debug_data_loader, self.db_tables, self.utility, self.exchange,
-                                                    self.ccxt_exceptions, self.log_manager, self.ticker_manager,
-                                                    self.portfolio_manager, self.app_config)
+        # Step 5: Initialize DatabaseOpsHoldingsManager (after DatabaseSessionManager is initialized)
+        self.database_ops_holdings = self.database_session_mngr.get_database_ops_holdings(
+            self.log_manager, self.database_session_mngr.AsyncSessionLocal
+        )
 
-        self.csv_manager = CsvManager(self.utility, self.db_tables, self.database_ops_mngr, self.exchange,
-                                      self.ccxt_exceptions, self.log_manager, self.app_config)
+        # Step 6: Initialize DatabaseOpsManager with all dependencies
+        self.database_ops = DatabaseOpsManager(
+            self.exchange, self.ccxt_exceptions, self.log_manager, self.csv_manager, self.profit_extras, self.app_config,
+            self.utility, self.portfolio_manager, self.database_ops_holdings,
+            self.database_session_mngr.engine, self.database_session_mngr.AsyncSessionLocal
+        )
 
-        self.database_session_mngr = DatabaseSessionManager(self.database_ops_mngr, self.csv_manager, self.log_manager,
-                                                            self.profit_extras, self.app_config)
+        # Step 7: Now that DatabaseOpsManager is initialized, update the placeholders in csv_manager and profit_extras
+        self.csv_manager.database_ops = self.database_ops
+        self.profit_extras.order_manager = None  # This will be updated once order_manager is initialized
 
+        # Step 8: Update DatabaseSessionManager with initialized components
+        self.database_session_mngr.database_ops = self.database_ops
+        self.database_session_mngr.database_ops_holdings_manager = self.database_ops_holdings
+        self.database_session_mngr.csv_manager = self.csv_manager
+        self.database_session_mngr.profit_extras = self.profit_extras
+
+        # Step 9: Initialize remaining components that depend on DatabaseOps and other managers
         self.db_initializer = DatabaseInitializer(self.database_session_mngr)
-
         self.webhook = SenderWebhook(self.exchange, self.utility, self.alerts, self.log_manager, self.app_config)
         self.trading_strategy = TradingStrategy(self.webhook, self.ticker_manager, self.utility, self.exchange, self.alerts,
-                                                self.log_manager, self.ccxt_exceptions, self.market_metrics,
+                                                self.log_manager, self.ccxt_exceptions, None,
+                                                # Placeholder for market_metrics
                                                 self.app_config, self.max_concurrent_tasks, self.database_session_mngr)
         self.profit_helper = ProfitHelper(self.utility, self.portfolio_manager, self.ticker_manager,
                                           self.database_session_mngr, self.log_manager, self.app_config)
         self.order_manager = OrderManager(self.trading_strategy, self.ticker_manager, self.exchange, self.webhook,
                                           self.utility, self.alerts, self.log_manager, self.ccxt_exceptions,
                                           self.profit_helper, self.app_config, self.max_concurrent_tasks)
+
+        # Step 10: Update any components that depend on order_manager
+        self.profit_extras.order_manager = self.order_manager
+
+        # Step 11: Initialize MarketManager
         self.market_manager = MarketManager(self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
-                                            self.log_manager,
-                                            self.ccxt_exceptions, self.ticker_manager, self.utility,
+                                            self.log_manager, self.ccxt_exceptions, self.ticker_manager, self.utility,
                                             self.max_concurrent_tasks, self.database_session_mngr)
 
+        # Step 12: Initialize ProfitabilityManager last, after all other dependencies are set
         self.profit_manager = ProfitabilityManager(self.exchange, self.ccxt_exceptions, self.utility, self.portfolio_manager,
-                                                   self.database_session_mngr, self.database_ops_mngr, self.order_manager,
+                                                   self.database_session_mngr, self.database_ops, self.order_manager,
                                                    self.trading_strategy, self.profit_helper, self.profit_extras,
                                                    self.log_manager, self.app_config)
 
@@ -171,44 +233,44 @@ class TradeBot:
             print("Program has exited.")
 
     async def run_bot(self):  # async
+        # Initialize profiler for debugging
+        # profiler = cProfile.Profile()
+        # profiler.enable()  # Start cProfile
 
         profit_data = pd.DataFrame(columns=['Symbol', 'Unrealized PCT', 'Profit/Loss', 'Total Cost', 'Current Value',
                                             'Balance'])
         ledger = pd.DataFrame()  # Holds all trades and shows profitability of all trades
-        web_url = self.web_url
         open_orders = pd.DataFrame()
         ohlcv_data_dict = {}  # dictionary to hold ohlcv data
-        # Create a ClientSession at the start of main
-        self.ticker_cache = self.market_data['ticker_cache']
-        self.market_cache = self.market_data['market_cache']
-        self.current_prices = self.market_data['current_prices']
-        self.filtered_balances = self.market_data['filtered_balances']
+
+        # Debugging code ****************************************************************************************
+        # print(f"dont forget to but the database back into the project folder when finshed debugging /Users/Manny/Database")
+        # async def stop_bot():
+        #     # This will wait for tasks to complete before stopping the loop
+        #     print("Stopping the bot and awaiting shutdown...")
+        #     profiler.disable()  # Stop the profiler
+        #     profiler.dump_stats("profile_output.prof")  # Save profiling data to file
+        #     # Allow all remaining tasks to finish
+        #     pending = asyncio.all_tasks(loop)
+        #     for task in pending:
+        #         task.cancel()
+        #     await asyncio.gather(*pending, return_exceptions=True)
+        #     await loop.shutdown_asyncgens()
+        #     loop.stop()
+
+        # debugging code ****************************************************************************************
+
         try:
+            # loop = asyncio.get_running_loop()  # Get the correct running loop
+            # Timer to run bot for 60 seconds  cprofile debugging
+            # timer = threading.Timer(540.0, lambda: asyncio.run_coroutine_threadsafe(stop_bot(), loop))  cprofile debugging
+            # timer.start() # cprofile debugging
             while not AsyncFunctions.shutdown_event.is_set():
-                self.ticker_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
-
-                self.utility.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
-
-                self.portfolio_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
-
-                self.trading_strategy.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
-
-                self.order_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, web_url)
-
-                self.market_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
-
-                self.webhook.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, web_url)
-
-                self.profit_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache, self.web_url)
-
-                self.profit_extras.set_trade_parameters(self.start_time, self.ticker_cache, self.current_prices)
-
-                self.csv_manager.set_trade_parameters(self.start_time, self.ticker_cache, self.market_cache)
 
                 # PART II:
                 #   Trade Database Updates and Portfolio Management
                 print(f'Part II: Trade Database Updates and Portfolio Management - Start Time:', datetime.datetime.now())
-                (holdings, usd_coins, ticker_cache_avg_dollar_vol, buy_sell_matrix, price_change) = \
+                (holdings_list, usd_coins, ticker_cache_avg_dollar_vol, buy_sell_matrix, price_change) = \
                     self.portfolio_manager.get_portfolio_data(self.start_time)
 
                 # Filter to include only coins that have a buy or sell signal, all others omitted.
@@ -242,14 +304,15 @@ class TradeBot:
                 # PART V:
                 # Order Execution
                 print(f'Part V: Order Execution - Start Time:', datetime.datetime.now())
-                submitted_orders = await self.order_manager.execute_actions(results, holdings)
+                submitted_orders = await self.order_manager.execute_actions(results, holdings_list)
                 self.utility.print_elapsed_time(self.start_time, 'Part V: Order Execution')
 
                 # PART VI:
                 # Profitability Analysis and Order Generation
-                wallets = await self.portfolio_manager.fetch_wallets()
+                holdings_df = await self.portfolio_manager.fetch_wallets()
                 print(f'Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
-                aggregated_df, profit_data = await self.profit_manager.check_profit_level(wallets,  self.current_prices,
+                aggregated_df, profit_data = await self.profit_manager.check_profit_level(holdings_list, holdings_df,
+                                                                                          self.current_prices,
                                                                                           open_orders)
                 self.utility.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:
@@ -270,12 +333,15 @@ class TradeBot:
                 print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
                 open_orders = await self.order_manager.get_open_orders()
                 self.market_data = await self.market_manager.update_market_data(open_orders)
-                current_prices = self.market_data['current_prices']
 
                 # Check and update trailing stop orders and prepare webhook signal
-                await self.order_manager.check_prepare_trailing_stop_orders(open_orders, current_prices)
+                # this function is now performed with listener using websockets
+                # await self.order_manager.check_prepare_trailing_stop_orders(open_orders, current_prices)
 
-                await self.database_session_mngr.process_data(self.market_data, self.start_time)
+                (holdings_list, _, _, _, _) = self.portfolio_manager.get_portfolio_data(self.start_time)
+
+                await self.database_session_mngr.process_data(self.market_data, holdings_list, holdings_df, self.market_data[
+                    'current_prices'])
                 self.utility.print_elapsed_time(self.start_time, 'Part I: Data Gathering and Database Loading is complete, '
                                                                  'session closed')
                 # if need_to_refresh_session():
@@ -285,13 +351,20 @@ class TradeBot:
                 #     await AsyncFunctions.shutdown(asyncio.get_running_loop(), database_manager=self.database_session_mngr,
                 #                                   http_session=self.http_session)
                 # break
+        except KeyboardInterrupt:
+            print("Program interrupted, exiting...")
+            self.save_data_on_exit(profit_data, ledger)
         except asyncio.CancelledError:
             self.save_data_on_exit(profit_data, ledger)
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error in main loop: {e}", exc_info=True)
+            self.log_manager.error(f"Error in main loop: {e}", exc_info=True)
             await self.exchange.close()  # close the exchange connection
             TradeBot._exchange_instance_count -= 1  # debug
         finally:
+            # Save profiling data if still running
+            # if profiler:  cprofile debugging
+            #     profiler.disable()  cprofile debugging
+            #     profiler.dump_stats("profile_output.prof")  cprofile debugging
             await self.exchange.close()
             TradeBot._exchange_instance_count -= 1
             if AsyncFunctions.shutdown_event.is_set():

@@ -1,12 +1,8 @@
 
-import asyncio
-import json
-from coinbase.websocket import WSClient
-from coinbase.rest import RESTClient
-
 from decimal import ROUND_HALF_UP
 import time
-
+from decimal import Decimal
+from datetime import datetime
 from custom_exceptions import InsufficientFundsException, ProductIDException, SizeTooSmallException, MaintenanceException
 from custom_exceptions import RateLimitException, BadRequestException, NotFoundException, InternalServerErrorException
 from custom_exceptions import UnknownException
@@ -42,41 +38,33 @@ class WebHookManager:
             base_order_size = None
         return base_order_size, quote_amount
 
-    def parse_webhook_data(self, webhook_data):
-        try:
-            action = webhook_data['action']  # Extract order type (open or close)
-            side = 'buy' if 'open' in action else 'sell'
-            quote_currency = webhook_data['pair'][-3:]  # Extract quote currency
-            base_currency = webhook_data['pair'][:-3]  # Extract base currency
-            pair = webhook_data['pair'][:-3] + '/' + webhook_data['pair'][-3:]
-            orig = webhook_data['origin']
-            the_time = self.utility.convert_timestamp_to_datetime(webhook_data['timestamp'])
-            if side == 'buy':
-                quote_amount = webhook_data['order_size']  # Extract order size
-                if quote_amount is not None:
-                    quote_amount = self.utility.float_to_decimal(quote_amount, 2)  # dollar amount from tradingview strategy
-                    # $100.00
-                    self.log_manager.webhook_logger.debug(f'webhook: buy_size: {quote_amount}', exc_info=True)
-            else:
-                quote_amount = None
+    @staticmethod
+    def parse_webhook_data(request_json):
+        """
+        Extract relevant trade data from the webhook JSON.
+        """
 
-            trade_data = {'time': the_time, 'action': action, 'side': side, 'trading_pair': pair, 'quote_currency':
-                          quote_currency, 'base_currency': base_currency, 'quote_amount': quote_amount, 'orig': orig}
-
-            return trade_data
-        except Exception as e:
-            self.log_manager.webhook_logger.error(f'parse_webhook_data: {webhook_data}An error occurred: {e}', exc_info=True)
+        return {
+            'trading_pair': request_json['pair'][:-3] + '/' + request_json['pair'][-3:],
+            'side': 'buy' if 'open' in request_json.get('action') else 'sell',
+            'quote_amount': Decimal(request_json['order_size']),
+            'base_currency': request_json['pair'][:-3], # Extract base currency,
+            'quote_currency':  request_json['pair'][-3:],  # Extract quote currency will always be USD or BTC
+            'action': request_json.get('action'),
+            'origin': request_json.get('origin'),
+            'time': request_json.get('time', datetime.now().isoformat())
+        }
 
     async def handle_action(self, order_data, precision_data):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro."""
         try:
             await self.trade_order_manager.place_order(order_data, precision_data)
         except InsufficientFundsException:
-            self.log_manager.webhook_logger.info(f'handle_action: Insufficient funds')
+            self.log_manager.info(f'handle_action: Insufficient funds')
             self.alerts.callhome('Insufficient funds', f'Insufficient funds  {order_data["trading_pair"]} at '
                                                        f'{order_data["formatted_time"]}')
         except ProductIDException:
-            self.log_manager.webhook_logger.info(f'handle_action: product id exception')
+            self.log_manager.info(f'handle_action: product id exception')
             self.alerts.callhome('product id exception', f'product id  exception  {order_data["trading_pair"]} at '
                                                          f'{order_data["formatted_time"]}')
         except SizeTooSmallException:
@@ -88,7 +76,7 @@ class WebHookManager:
         except Exception as e:
             # Catch-all for other exceptions
             await self.handle_webhook_error(e, order_data, precision_data)
-            self.log_manager.webhook_logger.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
+            self.log_manager.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
 
     async def handle_webhook_error(self, e, order_data, precision_data):
         """Handle errors that occur while processing an old_webhook request."""
@@ -113,14 +101,14 @@ class WebHookManager:
                 f"An error occurred with status code: {getattr(e, 'status_code', 'unknown')}, error: {e}",
                 extra_error_details)
         except RateLimitException:
-            self.log_manager.webhook_logger.error(f'warning', 'handle_webhook_error: Rate limit hit. '
+            self.log_manager.error(f'warning', 'handle_webhook_error: Rate limit hit. '
                                                   'Retrying in 60 seconds...')
             time.sleep(60)
             await self.handle_action(order_data, precision_data)
 
         except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
-            self.log_manager.webhook_logger.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
+            self.log_manager.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
 
         except Exception as ex:
-            self.log_manager.webhook_logger.error(f'handle_webhook_error: An unhandled exception occurred: {ex}. '
+            self.log_manager.error(f'handle_webhook_error: An unhandled exception occurred: {ex}. '
                                                   f'Additional info: {getattr(ex, "errors", "N/A")}')

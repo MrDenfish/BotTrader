@@ -19,7 +19,6 @@ class MarketManager:
         self.ticker_manager = ticker_manager
         self.utility = utility
         self.log_manager = logmanager
-        # self.results = pd.DataFrame(columns=['symbol', 'action', 'price', 'band_ratio'])
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
@@ -37,7 +36,7 @@ class MarketManager:
             ticker_cache, market_cache, current_prices, filtered_balances = await self.ticker_manager.update_ticker_cache(
                 open_orders)
             if not market_cache:
-                self.log_manager.sighook_logger.info("Market cache is empty. Unable to fetch historical trades.")
+                self.log_manager.info("Market cache is empty. Unable to fetch historical trades.")
                 return None  # or return an empty dictionary {}
 
             return {
@@ -47,7 +46,7 @@ class MarketManager:
                 'filtered_balances': filtered_balances
             }
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error updating market data: {e}", exc_info=True)
+            self.log_manager.error(f"Error updating market data: {e}", exc_info=True)
             return {}  # Return an empty dictionary in case of an error
 
     async def fetch_ohlcv(self, filtered_ticker_cache):

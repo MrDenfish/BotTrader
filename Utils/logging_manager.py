@@ -1,5 +1,5 @@
-import logging
 import os
+import logging
 from logging.handlers import TimedRotatingFileHandler
 import platform
 from datetime import datetime
@@ -9,9 +9,17 @@ class CustomLogger(logging.Logger):
     # Define custom logging levels
     BUY_LEVEL_NUM = 21
     SELL_LEVEL_NUM = 19
+    PROFIT_LEVEL_NUM = 17
+    LOSS_LEVEL_NUM = 16
+    STOP_LOSS_LEVEL_NUM = 15
+    INSUFFICIENT_FUNDS = 13
 
     logging.addLevelName(BUY_LEVEL_NUM, "BUY")
     logging.addLevelName(SELL_LEVEL_NUM, "SELL")
+    logging.addLevelName(PROFIT_LEVEL_NUM, "TAKE_PROFIT")
+    logging.addLevelName(LOSS_LEVEL_NUM, "TAKE_LOSS")
+    logging.addLevelName(STOP_LOSS_LEVEL_NUM, "STOP_LOSS")
+    logging.addLevelName(INSUFFICIENT_FUNDS, "INSUFFICIENT_FUNDS")
 
     def sell(self, message, *args, **kwargs):
         if self.isEnabledFor(self.SELL_LEVEL_NUM):
@@ -21,6 +29,14 @@ class CustomLogger(logging.Logger):
         if self.isEnabledFor(logging.INFO):
             self._log(logging.INFO, f"TAKE_PROFIT: {message}", args, **kwargs)
 
+    def insufficient_funds(self, message, *args, **kwargs):
+        if self.isEnabledFor(logging.INFO):
+            self._log(logging.INFO, f"INSUFFICIENT_FUNDS: {message}", args, **kwargs)
+
+    def take_loss(self, message, *args, **kwargs):
+        if self.isEnabledFor(logging.INFO):
+            self._log(logging.INFO, f"TAKE_LOSS: {message}", args, **kwargs)
+
     def stop_loss(self, message, *args, **kwargs):
         if self.isEnabledFor(logging.INFO):
             self._log(logging.INFO, f"STOP_LOSS: {message}", args, **kwargs)
@@ -29,9 +45,7 @@ class CustomLogger(logging.Logger):
         if self.isEnabledFor(self.BUY_LEVEL_NUM):
             self._log(self.BUY_LEVEL_NUM, f"BUY: {message}", args, **kwargs)
 
-
 logging.setLoggerClass(CustomLogger)
-
 
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
@@ -58,25 +72,23 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, "%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
 
-
 class LoggerManager:
-    """ This class handles the logging of errors and messages.  It is used by the other classes to log errors and
-    messages to the console and to log files."""
-    _instance_count = 0
+    """ Shared logging manager that supports multiple log directories. """
+
     _instance = None
     _is_initialized = False
 
+    # singleton pattern
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(LoggerManager, cls).__new__(cls)
         return cls._instance
 
     def __init__(self, config, log_dir=None):
-        self._log_level = config.log_level
-
         if not self._is_initialized:
-            self.webhook_logger = None
-            self.log_dir = log_dir if log_dir else os.getenv('WEBHOOK_ERROR_LOG_DIR', 'logs')
+            self._log_level = config.get('log_level', logging.INFO)
+            self.log_dir = log_dir if log_dir else "logs"
+            self.loggers = {}
             self.setup_logging()
             self._is_initialized = True
 
@@ -85,55 +97,64 @@ class LoggerManager:
         return self._log_level
 
     def setup_logging(self):
-        """ This method sets up the logging for the TradeBot.  It creates the log directory if it does not exist and
-        creates the log files.  It also sets up the logging for the Flask server."""
+        """Setup logging for both 'webhook_logger' and 'sighook_logger'."""
+        self.setup_logger('webhook_logger', 'logs/listener_logs')
+        self.setup_logger('sighook_logger', 'logs/signal_logs')
 
-        logging.setLoggerClass(CustomLogger)
-
+    def setup_logger(self, logger_name, log_subdir):
+        """Setup individual logger with TimedRotatingFileHandler."""
         current_date = datetime.now().strftime('%Y-%m-%d')
         current_platform = platform.system()
 
-        # Directories for listener and Flask logs
-        webhook_log_dir = os.path.join(self.log_dir, 'listener_logs')
+        # Construct log directory
+        log_path = os.path.join(self.log_dir, log_subdir)
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
 
-        # Create directories if they don't exist
-        for directory in [webhook_log_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
+        # File paths for rotating logs
+        log_file_path = os.path.join(log_path, f"{logger_name}_{current_platform}_{current_date}.log")
+        constant_log_file_path = os.path.join(log_path, f"{logger_name}.log")
 
-        # Listener log setup
-        listener_log_filename = f"webhook.log.{current_platform}.{current_date}"
-        listener_log_file_path = os.path.join(webhook_log_dir, listener_log_filename)
-        listener_constant_log_file_path = os.path.join(webhook_log_dir, "webhook.log")
-        self.webhook_logger = self.get_logger('webhook_logger', listener_log_file_path, listener_constant_log_file_path)
-
-    def get_logger(self, name, log_file_path, constant_log_file_path):
-
-        logger = logging.getLogger(name)
-        logger.setLevel(self.log_level)
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(self._log_level)
 
         if not logger.handlers:
-            # Handler for console output
+            # Console handler
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(CustomFormatter())
-            console_handler.setLevel(self.log_level)  # Use the dynamic log level
             logger.addHandler(console_handler)
 
-            # File handler for rotating logs
-            timed_file_handler = TimedRotatingFileHandler(log_file_path, when="midnight", interval=1, backupCount=2)
+            # File handler (rotates logs every midnight and keeps 2 days of logs)
+            timed_file_handler = TimedRotatingFileHandler(
+                log_file_path, when="midnight", interval=1, backupCount=2  # Keeps logs for 2 days
+            )
             file_formatter = logging.Formatter(
                 "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)")
             timed_file_handler.setFormatter(file_formatter)
-            timed_file_handler.setLevel(self.log_level)  # Use the dynamic log level
             logger.addHandler(timed_file_handler)
 
-            # File handler for constant log file
-            constant_file_handler = logging.FileHandler(constant_log_file_path)
-            constant_file_handler.setFormatter(file_formatter)
-            constant_file_handler.setLevel(self.log_level)  # Use the dynamic log level
-            logger.addHandler(constant_file_handler)
+        self.loggers[logger_name] = logger
+        # Set up SQLAlchemy logging (if needed)
+        self.setup_sqlalchemy_logging(logging.WARNING)
 
-        return logger
+
+
+    def get_logger(self, logger_name):
+        """Return the requested logger instance."""
+        return self.loggers.get(logger_name, None)
+
+    @staticmethod
+    def setup_sqlalchemy_logging(level=logging.WARNING):
+        """ Configure SQLAlchemy logging. """
+        sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
+        sqlalchemy_logger.setLevel(level)
+
+        # Add a console handler or any other handler if needed
+        if not sqlalchemy_logger.hasHandlers():
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(CustomFormatter())
+            console_handler.setLevel(level)
+            sqlalchemy_logger.addHandler(console_handler)
 
     @staticmethod
     def log_method_call(func):

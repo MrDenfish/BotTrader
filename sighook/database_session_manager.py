@@ -3,70 +3,68 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
 from database_table_models import Trade
 from database_table_models import OHLCVData
-
+from database_ops import DatabaseOpsManager
+from database_ops_holdings import DatabaseOpsHoldingsManager
+from Utils.logging_manager import LoggerManager
 import pandas as pd
+import logging
 
 
 class DatabaseSessionManager:
     """Handles the creation and management of database sessions."""
     """Handles the creation and management of database sessions."""
 
-    def __init__(self, database_ops, csv_manager, logmanager, profit_extras, app_config):
-        self.log_manager = logmanager
+    def __init__(self, csv_manager, log_manager, profit_extras, app_config):
+        self.log_manager = log_manager
         self.csv_manager = csv_manager
         self.app_config = app_config
-        self.database_ops = database_ops
         self.profit_extras = profit_extras
 
-        # Check if the database URL is properly set
+        # Ensure that database_url is correctly set
         if not self.app_config.database_url:
-            self.log_manager.sighook_logger.error("Database URL is not configured properly.")
+            self.log_manager.error("Database URL is not configured properly.")
             raise ValueError("Database URL is not configured. Please check your configuration.")
 
-        # Setup the database engine with more flexible configuration
+        # Use the new database_url method
         self.engine = create_async_engine(
-            self.app_config.database_url
+            self.app_config.database_url,
+            connect_args={"timeout": 30, "check_same_thread": False},
+            echo=False  # For debugging purposes, consider turning this on if needed
         )
 
         self.AsyncSessionLocal = sessionmaker(bind=self.engine, class_=AsyncSession, expire_on_commit=False)
+        # Initialize DatabaseOpsManager instance here or later when all components are ready
+        self.database_ops = None  # Will be set later after components are initialized
+        self.database_ops_holdings = None
 
-    async def process_data(self, market_data, start_time, csv_dir=None):
-        """PART I: Data Gathering and Database Loading.   The database should be initialized one time, called at the start of
-                        the program to initialize the database with the latest trade data"""
+    def get_database_ops(self, *args, **kwargs):
+        """Returns the DatabaseOpsManager instance, creating it if necessary."""
+        if self.database_ops is None:
+            self.database_ops = DatabaseOpsManager(
+                self.log_manager, self.csv_manager, self.profit_extras, self.app_config, self.engine, self.AsyncSessionLocal, *args, **kwargs
+            )
+        return self.database_ops
 
-        if not market_data:
-            self.log_manager.sighook_logger.info("No market data available to initialize the database.")
-            return
+    def get_database_ops_holdings(self, *args, **kwargs):
+        """Returns the DatabaseOpsHoldingsManager instance, creating it if necessary."""
+        if self.database_ops_holdings is None:
+            self.database_ops_holdings = DatabaseOpsHoldingsManager(
+                self.log_manager, self.AsyncSessionLocal, *args, **kwargs
+            )
+        return self.database_ops_holdings
 
+    async def process_data(self, market_data, holdings_list, holdings_df, current_prices, csv_dir=None):
+        """Handles session management and delegates processing to DatabaseOpsManager."""
         async with self.AsyncSessionLocal() as session:
             try:
-                # load all historical trades into the database
-                await self.database_ops.clear_new_trades(session)  # clear out the new_trades table every time before the
-
-                # db is loaded
-
-                # load the new trades into the database
-                if not csv_dir:
-                    await self.database_ops.process_market_data(session, market_data['market_cache'])
-                else:
-                    # await self.csv_manager.process_csv_data(session, csv_dir)
-                    # await session.commit()
-                    await self.database_ops.process_market_data(session, market_data['market_cache'])
-                await session.commit()
-                self.log_manager.sighook_logger.debug("Session committed successfully")
-                # load the most recent trade for each symbol into the database symbol_updates table
-                # summarize the trades for each symbol and load the summary into the trade_summary table
-
-                # tasks = [self.database_ops.process_symbol(symbol, start_time) for symbol in market_data['market_cache']]
-                # await asyncio.gather(*tasks)
-
+                await self.database_ops.process_data(session, market_data, holdings_list, holdings_df, current_prices,
+                                                     csv_dir)
             except Exception as e:
+                self.log_manager.error(f"Failed to process data in session manager: {e}")
                 await session.rollback()
-                self.log_manager.sighook_logger.error(f"Failed to process data: {e}")
                 raise
             finally:
                 await session.close()
-        return
 
     async def check_ohlcv_initialized(self):
         """PART III - Order Cancellation and Data Collection. Check if the OHLCV data is initialized in the database."""
@@ -82,34 +80,34 @@ class DatabaseSessionManager:
                 return profit_data
             except Exception as e:
                 await session.rollback()
-                self.log_manager.sighook_logger.error(f"Failed to create performance snapshot: {e}")
+                self.log_manager.error(f"Failed to create performance snapshot: {e}")
                 raise
             finally:
                 await session.close()
 
-    async def process_holding_db(self, holdings_list, current_prices, open_orders):
+    async def process_holding_db(self, holding_list, holdings_df, current_prices, open_orders):
         """PART V, PART VI: Order Execution Process data using a database session."""
         async with self.AsyncSessionLocal() as session:
             try:
                 # Initialize and potentially update holdings in the database
-                await self.database_ops.clear_holdings(session)
-                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices,
-                                                              open_orders=open_orders)
+                await self.database_ops_holdings.clear_holdings(session)
+                await self.database_ops_holdings.initialize_holding_db(session, holding_list, holdings_df, current_prices,
+                                                                       open_orders=open_orders)
                 await session.commit()
                 # Fetch the updated contents of the holdings table
-                # Fetch the updated contents of the holdings table
-                updated_holdings = await self.database_ops.get_updated_holdings(session)
+                updated_holdings = await self.database_ops_holdings.get_updated_holdings(session)
                 trailing_stop_orders = open_orders[open_orders['trigger_status'] == 'STOP_PENDING']
 
                 # Convert holdings data to a DataFrame
                 df = pd.DataFrame([{
                     'symbol': holding.asset + '/' + holding.currency,
-                    'quote_currency': holding.currency,
+                    'quote': holding.currency,
                     'asset': holding.asset,
-                    'Balance': holding.balance,
+                    'balance': holding.balance,
+                    'amount': holding.purchase_amount,
                     'current_price': holding.current_price,
-                    'weighted_average_cost': holding.weighted_average_cost,
-                    'initial_investment': holding.initial_investment,
+                    'weighted_average_price': holding.weighted_average_price,
+                    'initial_investment': holding.initial_investment, # this is wrong
                     'unrealized_profit_loss': holding.unrealized_profit_loss,
                     'unrealized_pct_change': holding.unrealized_pct_change,
                     'trailing_stop': trailing_stop_orders
@@ -118,7 +116,7 @@ class DatabaseSessionManager:
                 return df
             except Exception as e:
                 await session.rollback()
-                self.log_manager.sighook_logger.error(f"Failed to process data: {e}")
+                self.log_manager.error(f"Failed to process data: {e}", exc_info=True)
                 raise
             finally:
                 await session.close()
@@ -129,16 +127,16 @@ class DatabaseSessionManager:
             try:
                 await self.database_ops.clear_new_trades(session)
                 for holding in holdings_to_update:
-                    await self.database_ops.update_single_holding(session, holding, current_prices, open_orders)
+                    await self.database_ops_holdings.update_single_holding(session, holding, current_prices, open_orders)
                 await session.commit()
             except Exception as e:
                 await session.rollback()
-                self.log_manager.sighook_logger.error(f"Failed to batch update holdings: {e}")
+                self.log_manager.error(f"Failed to batch update holdings: {e}")
                 raise
             finally:
                 await session.close()
 
-    async def process_sell_orders_fifo(self, market_cache, sell_orders, holdings_list, current_prices):
+    async def process_sell_orders_fifo(self, market_cache, sell_orders, holdings_list, holdings_df, current_prices):
         """PART VI: Profitability Analysis and Order Generation"""
         async with self.AsyncSessionLocal() as session:
             await self.log_trade_amounts(session, "Before process_market_data")  # Log before calling the function
@@ -152,13 +150,13 @@ class DatabaseSessionManager:
                     realized_profit += profit
                     await session.commit()
                     break  # debug
-                await self.database_ops.initialize_holding_db(session, holdings_list, current_prices,
+                await self.database_ops_holdings.initialize_holding_db(session, holdings_list, holdings_df, current_prices,
                                                               sell_orders=sell_orders, open_orders=None)
                 await session.commit()
                 return realized_profit
             except Exception as e:
                 await session.rollback()
-                self.log_manager.sighook_logger.error(f"Failed to process sell orders: {e}")
+                self.log_manager.error(f"Failed to process sell orders: {e}")
                 raise
             finally:
                 await session.close()
@@ -171,11 +169,11 @@ class DatabaseSessionManager:
             for trade in trades:
                 if trade.asset == 'BTC' or trade.asset == 'MNDE':
                     if trade.amount == 0:
-                        self.log_manager.sighook_logger.debug(f"{log_point} - Asset: {trade.asset} Trade ID:"
+                        self.log_manager.debug(f"{log_point} - Asset: {trade.asset} Trade ID:"
                                                               f" {trade.trade_id}, Amount: {trade.amount}")
 
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error logging trade amounts at {log_point}: {e}")
+            self.log_manager.error(f"Error logging trade amounts at {log_point}: {e}")
 
     async def fetch_new_trades_for_symbols(self, symbols):
         """PART VI: Profitability Analysis and Order Generation """
@@ -201,9 +199,11 @@ class DatabaseSessionManager:
                 await session.commit()
                 return all_new_trades
             except Exception as e:
-                self.log_manager.sighook_logger.error(f"Failed to process data: {e}")
+                self.log_manager.error(f"Failed to process data: {e}")
                 await session.rollback()
                 raise
 
             finally:
+                # Revert SQL logging to default level
+                LoggerManager.setup_sqlalchemy_logging(logging.WARNING)
                 await session.close()

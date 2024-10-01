@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Numeric, DateTime, Integer, ForeignKey, Float, UniqueConstraint
+from sqlalchemy import Index, Column, String, Numeric, DateTime, Integer, ForeignKey, Float, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -19,7 +19,6 @@ class Trade(Base):
         amount (Numeric): Quantity traded.
         cost (Numeric): Total cost of the trade (amount * price).
         proceeds (Numeric): Total proceeds of the trade (amount * price).
-        side (str): Trade side, 'buy' or 'sell', nullable if not applicable.
         fee (Numeric): Trading fee incurred, nullable if not applicable.
     """
     """Holds all closed trades."""
@@ -27,20 +26,28 @@ class Trade(Base):
     __tablename__ = 'trades'
 
     trade_id = Column(String, primary_key=True, nullable=False, unique=True)  # id {str}
-    order_id = Column(String, nullable=True, unique=False)  # order {str}
-    trade_time = Column(DateTime(timezone=True))  # datetime {str}
-    transaction_type = Column(String, nullable=True)
-    asset = Column(String, nullable=True)  # symbol {str}
-    amount = Column(Float)  # Ensure amount is defined as Float  # amount {float}
+    order_id = Column(String, nullable=True, unique=False, index=True)  # Consider adding an index on order_id
+    trade_time = Column(DateTime(timezone=True), index=True)  # datetime {str}, index on trade_time
+    transaction_type = Column(String, nullable=True, index=True)  # index on transaction_type
+    asset = Column(String, nullable=True, index=True)  # symbol {str}, index on asset
+    amount = Column(Float)  # amount {float}
     balance = Column(Float)  # Remaining balance
-    currency = Column(String, ForeignKey('holdings.currency'))  # Link to Holdings via currency
+    currency = Column(String, ForeignKey('holdings.currency'), index=True)  # index on currency
     price = Column(Float)  # price {float}
-    cost = Column(Float, default=0)  # cost {float} only buy orders, defaults to 0
-    proceeds = Column(Float, default=0)  # Only sell trades, defaults to 0
+    cost = Column(Float, default=0)  # cost {float}
+    proceeds = Column(Float, default=0)  # proceeds {float}
     fee = Column(Float, nullable=True)  # fee {float}
     total = Column(Float)  # total {float}
     holding = relationship("Holding", back_populates="trades", overlaps="trades")
     notes = Column(String, nullable=True)
+
+    # Define indexes
+    __table_args__ = (
+        Index('idx_trade_asset_currency', 'asset', 'currency'),  # Composite index on asset and currency
+        Index('idx_trade_time_transaction', 'trade_time', 'transaction_type'),
+        # Composite index on trade_time and transaction_type
+        Index('idx_trade_order_id', 'order_id'),  # Index on order_id for faster querying by order
+    )
 
     @classmethod
     async def create_trade_from_row(cls, session, trade, asset, trade_time, csv=False):
@@ -59,7 +66,7 @@ class Trade(Base):
                 asset_to = details[5]
 
                 # Log the conversion details
-                cls.log_manager.sighook_logger.debug(f"Creating conversion trades: from {asset_from} to {asset_to}")
+                cls.log_manager.debug(f"Creating conversion trades: from {asset_from} to {asset_to}")
 
                 # Create sell trade for the asset being converted from
                 sell_trade = cls(
@@ -95,8 +102,8 @@ class Trade(Base):
                     total=float(trade.get('Subtotal')) + float(trade.get('Fees and/or Spread', 0))
                 )
 
-                cls.log_manager.sighook_logger.debug(f"Created sell trade: {sell_trade}")
-                cls.log_manager.sighook_logger.debug(f"Created buy trade: {buy_trade}")
+                cls.log_manager.debug(f"Created sell trade: {sell_trade}")
+                cls.log_manager.debug(f"Created buy trade: {buy_trade}")
 
                 return sell_trade, buy_trade
 
@@ -105,13 +112,13 @@ class Trade(Base):
                 price = float(trade.get('Price at Transaction'))
                 amount = float(trade.get('Quantity Transacted'))
                 if amount == 0.0:
-                    cls.log_manager.sighook_logger.warning(f"Zero amount trade: {trade_id}")
+                    cls.log_manager.warning(f"Zero amount trade: {trade_id}")
                 fee = float(trade.get('Fees and/or Spread', 0))
                 cost = float(trade.get('Subtotal') if is_buy else 0)
                 proceeds = float(trade.get('Subtotal') if not is_buy else 0)
 
                 # Log the trade details
-                cls.log_manager.sighook_logger.debug(
+                cls.log_manager.debug(
                     f"Creating trade: id={trade_id}, amount={amount}, cost={cost}, proceeds={proceeds}")
 
                 return cls(
@@ -131,7 +138,7 @@ class Trade(Base):
                 )
         except Exception as e:
             await session.rollback()
-            cls.log_manager.sighook_logger.error(f"Failed to create trade from row: {e}", exc_info=True)
+            cls.log_manager.error(f"Failed to create trade from row: {e}", exc_info=True)
             raise ValueError(f"Failed to create trade from row: {e}")
 
 
@@ -189,7 +196,7 @@ class Holding(Base):
     initial_investment = Column(Float)
     market_value = Column(Float)
     balance = Column(Float)
-    weighted_average_cost = Column(Float)
+    weighted_average_price = Column(Float)
     unrealized_profit_loss = Column(Float)
     unrealized_pct_change = Column(Float)
     trailing_stop = Column(String, default=False)  # newly added
@@ -200,38 +207,6 @@ class Holding(Base):
 
     def __repr__(self):
         return f"<Holding(asset={self.asset}, currency={self.currency})>"
-
-    # @classmethod
-    # def create_from_aggregated_data(cls, currency, aggregated_data, balance):
-    #     # used by old_database_manager
-    #     """
-    #     Create a new Holding instance from aggregated trade data.
-    #
-    #     Parameters:
-    #     - currency: The currency symbol of the holding.
-    #     - aggregated_data: A dictionary containing aggregated trade data,
-    #       including 'earliest_trade_time', 'total_amount', 'total_cost',
-    #       'average_cost', and 'purchase_price'.
-    #     - balance: The current balance of the cryptocurrency in the holding.
-    #
-    #     Returns:
-    #     - An instance of Holding initialized with the provided data.
-    #     """
-    #     return cls(
-    #         currency=currency,
-    #         first_purchase_date=aggregated_data['earliest_trade_time'],
-    #         purchase_date=aggregated_data['earliest_trade_time'],  # or use datetime.utcnow() if more appropriate
-    #         purchase_price=aggregated_data['purchase_price'],
-    #         current_price=aggregated_data['purchase_price'],
-    #         # Assuming current price is the purchase price; adjust as needed
-    #         purchase_amount=aggregated_data['total_amount'],
-    #         initial_investment=aggregated_data['total_cost'],
-    #         market_value=aggregated_data['total_amount'] * trade.price,
-    #         balance=balance,
-    #         weighted_average_cost=aggregated_data['weighted_average_cost'],
-    #         unrealized_profit_loss=0,  # Initialize as 0; adjust based on your logic
-    #         unrealized_pct_change=0  # Initialize as 0; adjust based on your logic
-    #     )
 
     def update_from_trade(self, trade):
         """Update the Holding instance based on a trade."""

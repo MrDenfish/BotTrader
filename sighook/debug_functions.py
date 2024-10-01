@@ -32,7 +32,7 @@ class DebugDataLoader:
             for row in rows:
                 trade = row[0]
                 if trade.amount == 0:
-                    self.log_manager.sighook_logger.warning(f'Zero amount trade: {trade.trade_id}, '
+                    self.log_manager.warning(f'Zero amount trade: {trade.trade_id}, '
                                                             f'{trade.trade_time} get_trades')
                 trades_list.append({
                     'trade_id': trade.trade_id,
@@ -67,11 +67,11 @@ class DebugDataLoader:
             # print(duplicate_trade_ids.to_string(index=False))
             # Log the DataFrame for debugging
             print(df.head(20).to_string(index=False))
-            self.log_manager.sighook_logger.debug(f'Trades DataFrame:\n{df.head()}')
+            self.log_manager.debug(f'Trades DataFrame:\n{df.head()}')
 
             return df
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'get_trades error: {e}', exc_info=True)
+            self.log_manager.error(f'get_trades error: {e}', exc_info=True)
             return pd.DataFrame()  # Return an empty DataFrame in case of error
 
     async def get_holdings(self, session: AsyncSession):
@@ -103,7 +103,7 @@ class DebugDataLoader:
                     'initial_investment': holding.initial_investment,
                     'market_value': holding.market_value,
                     'balance': holding.balance,
-                    'weighted_average_cost': holding.weighted_average_cost,
+                    'weighted_average_price': holding.weighted_average_price,
                     'unrealized_profit_loss': holding.unrealized_profit_loss,
                     'unrealized_pct_change': holding.unrealized_pct_change
                 })
@@ -123,9 +123,9 @@ class DebugDataLoader:
             # print(duplicate_holdings.to_string(index=False))
 
             # Log the DataFrame for debugging
-            self.log_manager.sighook_logger.debug(f'Holdings DataFrame:\n{df.head()}')
+            self.log_manager.debug(f'Holdings DataFrame:\n{df.head()}')
 
             return df
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'get_holdings error: {e}', exc_info=True)
+            self.log_manager.error(f'get_holdings error: {e}', exc_info=True)
             return pd.DataFrame()  # Return an empty DataFrame in case of error

@@ -10,8 +10,7 @@ class ProfitabilityManager:
         self.ccxt_exceptions = ccxt_api
         self._take_profit = Decimal(app_config.take_profit)
         self._stop_loss = Decimal(app_config.stop_loss)
-        self.database_dir = app_config.database_dir
-        self.sqlite_db_path = app_config.sqlite_db_path
+        self.database_dir = app_config.get_database_dir
         self.ledger_cache = None
         self.utility = utility
         self.database_manager = database_session_mngr
@@ -31,7 +30,6 @@ class ProfitabilityManager:
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url):
         self.start_time = start_time
-        # self.session = session
         self.ticker_cache = ticker_cache
         self.market_cache = market_cache
         self.web_url = web_url
@@ -44,37 +42,39 @@ class ProfitabilityManager:
     def take_profit(self):
         return self._take_profit
 
-    async def check_profit_level(self, holdings, current_prices, open_orders):  # async
+    async def check_profit_level(self, holding_list, holdings_df, current_prices, open_orders):  # async
         """PART VI: Profitability Analysis and Order Generation """
         # await self.database_session_mngr.process_holding_db(holdings, self.start_time)
         try:
             # Update and process holdings
-            aggregated_df = await self.update_and_process_holdings(holdings, current_prices, open_orders)  # await
-            # Fetch current market prices for these symbols
-            symbols = [{'asset': holding['asset'], 'symbol': f"{holding['asset']}/{holding['quote_currency']}"} for holding
-                       in holdings]
+            aggregated_df = await self.update_and_process_holdings(holding_list, holdings_df, current_prices, open_orders)
             profit_data = await self.database_manager.create_performance_snapshot()  # Create a snapshot
             # of current portfolio performance
 
             return aggregated_df, profit_data
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'check_profit_level: {e} e', exc_info=True)
+            self.log_manager.error(f'check_profit_level: {e} e', exc_info=True)
 
-    async def update_and_process_holdings(self, holdings_list, current_prices, open_orders):
+    async def update_and_process_holdings(self, holding_list, holdings_df, current_prices, open_orders):
         """PART VI: Profitability Analysis and Order Generation """
         try:
             # Load or update holdings
 
-            aggregated_df = await self.database_manager.process_holding_db(holdings_list, current_prices, open_orders)
+            aggregated_df = await self.database_manager.process_holding_db(holding_list, holdings_df, current_prices,
+                                                                           open_orders)
+            holdings_df = await self.portfolio_manager.fetch_wallets()
             updated_holdings_df = await self.profit_helper.calculate_unrealized_profit_loss(aggregated_df)
-            await self.check_and_execute_sell_orders(updated_holdings_df, current_prices, open_orders)  # await
+            merged_df = updated_holdings_df.merge(holdings_df[['asset', 'total']], on='asset', how='left')
+            await self.check_and_execute_sell_orders(merged_df, current_prices, open_orders)  # await
 
             # # # Fetch new trades for all currencies in holdings
-            symbols = updated_holdings_df['symbol'].tolist()
-            all_new_trades = await self.database_manager.fetch_new_trades_for_symbols(symbols)  # await
+
             #  need to process further
+            # symbols = updated_holdings_df['symbol'].tolist()
+            # all_new_trades = await self.database_manager.fetch_new_trades_for_symbols(symbols)  # await
+
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'update_and_process_holdings: {e}', exc_info=True)
+            self.log_manager.error(f'update_and_process_holdings: {e}', exc_info=True)
 
     async def check_and_execute_sell_orders(self, updated_holdings_df, current_prices, open_orders):
         """PART VI: Profitability Analysis and Order Generation"""
@@ -87,9 +87,9 @@ class ProfitabilityManager:
             for holding in updated_holdings_list:
                 asset = holding['symbol'].split('/')[0]
                 current_market_price = holding['current_price']
-                if self.profit_helper.should_place_sell_order(asset, holding, current_market_price):
-                    sell_amount = holding['Balance']
-                    sell_price = current_market_price
+                if self.profit_helper.should_place_sell_order(holding, current_market_price):
+                    sell_amount = holding['balance']
+                    sell_price = Decimal(current_market_price)
                     sell_orders.append((asset, sell_amount, sell_price, holding))
 
                     trigger = 'profit' if realized_profit > 0 else 'loss'
@@ -104,13 +104,13 @@ class ProfitabilityManager:
                             'action': 'sell',
                             'trigger': trigger,
                             'updates': {
-                                holding['quote_currency']: {
+                                holding['quote']: {
                                     'Sell Signal': trigger
                                 }
                             },
                             'sell_cond': trigger
                         },
-                        'value': holding['Balance'] * float(sell_price)  # Calculate the value of the order
+                        'value': holding['total'] * sell_price # Calculate the value of the order
                     }
 
                     # Here, handle_actions needs to accept order and holdings_list
@@ -119,14 +119,14 @@ class ProfitabilityManager:
             if sell_orders:
                 realized_profit = await self.database_manager.process_sell_orders_fifo(self.market_cache, sell_orders,
                                                                                        updated_holdings_list,
-                                                                                       current_prices)
+                                                                                       updated_holdings_df, current_prices)
 
             if updated_holdings_list:
                 await self.database_manager.batch_update_holdings(updated_holdings_list, current_prices, open_orders)
 
             return realized_profit
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'check_and_execute_sell_orders:  {e}', exc_info=True)
+            self.log_manager.error(f'check_and_execute_sell_orders:  {e}', exc_info=True)
             raise
 
 

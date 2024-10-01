@@ -20,8 +20,7 @@ class CsvManager:
         self._take_profit = Decimal(app_config.take_profit)
         self._stop_loss = Decimal(app_config.stop_loss)
         self._csv_dir = app_config.csv_dir
-        self.database_dir = app_config.database_dir
-        self.sqlite_db_path = app_config.sqlite_db_path
+        self.database_dir = app_config.get_database_dir
         self.log_manager = logmanager
         self.ticker_cache = None
         self.market_cache = None
@@ -112,5 +111,5 @@ class CsvManager:
                 await self.database_ops.set_last_update_time(session, symbol, last_update_time)
 
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Failed to process CSV data: {e}", exc_info=True)
+            self.log_manager.error(f"Failed to process CSV data: {e}", exc_info=True)
             await session.rollback()

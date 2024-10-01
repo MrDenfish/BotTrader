@@ -74,14 +74,13 @@ class TradeOrderManager:
 
             base_coin_balance, valid_order, condition = self.validate.fetch_and_validate_rules(validate_data)
             if not valid_order:
-                self.log_manager.webhook_logger.info(f"Validation failed for the order. - {condition}")
                 return False
 
             return await self.handle_order(validate_data, order_book_details, precision_data)
 
 
         except Exception as ex:
-            self.log_manager.webhook_logger.debug(ex, exc_info=True)
+            self.log_manager.debug(ex, exc_info=True)
             return False
 
     def validate_order_conditions(self, order_data, quote_bal, base_balance, open_orders):
@@ -97,25 +96,25 @@ class TradeOrderManager:
                     (open_orders['trigger_status'] == 'STOP_PENDING')
                 ].any().any()
             except Exception as e:
-                self.log_manager.webhook_logger.error(f"Error checking trailing stop orders: {e}", exc_info=True)
+                self.log_manager.error(f"Error checking trailing stop orders: {e}", exc_info=True)
                 return False
 
             if side == 'sell' and trailing_stop_active:
-                self.log_manager.webhook_logger.info("Active trailing stop order found.")
+                self.log_manager.info("Active trailing stop order found.")
                 return True
             elif side == 'sell' and base_balance == 0:
-                self.log_manager.webhook_logger.info(f"Insufficient base balance to sell. Available: {base_balance}")
+                self.log_manager.info(f"Insufficient base balance to sell. Available: {base_balance}")
                 return False
             if side == 'buy' and quote_bal < quote_amount:
-                self.log_manager.webhook_logger.info(
+                self.log_manager.info(
                     f"Insufficient quote balance to buy. Required: {quote_amount}, Available: {quote_bal}")
                 return False
             return True
         except KeyError as ke:
-            self.log_manager.webhook_logger.error(f"KeyError: Missing key in order_data or open_orders: {ke}", exc_info=True)
+            self.log_manager.error(f"KeyError: Missing key in order_data or open_orders: {ke}", exc_info=True)
             return False
         except Exception as e:
-            self.log_manager.webhook_logger.error(f"Unexpected error: {e}", exc_info=True)
+            self.log_manager.error(f"Unexpected error: {e}", exc_info=True)
             return False
 
     def build_validate_data(self, order_data, quote_bal, base_balance, open_orders, order_book_details):
@@ -132,12 +131,14 @@ class TradeOrderManager:
 
     async def handle_order(self, validate_data, order_book_details, precision_data):
         try:
+            take_profit_price = None
             highest_bid = Decimal(order_book_details['highest_bid'])
             lowest_ask = Decimal(order_book_details['lowest_ask'])
             spread = Decimal(order_book_details['spread'])
             base_deci, quote_deci, _, _ = precision_data
             adjusted_price, adjusted_size = self.utils.adjust_price_and_size(validate_data, order_book_details)
-            self.log_manager.webhook_logger.debug(f"Adjusted price: {adjusted_price}, Adjusted size: {adjusted_size}")
+
+            self.log_manager.debug(f"Adjusted price: {adjusted_price}, Adjusted size: {adjusted_size}")
 
             # Calculate take profit and stop loss prices
             if validate_data['side'] == 'buy':
@@ -152,29 +153,32 @@ class TradeOrderManager:
 
                 stop_loss_price = adjusted_price * (1 + self.stop_loss)
 
+
+            adjusted_stop_loss_price = self.utils.adjust_precision(base_deci, quote_deci, stop_loss_price,
+                                                                   convert='quote')
+            adjusted_size = self.utils.adjust_precision(base_deci, quote_deci, adjusted_size,
+                                                        convert='base')
             order_data = {
                 **validate_data,
                 'adjusted_price': adjusted_price,
                 'adjusted_size': adjusted_size,
                 'trading_pair': validate_data['trading_pair'],
                 'side': validate_data['side'],
-                'stop_loss_price': stop_loss_price,
-                'take_profit_price': take_profit_price,
+                'stop_loss_price': adjusted_stop_loss_price,
+                'take_profit_price': adjusted_take_profit_price,
 
             }
 
             # Decide whether to place a bracket order or a trailing stop order
             if self.should_use_trailing_stop(adjusted_price, highest_bid, lowest_ask):
-                return await self.attempt_order_placement(validate_data, order_data, order_book_details,
-                                                          order_type='trailing_stop')
+                return await self.attempt_order_placement(validate_data, order_data, order_type='trailing_stop')
             else:
-                return await self.attempt_order_placement(validate_data, order_data, order_book_details,
-                                                          order_type='bracket')
+                return await self.attempt_order_placement(validate_data, order_data, order_type='bracket')
         except Exception as ex:
-            self.log_manager.webhook_logger.debug(ex)
+            self.log_manager.debug(ex)
             return False
         except Exception as ex:
-            self.log_manager.webhook_logger.debug(ex)
+            self.log_manager.debug(ex)
             return False
 
     def should_use_trailing_stop(self, adjusted_price, highest_bid, lowest_ask):
@@ -188,57 +192,84 @@ class TradeOrderManager:
         """
         Log each order attempt. Placeholder for actual logging implementation.
         """
-        self.log_manager.webhook_logger.info(
+        self.log_manager.info(
             f'Attempt {attempt}: Order {side} for {trading_pair} of size {order_size} at price {order_price} failed.'
         )
 
-
-    async def attempt_order_placement(self, validate_data, order_data, order_book_details, order_type):
-        currencies = []
-        order_placed = False
-        response = None
+    async def attempt_order_placement(self, validate_data, order_data, order_type):
+        """
+        Attempts to place different types of orders (limit, bracket, trailing stop) based on the order type specified.
+        If the order is rejected with a return value of 'amend', the function adjusts the order and retries the placement.
+        Returns a tuple (bool, dict/None), where bool indicates success, and dict contains the response or error.
+        """
         try:
-            if order_data['side'] == 'buy':
-                response = await self.order_types.beta_place_limit_order(validate_data, order_data)
+            response = None  # Initialize response to avoid UnboundLocalError
+            max_attempts = 5
+            attempt = 0
 
-                if response is False:
-                    order_placed = False
-                elif response == 'amend':
-                    order_placed = False
-            elif order_type == 'bracket':
+            while attempt < max_attempts:
+                attempt += 1
                 try:
-                    currencies = [order_data['trading_pair'].split('/')[0], order_data['trading_pair'].split('/')[1]]
-                    accounts = await self.utils.get_account_balance(currencies, get_staked=False)
-                    quote_balance, base_balance, _, open_order = await self.utils.get_open_orders(order_data)
-                    if not open_order:
-                        response = await self.order_types.beta_place_bracket_order(order_data, order_book_details)
-                        order_placed = True
-                        self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'])
-                    else:
-                        self.log_manager.webhook_logger.info(f'Order already exists for {order_data["trading_pair"]}')
-                        order_placed = False    # Order already exists
-                except Exception as ex_bracket:
-                    self.log_manager.webhook_logger.error(f'Error placing limit order: {ex_bracket}', exc_info=True)
-                    return ex_bracket
-            elif order_type == 'trailing_stop':
-                try:
-                    response = await self.order_types.place_trailing_stop_order(order_data, order_book_details,
-                                                                                order_data[
-                                                                                'adjusted_price'])
-                    if response:
-                        self.log_success(order_data['trading_pair'], order_data['adjusted_price'], order_data['side'],
-                                         response.text)
-                        return True, response
-                    else:
-                        return False, response
-                except Exception as ex_trailing:
-                    self.log_manager.webhook_logger.error(f'Error placing trailing stop order: {ex_trailing}', exc_info=True)
-                    return ex_trailing
-            return order_placed, response
+                    order_book = await self.order_book.get_order_book(order_data)
+                    highest_bid = Decimal(order_book['highest_bid'])
 
-        except Exception as ex_limit:
-            self.log_manager.webhook_logger.error(f'Error placing limit order: {ex_limit}', exc_info=True)
-            return ex_limit
+                    if order_data['side'] == 'buy':
+                        response = await self.order_types.place_limit_order(order_data)
+                        print(f"Attempt # {attempt}: Adjusted stop price: {order_data['adjusted_price']}, "
+                              f"highest bid price {highest_bid}")  # debug
+                    elif order_type == 'bracket':
+                        response, market_price, trailing_price = await self.order_types._handle_bracket_order(order_data, order_book)
+                    elif order_type == 'trailing_stop':
+                        print(f"Placing trailing stop order data: {order_data}, order data adjusted price: "
+                              f"{order_data['adjusted_price']}, highest bid: {highest_bid}")  # debug
+                        response = await self.order_types.place_trailing_stop_order(order_data, order_data['adjusted_price'])
+                    else:
+                        raise ValueError("Unknown order type specified")
+
+                    # Process the response based on its type and content
+                    if isinstance(response, dict):
+                        error_response = response.get('error_response', {})
+
+                        if error_response.get(
+                                'message') == 'amend' or 'Too many decimals in order price' in error_response.get('message',
+                                                                                                                  ''):
+                            self.log_manager.info(
+                                f"Order amendment required, adjusting order (Attempt {attempt}/{max_attempts})")
+                            adjusted_price, adjusted_size = self.utils.adjust_price_and_size(order_data, order_book)
+                            order_data['adjusted_price'] = self.utils.adjust_precision(
+                                order_data['base_decimal'], order_data['quote_decimal'], adjusted_price, convert='quote')
+                            order_data['adjusted_size'] = adjusted_size
+                            continue  # Retry the loop with the adjusted order
+
+                        elif 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_response.get('preview_failure_reason', ''):
+                            self.log_manager.info(
+                                f"Stop price below last trade price, adjusting order (Attempt {attempt}/{max_attempts})")
+                            adjusted_price, adjusted_size = self.utils.adjust_price_and_size(order_data, order_book)
+                            order_data['adjusted_price'] = adjusted_price * Decimal(
+                                '1.0002')  # Small increment to move above last trade price
+                            continue  # Retry the loop with the adjusted order
+
+                        elif len(response.get('id') ) > 0:
+                            self.log_manager.info(f"{order_data['trading_pair']}, "
+                                                                 f"{order_data['adjusted_price']}, {order_data['side']}")
+                            return True, response
+
+                        else:
+                            self.log_manager.error(f"Unexpected response format: {response}", exc_info=True)
+                            return False, response
+
+                except Exception as ex:
+                    self.log_manager.error(f"Error during attempt #{attempt}: {str(ex)}", exc_info=True)
+                    if attempt >= max_attempts:
+                        break  # Exit the loop if the maximum attempts are reached
+
+            # Handle the case where all attempts have been exhausted
+            self.log_manager.info(f"Order placement ultimately failed after {max_attempts} attempts.")
+            return False, response
+
+        except Exception as ex:
+            self.log_manager.error(f"Error in attempt_order_placement: {str(ex)}", exc_info=True)
+            return False, None
 
     async def staked_coins(self, trading_pair):
         currencies = []
@@ -267,13 +298,13 @@ class TradeOrderManager:
         return available_to_sell, hold_amount
 
     def log_success(self, trading_pair, price, side):
-        self.log_manager.webhook_logger.info(f'{side} order placed for {trading_pair} @ {price}')
+        self.log_manager.info(f'{side} order placed for {trading_pair} @ {price}')
 
     def handle_api_error(self, eapi, order_data):
         # Implement custom logic for handling different api(Coinbase Cloud) errors here
         # Example:
         if 'Post only mode' in str(eapi):
-            self.log_manager.webhook_logger.info(f'handle_order: CoinbaseAPIError in handle_order: Post only mode. '
+            self.log_manager.info(f'handle_order: CoinbaseAPIError in handle_order: Post only mode. '
                                                  f'Order data: {eapi} order response:{order_data}')
             return 'retry'
         elif 'price is too accurate' in str(eapi):
@@ -286,7 +317,7 @@ class TradeOrderManager:
         return 'unknown'
 
     def log_api_error(self, error_type, eapi, response):
-        self.log_manager.webhook_logger.info(f'handle_order: CoinbaseAPIError in handle_order: '
+        self.log_manager.info(f'handle_order: CoinbaseAPIError in handle_order: '
                                              f'"{error_type}: {eapi} order response: {response}')
 
     def handle_coinbase_api_error(self, eapi, response):
@@ -357,7 +388,7 @@ class TradeOrderManager:
                 # open_orders = list(all_open_orders)
             coin = [trading_pair.split('/')[0], quote_currency]  # USD
             if not open_orders:
-                self.log_manager.webhook_logger.info(f'No open orders found for {trading_pair} a {side} order will be '
+                self.log_manager.info(f'No open orders found for {trading_pair} a {side} order will be '
                                                      f'created.')
                 return False
             else:
@@ -374,15 +405,15 @@ class TradeOrderManager:
             balances = self.utils.adjust_precision(base_deci, quote_deci, balances, None, convert='base')
             print(f'balances: {balances}')
             if balances * adjusted_price > 10 and side == 'buy':  # a balance of < $10.00 indicates order was placed
-                self.log_manager.webhook_logger.info(f'{retries+1} retries reached.  {side} order was placed.')
+                self.log_manager.info(f'{retries+1} retries reached.  {side} order was placed.')
                 return True
             elif (balances * adjusted_price < self.min_sell_value) and side == 'sell':
-                self.log_manager.webhook_logger.info(f'{retries + 1} retries reached.  {side} order was placed.')
+                self.log_manager.info(f'{retries + 1} retries reached.  {side} order was placed.')
                 return True
             else:
-                self.log_manager.webhook_logger.info(f'{retries + 1} retries reached.  {side} order was not placed.')
+                self.log_manager.info(f'{retries + 1} retries reached.  {side} order was not placed.')
                 return False
         except Exception as ex:
-            self.log_manager.webhook_logger.error(f'fetch_order_status: Error processing balances: {ex}')
+            self.log_manager.error(f'fetch_order_status: Error processing balances: {ex}')
             return False
 

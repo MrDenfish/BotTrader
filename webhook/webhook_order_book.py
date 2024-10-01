@@ -70,8 +70,8 @@ class OrderBookManager:
 
             except Exception as e:
                 error_details = traceback.format_exc()
-                self.log_manager.webhook_logger.error(f'cancel_stale_orders: {error_details}')
-                self.log_manager.webhook_logger.error(f'webhook_order_book: cancel_stale_orders: An error occurred for '
+                self.log_manager.error(f'cancel_stale_orders: {error_details}')
+                self.log_manager.error(f'webhook_order_book: cancel_stale_orders: An error occurred for '
                                                       f'{symbol}: {e}')
                 continue
         return open_orders
@@ -88,14 +88,14 @@ class OrderBookManager:
             lowest_ask = self.tradebot_utils.float_to_decimal(lowest_ask_float, quote_deci).quantize(quantize_format,
                                                                                                      rounding=ROUND_DOWN)
             spread = lowest_ask - highest_bid if highest_bid and lowest_ask else None
-            self.log_manager.webhook_logger.debug(f'analyze_spread:High bid: {highest_bid} Low ask: {lowest_ask} Spread: '
+            self.log_manager.debug(f'analyze_spread:High bid: {highest_bid} Low ask: {lowest_ask} Spread: '
                                                   f'{spread}')
-            self.log_manager.webhook_logger.debug(
+            self.log_manager.debug(
                 f'OrderBookManager: analyze_spread: High bid: {highest_bid} Low ask: {lowest_ask} Spread: {spread}')
             # return highest_bid, lowest_ask, spread , additional_bids, additional_asks
 
             return highest_bid, lowest_ask, spread
         except Exception as e:
-            self.log_manager.webhook_logger.error(f'analyze_spread: An error occurred: {e}', exc_info=True)
+            self.log_manager.error(f'analyze_spread: An error occurred: {e}', exc_info=True)
             return None, None, None
 

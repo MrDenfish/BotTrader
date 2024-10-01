@@ -44,13 +44,21 @@ class ValidateOrders:
             elif base_balance is None or base_balance == 0.0:
                 if validate_data['open_orders'] is not None:
                     if not validate_data['open_orders'].empty:
-                        self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: '
-                                                             f'{validate_data["side"]} order will not be placed '
-                                                             f'for {validate_data["trading_pair"]} there is an open order '
-                                                             f'to {validate_data.get("side")}.')
+                        matching_order = validate_data['open_orders'][
+                            validate_data['open_orders']['product_id'] == validate_data['trading_pair']
+                            ]
+                        # Extract the side from the matching row (if found)
+                        if not matching_order.empty:
+                            order_side = matching_order.iloc[0]['side']
+                        else:
+                            order_side = 'Unknown'  # Default value if no matching row is found
+                        self.log_manager.info(
+                            f'fetch_and_validate_rules: {validate_data["side"]} order will not be placed '
+                            f'for {validate_data["trading_pair"]} as there is an open order to {order_side}.'
+                        )
                         return None, False, condition  # not a valid order
                 else:
-                    self.log_manager.webhook_logger.info(f'fetch_and_validate_rules: {validate_data["side"]} order not '
+                    self.log_manager.info(f'fetch_and_validate_rules: {validate_data["side"]} order not '
                                                          f'valid. {validate_data["trading_pair"]} balance is {base_balance}')
 
             return None, False, condition
@@ -103,7 +111,7 @@ class ValidateOrders:
         hodling = base_currency in self.hodl
         if side == 'buy':
             if adjusted_quote_balance < quote_amount:
-                self.log_manager.webhook_logger.info(
+                self.log_manager.info(
                     f'validate_orders: Insufficient funds ${adjusted_quote_balance} to {side}: '
                     f'{trading_pair} ${quote_amount}.00 is required.')
             elif adjusted_quote_balance > quote_amount and (hodling or base_balance_value <= Decimal('10.01')):

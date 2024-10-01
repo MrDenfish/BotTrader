@@ -1,6 +1,8 @@
 {
   "docker": {
+    "UTILS_DIR": "Utils",
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
@@ -9,7 +11,9 @@
      "CHUNKS_DIR": "data/trades/"
   },
   "Manny": {
+    "UTILS_DIR": "Utils",
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
@@ -18,7 +22,9 @@
     "CHUNKS_DIR": "data/trades/"
   },
   "moe": {
+    "UTILS_DIR": "Utils",
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",
@@ -27,7 +33,9 @@
     "CHUNKS_DIR": "data/trades/"
   },
   "do_server": {
+    "UTILS_DIR": "Utils",
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs",
     "ACTIVE_TRADE_DIR": "data/profit_data",
     "PORTFOLIO_DIR": "data/portfolio_data",
     "PROFIT_DIR": "data/profit_data",

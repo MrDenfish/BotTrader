@@ -15,7 +15,7 @@ class AppConfig:
 
     def __init__(self):
         self.db_type, self.port, self.machine_type, self.profit_dir, self.portfolio_dir = None, None, None, None, None
-        self.active_trade_dir, self._min_sell_value, self.sqlite_db_path, self.sqlite_db_file = None, None, None, None
+        self.active_trade_dir, self._min_sell_value,  self._database_dir, self.sqlite_db_file = None, None, None, None
         self.log_dir, self._json_config, self._take_profit, self._stop_loss, self._sleep_time = None, None, None, None, None
         self._my_email, self._e_mailpass, self._email, self._phone, self._web_url = None, None, None, None, None
         self._account_phone, self._async_mode, self._auth_token, self._account_sid = None, None, None, None
@@ -23,9 +23,10 @@ class AppConfig:
         self._digital_ocean_database_path, self._cmc_api_url, self._cmc_api_key, self._api_url = None, None, None, None
         self._passphrase, self._api_secret, self._api_key, self._version, self._log_level = None, None, None, None, None
         self._echo_sql, self._db_pool_size, self._db_max_overflow, self._db_echo = None, None, None, None
-        self._ccxt_verbose, self.db_name, self.db_file,  self._database_dir = None, None, None, None
+        self._ccxt_verbose, self.database_dir, self.db_name, self.db_file = None, None, None, None
         self._csv_dir, self._sighook_api_key_path, self._min_volume, self._roc_24hr = None, None, None, None
-        self._order_size = None
+        self._order_size, self._trailing_percentage, self._quote_currency = None, None, None
+        self._cxl_buy, self._cxl_sell = None, None
         self._hodl = []
         if self._is_loaded:
             return
@@ -43,17 +44,15 @@ class AppConfig:
 
     def load_environment_variables(self):
         self.db_type = os.getenv('DB_TYPE', 'sqlite')
-        self._database_dir = self.get_database_dir()
-        self.db_name = os.getenv('DB_NAME', 'tradebot')
-        self.db_file = os.getenv('DB_FILE', 'trades.db')  # Default SQLite file name
+        self._database_dir = self.get_database_dir() # This should pull from config.json
+        # self.db_name = os.getenv('DB_NAME', 'tradebot')
+        self.db_file = self._json_config[self.machine_type]['DATABASE_FILE']  # Use config.json
         self._version = os.getenv('VERSION')
         self._async_mode = os.getenv('ASYNC_MODE')
         self._api_url = os.getenv('API_URL')
         self._cmc_api_key = os.getenv('CMC_API_KEY')  # PLACEHOLDER NOT USABLE CODE
         self._cmc_api_url = os.getenv('CMC_API_URL')  # PLACEHOLDER NOT USABLE CODE
         self._docker_staticip = os.getenv('DOCKER_STATICIP')
-        self._manny_database_path = os.getenv('MANNY_DATABASE_PATH')
-        self._digital_ocean_database_path = os.getenv('DIGITAL_OCEAN_DATABASE_PATH')
         self._tv_whitelist = os.getenv('TV_WHITELIST')
         self._coin_whitelist = os.getenv('COIN_WHITELIST')
         self._account_sid = os.getenv('ACCOUNT_SID')
@@ -70,26 +69,46 @@ class AppConfig:
         self._hodl = os.getenv('HODL')
         self._stop_loss = os.getenv('STOP_LOSS')
         self._take_profit = os.getenv('TAKE_PROFIT')
+        self._cxl_buy = os.getenv('CXL_BUY')
+        self._cxl_sell = os.getenv('CXL_SELL')
         self._roc_24hr = os.getenv('ROC_24HR')
         self._order_size = os.getenv('ORDER_SIZE')
         self._trailing_percentage = Decimal(os.getenv('TRAILING_PERCENTAGE', '0.5'))  # Default trailing stop at 0.5%
         self._log_level = os.getenv('LOG_LEVEL_SIGHOOK')
+        self._quote_currency = os.getenv('QUOTE_CURRENCY', 'USD')  # Default to 'USD' if not specified
         if self.machine_type in ['moe', 'Manny', 'docker']:
             self.port = os.getenv('SIGHOOK_PORT')  # Example usage
 
     def generate_database_url(self):
         db_path = os.path.join(self.get_database_dir(), self.db_file)
+        # Ensure the directory exists
+        if not os.path.exists(os.path.dirname(db_path)):
+            os.makedirs(os.path.dirname(db_path))
+        print(f"Attempting to connect to database at: {db_path}")
+        return f"sqlite+aiosqlite:///{db_path}"
+
+    def orig_generate_database_url(self):
+        # Get the absolute path to the database file
+        db_path = os.path.abspath(os.path.join(self.get_database_dir(), self.db_file))
         return f"sqlite+aiosqlite:///{db_path}"
 
     def load_json_config(self):
-        current_dir = os.path.dirname(os.path.realpath(__file__))
-        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
-        self._sighook_api_key_path = os.path.join(current_dir, 'sighook_api_key.json')
+
         try:
+            # Assuming 'Utils' is at the same level as 'sighook'
+            current_dir = os.path.dirname(os.path.realpath(__file__))
+            project_dir = os.path.dirname(current_dir)  # Move up to project directory
+            config_path = os.path.join(project_dir, 'Utils', 'config.json')  # Path to config.json
+
+            self._sighook_api_key_path = os.path.join(current_dir, 'sighook_api_key.json')
+
+            # Load the config file
             with open(config_path, 'r') as f:
                 self._json_config = json.load(f)
-            # Process loaded configuration here...
-            self._csv_dir = self._json_config[self.machine_type]['CHUNKS_DIR']  # Extracting the CVS file path
+
+            # Process loaded configuration
+            self._csv_dir = self._json_config[self.machine_type]['CHUNKS_DIR']  # Extracting the CSV file path
+
         except Exception as e:
             print(f"Error loading JSON configuration: {e}")
             exit(1)
@@ -103,15 +122,17 @@ class AppConfig:
                 os.makedirs(path)
 
     def get_database_dir(self):
-        return os.path.join(os.getenv('BASE_DIR_' + self.machine_type.upper(), '.'),
-                            self._json_config.get(self.machine_type, {}).get('DATABASE_DIR', ''))
+        # Always use config.json for database dir
+        base_dir = self._json_config.get(self.machine_type, {}).get('BASE_DIR', '.')
+        database_dir = self._json_config[self.machine_type].get('DATABASE_DIR', 'data')
+        return os.path.join(base_dir, database_dir)
+
 
     def get_directory_paths(self, path):
-        base_dir = os.getenv('BASE_DIR_' + self.machine_type.upper(), '.')
+        base_dir = self.get_database_dir()  # Always use the database directory handler
         self.log_dir = os.path.join(base_dir, self._json_config[self.machine_type]['SENDER_ERROR_LOG_DIR'])
-        # self.database_dir = os.path.join(base_dir, self._json_config[self.machine_type]['DATABASE_DIR'])
+        self.database_dir = os.path.join(base_dir, self._json_config[self.machine_type]['DATABASE_DIR'])
         self.sqlite_db_file = self._json_config[self.machine_type]['DATABASE_FILE']
-        self.sqlite_db_path = os.path.join(self.database_dir, self.sqlite_db_file)
         self.active_trade_dir = os.path.join(base_dir, self._json_config[self.machine_type]['ACTIVE_TRADE_DIR'])
         self.portfolio_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PORTFOLIO_DIR'])
         self.profit_dir = os.path.join(base_dir, self._json_config[self.machine_type]['PROFIT_DIR'])
@@ -124,7 +145,7 @@ class AppConfig:
     @staticmethod
     def determine_machine_type():
         machine_type = os.getcwd().split('/')
-        # print(f'Machine type: {machine_type}')  # debug statement
+        # print(f   'Machine type: {machine_type}')  # debug statement
         if 'app' in machine_type:
             machine_type = 'docker'
             print(f'Machine type: {machine_type}')
@@ -147,14 +168,9 @@ class AppConfig:
         return self._csv_dir
 
     @property
-    def database_dir(self):
-        return self._database_dir
-
-    @property
     def database_url(self):
         if self.db_type == 'sqlite':
-            return f"sqlite+aiosqlite:///{os.path.join(self.database_dir, self.db_file)}"
-        # Additional database types can be handled here
+            return self.generate_database_url()
         return None
 
     @property
@@ -176,6 +192,10 @@ class AppConfig:
     @property
     def hodl(self):
         return self._hodl
+
+    @property
+    def quote_currency(self):
+        return self._quote_currency
 
     @property
     def min_sell_value(self):
@@ -216,6 +236,14 @@ class AppConfig:
     @property
     def take_profit(self):
         return self._take_profit
+
+    @property
+    def cxl_buy(self):
+        return self._cxl_buy
+
+    @property
+    def cxl_sell(self):
+        return self._cxl_sell
 
     @property
     def trailing_percentage(self):

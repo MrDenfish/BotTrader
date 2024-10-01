@@ -52,7 +52,7 @@ class ProfitHelper:
             # Update the DataFrame with current prices
             df['current_price'] = df['asset'].map(current_prices).fillna(df['current_price'])
             # Convert and calculate using Decimal for precision
-            df['market_value'] = df['Balance'].apply(float) * df['current_price'].apply(float)
+            df['market_value'] = df['amount'].apply(float) * df['current_price'].apply(float)
             df['unrealized_profit_loss'] = abs(df['market_value']) - abs(df['initial_investment'])
             df['unrealized_profit_loss'] = df['unrealized_profit_loss'].apply(lambda x: round(float(x), 2))
 
@@ -65,10 +65,10 @@ class ProfitHelper:
 
             return df  # Return the updated DataFrame with all calculations
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error calculating unrealized profit/loss: {e}", exc_info=True)
+            self.log_manager.error(f"Error calculating unrealized profit/loss: {e}", exc_info=True)
             raise
 
-    def should_place_sell_order(self, asset, holding, current_price):
+    def should_place_sell_order(self, holding, current_price):
         """ PART VI: Profitability Analysis and Order Generation  operates directly on a holding object (an instance from
         the Holdings table) and the current_market_price,
         making decisions based on the latest available data.  unrealized profit and its percentage are calculated
@@ -78,7 +78,6 @@ class ProfitHelper:
             return False
 
         # Calculate current value and unrealized profit percentage
-        current_value = holding['Balance'] * float(current_price)
         v1 = holding['market_value'] - holding['initial_investment']
         v2 = (holding['market_value'] + holding['initial_investment'])/2
         unrealized_profit_pct = v1/v2

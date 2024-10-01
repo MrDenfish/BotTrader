@@ -1,18 +1,14 @@
 import asyncio
-
 import pandas as pd
-
 from ccxt import AuthenticationError
 from ccxt.base.errors import BadSymbol
 import traceback
-
 import datetime
-
 from decimal import Decimal
 
 
 class TickerManager:
-    def __init__(self, utility, log_manager, exchange, ccxt_api, max_concurrent_tasks):
+    def __init__(self, utility, log_manager, exchange, ccxt_api, max_concurrent_tasks, app_config):
         self.exchange = exchange
         self.ticker_cache = None
         self.market_cache = None
@@ -21,6 +17,7 @@ class TickerManager:
         self.ccxt_api = ccxt_api
         self.utility = utility
         self.start_time = None
+        self.app_config = app_config  # Instantiate AppConfig to access environment variables
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
     def set_trade_parameters(self, start_time, ticker_cache, market_cache):
@@ -58,26 +55,26 @@ class TickerManager:
 
                 filtered_market_data = self.filter_market_data(market_data)
                 del market_data  # frees up memory
-                usd_tickers, tickers_dict = self.extract_usd_tickers(filtered_market_data)
+                preferred_tickers, tickers_dict = self.extract_tickers_by_quote_currency(filtered_market_data)
 
-                if not usd_tickers:
+                if not preferred_tickers:
                     return empty_df, empty_market_data, None, None
 
                 balances = await self.fetch_balance_and_filter()
 
                 updated_ticker_cache = self.prepare_dataframe(tickers_dict, balances)
                 if updated_ticker_cache.empty:
-                    self.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {updated_ticker_cache}',
+                    self.log_manager.error(f'Error in update_ticker_cache: {updated_ticker_cache}',
                                                           exc_info=True)
                     return empty_df, empty_market_data, None, None
                 updated_ticker_cache, current_prices = await self.parallel_fetch_and_update(updated_ticker_cache)
 
-                return updated_ticker_cache, filtered_market_data, current_prices, balances
+                return updated_ticker_cache, preferred_tickers, current_prices, balances
 
             return self.ticker_cache, self.market_cache, None, None
 
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {e}', exc_info=True)
+            self.log_manager.error(f'Error in update_ticker_cache: {e}', exc_info=True)
 
     @staticmethod
     def filter_market_data(market_data):
@@ -94,14 +91,16 @@ class TickerManager:
             for item in market_data
         ]
 
-    def extract_usd_tickers(self, filtered_market_data):
-        """PART I: Data Gathering and Database Loading"""
+    def extract_tickers_by_quote_currency(self, filtered_market_data):
+        """PART I: Data Gathering and Database Loading
+        Extract tickers based on the configured quote currency"""
         try:
-            usd_tickers = [market for market in filtered_market_data if market['quote'] == 'USD']
-            tickers_dict = {market['asset']: market for market in usd_tickers}
-            return usd_tickers, tickers_dict
+            quote_currency = self.app_config.quote_currency
+            tickers = [market for market in filtered_market_data if market['quote'] == quote_currency]
+            tickers_dict = {market['asset']: market for market in tickers}
+            return tickers, tickers_dict
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in extract_usd_tickers: {e}', exc_info=True)
+            self.log_manager.error(f'Error in extract_tickers_by_quote_currency: {e}', exc_info=True)
             return [], {}
 
     async def fetch_balance_and_filter(self):
@@ -132,7 +131,7 @@ class TickerManager:
                 'usd_free': usd_free,
             }
         except AuthenticationError as e:
-            self.log_manager.sighook_logger.error(f'Authentication Error: {e}')
+            self.log_manager.error(f'Authentication Error: {e}')
             return {}
 
     def prepare_dataframe(self, tickers_dict, balances):
@@ -140,12 +139,12 @@ class TickerManager:
         avail_qty = {k: v.get('free', 0) for k, v in balances['filtered'].items()}
         total_qty = {k: v.get('total', 0) for k, v in balances['filtered'].items()}
         df = pd.DataFrame.from_dict(tickers_dict, orient='index')
-        df['free'] = df['asset'].map(avail_qty).fillna(0)
-        df['total'] = df['asset'].map(total_qty).fillna(0)
+        df['free'] = df['asset'].map(avail_qty).fillna(0) # float64
+        df['total'] = df['asset'].map(total_qty).fillna(0)  #float64
         df['volume_24h'] = df['info'].apply(lambda x: x.get('volume_24h', 0))
 
-        usd_total = self.utility.float_to_decimal(Decimal(balances['usd_balance']), 2)
-        usd_free = self.utility.float_to_decimal(Decimal(balances['usd_free']), 2)
+        usd_total = self.utility.float_to_decimal(Decimal(balances['usd_balance']), 2)  # decimal
+        usd_free = self.utility.float_to_decimal(Decimal(balances['usd_free']), 2)  # decimal
 
         usd_row = pd.DataFrame({
             'symbol': ['USD/USD'],
@@ -165,9 +164,8 @@ class TickerManager:
         try:
             tickers = await self.fetch_bids_asks()
             if not tickers:
-                self.log_manager.sighook_logger.error("Failed to fetch bids and asks.")
+                self.log_manager.error("Failed to fetch bids and asks.")
                 return df, current_prices
-
             for symbol in df['symbol'].tolist():
                 try:
                     ticker = tickers.get(symbol)
@@ -175,7 +173,7 @@ class TickerManager:
                         bid = ticker.get('bid')
                         ask = ticker.get('ask')
                         if bid is None or ask is None:
-                            self.log_manager.sighook_logger.debug(f"Missing data for symbol {symbol}, skipping")
+                            self.log_manager.debug(f"Missing data for symbol {symbol}, skipping")
                             continue
 
                         if symbol in df['symbol'].values:
@@ -185,19 +183,19 @@ class TickerManager:
                                 df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
                             current_prices[symbol] = float(ask)
                         else:
-                            self.log_manager.sighook_logger.info(f"Symbol not found in DataFrame: {symbol}")
+                            self.log_manager.info(f"Symbol not found in DataFrame: {symbol}")
                     else:
-                        self.log_manager.sighook_logger.info(f"No ticker data for symbol: {symbol}")
+                        self.log_manager.info(f"No ticker data for symbol: {symbol}")
                 except BadSymbol as bs:
-                    self.log_manager.sighook_logger.error(f"Bad symbol: {bs}")
+                    self.log_manager.error(f"Bad symbol: {bs}")
                     continue
                 except Exception as e:
-                    self.log_manager.sighook_logger.error(f"Error processing symbol {symbol}: {e}", exc_info=True)
+                    self.log_manager.error(f"Error processing symbol {symbol}: {e}", exc_info=True)
                     continue
 
             return df, current_prices
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in parallel_fetch_and_update: {e}', exc_info=True)
+            self.log_manager.error(f'Error in parallel_fetch_and_update: {e}', exc_info=True)
             return df, current_prices
 
     async def fetch_bids_asks(self):
@@ -211,7 +209,7 @@ class TickerManager:
             tickers = await self.ccxt_api.ccxt_api_call(self.exchange.fetchBidsAsks, endpoint, params=params)
             return tickers
         except Exception as e:
-            self.log_manager.sighook_logger.error(f"Error fetching bids and asks: {e}", exc_info=True)
+            self.log_manager.error(f"Error fetching bids and asks: {e}", exc_info=True)
             return {}
 
     async def fetch_ticker_data(self, symbol: str, return_type='full'):
@@ -230,7 +228,7 @@ class TickerManager:
                 }
                 bid_ask = await self.ccxt_api.ccxt_api_call(self.exchange.fetchBidsAsks, endpoint, params=params)  # test
                 if symbol is not None:
-                    self.log_manager.sighook_logger.debug(f"Calling ccxt_api_call for {symbol}")
+                    self.log_manager.debug(f"Calling ccxt_api_call for {symbol}")
                     individual_ticker = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, endpoint, ticker,
                                                                           params=params)
                 else:
@@ -241,19 +239,18 @@ class TickerManager:
                     if individual_ticker and isinstance(individual_ticker, dict):
                         return symbol, individual_ticker['bid'], individual_ticker['ask']
                     else:
-                        self.log_manager.sighook_logger.debug(f'No data available for ticker {symbol}')
+                        self.log_manager.debug(f'No data available for ticker {symbol}')
                         return symbol, None, None
 
             except IndexError:
                 error_details = traceback.format_exc()
-                self.log_manager.sighook_logger.error(f'Index error: {error_details}')
-                self.log_manager.sighook_logger.error(f'Index error for symbol {symbol}: '
+                self.log_manager.error(f'Index error: {error_details}')
+                self.log_manager.error(f'Index error for symbol {symbol}: '
                                                       f'Data format may be incorrect or incomplete.')
                 return symbol, None, None if return_type == 'prices' else (symbol, None)
             except Exception as e:
                 error_details = traceback.format_exc()
-                self.log_manager.sighook_logger.error(f'fetch_ticker_data: {error_details}')
-                self.log_manager.sighook_logger.error(f'Error while fetching ticker data for {symbol}: {e}')
+                self.log_manager.error(f'fetch_ticker_data: {error_details}')
+                self.log_manager.error(f'Error while fetching ticker data for {symbol}: {e}')
                 return symbol, None, None if return_type == 'prices' else (symbol, None)
 
-# <><><><><><><><><><><><><><><><><><><><><>  RETIRED CODE <><><><><><><><><><><><><><><><><><><><><>

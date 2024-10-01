@@ -15,8 +15,7 @@ class PerformanceManager:
         self.ccxt_exceptions = ccxt_api
         self._take_profit = Decimal(config.take_profit)
         self._stop_loss = Decimal(config.stop_loss)
-        self.database_dir = config.database_dir
-        self.sqlite_db_path = config.sqlite_db_path
+        self.database_dir = config.get_database_dir
         self.ledger_cache = None
         self.utility = utility
         self.order_manager = order_manager
@@ -93,6 +92,6 @@ class PerformanceManager:
             return Decimal(ticker_info['info']['price']).quantize(Decimal('0.01'), ROUND_DOWN), ticker_info['asset']
         except Exception as e:
             error_details = traceback.format_exc()
-            self.log_manager.sighook_logger.error(f'get_current_price_and_symbol: {error_details}')
+            self.log_manager.error(f'get_current_price_and_symbol: {error_details}')
             logging.error(f"Error getting price/symbol for {product_id}: {e}")
             return None, None

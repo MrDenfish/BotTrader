@@ -1,6 +1,4 @@
-
-
-import smtplib
+from smtplib import SMTP_SSL
 import aiohttp
 import asyncio
 import random
@@ -18,14 +16,14 @@ class AlertSystem:
         return cls._instance
 
     def __init__(self, config, logmanager):
-        self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        self._smtp_server = SMTP_SSL('smtp.gmail.com', 465)
         self._phone = config.phone
         self._email = config.email
         self._e_mailpass = config.e_mailpass
         self._my_email = config.my_email
         self._order_size = config.order_size
-        # self._smtp_host = 'smtp.gmail.com'
-        # self._smtp_port = 465  # Us
+        self._smtp_host = 'smtp.gmail.com'
+        self._smtp_port = 465  # Us
         self.log_manager = logmanager
 
 
@@ -33,7 +31,7 @@ class SenderWebhook:
     _instance_count = 0
 
     def __init__(self, exchange, utility, alerts, logmanager, config):
-        self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        self._smtp_server = SMTP_SSL('smtp.gmail.com', 465)
         self._phone = config.phone
         self._email = config.email
         self._e_mailpass = config.e_mailpass
@@ -90,23 +88,23 @@ class SenderWebhook:
                     # Handle specific status codes
                     if response.status in [403, 404, 429, 500]:  # Rate limit exceeded or server error
                         if response.status == 403:
-                            self.log_manager.sighook_logger.error(f"There may be an issue with NGROK or LocalTunnel check "
+                            self.log_manager.error(f"There may be an issue with NGROK or LocalTunnel check "
                                                                   f"monthly limits: {response.status} {response_text}",
                                                                   exc_info=True)
                         elif response.status == 404:
-                            self.log_manager.sighook_logger.error(f"Error:  Check Listener is online {response.status}, "
+                            self.log_manager.error(f"Error:  Check Listener is online {response.status}, "
                                                                   f"{response_text}", exc_info=True)
 
                         else:
-                            self.log_manager.sighook_logger.error(f"Error {response.status}: check webhook listener is online"
+                            self.log_manager.error(f"Error {response.status}: check webhook listener is online"
                                                                   f"{response_text}", exc_info=True)
                         return response
                     elif response.status == 502:  # Not found
-                        self.log_manager.sighook_logger.error(f"Error:  Check Listener is online {response.status}",
+                        self.log_manager.error(f"Error:  Check Listener is online {response.status}",
                                                               exc_info=True)
                     elif response.status == 503:  # Service Unavailable
                         my_ip = self.utils.get_my_ip_address()
-                        self.log_manager.sighook_logger.error(f"Error:  Check Listener is listening {response.status} "
+                        self.log_manager.error(f"Error:  Check Listener is listening {response.status} "
                                                               f"from {my_ip}", exc_info=True)
 
                     else:
@@ -114,21 +112,21 @@ class SenderWebhook:
 
                 except asyncio.TimeoutError as eto:
 
-                    self.log_manager.sighook_logger.error(f'Request timed out:  {eto}', exc_info=True)
+                    self.log_manager.error(f'Request timed out:  {eto}', exc_info=True)
                 except aiohttp.ClientError as e:
 
-                    self.log_manager.sighook_logger.error(f'Error in sending webhook():  {e}', exc_info=True)
+                    self.log_manager.error(f'Error in sending webhook():  {e}', exc_info=True)
 
                 if attempt < retries:
                     sleep_time = delay + random.uniform(0, delay * 0.2)
                     await asyncio.sleep(sleep_time)
                     delay = min(delay * 2, max_delay)
 
-            self.log_manager.sighook_logger.error("Max retries reached, giving up.")
+            self.log_manager.error("Max retries reached, giving up.")
             return None
         except Exception as e:
             if self.web_url is None:
-                self.log_manager.sighook_logger.error(f"Webhook URL not set: {e}", exc_info=True)
+                self.log_manager.error(f"Webhook URL not set: {e}", exc_info=True)
                 return None
-            self.log_manager.sighook_logger.error(f"Error in send_webhook: {e}", exc_info=True)
+            self.log_manager.error(f"Error in send_webhook: {e}", exc_info=True)
             return None

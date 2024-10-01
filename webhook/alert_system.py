@@ -53,4 +53,4 @@ class AlertSystem:
             self.smtp_server.quit()
         except Exception as e:
             print(f'Error sending SMS alert: {e}')
-            self.log_manager.webhook_logger.error(f'Error sending SMS alert: {e}')
+            self.log_manager.error(f'Error sending SMS alert: {e}')

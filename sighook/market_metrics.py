@@ -29,7 +29,7 @@ class CoinMarketAPI:
         try:
             df['total_supply'] = df['base_currency'].apply(lambda symbol: self.get_market_data(symbol))
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in update_ticker_cache: {e}')
+            self.log_manager.error(f'Error in update_ticker_cache: {e}')
         return df
 
     def get_market_data(self, symbol):
@@ -49,10 +49,10 @@ class CoinMarketAPI:
             data_str = str(data)
         # Check if 'data' key exists and the symbol is present in the response
             if 'data' in data_str and symbol in data_str:
-                self.log_manager.sighook_logger.debug(f' get_market_data:  Response :{data_str}')
+                self.log_manager.debug(f' get_market_data:  Response :{data_str}')
                 return data['data'][symbol].get('total_supply', 0)
             else:
                 # Handle the case where 'data' or the symbol is not found
                 return 0  # or any default value you deem appropriate
         except Exception as e:
-            self.log_manager.sighook_logger.error(f'Error in get_market_data: {e}. Response :{data_str}')
+            self.log_manager.error(f'Error in get_market_data: {e}. Response :{data_str}')
