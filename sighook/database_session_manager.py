@@ -1,209 +1,149 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import sessionmaker
-from database_table_models import Trade
-from database_table_models import OHLCVData
-from database_ops import DatabaseOpsManager
-from database_ops_holdings import DatabaseOpsHoldingsManager
-from Utils.logging_manager import LoggerManager
-import pandas as pd
-import logging
+
+from sqlalchemy.ext.asyncio import create_async_engine
+from Shared_Utils.config_manager import CentralConfig
+from sighook.database_table_models import OHLCVData
+from sighook.database_ops import DatabaseOpsManager
+from databases import Database
+from sqlalchemy import select
+import asyncio
+
+
+
 
 
 class DatabaseSessionManager:
     """Handles the creation and management of database sessions."""
     """Handles the creation and management of database sessions."""
 
-    def __init__(self, csv_manager, log_manager, profit_extras, app_config):
+    _instance = None
+
+    @classmethod
+    def get_instance(cls, profit_extras, log_manager):
+        if cls._instance is None:
+            cls._instance = cls(profit_extras, log_manager)
+        return cls._instance
+
+    def __init__(self, profit_extras, log_manager):
         self.log_manager = log_manager
-        self.csv_manager = csv_manager
-        self.app_config = app_config
+        self.config = CentralConfig()
         self.profit_extras = profit_extras
+        self.start_time = self.ticker_cache = self.market_cache_vol = self.holdings_list = self.current_prices = None
+        self.filtered_pairs = None
+
 
         # Ensure that database_url is correctly set
-        if not self.app_config.database_url:
+        if not self.config.database_url:
             self.log_manager.error("Database URL is not configured properly.")
             raise ValueError("Database URL is not configured. Please check your configuration.")
 
-        # Use the new database_url method
-        self.engine = create_async_engine(
-            self.app_config.database_url,
-            connect_args={"timeout": 30, "check_same_thread": False},
-            echo=False  # For debugging purposes, consider turning this on if needed
-        )
+        # Initialize the databases.Database instance
+        self.database = Database(self.config.database_url, min_size=5, max_size=15)
 
-        self.AsyncSessionLocal = sessionmaker(bind=self.engine, class_=AsyncSession, expire_on_commit=False)
-        # Initialize DatabaseOpsManager instance here or later when all components are ready
+        # Initialize the SQLAlchemy async engine
+        self.engine = create_async_engine(self.config.database_url, echo=False)
+
+
+        # Use the new database_url method
+        #self.database = Database(self.config.database_url)
         self.database_ops = None  # Will be set later after components are initialized
-        self.database_ops_holdings = None
+
+    def set_trade_parameters(self, start_time, market_data, order_management):
+        self.start_time = start_time
+        self.ticker_cache = market_data['ticker_cache']
+        self.market_cache_vol = market_data['filtered_vol']
+        self.holdings_list = market_data['spot_positions']
+        self.current_prices = market_data['current_prices']
+        self.filtered_pairs = order_management['non_zero_balances']
+
+    async def connect(self, retries=3):
+        """Establish the database connection."""
+        for attempt in range(1, retries + 1):
+            try:
+                if not self.database.is_connected:
+                    await self.database.connect()
+                    self.log_manager.info("Database connected successfully.")
+                    return
+            except Exception as e:
+                self.log_manager.warning(f"Database connection attempt {attempt} failed: {e}")
+                await asyncio.sleep(2)  # Wait before retrying
+        raise ConnectionError("Failed to establish a database connection after retries.")
+
+    async def initialize(self):
+        """Initialize the database connection."""
+        try:
+            await self.connect()  # Establish database connection
+            self.log_manager.info("DatabaseSessionManager initialized and connected to the database.")
+        except Exception as e:
+            self.log_manager.error(f"❌ Failed to initialize DatabaseSessionManager: {e}", exc_info=True)
+            raise
+
+    async def disconnect(self):
+        """Close the database connection."""
+        try:
+            if self.database.is_connected:
+                await self.database.disconnect()
+                self.log_manager.info("Database disconnected successfully.")
+        except Exception as e:
+            self.log_manager.error(f"Error while disconnecting from the database: {e}", exc_info=True)
 
     def get_database_ops(self, *args, **kwargs):
-        """Returns the DatabaseOpsManager instance, creating it if necessary."""
         if self.database_ops is None:
-            self.database_ops = DatabaseOpsManager(
-                self.log_manager, self.csv_manager, self.profit_extras, self.app_config, self.engine, self.AsyncSessionLocal, *args, **kwargs
+            self.database_ops = DatabaseOpsManager.get_instance(
+                self.log_manager, self.profit_extras, self.config, self.database, *args, **kwargs
             )
         return self.database_ops
 
-    def get_database_ops_holdings(self, *args, **kwargs):
-        """Returns the DatabaseOpsHoldingsManager instance, creating it if necessary."""
-        if self.database_ops_holdings is None:
-            self.database_ops_holdings = DatabaseOpsHoldingsManager(
-                self.log_manager, self.AsyncSessionLocal, *args, **kwargs
-            )
-        return self.database_ops_holdings
+    async def process_data(self, start_time):
+        """Delegates processing to DatabaseOpsManager within a transaction."""
+        try:
+            # Ensure database is connected
+            if not self.database.is_connected:
+                await self.connect()
+                self.log_manager.info("Database reconnected within process_data.")
 
-    async def process_data(self, market_data, holdings_list, holdings_df, current_prices, csv_dir=None):
-        """Handles session management and delegates processing to DatabaseOpsManager."""
-        async with self.AsyncSessionLocal() as session:
-            try:
-                await self.database_ops.process_data(session, market_data, holdings_list, holdings_df, current_prices,
-                                                     csv_dir)
-            except Exception as e:
-                self.log_manager.error(f"Failed to process data in session manager: {e}")
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
+            # Execute within an explicit transaction
+            async with self.database.transaction():
+                await self.database_ops.process_data(start_time)
+        except Exception as e:
+            self.log_manager.error(f"Failed to process data in session manager: {e}")
+            raise
 
     async def check_ohlcv_initialized(self):
-        """PART III - Order Cancellation and Data Collection. Check if the OHLCV data is initialized in the database."""
-        async with self.AsyncSessionLocal() as session:
-            result = await session.execute(select(OHLCVData).limit(1))
-            return result.first() is not None
+        """PART III:
+        Check if OHLCV data is initialized in the database."""
+        query = select(OHLCVData).limit(1)
+        result = await self.database.fetch_one(query)
+        return result is not None
 
-    async def create_performance_snapshot(self):
-        async with self.AsyncSessionLocal() as session:
-            try:
-                profit_data = await self.profit_extras.performance_snapshot(session)
-                await session.commit()
-                return profit_data
-            except Exception as e:
-                await session.rollback()
-                self.log_manager.error(f"Failed to create performance snapshot: {e}")
-                raise
-            finally:
-                await session.close()
-
-    async def process_holding_db(self, holding_list, holdings_df, current_prices, open_orders):
-        """PART V, PART VI: Order Execution Process data using a database session."""
-        async with self.AsyncSessionLocal() as session:
-            try:
-                # Initialize and potentially update holdings in the database
-                await self.database_ops_holdings.clear_holdings(session)
-                await self.database_ops_holdings.initialize_holding_db(session, holding_list, holdings_df, current_prices,
-                                                                       open_orders=open_orders)
-                await session.commit()
-                # Fetch the updated contents of the holdings table
-                updated_holdings = await self.database_ops_holdings.get_updated_holdings(session)
-                trailing_stop_orders = open_orders[open_orders['trigger_status'] == 'STOP_PENDING']
-
-                # Convert holdings data to a DataFrame
-                df = pd.DataFrame([{
-                    'symbol': holding.asset + '/' + holding.currency,
-                    'quote': holding.currency,
-                    'asset': holding.asset,
-                    'balance': holding.balance,
-                    'amount': holding.purchase_amount,
-                    'current_price': holding.current_price,
-                    'weighted_average_price': holding.weighted_average_price,
-                    'initial_investment': holding.initial_investment, # this is wrong
-                    'unrealized_profit_loss': holding.unrealized_profit_loss,
-                    'unrealized_pct_change': holding.unrealized_pct_change,
-                    'trailing_stop': trailing_stop_orders
-                } for holding in updated_holdings])
-
-                return df
-            except Exception as e:
-                await session.rollback()
-                self.log_manager.error(f"Failed to process data: {e}", exc_info=True)
-                raise
-            finally:
-                await session.close()
-
-    async def batch_update_holdings(self, holdings_to_update, current_prices, open_orders):
-        """PART VI: Profitability Analysis and Order Generation"""
-        async with self.AsyncSessionLocal() as session:
-            try:
-                await self.database_ops.clear_new_trades(session)
-                for holding in holdings_to_update:
-                    await self.database_ops_holdings.update_single_holding(session, holding, current_prices, open_orders)
-                await session.commit()
-            except Exception as e:
-                await session.rollback()
-                self.log_manager.error(f"Failed to batch update holdings: {e}")
-                raise
-            finally:
-                await session.close()
-
-    async def process_sell_orders_fifo(self, market_cache, sell_orders, holdings_list, holdings_df, current_prices):
-        """PART VI: Profitability Analysis and Order Generation"""
-        async with self.AsyncSessionLocal() as session:
-            await self.log_trade_amounts(session, "Before process_market_data")  # Log before calling the function
-            await self.database_ops.process_market_data(session, market_cache)  # update trades
-            await self.log_trade_amounts(session, "After process_market_data")  # Log after calling the function
-
-            realized_profit = 0
-            try:
-                for (asset, sell_amount, sell_price, holding) in sell_orders:
-                    profit = await self.database_ops.process_sell_fifo(session, asset, sell_amount, sell_price)
-                    realized_profit += profit
-                    await session.commit()
-                    break  # debug
-                await self.database_ops_holdings.initialize_holding_db(session, holdings_list, holdings_df, current_prices,
-                                                              sell_orders=sell_orders, open_orders=None)
-                await session.commit()
-                return realized_profit
-            except Exception as e:
-                await session.rollback()
-                self.log_manager.error(f"Failed to process sell orders: {e}")
-                raise
-            finally:
-                await session.close()
-
-    async def log_trade_amounts(self, session, log_point):
-        """PART VI: Profitability Analysis and Order Generation"""
+    async def fetch_market_data(self):
+        """Fetch market_data from the database."""
         try:
-            trades = await session.execute(select(Trade))
-            trades = trades.scalars().all()
-            for trade in trades:
-                if trade.asset == 'BTC' or trade.asset == 'MNDE':
-                    if trade.amount == 0:
-                        self.log_manager.debug(f"{log_point} - Asset: {trade.asset} Trade ID:"
-                                                              f" {trade.trade_id}, Amount: {trade.amount}")
+            if not self.database.is_connected:
+                await self.connect()
+            query = "SELECT data FROM shared_data WHERE data_type = 'market_data'"
+            result = await self.database.fetch_one(query)
+            print(f"DEBUG: Retrieved Market Data: {result}")
+            if not result or "data" not in result:
+                self.log_manager.warning("No data found for market_data.")
+                return {}
 
+            return result
         except Exception as e:
-            self.log_manager.error(f"Error logging trade amounts at {log_point}: {e}")
+            self.log_manager.error(f"Error fetching market data: {e}", exc_info=True)
+            return {}
 
-    async def fetch_new_trades_for_symbols(self, symbols):
-        """PART VI: Profitability Analysis and Order Generation """
-        async with self.AsyncSessionLocal() as session:
-            all_new_trades = {}
-            try:
-                for symbol in symbols:
-                    # Determine the last update time for this symbol
-                    asset = symbol.split('/')[0]
-                    last_update = await self.database_ops.get_last_update_time_for_symbol(session, symbol)
+    async def fetch_order_management(self):
+        """Fetch market_data from the database."""
+        try:
+            if not self.database.is_connected:
+                await self.connect()
+            query = "SELECT data FROM shared_data WHERE data_type = 'order_management'"
+            result = await self.database.fetch_one(query)
+            if not result or "data" not in result:
+                self.log_manager.warning("No data found for market_data.")
+                return {}
 
-                    # Fetch new trades from the exchange since the last update time
-                    raw_trades = await self.database_ops.fetch_trades(session, symbol, last_update)
-
-                    # Process raw trade data into a standardized format, filtering out None values
-                    new_trades = [self.database_ops.process_trade_data(trade) for trade in raw_trades if trade is not None]
-
-                    # Update the last update time for the symbol if new trades were fetched
-                    if new_trades:
-                        await self.database_ops.set_last_update_time(session, symbol, new_trades[-1]['trade_time'])
-
-                    all_new_trades[asset] = new_trades
-                await session.commit()
-                return all_new_trades
-            except Exception as e:
-                self.log_manager.error(f"Failed to process data: {e}")
-                await session.rollback()
-                raise
-
-            finally:
-                # Revert SQL logging to default level
-                LoggerManager.setup_sqlalchemy_logging(logging.WARNING)
-                await session.close()
+            return result
+        except Exception as e:
+            self.log_manager.error(f"Error fetching order_management: {e}", exc_info=True)
+            return {}

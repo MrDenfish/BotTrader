@@ -3,440 +3,566 @@ import asyncio
 import pandas as pd
 from sqlalchemy import select
 from indicators import Indicators
-from database_table_models import OHLCVData
+from decimal import Decimal
+from Shared_Utils.config_manager import CentralConfig as config
 
 
 class TradingStrategy:
     """focus on decision-making based on data provided by MarketManager"""
-    def __init__(self, webhook, tickermanager, utility, exchange, alerts, logmanager, ccxt_api, metrics, config,
-                 max_concurrent_tasks, database_session_mngr):
+    _instance = None
 
-        self._version = config.program_version
+    @classmethod
+    def get_instance(cls, webhook, tickermanager, exchange, alerts, logmanager, ccxt_api, metrics,
+                        max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables):
+        if cls._instance is None:
+            cls._instance = cls(webhook, tickermanager, exchange, alerts, logmanager, ccxt_api, metrics,
+                                max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables)
+        return cls._instance
+
+    def __init__(self, webhook, tickermanager, exchange, alerts, logmanager, ccxt_api, metrics,
+                 max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables):
+        self.config = config()
+        self._version = self.config.program_version
         self.exchange = exchange
         self.alerts = alerts
         self.ccxt_exceptions = ccxt_api
         self.log_manager = logmanager
-        self.utility = utility
+
         self.ticker_manager = tickermanager
-        self.indicators = Indicators(config, logmanager)
+        self.indicators = Indicators(logmanager)
+        self._buy_rsi = self.config._rsi_buy
+        self._sell_rsi = self.config._rsi_sell
+        self._buy_ratio = self.config._buy_ratio
+        self._sell_target = self.config._sell_target
+        self._buy_target = self.config._buy_target
+        self._sell_ratio = self.config._sell_ratio
+        self._roc_24hr = self.config._roc_24hr
+        self._hodl = self.config._hodl
         self.market_metrics = metrics
         self.webhook = webhook
         self.ohlcv_data = {}  # A dictionary to store OHLCV data for each symbol
+        self._max_ohlcv_rows = self.config.max_ohlcv_rows
         self.results = None
         self.ticker_cache = None
         self.market_cache = None
         self.start_time = None
         self.db_manager = database_session_mngr
+        self.db_tables = db_tables
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self.sharded_utils_print = sharded_utils_print
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache):
+    def set_trade_parameters(self, start_time, market_data):
         self.start_time = start_time
-        self.ticker_cache = ticker_cache
-        self.market_cache = market_cache
+        self.ticker_cache = market_data['ticker_cache']
+        self.market_cache_vol = market_data['filtered_vol']
+        self.holdings_list = market_data['spot_positions']
 
-    async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix):
-        """PART IV: Trading Strategies"""
-        tasks = [self.process_row(row, buy_sell_matrix) for _, row in filtered_ticker_cache.iterrows()]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        buy_sell_matrix = self.process_row_results(results, buy_sell_matrix)
-        self.utility.print_elapsed_time(self.start_time, 'process all row')
-        return results, buy_sell_matrix  # Return both the results and the aggregated orders
+    @property
+    def buy_target(self):
+        return int(self._buy_target)
 
-    async def process_row(self, row, buy_sell_matrix):
-        """PART IV: Trading Strategies"""
+    @property
+    def sell_target(self):
+        return int(self._sell_target)
+
+    @property
+    def hodl(self):
+        return self._hodl
+
+    @property
+    def roc_24hr(self):
+        return int(self._roc_24hr)
+
+    @property
+    def max_ohlcv_rows(self):
+        return self._max_ohlcv_rows
+
+    @property
+    def buy_rsi(self):
+        return self._buy_rsi
+
+    @property
+    def sell_rsi(self):
+        return self._sell_rsi
+
+    @property
+    def buy_ratio(self):
+        return self._buy_ratio
+
+    @property
+    def sell_ratio(self):
+        return self._sell_ratio
+
+    # async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, open_orders):
+    #     """Process all rows, updating buy_sell_matrix with latest indicator values from Bollinger Bands."""
+    #     skipped_symbols = []
+    #     strategy_results = []
+    #
+    #     try:
+    #         # ✅ Ensure 'asset' is the index for easier row access
+    #         if "asset" in buy_sell_matrix.columns:
+    #             buy_sell_matrix.set_index("asset", inplace=True)
+    #
+    #         # Fetch OHLCV data asynchronously
+    #         tasks = {
+    #             row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
+    #             for _, row in filtered_ticker_cache.iterrows()
+    #         }
+    #         ohlcv_data = await asyncio.gather(*tasks.values(), return_exceptions=False)
+    #         ohlcv_data_dict = {symbol: data for symbol, data in zip(tasks.keys(), ohlcv_data)}
+    #
+    #         valid_symbols = [symbol for symbol, data in ohlcv_data_dict.items() if isinstance(data, pd.DataFrame)]
+    #
+    #         for symbol in valid_symbols:
+    #             asset = symbol.split('/')[0]
+    #             temp_symbol = symbol.replace("/", "-")
+    #
+    #             # Skip if there's an open order or hodling
+    #             if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.hodl:
+    #                 skipped_symbols.append(temp_symbol)
+    #                 continue
+    #
+    #             ohlcv_df = ohlcv_data_dict[symbol]
+    #             ohlcv_df = self.indicators.calculate_indicators(ohlcv_df)
+    #
+    #             # Validate Bollinger Bands
+    #             bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
+    #             if not self.is_valid_bollinger_df(bollinger_df):
+    #                 self.log_manager.error(f"Invalid Bollinger DataFrame for {symbol}")
+    #                 continue  # Skip invalid symbols
+    #
+    #             # ✅ Ensure W-Bottoms and M-Tops exist
+    #             if 'W-Bottom' not in ohlcv_df.columns or 'M-Top' not in ohlcv_df.columns:
+    #                 print(f"⚠️ Missing W-Bottom/M-Top in {symbol}. Available cols: {ohlcv_df.columns}")
+    #                 continue
+    #
+    #             action_data = self.decide_action(ohlcv_df, bollinger_df, symbol)
+    #             strategy_results.append({
+    #                 'asset': asset,
+    #                 'symbol': symbol,
+    #                 **action_data  # Flatten action_data into the results
+    #             })
+    #
+    #             # ✅ Ensure asset exists in buy_sell_matrix before updating
+    #             if asset not in buy_sell_matrix.asset.values:
+    #                 self.log_manager.warning(f"Asset {asset} not found in buy_sell_matrix. Skipping update.")
+    #                 continue
+    #
+    #             # ✅ Efficiently update buy_sell_matrix values
+    #             for col in buy_sell_matrix.columns:
+    #                 if col in bollinger_df.columns:
+    #                     computed_value = bollinger_df[col].iloc[-1]
+    #
+    #                     # ✅ Extract second value from tuple if applicable
+    #                     if isinstance(computed_value, tuple) and len(computed_value) > 1:
+    #                         computed_value = computed_value[1]
+    #
+    #                     existing_tuple = buy_sell_matrix.at[asset, col]
+    #
+    #                     # ✅ Ensure structured tuple format for updates
+    #                     threshold = existing_tuple[2] if isinstance(existing_tuple, tuple) and len(
+    #                         existing_tuple) == 3 else None
+    #                     buy_sell_matrix.at[asset, col] = (0, computed_value, threshold)
+    #
+    #             # ✅ Update 'Buy Signal' and 'Sell Signal' using action_data
+    #             buy_signal_value = (f"{action_data['buy_sell_data']['Buy Signal'][1]}/"
+    #                                 f"{action_data['buy_sell_data']['Buy Signal'][2]}")  # 2nd value of the tuple
+    #
+    #             sell_signal_value = (f"{action_data['buy_sell_data']['Sell Signal'][1]}/"
+    #                                 f"{action_data['buy_sell_data']['Sell Signal'][2]}")   # 2nd value of the tuple
+    #
+    #             existing_buy_tuple = buy_sell_matrix.at[asset, 'Buy Signal']
+    #             existing_sell_tuple = buy_sell_matrix.at[asset, 'Sell Signal']
+    #
+    #             # ✅ Ensure proper tuple structure
+    #             buy_threshold = existing_buy_tuple[2] if isinstance(existing_buy_tuple, tuple) and len(
+    #                 existing_buy_tuple) == 3 else None
+    #             sell_threshold = existing_sell_tuple[2] if isinstance(existing_sell_tuple, tuple) and len(
+    #                 existing_sell_tuple) == 3 else None
+    #
+    #             # ✅ Assign updated values
+    #             buy_sell_matrix.at[asset, 'Buy Signal'] = (buy_signal_value)
+    #             buy_sell_matrix.at[asset, 'Sell Signal'] = (sell_signal_value)
+    #
+    #             # ✅ Use the update function for additional calculations
+    #             buy_sell_matrix = self.update_buy_sell_matrix(asset, buy_sell_matrix, bollinger_df)
+    #
+    #         if skipped_symbols:
+    #             print(f"Skipped Symbols: {', '.join(skipped_symbols)}")
+    #
+    #         return strategy_results, buy_sell_matrix
+    #
+    #     except Exception as e:
+    #         self.log_manager.error(f"Error in process_all_rows: {e}", exc_info=True)
+    #         return strategy_results, buy_sell_matrix
+    async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, open_orders):
+        """Process all rows, updating buy_sell_matrix with latest indicator values from Bollinger Bands."""
+        skipped_symbols = []
+        strategy_results = []
+
         try:
-            asset = row['symbol']
-            if 'price' not in row['info']:
-                print(f"Warning: 'price' not found in row['info'] for {asset}")
-                row['info']['price'] = '0.0'  # or set a default
-            price_str = row['info']['price']
-            price = float(price_str) if price_str else 0.0
-            if asset == 'USD/USD':
-                return None
+            # ✅ Ensure 'asset' is the index for easier row access
+            if "asset" in buy_sell_matrix.columns:
+                buy_sell_matrix.set_index("asset", inplace=True)  # ✅ FIX: Apply inplace=True
 
-            # Fetch OHLCV data from the database
-            ohlcv_df = await self.fetch_ohlcv_data_from_db(asset)
-            if ohlcv_df is None:
-                return None
-
-            # Check if DataFrame contains valid data
-            if ohlcv_df.isnull().values.any():  # This is safe now because ohlcv_df is a DataFrame
-                print(f"DataFrame contains NaN values for {asset}")
-                return None
-
-            # Ensure the DataFrame is sorted by time
-            ohlcv_df.sort_values(by='time', inplace=True)
-
-            # Calculate Bollinger Bands
-            bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
-            if not isinstance(bollinger_df, pd.DataFrame):
-                print(f"bollinger_df is not a DataFrame for asset {asset}")
-                return None
-            action_data = self.decide_action(ohlcv_df, bollinger_df, asset, buy_sell_matrix)
-            # Ensure all necessary keys are present in action_data
-            required_keys = ['action', 'band_ratio', 'sell_cond', 'trigger', 'updates']
-            for key in required_keys:
-                if key not in action_data:
-                    print(f"Warning: {key} missing in action_data for asset {asset}")
-                    action_data[key] = None  # Set a default value if necessary
-            #<><><><><><><><> DEBUG CODE <><><><><><><><>
-            # print(f"Asset: {asset}")
-            # print(f"Action Data: {action_data}")
-            # print(f"Price: {price}")
-            # print(f"Row: {row}")
-            # print(f"Bollinger DataFrame:\n{bollinger_df}")
-            #<><><><><><><><> DEBUG CODE <><><><><><><><>
-            order_info = {
-                'symbol': asset,
-                'action': action_data.get('action') or 'none',
-                'price': price if price is not None else 0.0,
-                'value': float(row['free']) * price if row['free'] and price else 0.0,
-                'trigger': action_data.get('trigger') or 'none',
-                'band_ratio': action_data.get('band_ratio') if action_data.get('band_ratio') else 0.0,
-                'sell_cond': action_data.get('sell_cond') or 'none',
-                'bollinger_df': bollinger_df.to_dict('list') if isinstance(bollinger_df, pd.DataFrame) else {},
-                'action_data': action_data
+            # Fetch OHLCV data asynchronously
+            tasks = {
+                row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
+                for _, row in filtered_ticker_cache.iterrows()
             }
+            ohlcv_data = await asyncio.gather(*tasks.values(), return_exceptions=False)
+            ohlcv_data_dict = {symbol: data for symbol, data in zip(tasks.keys(), ohlcv_data)}
 
-            return {'order_info': order_info}
+            valid_symbols = [symbol for symbol, data in ohlcv_data_dict.items() if isinstance(data, pd.DataFrame)]
 
+            for symbol in valid_symbols:
+                asset = symbol.split('/')[0]
+                temp_symbol = symbol.replace("/", "-")
+
+                # ✅ Skip if there's an open order or asset is in hodl list
+                if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.hodl:
+                    skipped_symbols.append(temp_symbol)
+                    continue
+
+                ohlcv_df = ohlcv_data_dict[symbol]
+                ohlcv_df = self.indicators.calculate_indicators(ohlcv_df)
+
+                # Validate Bollinger Bands
+                bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
+                if not self.is_valid_bollinger_df(bollinger_df):
+                    self.log_manager.error(f"Invalid Bollinger DataFrame for {symbol}")
+                    continue  # Skip invalid symbols
+
+                # ✅ Ensure W-Bottoms and M-Tops exist
+                if 'W-Bottom' not in ohlcv_df.columns or 'M-Top' not in ohlcv_df.columns:
+                    print(f"⚠️ Missing W-Bottom/M-Top in {symbol}. Available cols: {ohlcv_df.columns}")
+                    continue
+
+                action_data = self.decide_action(ohlcv_df, bollinger_df, symbol)
+                strategy_results.append({
+                    'asset': asset,
+                    'symbol': symbol,
+                    **action_data  # Flatten action_data into the results
+                })
+
+                # ✅ Ensure asset exists in buy_sell_matrix before updating
+                if asset not in buy_sell_matrix.index:
+                    self.log_manager.warning(f"⚠️ Asset {asset} not found in buy_sell_matrix index. Skipping update.")
+                    print(f"Available assets: {buy_sell_matrix.index.tolist()}")  # Debugging output
+                    continue
+
+                # ✅ Efficiently update buy_sell_matrix values
+                for col in buy_sell_matrix.columns:
+                    if col in bollinger_df.columns:
+                        computed_value = bollinger_df[col].iloc[-1]
+
+                        # ✅ Extract second value from tuple if applicable
+                        if isinstance(computed_value, tuple) and len(computed_value) > 1:
+                            computed_value = computed_value[1]
+
+                        existing_tuple = buy_sell_matrix.at[asset, col]
+
+                        # ✅ Ensure structured tuple format for updates
+                        threshold = existing_tuple[2] if isinstance(existing_tuple, tuple) and len(
+                            existing_tuple) == 3 else None
+                        buy_sell_matrix.at[asset, col] = (0, computed_value, threshold)
+
+                # ✅ Update 'Buy Signal' and 'Sell Signal' using action_data
+                buy_signal_value = (f"{action_data['buy_sell_data']['Buy Signal'][1]}/"
+                                    f"{action_data['buy_sell_data']['Buy Signal'][2]}")  # 2nd value of the tuple
+
+                sell_signal_value = (f"{action_data['buy_sell_data']['Sell Signal'][1]}/"
+                                     f"{action_data['buy_sell_data']['Sell Signal'][2]}")  # 2nd value of the tuple
+
+                existing_buy_tuple = buy_sell_matrix.at[asset, 'Buy Signal']
+                existing_sell_tuple = buy_sell_matrix.at[asset, 'Sell Signal']
+
+                # ✅ Ensure proper tuple structure
+                buy_threshold = existing_buy_tuple[2] if isinstance(existing_buy_tuple, tuple) and len(
+                    existing_buy_tuple) == 3 else None
+                sell_threshold = existing_sell_tuple[2] if isinstance(existing_sell_tuple, tuple) and len(
+                    existing_sell_tuple) == 3 else None
+
+                # ✅ Assign updated values
+                buy_sell_matrix.at[asset, 'Buy Signal'] = (buy_signal_value)
+                buy_sell_matrix.at[asset, 'Sell Signal'] = (sell_signal_value)
+
+                # ✅ Use the update function for additional calculations
+                buy_sell_matrix = self.update_buy_sell_matrix(asset, buy_sell_matrix, bollinger_df)
+
+            if skipped_symbols:
+                print(f"Skipped Symbols: {', '.join(skipped_symbols)}")
+
+            return strategy_results, buy_sell_matrix
 
         except Exception as e:
-            self.log_manager.error(f"Error processing row for symbol {row['symbol']}: {e}", exc_info=True)
-            return {"error": f"Error processing row for symbol {row['symbol']}: {str(e)}"}
+            self.log_manager.error(f"Error in process_all_rows: {e}", exc_info=True)
+            return strategy_results, buy_sell_matrix
+
+    def update_buy_sell_matrix(self, asset, buy_sell_matrix, bollinger_df):
+        """Update indicator-related columns in buy_sell_matrix with values from the most recent row."""
+        try:
+            most_recent_row = bollinger_df.iloc[-1]  # Use the latest available row
+
+            indicator_columns = {
+                'Buy Ratio': float(self.buy_ratio),
+                'Buy Touch': None,
+                'W-Bottom': None,  # No threshold for pattern-based indicators
+                'Buy RSI': float(self.buy_rsi),
+                'Buy ROC': float(self.roc_24hr),
+                'Buy MACD': 0,
+                'Buy Swing': None,  # No threshold for pattern-based indicators
+                'Sell Ratio': float(self.sell_ratio),
+                'Sell Touch': None,
+                'M-Top': None,  # No threshold for pattern-based indicators
+                'Sell RSI': float(self.sell_rsi),
+                'Sell ROC': -float(self.roc_24hr / 2),
+                'Sell MACD': 0,
+                'Sell Swing': None,  # No threshold for pattern-based indicators
+            }
+
+            # ✅ Ensure asset exists in buy_sell_matrix
+            if asset not in buy_sell_matrix.index:
+                self.log_manager.warning(f"Asset {asset} not found in buy_sell_matrix. Skipping update.")
+                return buy_sell_matrix
+
+            # ✅ Efficiently update buy_sell_matrix
+            for col, threshold in indicator_columns.items():
+                if col in most_recent_row.index:
+                    computed_value = most_recent_row[col]
+
+                    # ✅ Extract second element if computed_value is a tuple
+                    if isinstance(computed_value, tuple) and len(computed_value) > 1:
+                        computed_value = computed_value[1]
+
+                    # ✅ Ensure computed_value is numeric before comparison
+                    if threshold is not None and isinstance(computed_value, (int, float, Decimal)):
+                        decision = 1 if ((col.startswith("Buy") and computed_value > threshold) or
+                                         (col.startswith("Sell") and computed_value < threshold)) else 0
+                    else:
+                        decision = 0  # Default to no signal if computed_value is invalid or threshold is None
+
+                    # ✅ Ensure structured tuple format before updating
+                    buy_sell_matrix.at[asset, col] = (decision, computed_value, threshold)
+
+            return buy_sell_matrix
+
+        except Exception as e:
+            self.log_manager.error(f"Error updating buy_sell_matrix: {e}", exc_info=True)
+            return buy_sell_matrix
+
+    @staticmethod
+    def symbol_has_open_order(symbol, open_orders):
+        """ PART IV:
+        Check if the symbol has an open order.
+        """
+        try:
+            if open_orders.empty:
+                return False
+            else:
+                return symbol.replace('/', '-') in open_orders['product_id'].values
+        except Exception as e:
+            return False
+
 
     async def fetch_ohlcv_data_from_db(self, asset):
-        """Fetch OHLCV data from the database for a given asset."""
-        async with self.db_manager.AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(OHLCVData).filter(OHLCVData.symbol == asset).order_by(OHLCVData.time.desc()).limit(1440)
-            )
-            ohlcv_data = result.scalars().all()
+        """ PART IV:
+        Fetch OHLCV data from the database for a given asset.
+         verify if this is sufficient for indicator calculations
+         (e.g., MACD or Bollinger Bands require lookback periods)."""
+
+
+        query = (
+            select(self.db_tables.OHLCVData)
+            .where(self.db_tables.OHLCVData.symbol == asset)
+            .order_by(self.db_tables.OHLCVData.time.desc())
+            .limit(self.max_ohlcv_rows)
+        )
+        try:
+            ohlcv_data = await self.db_manager.database.fetch_all(query)
 
             if ohlcv_data:
-                # Convert list of SQLAlchemy objects to a pandas DataFrame
+                # Convert the result to a pandas DataFrame
                 ohlcv_df = pd.DataFrame([{
-                    'time': data.time,
-                    'open': data.open,
-                    'high': data.high,
-                    'low': data.low,
-                    'close': data.close,
-                    'volume': data.volume
+                    'time': data['time'],
+                    'open': data['open'],
+                    'high': data['high'],
+                    'low': data['low'],
+                    'close': data['close'],
+                    'volume': data['volume']
                 } for data in ohlcv_data])
 
-                # Now check for NaN values in the DataFrame
+                # Check for NaN values in the DataFrame
                 if ohlcv_df.isnull().values.any():
                     self.log_manager.error(f"NaN values detected in OHLCV data for {asset}")
                     return None
-
-                return ohlcv_df  # Return the DataFrame, not the list
+                if len(ohlcv_df) < 720:
+                    self.log_manager.warning(f"Insufficient OHLCV data for {asset}. Rows fetched: {len(ohlcv_df)}") # Log a warning if the DataFrame is too small
+                return ohlcv_df  # Return the DataFrame
             return None
-
-    def decide_action(self, df, bollinger_df, symbol, buy_sell_matrix):
-        """PART IV: Trading Strategies"""
-        trigger = None
-        updates = {}  # Initialize a dictionary to store updates
-        buy_sell_data = {}
-
-        df = self.indicators.calculate_trends(df)  # Calculate 50, 200 volatility and sma trends
-        df = self.indicators.calculate_rsi(df)  # Calculate RSI
-        df = self.indicators.calculate_roc(df, symbol)  # Calculate ROC
-        df = self.indicators.calculate_macd(df)  # Calculate MACD
-        df = self.indicators.swing_trading_signals(df)
-        if self.is_valid_bollinger_df(bollinger_df):
-            #buy_sell_data, trigger = self.test_buy_sell(bollinger_df, df, symbol, force_buy=True) # debug
-            buy_sell_data, trigger = self.buy_sell(bollinger_df, df, symbol)  # get buy sell dat
-            if trigger:
-                print(f"Trigger for {symbol}: {trigger}")
-        else:
-            self.log_manager.error(f"Invalid Bollinger DataFrame for {symbol}")
-            return buy_sell_data
-        coin = symbol.split('/')[0]
-        if coin in buy_sell_matrix['coin'].values:
-            updates[coin] = {
-                'Buy Ratio': buy_sell_data['buy_sig_ratio'],
-                'Buy Touch': buy_sell_data['buy_sig_touch'],
-                'W-Bottom Signal': buy_sell_data['w_bottom'],
-                'Buy RSI': buy_sell_data['buy_rsi'],
-                'Buy ROC': buy_sell_data['buy_signal_roc'],
-                'Buy MACD': buy_sell_data['buy_signal_macd'],  # Include MACD buy signal
-                'Buy Swing': buy_sell_data['buy_swing'],
-                'Buy Signal': buy_sell_data['buy_signal'],
-                'Sell Ratio': buy_sell_data['sell_sig_ratio'],
-                'Sell Touch': buy_sell_data['sell_sig_touch'],
-                'M-Top Signal': buy_sell_data['m_top_signal'],
-                'Sell RSI': buy_sell_data['sell_rsi'],
-                'Sell ROC': buy_sell_data['sell_signal_roc'],
-                'Sell MACD': buy_sell_data['sell_macd'],  # Include MACD sell signal
-                'Sell Swing': buy_sell_data['sell_swing'],
-                'Sell Signal': buy_sell_data['sell_signal']
-            }
-        action = buy_sell_data['action']
-        sell_cond = buy_sell_data['sell_signal']
-        band_ratio = buy_sell_data['band_ratio']
-
-        return {'action': action, 'band_ratio': band_ratio, 'trigger': trigger, 'updates': updates, 'sell_cond': sell_cond}
-
-    def process_row_results(self, results, buy_sell_matrix):
-        """PART IV: Trading Strategies
-        enter results from indicators and Order cancellation and Data Collection into the buy_sell_matrix"""
-        try:
-            for result in results:
-                if result is None or isinstance(result, Exception) or "error" in result:
-                    continue  # Skip this result and move on to the next
-
-                # Skip the iteration if the item is not a dictionary
-                if not isinstance(result, dict):
-                    continue
-                if not result.get('order_info'):
-                    continue
-
-                order_info = result.get('order_info')
-                # symbol = order_info.get('symbol')
-                action_data = order_info.get('action_data')
-                if action_data and 'updates' in action_data:
-                    updates = action_data['updates']
-                    # load indicator results into the buy_sell_matrix
-                    for coin, coin_updates in updates.items():
-                        # Ensure the coin is in the buy_sell_matrix
-                        if coin in buy_sell_matrix['coin'].values:
-                            for col, value in coin_updates.items():
-                                # Update only the columns that exist in buy_sell_matrix
-                                if col in buy_sell_matrix.columns:
-                                    buy_sell_matrix.loc[buy_sell_matrix['coin'] == coin, col] = value
-
-            return buy_sell_matrix
         except Exception as e:
-            self.log_manager.error(f"fetch_ohlcv: {e}", exc_info=True)
-
-
+            self.log_manager.error(f"Error fetching OHLCV data for {asset}: {e}", exc_info=True)
+            return None
 
     @staticmethod
     def is_valid_bollinger_df(bollinger_df):
-        """PART III: Order cancellation and Data Collection"""
-        return not (bollinger_df is None or
-                    bollinger_df.iloc[-1][['basis', 'upper', 'lower', 'band_ratio']].isna().any() or
-                    bollinger_df.empty)
+        """
+        Validate the Bollinger DataFrame to ensure it is non-empty, non-null,
+        and has valid data in the required columns.
+        """
+        # Check if DataFrame is None or empty
+        if bollinger_df is None or bollinger_df.empty:
+            return False
 
-    def test_buy_sell(self, bollinger_df, df, symbol, force_buy=False):
-        """PART IV: Trading Strategies"""
-        buy_sell_data = {
-            'action': None,
-            'buy_signal': '',  # Initialize as an empty string
-            'sell_signal': '',  # Initialize as an empty string
-            'band_ratio': None,
-            'buy_sig_touch': False,
-            'sell_sig_touch': False,
-            'buy_sig_ratio': False,
-            'sell_sig_ratio': False,
-            'w_bottom': False,
-            'm_top_signal': False,
-            'buy_rsi': False,
-            'sell_rsi': False,
-            'buy_signal_roc': False,
-            'sell_signal_roc': False,
-            'buy_signal_macd': False,
-            'sell_macd': False,
-            'buy_swing': False,
-            'sell_swing': False
-        }
-        trigger = None
+        # Check if the required columns exist
+        required_columns = ['basis', 'upper', 'lower', 'band_ratio']
+        # Check if DataFrame exists, has sufficient rows, and required columns
+        if bollinger_df is None or len(bollinger_df) < 20 or not all(
+                col in bollinger_df.columns for col in required_columns):
+            return False
 
+        # Check the last row for NaN values in required columns
+        if bollinger_df.iloc[-1][required_columns].isna().any():
+            return False
+
+        return True
+
+    def decide_action(self, ohlcv_df, bollinger_df, symbol):
+        """
+        Determine buy or sell action based on indicators and Bollinger Bands.
+        """
         try:
-            if force_buy:
-                self.log_manager.info(f"Forcing buy condition for {symbol}")
-                # Force a buy condition for testing purposes
-                buy_sell_data['buy_sig_touch'] = True  # Force Bollinger Band touch condition
-                buy_sell_data['buy_rsi'] = True  # Force RSI condition
-                buy_sell_data['buy_signal_roc'] = True  # Force ROC condition
-                buy_sell_data['buy_signal'] = 'bst-brs-bro'  # Set signals for testing
-                buy_sell_data['action'] = 'buy'
-                trigger = buy_sell_data['buy_signal']
-                return buy_sell_data, trigger
+            # Call buy_sell to get action and related data
+            buy_sell_data, trigger, bollinger_df = self.buy_sell(bollinger_df, ohlcv_df, symbol)
 
-            # Standard logic if force_buy is False
-            if len(bollinger_df) < 20 or bollinger_df.iloc[-1][['basis', 'upper', 'lower', 'band_ratio']].isna().any():
-                return buy_sell_data  # Not enough data or NaN values present
+            # Find the volume_24h for the given symbol in self.market_cache
+            volume_24h = None  # Default value if not found
+            for market in self.market_cache_vol:
+                if market.get('symbol') == symbol:
+                    volume_24h = market.get('info', {}).get('volume_24h')
+                    break  # Exit loop once the symbol is found
 
-            last_row = bollinger_df.iloc[-1]
-            prev_row = bollinger_df.iloc[-2]
-
-            # Ratio-based signals
-            buy_sell_data['buy_sig_ratio'] = (abs(prev_row['band_ratio'] - 1) < 0.05 < abs(last_row['band_ratio'] - 1))
-            buy_sell_data['sell_sig_ratio'] = abs(prev_row['band_ratio'] - 1) > 0.05 and prev_row['basis'] > last_row[
-                'basis']
-
-            # Buy Signal: Price touching or below the lower Bollinger Band
-            buy_sell_data['buy_sig_touch'] = last_row['close'] < last_row['lower']
-
-            # Sell Signal: Price touching or above the upper Bollinger Band
-            buy_sell_data['sell_sig_touch'] = last_row['close'] > last_row['upper']
-
-            # bottom buy, top sell
-            buy_sell_data['w_bottom'], buy_sell_data['m_top_signal'] = (
-                self.indicators.algorithmic_trading_strategy(bollinger_df))
-
-            # RSI-based signals
-            buy_sell_data['buy_sig_rsi'] = df['RSI'].iloc[-1] < 30  # RSI less than 30 indicates oversold
-            buy_sell_data['sell_sig_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
-
-            # ROC-based signals
-            buy_sell_data['buy_signal_roc'] = ((df['ROC'].iloc[-1] > 5) and (df['ROC_Diff'].iloc[-1] > 0.3) and
-                                               (df['RSI'].iloc[-1] < 30))
-            buy_sell_data['sell_signal_roc'] = ((df['ROC'].iloc[-1] < -2.5) and (df['ROC_Diff'].iloc[-1] < -0.2) and
-                                                (df['RSI'].iloc[-1] > 70))
-
-            # MACD-based signals
-            buy_sell_data['buy_signal_macd'] = (df['MACD_Histogram'].iloc[-1] < 0 < df['MACD_Histogram'].iloc[0])
-
-            # Add swing signals
-            buy_sell_data['buy_swing'] = df['Buy Swing'].iloc[-1]
-            buy_sell_data['sell_swing'] = df['Sell Swing'].iloc[-1]
-
-            # ROC-based signals with precedence
-            if buy_sell_data['buy_signal_roc']:
-                buy_sell_data['buy_signal'] = 'bro'
-            elif buy_sell_data['sell_signal_roc']:
-                buy_sell_data['sell_signal'] = 'sro'
-
-            # Count buy/sell conditions
-            buy_conditions_met = buy_sell_data['buy_signal'].count('-') + bool(buy_sell_data['buy_signal'])
-            sell_conditions_met = buy_sell_data['sell_signal'].count('-') + bool(buy_sell_data['sell_signal'])
-
-            # Determine the final action based on the triggers
-            if buy_conditions_met >= 3 or 'bro' in buy_sell_data['buy_signal']:
-                self.log_manager.info(f"Buy conditions met for {symbol}. Buy Signal: {buy_sell_data['buy_signal']}") #Debug
-                buy_sell_data['action'] = 'buy'
-                trigger = buy_sell_data['buy_signal']
-
-            elif sell_conditions_met >= 3 or 'sro' in buy_sell_data['sell_signal']:
-
-                buy_sell_data['action'] = 'sell'
-                trigger = buy_sell_data['sell_signal']
-            else:
-                self.log_manager.info(f"THERE ARE NO BUY OR SELL conditions met for {symbol}. Signals: {buy_sell_data}")
-                #debug
-            return buy_sell_data, trigger
+            # Return the action dictionary with the added 'volume_24h'
+            return {
+                'action': buy_sell_data.get('action', None),
+                'price': Decimal(ohlcv_df['close'].iloc[0]),
+                'band_ratio': buy_sell_data.get('band_ratio', None),
+                'trigger': trigger,
+                'sell_cond': buy_sell_data.get('Sell Signal', None),
+                'buy_sell_data': buy_sell_data,
+                'volume_24h': volume_24h  # Add the volume_24h value
+            }
 
         except Exception as e:
-            self.log_manager.error(f'Error in buy_sell() {symbol}: {e}', exc_info=True)
-            return buy_sell_data, None
+            self.log_manager.error(f"Error in decide_action for {symbol}: {e}", exc_info=True)
+            return {
+                'action': None,
+                'price': None,
+                'band_ratio': None,
+                'trigger': None,
+                'sell_cond': None,
+                'buy_sell_data': {},
+                'volume_24h': None
+            }
 
-    def buy_sell(self, bollinger_df, df, symbol):
-        """PART IV: Trading Strategies"""
-        """Determine buy or sell signal based on Bollinger band data, rsi, roc, and macd values."""
-
-        buy_sell_data = {
-            'action': None,
-            'buy_signal': '',  # Initialize as an empty string
-            'sell_signal': '',  # Initialize as an empty string
-            'band_ratio': None,
-            'buy_sig_touch': False,
-            'sell_sig_touch': False,
-            'buy_sig_ratio': False,
-            'sell_sig_ratio': False,
-            'w_bottom': False,
-            'm_top_signal': False,
-            'buy_rsi': False,
-            'sell_rsi': False,
-            'buy_signal_roc': False,
-            'sell_signal_roc': False,
-            'buy_signal_macd': False,
-            'sell_macd': False,
-            'buy_swing': False,
-            'sell_swing': False
-        }
-        trigger = None
+    def buy_sell(self, bollinger_df, ohlcv_df, symbol):
+        """
+        Determine buy or sell signals based on the most recent row in Bollinger Bands DataFrame.
+        Evaluates conditions like RSI, MACD, ROC, and vectorized scoring for buy/sell signals.
+        """
         try:
-            if len(bollinger_df) < 20 or bollinger_df.iloc[-1][['basis', 'upper', 'lower', 'band_ratio']].isna().any():
-                return buy_sell_data  # Not enough data or NaN values present
+            # Ensure the necessary indicators are present in ohlcv_df
+            if 'ROC' not in ohlcv_df.columns or 'ROC_Diff' not in ohlcv_df.columns:
+                ohlcv_df = self.indicators.calculate_indicators(ohlcv_df)
 
-            last_row = bollinger_df.iloc[-1]
-            prev_row = bollinger_df.iloc[-2]
+            # Handle missing or NaN values for critical indicators
+            if ohlcv_df[['ROC', 'ROC_Diff']].iloc[0].isna().any():
+                self.log_manager.warning(f"Missing ROC data for {symbol}. Skipping ROC-based signals.")
+                return {'action': 'hold', 'Buy Signal': (0, None, None), 'Sell Signal': (0, None, None)}, None, bollinger_df
 
-            # RSI-based signals
-            buy_sell_data['buy_rsi'] = df['RSI'].iloc[-1] < 30  # RSI less than 30 indicates oversold
-            buy_sell_data['sell_rsi'] = df['RSI'].iloc[-1] > 70  # RSI greater than 70 indicates overbought
+            # Extract latest OHLCV row
+            last_ohlcv = ohlcv_df.iloc[0]
 
-            # Ratio-based signals
-            buy_sell_data['buy_sig_ratio'] = (abs(prev_row['band_ratio'] - 1) < 0.05 < abs(last_row['band_ratio'] - 1))
-            buy_sell_data['sell_sig_ratio'] = abs(prev_row['band_ratio'] - 1) > 0.05 and prev_row['basis'] > last_row[
-                'basis']
+            # Extract structured tuple values safely
+            def get_tuple_value(indicator, default=None):
+                return indicator[1] if isinstance(indicator, tuple) else indicator if pd.notna(indicator) else default
 
-            # Buy Signal: Price touching or below the lower Bollinger Band
-            buy_sell_data['buy_sig_touch'] = last_row['close'] < last_row['lower']
-            # Sell Signal: Price touching or above the upper Bollinger Band
-            buy_sell_data['sell_sig_touch'] = last_row['close'] > last_row['upper']
+            roc_value = get_tuple_value(last_ohlcv.get('ROC'))
+            rsi_value = get_tuple_value(last_ohlcv.get('RSI'))
+            roc_diff_value = last_ohlcv.get('ROC_Diff', 0.0)
 
-            # W-Bottom (buy) and M-Top (sell) signals
-            buy_sell_data['w_bottom'], buy_sell_data['m_top_signal'] = (
-                self.indicators.algorithmic_trading_strategy(bollinger_df))
+            # Evaluate ROC-based buy and sell signals
+            buy_signal_roc = (
+                    roc_value is not None and roc_value > 5 and
+                    roc_diff_value > 0.3 and
+                    rsi_value is not None and rsi_value < 30
+            )
+            sell_signal_roc = (
+                    roc_value is not None and roc_value < -2.5 and
+                    roc_diff_value < -0.2 and
+                    rsi_value is not None and rsi_value > 70
+            )
 
-            # MACD-based signals
-            buy_sell_data['buy_signal_macd'] = (df['MACD_Histogram'].iloc[-1] < 0 < df['MACD_Histogram'].iloc[0])
-            buy_sell_data['sell_macd'] = (df['MACD_Histogram'].iloc[-1] > 0 > df['MACD_Histogram'].iloc[0])
+            # If ROC signals override, return immediately
+            if buy_signal_roc:
+                return {
+                    'action': 'buy',
+                    'Buy Signal': (1, round(roc_value, 2), 5),
+                    'Sell Signal': (0, None, None),
+                    'band_ratio': bollinger_df['band_ratio'].iloc[0]
+                }, 'roc_buy', bollinger_df
+            elif sell_signal_roc:
+                return {
+                    'action': 'sell',
+                    'Sell Signal': (1, round(roc_value, 2), -2.5),
+                    'Buy Signal': (0, None, None),
+                    'band_ratio': bollinger_df['band_ratio'].iloc[0]
+                }, 'roc_sell', bollinger_df
 
-            # ROC-based signals
-            buy_sell_data['buy_signal_roc'] = ((df['ROC'].iloc[-1] > 5) and (df['ROC_Diff'].iloc[-1] > 0.3) and
-                                               (df['RSI'].iloc[-1] < 30))
-            buy_sell_data['sell_signal_roc'] = ((df['ROC'].iloc[-1] < -2.5) and (df['ROC_Diff'].iloc[-1] < -0.2) and
-                                                (df['RSI'].iloc[-1] > 70))
+            # Focus on the most recent row of the Bollinger DataFrame
+            most_recent_row = bollinger_df.iloc[0]
 
-            # If ROC-based signals are set, they override the other conditions
-            if buy_sell_data['buy_signal_roc']:
-                buy_sell_data['buy_signal'] = 'bro'
-                buy_sell_data['action'] = 'buy'
-                trigger = 'bro'
-            elif buy_sell_data['sell_signal_roc']:
-                buy_sell_data['sell_signal'] = 'sro'
-                buy_sell_data['action'] = 'sell'
-                trigger = 'sro'
+            # Define buy and sell condition columns
+            buy_conditions = ['Buy RSI', 'Buy MACD', 'Buy Touch', 'Buy Ratio', 'W-Bottom', 'Buy Swing']
+            sell_conditions = ['Sell RSI', 'Sell MACD', 'Sell Touch', 'Sell Ratio', 'M-Top', 'Sell Swing']
 
-            # Count all buy signals that are True
-            buy_conditions = [
-                ('bsr', buy_sell_data['buy_sig_ratio']),
-                ('bst', buy_sell_data['buy_sig_touch']),
-                ('wbs', buy_sell_data['w_bottom']),
-                ('brs', buy_sell_data['buy_rsi']),
-                ('bmc', buy_sell_data['buy_signal_macd']),
-                ('bss', buy_sell_data['buy_swing'])
-            ]
+            # Extract structured tuple values (binary flag only)
+            buy_score = sum(most_recent_row[col][0] for col in buy_conditions if col in most_recent_row)
+            sell_score = sum(most_recent_row[col][0] for col in sell_conditions if col in most_recent_row)
 
-            # Count all sell signals that are True
-            sell_conditions = [
-                ('ssr', buy_sell_data['sell_sig_ratio']),
-                ('sst', buy_sell_data['sell_sig_touch']),
-                ('mts', buy_sell_data['m_top_signal']),
-                ('srs', buy_sell_data['sell_rsi']),
-                ('smc', buy_sell_data['sell_macd']),
-                ('sss', buy_sell_data['sell_swing'])
-            ]
+            # Determine Buy Signal and Sell Signal based on scores
+            buy_signal = (1, buy_score,  self.buy_target) if buy_score >=  self.buy_target else (0, buy_score, self.buy_target)
+            sell_signal = (1, sell_score, self.sell_target) if sell_score >= self.sell_target else (0, sell_score, self.sell_target)
 
-            # Filter out the active signals (True conditions)
-            active_buy_signals = [label for label, condition in buy_conditions if condition]
-            active_sell_signals = [label for label, condition in sell_conditions if condition]
+            # Assign signals to the dataframe
+            bollinger_df.at[most_recent_row.name, 'Buy Signal'] = buy_signal
+            bollinger_df.at[most_recent_row.name, 'Sell Signal'] = sell_signal
 
-            # Build the buy and sell signal strings
-            buy_sell_data['buy_signal'] = '-'.join(active_buy_signals)
-            buy_sell_data['sell_signal'] = '-'.join(active_sell_signals)
+            # Cancel signals if both buy and sell are True
+            if buy_signal[0] == 1 and sell_signal[0] == 1:
+                buy_signal = (0, buy_score, self.buy_target)
+                sell_signal = (0, sell_score, self.sell_target)
+            # Final action determination
+            action = 'hold'
+            trigger = None
+            if buy_signal[0] == 1:
+                action = 'buy'
+                trigger = 'limit_buy'
+            elif sell_signal[0] == 1:
+                action = 'sell'
+                trigger = 'limit_sell'
 
-            # Count the conditions met
-            buy_conditions_met = len(active_buy_signals)
-            sell_conditions_met = len(active_sell_signals)
+            return {
+                'action': action,
+                'price': round(bollinger_df['close'].iloc[0], 4),
+                'band_ratio': round(most_recent_row['band_ratio'], 4),
+                'Buy Signal': buy_signal,
+                'Sell Signal': sell_signal
+            }, trigger, bollinger_df
 
-            # Determine the final action based on the triggers
-            if buy_conditions_met >= 3:
-                buy_sell_data['action'] = 'buy'
-                trigger = buy_sell_data['buy_signal']
-            elif sell_conditions_met >= 3:
-                buy_sell_data['action'] = 'sell'
-                trigger = buy_sell_data['sell_signal']
-
-            return buy_sell_data, trigger
         except Exception as e:
-            self.log_manager.error(f'Error in buy_sell() {symbol}: {e}', exc_info=True)
-        return buy_sell_data, None
-
+            self.log_manager.error(f"Error in buy_sell() for {symbol}: {e}", exc_info=True)
+            return {'action': None, 'Buy Signal': (0, None, None), 'Sell Signal': (0, None, None)}, None, bollinger_df
 
     def sell_signal_from_indicators(self, symbol, price, trigger, holdings):
         """PART V: Order Execution"""
@@ -446,11 +572,13 @@ class TradingStrategy:
             if isinstance(holdings, pd.DataFrame):
                 holdings = holdings.to_dict('records')
             coin = symbol.split('/')[0]
-            if any(item['quote'] == coin for item in holdings):
+            sell_order = 'bracket' # for testing defalut is limit
+            if trigger == 'market_sell':
+                sell_order = 'market'
+            if any(item['asset'] == coin for item in holdings):
                 sell_action = 'close_at_limit'
                 sell_pair = symbol
                 sell_limit = price
-                sell_order = 'limit'
                 self.log_manager.sell(f'Sell signal created for {symbol}, order triggered by {trigger} @ '
                                                      f'{price}.')
                 return sell_action, sell_pair, sell_limit, sell_order
@@ -459,3 +587,176 @@ class TradingStrategy:
         except Exception as e:
             self.log_manager.error(f'Error in handle_action(): {e}\nTraceback:,', exc_info=True)
             return None, None, None, None
+
+    # def update_buy_sell_matrix(self, asset, buy_sell_matrix, bollinger_df):
+    #     """
+    #     Update indicator-related columns in buy_sell_matrix with values from the most recent row.
+    #     """
+    #     # Extract the most recent row from Bollinger DataFrame
+    #     try:
+    #         most_recent_row = bollinger_df.iloc[0]
+    #         # Update buy_sell_matrix for the current asset
+    #         if asset in buy_sell_matrix['asset'].values:
+    #             # Locate the row in buy_sell_matrix corresponding to the asset
+    #             idx = buy_sell_matrix[buy_sell_matrix['asset'] == asset].index[0]
+    #
+    #             # Update the indicator-related columns with values from most_recent_row
+    #             indicator_columns = [
+    #                 'Buy Ratio', 'Buy Touch', 'W-Bottom', 'Buy RSI', 'Buy ROC', 'Buy MACD', 'Buy Swing',
+    #                 'Sell Ratio', 'Sell Touch', 'M-Top', 'Sell RSI', 'Sell ROC', 'Sell MACD', 'Sell Swing',
+    #                 'Buy Signal', 'Sell Signal'
+    #             ]
+    #
+    #             for col in indicator_columns:
+    #                 if col in most_recent_row.index:  # Ensure the column exists in most_recent_row
+    #                     buy_sell_matrix.at[idx, col] = most_recent_row[col]
+    #
+    #         # If asset doesn't exist in buy_sell_matrix, log a warning (if needed)
+    #         else:
+    #             self.log_manager.warning(f"Asset {asset} not found in buy_sell_matrix. Skipping update.")
+    #
+    #         return buy_sell_matrix
+    #     except Exception as e:
+    #         self.log_manager.error(f"Error updating buy_sell_matrix: {e}", exc_info=True)
+
+    # async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, open_orders):
+    #     """
+    #     Process all rows, handling strategy calculations in a vectorized manner.
+    #     """
+    #     try:
+    #         # Fetch OHLCV data
+    #         tasks = {
+    #             row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
+    #             for _, row in filtered_ticker_cache.iterrows()
+    #         }
+    #         ohlcv_data = await asyncio.gather(*tasks.values(), return_exceptions=True)
+    #         ohlcv_data_dict = {symbol: data for symbol, data in zip(tasks.keys(), ohlcv_data)}
+    #
+    #         # Filter valid symbols
+    #         valid_symbols = [symbol for symbol, data in ohlcv_data_dict.items() if isinstance(data, pd.DataFrame)]
+    #         strategy_results = []
+    #         bollinger_df = pd.DataFrame()  # Initialize an empty DataFrame for Bollinger Bands
+    #         # Initialize a list to collect skipped symbols
+    #         skipped_symbols = []
+    #
+    #         for symbol in valid_symbols:
+    #             # Extract the asset (base currency)
+    #             asset = symbol.split('/')[0]
+    #
+    #             # Check if the asset already has an open order or is in holdings
+    #             if self.symbol_has_open_order(symbol, open_orders) or self.symbol_in_holdings(symbol):
+    #                 skipped_symbols.append(symbol)
+    #                 continue
+    #
+    #             ohlcv_df = ohlcv_data_dict[symbol]
+    #             ohlcv_df = self.indicators.calculate_indicators(ohlcv_df)
+    #
+    #             # Validate Bollinger Bands
+    #             bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
+    #             if not self.is_valid_bollinger_df(bollinger_df):
+    #                 self.log_manager.error(f"Invalid Bollinger DataFrame for {symbol}")
+    #                 continue  # Skip invalid symbols
+    #
+    #             # Extract the most recent row from Bollinger DataFrame
+    #             most_recent_row = bollinger_df.iloc[-1]
+    #
+    #             # Update buy_sell_matrix for the current asset
+    #             if asset in buy_sell_matrix['asset'].values:
+    #                 # Locate the row in buy_sell_matrix corresponding to the asset
+    #                 idx = buy_sell_matrix[buy_sell_matrix['asset'] == asset].index[0]
+    #
+    #                 # Update the indicator-related columns with values from most_recent_row
+    #                 indicator_columns = [
+    #                     'Buy Ratio', 'Buy Touch', 'W-Bottom', 'Buy RSI', 'Buy ROC', 'Buy MACD', 'Buy Swing',
+    #                     'Sell Ratio', 'Sell Touch', 'M-Top', 'Sell RSI', 'Sell ROC', 'Sell MACD', 'Sell Swing',
+    #                     'Buy Signal', 'Sell Signal'
+    #                 ]
+    #
+    #                 for col in indicator_columns:
+    #                     if col in most_recent_row.index:  # Ensure the column exists in most_recent_row
+    #                         buy_sell_matrix.at[idx, col] = most_recent_row[col]
+    #
+    #             # If asset doesn't exist in buy_sell_matrix, log a warning (if needed)
+    #             else:
+    #                 self.log_manager.warning(f"Asset {asset} not found in buy_sell_matrix. Skipping update.")
+    #
+    #             # Collect strategy results for further processing
+    #             action_data = self.decide_action(ohlcv_df, bollinger_df, symbol)
+    #             strategy_results.append({
+    #                 'asset': asset,
+    #                 'symbol': symbol,
+    #                 **action_data  # Flatten action_data into the results
+    #             })
+    #
+    #         # Print summary of skipped symbols
+    #         if skipped_symbols:
+    #             self.utility.print_data(None, open_orders, None, None, None, None, None)
+    #             print(f"Skipped Symbols: {', '.join(skipped_symbols)}")
+    #         return strategy_results, buy_sell_matrix
+    #
+    #     except Exception as e:
+    #         self.log_manager.error(f"Error in process_all_rows: {e}", exc_info=True)
+    #         return [], buy_sell_matrix
+
+    # async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, open_orders):
+    #     """ PART IV:
+    #     Process all rows, handling strategy calculations in a vectorized manner.
+    #     """
+    #     try:
+    #         # print(filtered_ticker_cache.head())
+    #         # print(filtered_ticker_cache.dtypes)
+    #         # print([row['symbol'] for _, row in filtered_ticker_cache.iterrows()])
+    #         # Fetch OHLCV data
+    #         tasks = {
+    #             row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
+    #             for _, row in filtered_ticker_cache.iterrows()
+    #         }
+    #         ohlcv_data = await asyncio.gather(*tasks.values(), return_exceptions=False)
+    #
+    #         ohlcv_data_dict = {symbol: data for symbol, data in zip(tasks.keys(), ohlcv_data)}
+    #
+    #         # Filter valid symbols
+    #         valid_symbols = [symbol for symbol, data in ohlcv_data_dict.items() if isinstance(data, pd.DataFrame)]
+    #         strategy_results = []
+    #         indicator_updates = []
+    #         skipped_symbols = []
+    #         temp_symbol = None
+    #         for symbol in valid_symbols:
+    #             # Extract the asset (base currency)
+    #             asset = symbol.split('/')[0]
+    #             if "/" in symbol:
+    #                 temp_symbol = symbol.replace("/", "-")
+    #             # Check if the asset already has an open order or is in holdings
+    #             if self.symbol_has_open_order(temp_symbol, open_orders) or self.symbol_in_holdings(asset):
+    #                 skipped_symbols.append(temp_symbol)
+    #                 continue
+    #
+    #             ohlcv_df = ohlcv_data_dict[symbol]
+    #             ohlcv_df = self.indicators.calculate_indicators(ohlcv_df)
+    #
+    #             # Validate Bollinger Bands
+    #             bollinger_df = self.indicators.calculate_bollinger_bands(ohlcv_df)
+    #             if not self.is_valid_bollinger_df(bollinger_df):
+    #                 self.log_manager.error(f"Invalid Bollinger DataFrame for {symbol}")
+    #                 continue  # Skip invalid symbols
+    #
+    #             # Collect strategy results for further processing
+    #             action_data = self.decide_action(ohlcv_df, bollinger_df, symbol)
+    #             strategy_results.append({
+    #                 'asset': asset,
+    #                 'symbol': symbol,
+    #                 **action_data  # Flatten action_data into the results
+    #             })
+    #
+    #             # Perform the updates to buy_sell_matrix after action_data is computed
+    #             buy_sell_matrix = self.update_buy_sell_matrix(asset, buy_sell_matrix, bollinger_df)
+    #
+    #         # Print summary of skipped symbols
+    #         if skipped_symbols:
+    #             self.sharded_utils_print.print_data(None, open_orders, None, None, None, None, None)
+    #             print(f"Skipped Symbols: {', '.join(skipped_symbols)}")
+    #    #         return strategy_results, buy_sell_matrix
+    #
+    #     except Exception as e:
+    #         self.log_manager.error(f"Error in process_all_rows: {e}", exc_info=True)
+    #         return [], buy_sell_matrix

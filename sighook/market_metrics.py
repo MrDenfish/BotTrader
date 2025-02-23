@@ -34,7 +34,7 @@ class CoinMarketAPI:
 
     def get_market_data(self, symbol):
         """
-        Fetch market data for a given cryptocurrency symbol.
+        Fetch MarketDataManager for a given cryptocurrency symbol.
         Returns market capitalization and trading volume.
         """
         response = None

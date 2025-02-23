@@ -1,19 +1,28 @@
 
 from decimal import Decimal
-
+from Shared_Utils.config_manager import CentralConfig as Config
 
 class ProfitabilityManager:
-    def __init__(self, exchange, ccxt_api, utility, portfolio_manager, database_session_mngr, database_ops_mngr,
-                 order_manager, trading_strategy, profit_helper, profit_extras, logmanager, app_config):
+    _instance = None
 
+    @classmethod
+    def get_instance(cls, exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
+                        order_manager, trading_strategy, profit_helper, profit_extras, logmanager):
+        if cls._instance is None:
+            cls._instance = cls(exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
+                                order_manager, trading_strategy, profit_helper, profit_extras, logmanager)
+        return cls._instance
+
+    def __init__(self, exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
+                 order_manager, trading_strategy, profit_helper, profit_extras, logmanager):
+        self.config = Config()
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
-        self._take_profit = Decimal(app_config.take_profit)
-        self._stop_loss = Decimal(app_config.stop_loss)
-        self.database_dir = app_config.get_database_dir
-        self.ledger_cache = None
-        self.utility = utility
-        self.database_manager = database_session_mngr
+        self._take_profit = Decimal(self.config.take_profit)
+        self._stop_loss = Decimal(self.config.stop_loss)
+        self._hodl = self.config.hodl
+        self.database_dir = self.config.get_database_dir
+        self.holdings_processor = holdings_processor
         self.database_ops = database_ops_mngr
         self.order_manager = order_manager
         self.portfolio_manager = portfolio_manager
@@ -21,17 +30,18 @@ class ProfitabilityManager:
         self.profit_helper = profit_helper
         self.profit_extras = profit_extras
         self.log_manager = logmanager
-        self.ticker_cache = None
-        self.session = None
-        self.market_cache = None
-        self.start_time = None
-        self.web_url = None
-        self.holdings = None
+        self.ticker_cache = self.session = self.market_cache = self.start_time = None
+        self.market_cache_usd = self.market_data = self.web_url = self.holdings = None
+        self.market_cache_vol = self.current_prices =None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache, web_url):
+    def set_trade_parameters(self, start_time, market_data, web_url):
         self.start_time = start_time
-        self.ticker_cache = ticker_cache
-        self.market_cache = market_cache
+        self.market_data = market_data
+        self.ticker_cache = market_data['ticker_cache']
+        self.market_cache_usd = self.market_data['usd_pairs_cache']  # usd pairs
+        self.market_cache_vol = self.market_data['filtered_vol']
+        self.current_prices = self.market_data['current_prices']
+
         self.web_url = web_url
 
     @property
@@ -42,92 +52,74 @@ class ProfitabilityManager:
     def take_profit(self):
         return self._take_profit
 
-    async def check_profit_level(self, holding_list, holdings_df, current_prices, open_orders):  # async
-        """PART VI: Profitability Analysis and Order Generation """
-        # await self.database_session_mngr.process_holding_db(holdings, self.start_time)
-        try:
-            # Update and process holdings
-            aggregated_df = await self.update_and_process_holdings(holding_list, holdings_df, current_prices, open_orders)
-            profit_data = await self.database_manager.create_performance_snapshot()  # Create a snapshot
-            # of current portfolio performance
+    @property
+    def hodl(self):
+        return self._hodl
 
-            return aggregated_df, profit_data
+    async def update_and_process_holdings(self, start_time, open_orders, holdings_list):
+        """PART VI:
+        Analyze profitability and place sell orders using _calculate_profitability."""
+        try:
+            # Process holdings and calculate profitability
+            aggregated_df = await self.holdings_processor.process_holdings(open_orders, holdings_list)
+            # Evaluate and execute sell orders
+            await self.check_and_execute_sell_orders(start_time, aggregated_df, open_orders)
+
+            return aggregated_df #updated_holdings_df
         except Exception as e:
-            self.log_manager.error(f'check_profit_level: {e} e', exc_info=True)
+            self.log_manager.error(f"update_and_process_holdings: {e}", exc_info=True)
+            raise
 
-    async def update_and_process_holdings(self, holding_list, holdings_df, current_prices, open_orders):
-        """PART VI: Profitability Analysis and Order Generation """
+    async def check_and_execute_sell_orders(self, start_time, updated_holdings_df, open_orders):
+        """
+        PART VI: Profitability Analysis and Order Generation
+        Evaluate holdings to determine if sell orders should be placed.
+        """
         try:
-            # Load or update holdings
-
-            aggregated_df = await self.database_manager.process_holding_db(holding_list, holdings_df, current_prices,
-                                                                           open_orders)
-            holdings_df = await self.portfolio_manager.fetch_wallets()
-            updated_holdings_df = await self.profit_helper.calculate_unrealized_profit_loss(aggregated_df)
-            merged_df = updated_holdings_df.merge(holdings_df[['asset', 'total']], on='asset', how='left')
-            await self.check_and_execute_sell_orders(merged_df, current_prices, open_orders)  # await
-
-            # # # Fetch new trades for all currencies in holdings
-
-            #  need to process further
-            # symbols = updated_holdings_df['symbol'].tolist()
-            # all_new_trades = await self.database_manager.fetch_new_trades_for_symbols(symbols)  # await
-
-        except Exception as e:
-            self.log_manager.error(f'update_and_process_holdings: {e}', exc_info=True)
-
-    async def check_and_execute_sell_orders(self, updated_holdings_df, current_prices, open_orders):
-        """PART VI: Profitability Analysis and Order Generation"""
-        try:
-            realized_profit = 0
             sell_orders = []
-
             updated_holdings_list = updated_holdings_df.to_dict('records')  # Convert DataFrame to list of dictionaries
 
             for holding in updated_holdings_list:
-                asset = holding['symbol'].split('/')[0]
-                current_market_price = holding['current_price']
+                # Skip assets marked as "hodl"
+                if holding['asset'] in self.hodl:
+                    continue
+
+                # Extract asset and current market price
+                asset = holding['asset']
+                current_market_price = Decimal(self.current_prices.get(holding['symbol'], 0))
+
+                # Determine if a sell order should be placed
                 if self.profit_helper.should_place_sell_order(holding, current_market_price):
-                    sell_amount = holding['balance']
-                    sell_price = Decimal(current_market_price)
-                    sell_orders.append((asset, sell_amount, sell_price, holding))
+                    sell_order = self.create_sell_order(holding, current_market_price)
+                    sell_orders.append(sell_order)
 
-                    trigger = 'profit' if realized_profit > 0 else 'loss'
-                    order = {
-                        'asset': holding['asset'],
-                        'symbol': holding['symbol'],
-                        'action': 'sell',
-                        'price': sell_price,
-                        'trigger': trigger,
-                        'bollinger_df': None,  # If applicable
-                        'action_data': {
-                            'action': 'sell',
-                            'trigger': trigger,
-                            'updates': {
-                                holding['quote']: {
-                                    'Sell Signal': trigger
-                                }
-                            },
-                            'sell_cond': trigger
-                        },
-                        'value': holding['total'] * sell_price # Calculate the value of the order
-                    }
-
-                    # Here, handle_actions needs to accept order and holdings_list
-                    await self.order_manager.handle_actions(order, updated_holdings_list)
-                    # Process all sell orders in a single operation
+            # Execute sell orders using OrderManager's handle_actions()
             if sell_orders:
-                realized_profit = await self.database_manager.process_sell_orders_fifo(self.market_cache, sell_orders,
-                                                                                       updated_holdings_list,
-                                                                                       updated_holdings_df, current_prices)
+                await self.order_manager.execute_actions(sell_orders, updated_holdings_list)
 
-            if updated_holdings_list:
-                await self.database_manager.batch_update_holdings(updated_holdings_list, current_prices, open_orders)
-
-            return realized_profit
         except Exception as e:
-            self.log_manager.error(f'check_and_execute_sell_orders:  {e}', exc_info=True)
+            self.log_manager.error(f'check_and_execute_sell_orders: {e}', exc_info=True)
             raise
+
+    @staticmethod
+    def create_sell_order(holding, current_market_price):
+        """
+        Create a standardized sell order dictionary for a given holding.
+        """
+        unrealized_profit = holding['unrealized_profit_loss']
+        trigger = 'bracket_profit' if unrealized_profit > 0 else 'bracket_loss'
+
+        return {
+            'asset': holding['asset'],
+            'symbol': holding['symbol'],
+            'action': 'sell',
+            'price': current_market_price,
+            'trigger': trigger,
+            'volume': holding['amount'],  # Selling the entire balance
+            'sell_cond': trigger,
+            'value': Decimal(holding['current_value'])
+        }
+
 
 
 

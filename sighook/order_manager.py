@@ -3,40 +3,52 @@ from decimal import Decimal, ROUND_HALF_UP
 import asyncio
 import aiohttp
 import time
-
+from Shared_Utils.config_manager import CentralConfig
 
 class OrderManager:
-    def __init__(self, trading_strategy, ticker_manager, exchange, webhook, utility, alerts, logmanager, ccxt_api,
-                 profit_helper, config, max_concurrent_tasks=10):
+    _instance = None
 
+    @classmethod
+    def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logmanager, ccxt_api,
+                        profit_helper, shared_utils_precision, max_concurrent_tasks=10):
+        if cls._instance is None:
+            cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts, logmanager, ccxt_api,
+                                profit_helper, shared_utils_precision, max_concurrent_tasks)
+        return cls._instance
+
+    def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logmanager, ccxt_api,
+                 profit_helper, shared_utils_precision, max_concurrent_tasks=10):
+        self.config = CentralConfig()
         self.trading_strategy = trading_strategy
         self.exchange = exchange
         self.webhook = webhook
         self.ticker_manager = ticker_manager
+        self.shared_utils_precision = shared_utils_precision
         self.alerts = alerts
         self.log_manager = logmanager
         self.ccxt_api = ccxt_api
-        self.utility = utility
         self.profit_helper = profit_helper
-        self._version = config.program_version
-        self._min_sell_value = Decimal(config.min_sell_value)
-        self._trailing_percentage = Decimal(config.trailing_percentage)  # Default trailing stop at 0.5%
-        self._hodl = config.hodl
-        self._take_profit = Decimal(config.take_profit)
-        self._cxl_buy = config.cxl_buy
-        self._cxl_sell = config.cxl_sell
+        self._version = self.config.program_version
+        self._min_sell_value = Decimal(self.config.min_sell_value)
+        self._trailing_percentage = Decimal(self.config.trailing_percentage)  # Default trailing stop at 0.5%
+        self._hodl = self.config.hodl
+        self._take_profit = Decimal(self.config.take_profit)
+        self._cxl_buy = self.config.cxl_buy
+        self._cxl_sell = self.config.cxl_sell
+        self._currency_pairs_ignored = self.config.currency_pairs_ignored
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
-        self.ticker_cache = None
-        self.http_session = None
-        self.market_cache = None
-        self.start_time = None
-        self.web_url = None
+        self.market_cache_vol, self.ticker_cache, self.filtered_balances, self.min_volume = None, None, None, None
+        self.http_session, self.start_time, self.web_url  = None, None, None
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache,  web_url):
+    def set_trade_parameters(self, start_time, market_data,  order_management, web_url):
         self.start_time = start_time
-        # self.session = session
-        self.ticker_cache = ticker_cache
-        self.market_cache = market_cache
+        self.ticker_cache = market_data['ticker_cache']
+        self.usd_pairs = market_data['usd_pairs_cache']
+        self.market_cache_vol = market_data['filtered_vol']
+        self.current_prices = market_data['current_prices']
+        self.filtered_balances = order_management['non_zero_balances']
+        self.open_orders = order_management['order_tracker']
+        self.min_volume = Decimal(market_data['avg_quote_volume'])
         self.web_url = web_url
 
     @property
@@ -63,6 +75,10 @@ class OrderManager:
     def trailing_percentage(self):
         return self._trailing_percentage
 
+    @property
+    def currency_pairs_ignored(self):
+        return self._currency_pairs_ignored
+
     async def open_http_session(self):
         if self.http_session is None:
             self.http_session = aiohttp.ClientSession()
@@ -72,28 +88,35 @@ class OrderManager:
             await self.http_session.close()
             self.http_session = None
 
+    async def throttled_send(self, webhook_payload):
+        """PART V:
+        Throttle the send_webhook() function to limit concurrent requests.
+        Args:
+            webhook_payload (dict): The webhook payload to be sent.
+        Returns:
+            Response or None: The response from send_webhook() or None if it fails.
+        """
+        await self.open_http_session()  # Ensure the HTTP session is open
+        async with self.semaphore:  # Acquire semaphore to limit concurrency
+            try:
+                response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+                return response
+            except Exception as e:
+                self.log_manager.error(f"Error in throttled_send: {e}", exc_info=True)
+                return None
+
+
     async def get_open_orders(self):  # async
         """PART III: Trading Strategies"""
         """ Fetch open orders for ALL USD paired coins  and process the data to determine if the order should be
         cancelled."""
-        endpoint = 'private'
         try:
-            # symbols_to_check = usd_pairs if fetch_all else [symbol['id'].replace('-', '/') for symbol in holdings if
-            #                                                 symbol['id']]
-            params = {'paginate': True, 'paginationCalls': 10}
-
-            all_open_orders = await self.ccxt_api.ccxt_api_call(
-                self.exchange.fetch_open_orders, endpoint, None, params=params)
-
-            if not all_open_orders:
-                self.log_manager.debug('order_manager: get_open_orders: No open orders found.')
+            all_open_orders = await self.format_open_orders_from_dict(self.open_orders)
+            if not all_open_orders.empty:
+                open_orders = await self.cancel_stale_orders(all_open_orders)
+                return open_orders
+            else:
                 return None
-
-            self.log_manager.debug(
-                f'order_manager: get_open_orders: Found {len(all_open_orders)} open orders.')
-            all_open_orders = self.format_open_orders(all_open_orders)
-            open_orders = await self.cancel_stale_orders(all_open_orders)
-            return open_orders
         except Exception as gooe:
             self.log_manager.error(f'get_open_orders: {gooe}', exc_info=True)
             return None
@@ -104,6 +127,7 @@ class OrderManager:
         ticker_data = []
         try:
             symbols = set(open_orders['product_id'].str.replace('/', '-'))
+            asset = symbols.pop().split('-')[0]
             ticker_tasks = [self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol) for symbol in symbols]
             ticker_data = await asyncio.gather(*ticker_tasks)
             ticker_df = pd.DataFrame(
@@ -114,11 +138,23 @@ class OrderManager:
             merged_orders = pd.merge(open_orders, ticker_df, left_on=open_orders['product_id'].str.replace('/', '-'),
                                      right_on='symbol', how='left')
 
+            merged_orders = await self.adjust_merged_orders_prices(merged_orders)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
+
             merged_orders['price'] = merged_orders['price'].apply(Decimal)
             merged_orders['ask'] = merged_orders['ask'].apply(Decimal)
             merged_orders['bid'] = merged_orders['bid'].apply(Decimal)
-            merged_orders['time active (minutes)'] = merged_orders['time active (minutes)'].str.replace(' minutes',
-                                                                                                        '').astype(int)
+            merged_orders['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, merged_orders[
+                'price'], 'quote')
+            merged_orders['ask'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, merged_orders[
+                'ask'], 'base')
+            merged_orders['bid'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, merged_orders[
+                'bid'], 'base')
+
+            if merged_orders['time active (minutes)'].dtype == 'object':
+                merged_orders['time active (minutes)'] = merged_orders['time active (minutes)'].str.replace(' minutes', '')
+            merged_orders['time active (minutes)'] = pd.to_numeric(merged_orders['time active (minutes)'],
+                                                                   errors='coerce').fillna(0).astype(int)
             merged_orders['time active > 5 minutes'] = merged_orders['time active (minutes)'] > 5
 
             merged_orders['is_stale'] = (
@@ -127,13 +163,14 @@ class OrderManager:
                     (merged_orders['price']   > merged_orders['bid'])) &
                     (merged_orders['time active > 5 minutes'])) |
                     ((merged_orders['side'] == 'SELL') &
-                    (merged_orders['price'] < merged_orders['ask'] * Decimal(1 - Decimal(self.cxl_buy))))
+                    (merged_orders['price'] < merged_orders['ask'] * Decimal(1 - Decimal(self.cxl_sell))))
             )
 
             stale_orders = merged_orders[merged_orders['is_stale']]
-            cancel_tasks = [self.cancel_order(order_id) for order_id in stale_orders['order_id']]
-            await asyncio.gather(*cancel_tasks)
+            cancel_tasks = [self.cancel_order(order_id, product_id) for order_id, product_id in
+                            zip(stale_orders['order_id'], stale_orders['product_id'])]
 
+            await asyncio.gather(*cancel_tasks)
             non_stale_orders = merged_orders[~merged_orders['is_stale']].drop(columns=['is_stale', 'symbol', 'ask', 'bid'])
             return non_stale_orders
 
@@ -141,84 +178,123 @@ class OrderManager:
             self.log_manager.error(f'Error cancelling stale orders: {e}', exc_info=True)
             return None
 
-    async def cancel_order(self, order_id):
+    async def cancel_order(self, order_id, product_id):
         """PART III: Trading Strategies """
-        endpoint = 'private'
-        async with self.ccxt_api.get_semaphore(endpoint):
-            await self.ccxt_api.ccxt_api_call(self.exchange.cancel_order, endpoint, order_id)
+        try:
+            if order_id is not None:
+                print(f'Cancelling order {product_id}:{order_id}')
+                product_id = product_id.replace('-', '/')
+                endpoint = 'private'
+                async with self.ccxt_api.get_semaphore(endpoint):
+                    await self.ccxt_api.ccxt_api_call(self.exchange.cancel_order,endpoint,order_id)
+                    return
+            print(f'‼️ Order {product_id}:{order_id}  was not cancelled')
+            return
+        except Exception as e:
+            self.log_manager.error(f'Error cancelling order {product_id}:{order_id}: {e}', exc_info=True)
 
-    def format_open_orders(self, open_orders: list) -> pd.DataFrame:
-        """PART III: Trading Strategies """
+    async def adjust_merged_orders_prices(self, merged_orders):
         """
-        Format the open orders data received from the ccxt api(Coinbase Cloud) call.
-
-        Parameters:
-
-        Returns:
-        - list: A list of dictionaries containing the required data.
+        Adjust the price of each order in the merged_orders DataFrame to align with the precision defined for the product_id.
         """
         try:
-            data_to_load = [{
-                'order_id': order['id'],
-                'product_id': order['info']['product_id'],
-                'side': order['info']['side'],
-                'size': order['amount'],
-                'price': order['price'],
-                'trigger_status': order['info']['trigger_status'],
-                'trigger_price': order['triggerPrice'],
-                'stop_price': order['stopPrice'],
-                'filled': order['filled'],
-                'remaining': order['remaining'],
-                'time active': order['info']['created_time']
-            } for order in open_orders]
-            df = pd.DataFrame(data_to_load)
-            base_deci, quote_deci = self.utility.fetch_precision(df['product_id'])
+            for index, row in merged_orders.iterrows():
+                # Fetch the precision for the symbol (product_id)
+                product_id = row['product_id']
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(product_id, self.usd_pairs)
 
-            df['size'] = df.apply(
-                lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['size']), 'base'), axis=1)
-            df['price'] = df.apply(
-                lambda row: self.utility.adjust_precision(base_deci, quote_deci, Decimal(row['price']), 'base'), axis=1)
-            df['time active (minutes)'] = df['time active'].apply(lambda x: self.utility.calculate_time_difference(x))
+                # Adjust the price using the quote precision
+                adjusted_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, row['price'], 'quote')
+
+                # Update the price in the DataFrame
+                merged_orders.at[index, 'price'] = float(adjusted_price)
+
+            return merged_orders
+
+        except Exception as e:
+            self.log_manager.error(f"Error adjusting prices in merged_orders: {e}", exc_info=True)
+            return merged_orders
+
+    async def format_open_orders_from_dict(self, open_orders_dict: dict) -> pd.DataFrame:
+        """
+        Format the open orders data stored in a dictionary structure.
+
+        Args:
+            open_orders_dict (dict): Dictionary of open orders keyed by order ID.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing formatted open order data.
+        """
+        try:
+            # Convert the dictionary to a list of dictionaries
+            data_to_load = [
+                {
+                    'order_id': order_id,
+                    'product_id': order['info']['product_id'],
+                    'side': order['info']['side'],
+                    'size': order['amount'],
+                    'price': round(order['price'],8),
+                    'trigger_status': order['info']['trigger_status'],
+                    'trigger_price': order.get('triggerPrice'),  # Use .get() to handle missing keys
+                    'stop_price': order.get('stopPrice'),
+                    'filled': order['filled'],
+                    'remaining': order['remaining'],
+                    'time active': order['info']['created_time']
+                }
+                for order_id, order in open_orders_dict.items()
+            ]
+
+            # Create a DataFrame from the list
+            df = pd.DataFrame(data_to_load)
+
+            # Ensure `time active` is parsed as datetime
+            df['time active'] = pd.to_datetime(df['time active'], errors='coerce')
+
+            # Calculate the time active in minutes
+            current_time = pd.Timestamp.utcnow()
+            df['time active (minutes)'] = df['time active'].apply(
+                lambda x: (current_time - x).total_seconds() / 60 if pd.notnull(x) else None)
+
+            # Convert to numeric type and check if time active exceeds 5 minutes
             df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')
             df['time active > 5 minutes'] = df['time_temp'] > 5
-            df.drop(columns=['time_temp'], inplace=True)
+
+            # Drop temporary column if not needed
+            df.drop(columns=['time_temp'])
 
             return df
         except Exception as e:
-            self.log_manager.error(f'Error formatting open orders: {e}', exc_info=True)
+            # Handle exceptions and log the error
+            print(f"Error in format_open_orders_from_dict: {e}")
+            return pd.DataFrame()
 
-    async def execute_actions(self, results, holdings):
-        """PART V: Order Execution"""
-        execution_tasks = []
+    async def execute_actions(self, strategy_results, holdings):
+        """ PART V:
+        Executes buy/sell actions based on strategy results.
+        """
         try:
-            for result in results:
-                if result is None or isinstance(result, Exception) or "error" in result:
-                    continue  # Skip this result and move on to the next
-                if 'order_info' in result and result['order_info']['action'] in ['buy', 'sell']:
-                    execution_tasks.append(self.handle_actions(result['order_info'], holdings))
+            execution_tasks = []
 
-            if execution_tasks:  # Check if there are any tasks to execute
-                execution_results = await asyncio.gather(*execution_tasks, return_exceptions=True)
-            else:
-                execution_results = []
+            for result in strategy_results:
+                # Skip invalid or non-actionable strategy_results
+                if result.get('action') not in ['buy', 'sell']:
+                    continue
 
-            # Check each item if it's not empty and the first element is not None
-            filtered_orders = []
-            for item in execution_results:
-                if isinstance(item, Exception):
-                    self.log_manager.error(f"Error executing actions: {item}", exc_info=True)
-                elif item and item[0] is not None:
-                    filtered_orders.append(item[0])
+                execution_tasks.append(self.handle_actions(result, holdings))
 
-            # Processed orders with the desired structure
+            # Execute all tasks concurrently
+            execution_results = await asyncio.gather(*execution_tasks, return_exceptions=True)
+
+            # Filter and process successful orders
             processed_orders = [
                 {
                     'symbol': order.get('buy_pair') if order.get('buy_action') else order.get('sell_symbol'),
                     'action': 'buy' if order.get('buy_action') else 'sell',
                     'trigger': order.get('trigger')
                 }
-                for order in filtered_orders if order.get('buy_action') or order.get('sell_action')
+                for order in execution_results if isinstance(order, dict)
             ]
+
             return pd.DataFrame(processed_orders, columns=['symbol', 'action', 'trigger'])
 
         except Exception as e:
@@ -226,62 +302,66 @@ class OrderManager:
             return None
 
     async def handle_actions(self, order, holdings):
-        """PART V: Order Execution
-           PART VI: Profitability Analysis and Order Generation """
-        await self.open_http_session()  # Ensure the session is open before handling actions
+        """ PART V:
+        Handle buy conditions with limit and market orders.
+        Handle  sell conditions with market ('sro' trigger) limit('bro' trigger) and bracket ('profit'/'loss' trigger)
+        Handle trailing stop orders when they become available
+
+        """
+        await self.open_http_session()  # Ensure session is open
         try:
-            _, quote_deci = self.utility.fetch_precision(order['symbol'])
+            asset = order['asset']
             symbol = order['symbol']
-            price = order['price']
-            price = self.utility.float_to_decimal(price, quote_deci)
-            value = order.get('value', 0)  # Default value if not present
-            action_data = order['action_data']  # Assuming 'action_data' must exist
-            if order['action'] == 'buy':
-                action_data['updates'] = {symbol: price}
-            results = []
+            action_type = order.get('action')
 
-            for coin in action_data['updates'].keys():  # key is the coin symbol
-                balances = await self.ticker_manager.fetch_balance_and_filter()
+            # Extract price, volume, and other order details
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
 
-                action_type = action_data.get('action')
-                trigger = action_data.get('trigger')
-                band_ratio = action_data.get('band_ratio', None)
-                sell_cond = action_data.get('sell_cond', None)
-                if coin not in balances['filtered']:
-                    coin_balance = Decimal('0')
-                else:
-                    coin_balance = Decimal(balances['filtered'][coin]['free'])
-                usd_balance = Decimal(balances['filtered']['USD']['free'])
-                if action_type == 'buy':
-                    result = await self.handle_buy_action(symbol, price, coin_balance, usd_balance, band_ratio, trigger)
-                    results.append(result)
-                elif action_type == 'sell' and value > self.min_sell_value:
-                    result = await self.handle_sell_action(holdings, symbol, price, trigger, sell_cond)
-                    results.append(result)
-                elif action_type == 'trailing_stop':
-                    result = self.handle_trailing_stop(holdings, symbol, price, trigger, sell_cond)
-                    results.append(result)
-
-            return results  # Process results as needed
-        except Exception as e:
-            if "No market found" in str(e):
-                self.log_manager.info(f"No market found: {e}")
+            price =self.shared_utils_precision.float_to_decimal(order['price'], quote_deci) # quote_deci
+            volume = order.get('volume', 0)
+            amount = self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', Decimal('0'))
+            result = None
+            if action_type == 'buy':
+                coin_balance = self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', Decimal('0'))
+                usd_balance = Decimal(self.filtered_balances.get('USD', {}).get('available_to_trade_fiat', Decimal('0')))
+                band_ratio = order.get('band_ratio')
+                trigger = order.get('trigger')
+                result = await self.handle_buy_action(symbol, price, coin_balance, usd_balance, band_ratio,  trigger
+                )
+            elif action_type == 'sell':
+                if amount > self.min_sell_value:
+                    result = await self.handle_sell_action(
+                        holdings, symbol, amount, price, order.get('trigger'), order.get('sell_cond')
+                    )
+            elif action_type == 'hold':
+                result = self.handle_trailing_stop(
+                    holdings, symbol, amount, price, order.get('trigger'), order.get('sell_cond')
+                )
             else:
-                self.log_manager.error(f"Error handling actions: {e}", exc_info=True)
-            return []
+                self.log_manager.warning(f"Unknown action type: {action_type}")
+                return result
+
+            return result
+
+        except Exception as e:
+            self.log_manager.error(f"Error handling action {order}: {e}", exc_info=True)
+            return None
 
     async def handle_buy_action(self, symbol, price, coin_balance, usd_balance, band_ratio, trigger):
         """PART V: Order Execution"""
         try:
             usd_balance = usd_balance.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            coin_balance_value = coin_balance * Decimal(price)
+            coin_balance_value = Decimal(coin_balance) * Decimal(price)
             coin = symbol.split('/')[0]
+
             if ((usd_balance > 100 and coin_balance_value < self.min_sell_value)
-                    or (usd_balance > 50 and (coin in self.hodl))):  # accumulate BTC, ETH etc
+                    or (usd_balance > 50 and (coin in self.hodl)) and coin  not in self.currency_pairs_ignored):  # accumulate BTC, ETH etc
                 # Prepare buy action data
                 buy_action = 'open_at_limit'
-
                 buy_order = 'limit'
+                if trigger == 'market_buy':
+                    buy_order = 'market'
+
                 time_millisecs = int(time.time() * 1000)
                 webhook_payload = {
                     'timestamp': time_millisecs,
@@ -295,10 +375,11 @@ class OrderManager:
                     'stop_loss': None,
                     'take_profit': None,
                     'origin': "SIGHOOK",
-                    'verified': "valid or not valid "  # this will be used to verify the order
+                    'verified': "valid or not valid "
                 }
-                print("Buy order created: ", webhook_payload) # debug
-                response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+                # Use throttled_send to limit concurrent webhook requests
+                response = await self.throttled_send(webhook_payload)
+
                 if response:
                     if response.status in [403, 429, 500]:  #
                         await self.close_http_session()
@@ -306,7 +387,7 @@ class OrderManager:
                 else:
                     await self.close_http_session()
                     return []
-                self.log_manager.buy(f'{symbol} buy signal triggered @ {buy_action} price'
+                self.log_manager.buy(f'✅ {symbol} buy signal triggered @ {buy_action} price'
                                                     f' {price}, USD balance: ${usd_balance}')
                 return ({'buy_action': buy_action, 'buy_pair': symbol, 'buy_limit': price, 'curr_band_ratio':
                         band_ratio, 'sell_action': None, 'sell_symbol': None, 'sell_limit': None, 'sell_cond': None,
@@ -321,12 +402,12 @@ class OrderManager:
             self.log_manager.error(f'handle_buy_action: Error processing order  {symbol}: {e}', exc_info=True)
             return None
 
-    async def handle_sell_action(self, holdings, symbol, price, trigger, sell_cond):
+    async def handle_sell_action(self, holdings, symbol, amount, price, trigger, sell_cond):
         """PART V: Order Execution"""
         try:
             # Prepare sell action data
             coin = symbol.split('/')[0]
-            if trigger not in ['profit', 'loss']:
+            if trigger not in ['bracket_profit', 'bracket_loss']: # process market & limit orders
                 sell_action, sell_symbol, sell_limit, sell_order = (self.trading_strategy.sell_signal_from_indicators(
                     symbol, price, trigger, holdings))
                 if sell_action and (coin not in self.hodl):   # Hold specified (.env) coins for accumulation.
@@ -338,14 +419,15 @@ class OrderManager:
                         'action': sell_action,
                         'order_type': sell_order,
                         'side': 'SELL',
-                        'amount': None,
+                        'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
                         'limit_price': price,
                         'stop_loss': None,
                         'take_profit': None,
                         'origin': "SIGHOOK",
                         'verified': "valid or not valid "  # this will be used to verify the order
                     }
-                    await self.webhook.send_webhook(self.http_session, webhook_payload)
+                    # Use throttled_send to limit concurrent webhook requests
+                    await self.throttled_send(webhook_payload)
 
                     self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @'
                                                          f' {sell_action} price' f' {sell_limit}')
@@ -360,16 +442,18 @@ class OrderManager:
                     'pair': symbol.replace('/', ''),
                     'order_id': None,
                     'action': 'close_at_limit',
-                    'order_type': 'limit',
+                    'order_type': 'bracket',
                     'side': 'SELL',
-                    'amount': None,
+                    'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
                     'limit_price': price,
-                    'stop_loss': None,
+                    'stop_loss': None, # will be computed in webhook place_bracket_order()
                     'take_profit': None,
                     'origin': "SIGHOOK",
                     'verified': "valid or not valid "  # this will be used to verify the order
                 }
-                await self.webhook.send_webhook(self.http_session, webhook_payload)  # await
+                # Use throttled_send to limit concurrent webhook requests
+                await self.throttled_send(webhook_payload)  # await
+
                 if trigger == 'profit' and coin not in self.hodl:
                     self.log_manager.take_profit(f'{symbol} sell signal triggered  {trigger} @ sell price'
                                                                 f' {price}')
@@ -382,7 +466,7 @@ class OrderManager:
                                                   exc_info=True)
             return None
 
-    async def handle_trailing_stop(self, holdings, symbol, price, trigger, sell_cond):
+    async def handle_trailing_stop(self, holdings, symbol, amount, price, trigger, sell_cond):
         """PART V: Order Execution"""
         try:
             # Prepare sell action data
@@ -399,7 +483,7 @@ class OrderManager:
                         'action': sell_action,
                         'order_type': sell_order,
                         'side': 'SELL',
-                        'order_size': None,
+                        'order_size': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
                         'limit_price': price,
                         'stop_loss': None,
                         'take_profit': None,
@@ -407,8 +491,9 @@ class OrderManager:
                         'verified': "valid or not valid "  # this will be used to verify the order
                     }
 
-                    await self.webhook.send_webhook(self.http_session, webhook_payload)
-                    # await
+                    # Use throttled_send to limit concurrent webhook requests
+                    await self.throttled_send(webhook_payload)
+
                     self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @'
                                                          f' {sell_action} price' f' {sell_limit}')
 
@@ -424,14 +509,16 @@ class OrderManager:
                     'action': 'close_at_limit',
                     'order_type': 'limit',
                     'side': 'SELL',
-                    'amount': None,
+                    'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
                     'limit_price': price,
                     'stop_loss': None,
                     'take_profit': None,
                     'origin': "SIGHOOK",
                     'verified': "valid or not valid "  # this will be used to verify the order
                 }
-                await self.webhook.send_webhook(self.http_session, webhook_payload)  # await
+                # Use throttled_send to limit concurrent webhook requests
+                await self.throttled_send(webhook_payload)
+
                 if trigger == 'profit' and coin not in self.hodl:
                     self.log_manager.take_profit(f'{symbol} sell signal triggered  {trigger} @ sell price'
                                                                 f' {price}')

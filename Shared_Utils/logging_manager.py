@@ -9,17 +9,20 @@ class CustomLogger(logging.Logger):
     # Define custom logging levels
     BUY_LEVEL_NUM = 21
     SELL_LEVEL_NUM = 19
+    ORDER_SENT_NUM = 23
     PROFIT_LEVEL_NUM = 17
-    LOSS_LEVEL_NUM = 16
+    LOSS_LEVEL_NUM = 11
     STOP_LOSS_LEVEL_NUM = 15
     INSUFFICIENT_FUNDS = 13
 
     logging.addLevelName(BUY_LEVEL_NUM, "BUY")
     logging.addLevelName(SELL_LEVEL_NUM, "SELL")
+    logging.addLevelName(ORDER_SENT_NUM, "ORDER_SENT")
     logging.addLevelName(PROFIT_LEVEL_NUM, "TAKE_PROFIT")
     logging.addLevelName(LOSS_LEVEL_NUM, "TAKE_LOSS")
     logging.addLevelName(STOP_LOSS_LEVEL_NUM, "STOP_LOSS")
     logging.addLevelName(INSUFFICIENT_FUNDS, "INSUFFICIENT_FUNDS")
+
 
     def sell(self, message, *args, **kwargs):
         if self.isEnabledFor(self.SELL_LEVEL_NUM):
@@ -44,6 +47,9 @@ class CustomLogger(logging.Logger):
     def buy(self, message, *args, **kwargs):
         if self.isEnabledFor(self.BUY_LEVEL_NUM):
             self._log(self.BUY_LEVEL_NUM, f"BUY: {message}", args, **kwargs)
+    def order_sent(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.ORDER_SENT_NUM):
+            self._log(self.ORDER_SENT_NUM, f"ORDER_SENT: {message}", args, **kwargs)
 
 logging.setLoggerClass(CustomLogger)
 
@@ -64,6 +70,7 @@ class CustomFormatter(logging.Formatter):
         logging.ERROR: red + format + reset,
         logging.CRITICAL: bold_red + format + reset,
         CustomLogger.BUY_LEVEL_NUM: blue + format + reset,
+        CustomLogger.ORDER_SENT_NUM: green + format + reset,
         CustomLogger.SELL_LEVEL_NUM: green + format + reset
     }
 
@@ -80,8 +87,11 @@ class LoggerManager:
 
     # singleton pattern
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
+        if not cls._instance:
+            print("Creating Logging instance")
             cls._instance = super(LoggerManager, cls).__new__(cls)
+        else:
+            print("Reusing Logging  instance")
         return cls._instance
 
     def __init__(self, config, log_dir=None):
@@ -118,6 +128,9 @@ class LoggerManager:
         logger = logging.getLogger(logger_name)
         logger.setLevel(self._log_level)
 
+        if logger.hasHandlers():
+            logger.handlers.clear()
+
         if not logger.handlers:
             # Console handler
             console_handler = logging.StreamHandler()
@@ -149,12 +162,14 @@ class LoggerManager:
         sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
         sqlalchemy_logger.setLevel(level)
 
-        # Add a console handler or any other handler if needed
-        if not sqlalchemy_logger.hasHandlers():
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(CustomFormatter())
-            console_handler.setLevel(level)
-            sqlalchemy_logger.addHandler(console_handler)
+        # � REMOVE DUPLICATE HANDLERS
+        if sqlalchemy_logger.hasHandlers():
+            sqlalchemy_logger.handlers.clear()
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(CustomFormatter())
+        console_handler.setLevel(level)
+        sqlalchemy_logger.addHandler(console_handler)
 
     @staticmethod
     def log_method_call(func):

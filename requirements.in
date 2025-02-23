@@ -1,32 +1,35 @@
-aiodns
-aiohttp
-aiosignal
+aiodns                  #ccxt
+aiohttp                 #ccxt
+aiosignal               #aiohttp
 aiosqlite
-async-timeout
-attrs
+async-timeout           #aiohttp
+attrs                   #aiohttp
 Bottleneck
 ccxt
-certifi
-cffi
-charset-normalizer
-cryptography
-frozenlist
-greenlet
-idna
-multidict
+certifi                 #requests
+cffi                    #cryptography, pycares
+charset-normalizer      #ccxt
+coinbase-advanced-py    #requests>=2.31.0, cryptography>=42.0.4, PyJWT>=2.8.0, websockets>=12.0,<14.0, backoff>=2.2.1
+coinbase                #equests>=2.5, six>=1.9, pycryptodome>=3.4.11
+cryptography            #ccxt
+frozenlist              #aiohttp, aiosignal
+greenlet                #sqlalchemy
+idna                    #requests, yarl
+multidict               #aiohttp, yarl
 numexpr
-numpy
+numpy                   #bottleneck, numexpr, pandas
 pandas
-pycares
-pycparser
-python-dateutil
+pycares                 #aiodns
+pycparser               #cffi
+python-dateutil         #pandas
 python-dotenv
-pytz
-requests
-six
+pytz                    #pandas
+requests                #ccxt
+six                     #python-dateutil
 SQLAlchemy
 tabulate
-typing_extensions
-tzdata
-urllib3
-yarl
+typing_extensions       #aiosqlite, ccxt, sqlalchemy
+tzdata                  #pandas
+urllib3                 #requests
+websockets              #ccxt
+yarl                    #aiohttp, ccxt

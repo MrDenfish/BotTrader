@@ -10,10 +10,14 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code into the container
+# Copy the 'Shared_Utils' directory from the root project folder
+COPY ../Shared_Utils /app/Utils
+
+# Copy the remaining application code into the container
 COPY . /app
 
-# Install dependencies, copy files, etc.
+# Environment variables
 ENV RUNNING_IN_DOCKER=true
+ENV PYTHONPATH=/app
 # Command to run the application
-CMD ["python", "sender.py"]
+CMD ["python", "sighook/sender.py"]

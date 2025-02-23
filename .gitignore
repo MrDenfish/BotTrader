@@ -1,0 +1,6 @@
+/Shared_Utils/sighook_api_key.json
+/Shared_Utils/webhook_api_key.json
+/Shared_Utils/webhook_tb_api_key.json
+/Shared_Utils/websocket_api_info.json
+/.env_tradebot
+/.env_tradebot_sensitive

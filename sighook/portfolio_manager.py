@@ -1,313 +1,275 @@
 
-import asyncio
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
+from Shared_Utils.config_manager import CentralConfig
 import pandas as pd
-from datetime import timedelta
-from decimal import Decimal, ROUND_DOWN
+import asyncio
 
+
+import asyncio
+from decimal import Decimal
 
 class PortfolioManager:
-    def __init__(self, utility, logmanager, ccxt_api, exchange, max_concurrent_tasks, app_config):
-        self._min_volume = Decimal(app_config.min_volume)
-        self._roc_24hr = Decimal(app_config.roc_24hr)
+    """ Manages portfolio-related tasks such as market data caching and order evaluation. """
+
+    _instance = None  # Singleton instance
+
+    @classmethod
+    def get_instance(cls, logmanager, ccxt_api, exchange, max_concurrent_tasks,
+                     shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility):
+        """ Ensures only one instance of PortfolioManager is created. """
+        if cls._instance is None:
+            cls._instance = cls(logmanager, ccxt_api, exchange, max_concurrent_tasks,
+                                shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility)
+        return cls._instance
+
+    def __init__(self, logmanager, ccxt_api, exchange, max_concurrent_tasks,
+                 shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility):
+        """ Initializes the PortfolioManager instance. """
+
+        # Ensure singleton enforcement
+        if PortfolioManager._instance is not None:
+            raise Exception("This class is a singleton! Use get_instance() instead.")
+
+        self.app_config = CentralConfig()
+
+        # Config-based trading parameters
+        self._buy_rsi = self.app_config._rsi_buy
+        self._sell_rsi = self.app_config._rsi_sell
+        self._buy_ratio = self.app_config._buy_ratio
+        self._sell_ratio = self.app_config._sell_ratio
+        self._min_volume = Decimal(self.app_config.min_volume)
+        self._roc_24hr = Decimal(self.app_config.roc_24hr)
+
+        # External dependencies
         self.exchange = exchange
-        self.ledger_cache = None
+        self.ccxt_api = ccxt_api
         self.log_manager = logmanager
-        self.ccxt_exceptions = ccxt_api
-        self.utility = utility
+        self.shared_utils_precision = shared_utils_precision
+        self.shared_utils_datas_and_times = shared_utils_datas_and_times
+        self.shared_utils_utility = shared_utils_utility
+
+        # Internal state
         self.ticker_cache = None
-        self.market_cache = None
+        self.market_cache_usd = None
+        self.market_cache_vol = None
         self.start_time = None
+        self.rate_limit = 0.15  # Initial rate limit in seconds (150 ms)
+
+        # Concurrency control
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
-    def set_trade_parameters(self, start_time, ticker_cache, market_cache):
+    def __repr__(self):
+        """ Returns a string representation of the PortfolioManager instance. """
+        return f"<PortfolioManager(exchange={self.exchange}, rate_limit={self.rate_limit})>"
+
+
+    def set_trade_parameters(self, start_time, market_data, order_management):
         self.start_time = start_time
-        self.ticker_cache = ticker_cache
-        self.market_cache = market_cache
+        self.ticker_cache = market_data['ticker_cache'] # based on vol and usd pairs
+        self.non_zero_balances = order_management['non_zero_balances']
+        self.market_cache_vol = market_data['filtered_vol']
+        self.market_cache_usd = market_data['usd_pairs_cache']
+        self.min_volume = Decimal(market_data['avg_quote_volume'])
 
     @property
-    def min_volume(self):
-        return self._min_volume
+    def buy_rsi(self):
+        return self._buy_rsi
+
+    @property
+    def sell_rsi(self):
+        return self._sell_rsi
+
+    @property
+    def buy_ratio(self):
+        return self._buy_ratio
+
+    @property
+    def sell_ratio(self):
+        return self._sell_ratio
 
     @property
     def roc_24hr(self):
-        return self._roc_24hr
-
-    async def get_my_trades(self, symbol, last_update_time):
-        """PART I: Data Gathering and Database Loading. Process a single symbol's market data.
-        Fetch trades for a single symbol up to the last update time."""
-        try:
-            adjusted_time = last_update_time + timedelta(milliseconds=99)
-            since_unix = self.utility.time_unix(adjusted_time.strftime("%Y-%m-%d %H:%M:%S.%f")) \
-                if last_update_time else None
-            # since_unix = self.utility.time_unix(adjusted_time)
-            my_trades = await self.fetch_trades_for_symbol_with_rate_limit(symbol, since=since_unix)
-            return my_trades
-        except Exception as e:
-            self.log_manager.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
-            return []
-
-    async def fetch_trades_for_symbol_with_rate_limit(self, symbol, since):
-        """Fetch Trades data with rate limiting to avoid hitting API limits."""
-
-        rate_limit = 150/1000  # private API requests per second per IP: 15
-        await asyncio.sleep(rate_limit)
-        return await self.fetch_trades_for_symbol(symbol, since)
-
-    async def fetch_trades_for_symbol(self, symbol, since=None):
-        """PART I: Data Gathering and Database Loading. Fetch trades for a single symbol."""
-        try:
-            my_trades = []
-            # Parameters for the API call
-            params = {'paginate': True, 'paginationCalls': 20}
-            endpoint = 'private'  # For rate limiting
-            if symbol is not None:
-                my_trades = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_my_trades, endpoint, symbol=symbol,
-                                                                     since=since,  params=params)
-            else:
-                self.log_manager.error(f"Symbol is None. Unable to fetch trades.")
-            if my_trades:
-                # Convert the 'datetime' from ISO format to a Python datetime object
-                for trade in my_trades:
-                    if 'datetime' in trade and trade['datetime']:
-                        trade['datetime'] = self.utility.standardize_timestamp(trade['datetime'])
-            return my_trades
-        except Exception as e:
-            self.log_manager.error(f"Error fetching trades for {symbol}: {e}", exc_info=True)
-            return []
-
-
-    def get_portfolio_data(self, start_time, threshold=0.01):
-        """PART II: Trade Database Updates and Portfolio Management"""
-        usd_pairs = []
-        ticker_cache_avg_dollar_vol = 0.0
-        price_change, df = pd.DataFrame(), pd.DataFrame()
-
-        try:
-            # Early exit if ticker_cache is empty
-            if self.ticker_cache is None or self.ticker_cache.empty:
-                return [], [], 0, pd.DataFrame(), pd.DataFrame()
-
-            # Preprocessing ticker_cache
-            self.ticker_cache = self._preprocess_ticker_cache()
-            self.ticker_cache = self.ticker_cache.drop_duplicates(subset='asset')
-
-            # Calculate average dollar volume total (based on quote_vol_24h)
-            ticker_cache_avg_dollar_vol = self.ticker_cache['quote_vol_24h'].mean() if not self.ticker_cache.empty else 0
-
-            # Generate rows_to_add from ticker_cache using updated column names
-            rows_list = self.ticker_cache.apply(self._create_row, axis=1).tolist()
-            rows_to_add = pd.DataFrame(rows_list)
-
-            # Initialize new columns with False/empty values
-            rows_to_add['Buy Ratio'] = False
-            rows_to_add['Buy Touch'] = False
-            rows_to_add['W-Bottom Signal'] = False
-            rows_to_add['Buy RSI'] = False
-            rows_to_add['Buy ROC'] = False
-            rows_to_add['Buy MACD'] = False
-            rows_to_add['Buy Swing'] = False
-            rows_to_add['Buy Signal'] = ''
-            rows_to_add['Sell Ratio'] = False
-            rows_to_add['Sell Touch'] = False
-            rows_to_add['M-Top Signal'] = False
-            rows_to_add['Sell RSI'] = False
-            rows_to_add['Sell ROC'] = False
-            rows_to_add['Sell MACD'] = False
-            rows_to_add['Sell Swing'] = False
-            rows_to_add['Sell Signal'] = ''
-
-            # Ensure 'quote volume' and 'price change %' columns exist in rows_to_add
-            if 'quote volume' in rows_to_add.columns and 'price change %' in rows_to_add.columns:
-                # Create a dataframe of coins with price change >= roc_24hr
-                price_change = rows_to_add[rows_to_add['price change %'] >= self.roc_24hr]
-
-                # Create dataframe of coins with price change >= roc_24hr and quote volume >= 1 million
-                buy_sell_matrix = rows_to_add[(rows_to_add['price change %'] >= self.roc_24hr) &
-                                              (rows_to_add['quote volume'] >= min(Decimal(ticker_cache_avg_dollar_vol),
-                                                                                  self.min_volume))]
-            else:
-                buy_sell_matrix = pd.DataFrame()  # Create an empty DataFrame if columns don't exist
-
-            # Format the buy/sell matrix for consistent display
-            buy_sell_matrix = self.format_buy_sell_matrix(buy_sell_matrix)
-
-            # Generate usd_pairs and process portfolio DataFrame
-            usd_pairs = self._get_usd_pairs(self.ticker_cache)
-            df = self._process_portfolio(threshold)
-
-            # Ensure portfolio_df is a DataFrame
-            if not isinstance(df, pd.DataFrame):
-                df = pd.DataFrame()  # Convert to empty DataFrame if it's not already a DataFrame
-                df = self._process_portfolio(threshold)
-
-            # Handle the case when a specific symbol is provided
-            portfolio_df = df.sort_values(by='symbol', ascending=True) if df is not None else pd.DataFrame()
-
-            # Convert DataFrame to dict for holdings
-            holdings = portfolio_df.to_dict('records')
-
-            return holdings, usd_pairs, ticker_cache_avg_dollar_vol, buy_sell_matrix, price_change
-
-        except Exception as e:
-            self.log_manager.error(f'get_portfolio_data df:{df}  {e}', exc_info=True)
-
-    def _preprocess_ticker_cache(self):
-        """PART II: Trade Database Updates and Portfolio Management"""
-        try:
-            # Remove rows where 'free' is NaN
-            df = self.ticker_cache.dropna(subset=['free'])
-
-            # Remove rows where 'info' is NaN or irrelevant assets like 'USD'
-            df = df.dropna(subset=['info'])
-
-            # Filter out rows for irrelevant assets, such as 'USD'
-            df = df[~df['asset'].isin(['USD', 'USD/USD'])]
-
-            # Filter rows where 'info' is a dict and 'volume_24h' is valid
-            valid_volume_mask = df['info'].apply(
-                lambda x: isinstance(x, dict) and x.get('volume_24h') not in ['', '0', None]
-            )
-            invalid_rows = df[~valid_volume_mask]
-
-            # Log invalid rows for debugging
-            if not invalid_rows.empty:
-                self.log_manager.warning(f"Invalid 'info' entries found: {invalid_rows.to_dict('records')}")
-
-            # Apply mask to filter out invalid rows
-            df = df[valid_volume_mask]
-
-            # Extract 'volume_24h' from 'info' and multiply by 'price'
-            df['quote_vol_24h'] = df.apply(
-                lambda row: float(row['info'].get('volume_24h', 0)) * float(row['info'].get('price', 0))
-                if isinstance(row['info'], dict) else 0,
-                axis=1
-            )
-
-            # Extract 'price' similarly, ensuring 'info' is a dict
-            df['price'] = df.apply(
-                lambda row: float(row['info'].get('price', 0)) if isinstance(row['info'], dict) else 0,
-                axis=1
-            )
-
-            # Clean up the dataframe by removing unnecessary columns
-            df = df.dropna(axis='columns', how='all')
-            self.ticker_cache = df
-            return df
-
-        except Exception as e:
-            self.log_manager.error(f'_preprocess_ticker_cache: {e}', exc_info=True)
-
-    @staticmethod
-    def _create_row(row):
-        """PART II: Trade Database Updates and Portfolio Management"""
-        price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-        balance_decimal = Decimal(row['free']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
-        return {
-            'coin': row['asset'],
-            'price': price_decimal,
-            'base volume': row['volume_24h'],
-            'quote volume': row['quote_vol_24h'],
-            'price change %': Decimal(row['info']['price_percentage_change_24h'])
-        }
-
-
-    @staticmethod
-    def format_buy_sell_matrix(buy_sell_matrix):
-        """PART II: Trade Database Updates and Portfolio Management"""
-
-        # Format 'price' and 'price change %' to 2 decimal places
-        buy_sell_matrix.loc[:, 'price'] = buy_sell_matrix['price'].astype(float).round(2)
-        buy_sell_matrix.loc[:, 'price change %'] = buy_sell_matrix['price change %'].astype(float).round(2)
-
-        # Format 'base volume' and 'quote volume' to 0 decimal places and convert to int
-        buy_sell_matrix.loc[:, 'base volume'] = buy_sell_matrix['base volume'].astype(float).round(0).astype(int)
-        buy_sell_matrix.loc[:, 'quote volume'] = buy_sell_matrix['quote volume'].round(0).astype(int)
-        return buy_sell_matrix
-
-    @staticmethod
-    def _get_usd_pairs(df):
-        """PART II: Trade Database Updates and Portfolio Management"""
-
-        return df[df['free'] == 0].apply(lambda x: {'id': f"{x['asset']}-USD", 'price': x['price']}, axis=1).tolist()
-
-    def _process_portfolio(self, threshold):
-        """PART II: Trade Database Updates and Portfolio Management"""
-
-        # Apply the vectorized operations on the entire ticker_cache DataFrame
-        try:
-            self.ticker_cache['balance'] = (self.ticker_cache['total'].astype('float') * self.ticker_cache['price'].astype('float'))
-
-            # Filter out rows where the balance exceeds the threshold
-            filtered_data = self.ticker_cache[self.ticker_cache['balance'] > Decimal(threshold)]
-
-            # Return the filtered DataFrame
-            return filtered_data
-        except Exception as e:
-            self.log_manager.error(f'_process_portfolio: {e}', exc_info=True)
-
+        return int(self._roc_24hr)
 
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
         """PART II: Trade Database Updates and Portfolio Management
         Filter ticker cache by volume > 1 million and price change > roc_24hr %. """
-
+        filtered_ticker_cache = pd.DataFrame()
         #  Extract list of unique cryptocurrencies from buy_sell_matrix
-        unique_coins = buy_sell_matrix['coin'].unique()
-        # Filter rows where base_currency is in the list of unique_coins
-        filtered_ticker_cache = self.ticker_cache[self.ticker_cache['asset'].isin(unique_coins)]
+        if not buy_sell_matrix.empty:
+            unique_coins = buy_sell_matrix['asset'].unique()
+            # Filter rows where base_currency is in the list of unique_coins
+            df = self.ticker_cache[self.ticker_cache['asset'].isin(unique_coins)]
+        else:
+            df = self.ticker_cache
+            df = df[df['asset'] != 'USD'] # remove USD/USD pair
+        return df
 
-        return filtered_ticker_cache
+    def get_portfolio_data(self, start_time, threshold=0.01):
+        """Part II: Retrieve portfolio data for a given start time and threshold.
+            - Preprocess ticker cache and remove duplicates
+            - Calculate average dollar volume
+            - Generate rows to add to buy/sell matrix
+            - Create buy/sell matrix
+            - Process USD pairs and portfolio
+            - Format portfolio data into a structured output"""
 
-    async def fetch_wallets(self):
-        """PART VI: Profitability Analysis and Order Generation
-        update ticker cache with wallet holdings and available balance."""
-
-        endpoint = 'private'
-        params = {'paginate': True, 'paginationCalls': 100}
-        wallets = await self.ccxt_exceptions.ccxt_api_call(self.exchange.fetch_accounts, endpoint, params)
-        filtered_wallets = self.filter_non_zero_wallets(wallets)
-        return self.update_ticker_cache(filtered_wallets)
-
-    # Function to filter wallets with non-zero balance
-    def filter_non_zero_wallets(self, wallets):
         try:
-            non_zero_wallets = []
-            for wallet in wallets:
-                if wallet['code'] == 'MNDE':
-                    pass
-                available_balance = Decimal(wallet['info']['available_balance']['value'])
-                hold_balance = Decimal(wallet['info']['hold']['value'])
-                total_balance = available_balance + hold_balance
-                if total_balance > 0:
-                    non_zero_wallets.append(wallet)
-            return non_zero_wallets
+            # Validate ticker cache and preprocess
+            if not self._is_ticker_cache_valid():
+                return [], [], 0, pd.DataFrame(), pd.DataFrame()
+            # Preprocess ticker cache and remove duplicates and irrelevant data
+            # self.ticker_cache = self._preprocess_and_deduplicate_ticker_cache()
+
+            # Generate rows to add to buy/sell matrix
+            rows_to_add = self._generate_buy_sell_rows()
+
+            # Create buy/sell matrix
+            buy_sell_matrix = self._create_buy_sell_matrix(rows_to_add)
+
+            # Process USD pairs and portfolio
+            usd_pairs = self.market_cache_usd
+            portfolio_df = self._process_portfolio(threshold)
+
+            # Format portfolio data into a structured output
+
+            holdings = self._format_portfolio(portfolio_df) # derived from MarketDataManager['market_cache_filtered_usd']
+            return holdings, usd_pairs, buy_sell_matrix, rows_to_add
+
         except Exception as e:
-            self.log_manager.error(f'filter_non_zero_wallets: {e}', exc_info=True)
+            self.log_manager.error(f"Error in get_portfolio_data: {e}", exc_info=True)
+            return [], [], 0, pd.DataFrame(), pd.DataFrame()
 
-    # Function to update DataFrame with balances
-    def update_ticker_cache(self, wallets, threshold=0.01):
+    # Supporting Methods
+
+    def _is_ticker_cache_valid(self):
+        """ PART II:
+        Check if the ticker cache is valid and not empty."""
+        return self.ticker_cache is not None and not self.ticker_cache.empty
+
+    def _generate_buy_sell_rows(self):
+        """Part II: Create rows to add to the buy/sell matrix from the ticker cache."""
+        rows = self.ticker_cache.apply(self._create_row, axis=1).tolist()
+        df = pd.DataFrame(rows)
+        self._initialize_buy_sell_columns(df)
+        return df
+
+    def _initialize_buy_sell_columns(self, df):
+        """
+        Part II: Add and initialize columns for buy and sell signals in 'buy_sell_matrix'.
+        Uses structured tuples: (0/1, computed_value, threshold).
+        """
+        buy_sell_columns = {
+            'Buy Ratio': self.buy_ratio, 'Buy Touch': None, 'W-Bottom': None, 'Buy RSI': self.buy_rsi,
+            'Buy ROC': self.roc_24hr, 'Buy MACD': 0, 'Buy Swing': None, 'Sell Ratio': self.sell_ratio,
+            'Sell Touch': None, 'M-Top': None, 'Sell RSI': self.sell_rsi, 'Sell ROC': -(self.roc_24hr/2),
+            'Sell MACD': 0, 'Sell Swing': None, 'Buy Signal': 0, 'Sell Signal': 0
+        }
+
+        for column, threshold in buy_sell_columns.items():
+            df[column] = df.apply(lambda _: (0, None, threshold), axis=1)
+
+    def _create_buy_sell_matrix(self, rows_to_add):
+        """Part II: Create the buy/sell matrix based on price change and volume."""
         try:
-            for wallet in wallets:
-                currency = wallet['info']['currency']
-                available_balance = Decimal(wallet['info']['available_balance']['value'])
-                hold_balance = Decimal(wallet['info']['hold']['value'])
-                total_balance = available_balance + hold_balance
-                df = self.ticker_cache
-                # Check if the asset exists in the DataFrame
-                if not df[df['asset'] == currency].empty:
-                    df.loc[df['asset'] == currency, 'free'] = available_balance
-                    df.loc[df['asset'] == currency, 'total'] = total_balance
+            if 'quote volume' in rows_to_add.columns and 'price change %' in rows_to_add.columns:
+                # Create a copy of the DataFrame to avoid SettingWithCopyWarning
+                rows_to_add = rows_to_add.copy()
 
-            # Convert 'price' to Decimal if it's a float
-            self.ticker_cache['price'] = self.ticker_cache['current_price'].apply(lambda x: Decimal(x))
+                # Convert 'quote volume' and 'price change %' to numeric
+                rows_to_add['quote volume'] = pd.to_numeric(rows_to_add['quote volume'], errors='coerce')
+                rows_to_add['price change %'] = pd.to_numeric(round(rows_to_add['price change %'],1), errors='coerce')
 
-            # Perform the multiplication with Decimal types
-            self.ticker_cache['balance'] = self.ticker_cache.apply(
-                lambda row: (Decimal(row['total']) * row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN),
-                axis=1
+                # Drop rows with NaNs in the relevant columns
+                rows_to_add = rows_to_add.dropna(subset=['quote volume', 'price change %'])
+
+                # Fix: Apply absolute value only to 'price change %' and correctly structure conditions
+                filtered_df = rows_to_add[
+                    (abs(rows_to_add['price change %']) >= self.roc_24hr) &
+                    (rows_to_add['quote volume'] >= self.min_volume)
+                    ]
+
+                return filtered_df  # Return filtered DataFrame
+
+            return pd.DataFrame()  # Return empty DataFrame if required columns are missing
+
+        except Exception as e:
+            self.log_manager.error(f"_create_buy_sell_matrix: {e}", exc_info=True)
+            return pd.DataFrame()
+
+    def _process_portfolio(self, threshold=0.01):
+        """Part II: Populate 'free' column and filter portfolio DataFrame by balance threshold."""
+        try:
+            # Safely convert threshold to Decimal
+            try:
+                threshold = Decimal(str(threshold))
+            except (ValueError, TypeError, InvalidOperation):
+                raise ValueError(f"Invalid threshold value: {threshold}")
+
+            # Ensure the relevant columns exist
+            if 'free' not in self.market_cache_usd or 'price' not in self.market_cache_usd:
+                self.log_manager.error("Missing required columns in market_cache_usd: 'free' or 'price'")
+                return pd.DataFrame()
+
+            # Populate the 'free' column from non_zero_balances
+            self.market_cache_usd['free'] = self.market_cache_usd['asset'].map(
+                self._get_tradeable_crypto_mapping(self.non_zero_balances)).fillna(0)
+
+            # Handle non-numeric or NaN values in 'free' and 'price' columns
+            self.market_cache_usd['free'] = pd.to_numeric(self.market_cache_usd['free'], errors='coerce')
+            self.market_cache_usd['price'] = pd.to_numeric(self.market_cache_usd['price'], errors='coerce')
+
+            # Calculate balance safely
+            self.market_cache_usd['balance'] = (
+                    self.market_cache_usd['free'].fillna(0) * self.market_cache_usd['price'].fillna(0)
             )
 
-            filtered_df = self.ticker_cache[self.ticker_cache['balance'] > Decimal(threshold)]
-            return filtered_df
+            # Filter rows with balance above the threshold
+            return self.market_cache_usd[self.market_cache_usd['balance'] > threshold]
 
         except Exception as e:
-            self.log_manager.error(f'update_ticker_cache: {e}', exc_info=True)
+            self.log_manager.error(f"_process_portfolio: {e}", exc_info=True)
+            return pd.DataFrame()
+
+    def _format_portfolio(self, portfolio_df):
+        """Part II: Format portfolio DataFrame into a dictionary list."""
+
+        if not isinstance(portfolio_df, pd.DataFrame):
+            portfolio_df = pd.DataFrame()
+        portfolio_df = portfolio_df.sort_values(by='symbol', ascending=True) if not portfolio_df.empty else pd.DataFrame()
+        return portfolio_df.to_dict('records')
+
+
+
+    @staticmethod
+    def _create_row(row):
+        """Part II: Generate a row for the buy/sell matrix."""
+        price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+        return {
+            'asset': row['asset'],
+            'price': price_decimal,
+            'base volume': row['volume_24h'],
+            'quote volume': row['24h_quote_volume'],
+            'price change %': Decimal(row['price_percentage_change_24h'])
+        }
+
+    def _get_tradeable_crypto_mapping(self, non_zero_balances):
+        """PART II:
+        Create a mapping of asset to available_to_trade_crypto from non_zero_balances."""
+        try:
+            return {
+                balance_data['asset']: balance_data['available_to_trade_crypto']
+                for balance_data in non_zero_balances.values()
+            }
+        except Exception as e:
+            self.log_manager.error(f"Error creating tradeable crypto mapping: {e}", exc_info=True)
+            return {}
+
+
+
+
+
+
+
+
+

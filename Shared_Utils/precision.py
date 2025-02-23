@@ -1,0 +1,213 @@
+from inspect import stack # debugging
+import math
+import pandas as pd
+from decimal import Decimal, ROUND_DOWN
+
+class PrecisionUtils:
+    _instance = None  # Singleton instance
+
+    @classmethod
+    def get_instance(cls, logmanager):
+        """ Ensures only one instance of PrecisionUtils is created. """
+        if cls._instance is None:
+            cls._instance = cls(logmanager)
+        return cls._instance
+
+    def __init__(self, logmanager):
+        """ Initialize PrecisionUtils. """
+        if PrecisionUtils._instance is not None:
+            raise Exception("This class is a singleton! Use get_instance() instead.")
+
+        self.log_manager = logmanager
+
+
+
+
+    # def set_trade_parameters(self, market_data, order_management,  start_time=None):
+    #     self.start_time = start_time
+    #     self.ticker_cache = market_data['ticker_cache']
+    #     self.non_zero_balances = order_management.get('non_zero_balances', {})
+    #     self.order_tracker = order_management.get('order_tracker', {})
+    #     self.market_cache_usd = market_data['usd_pairs_cache']
+    #     self.market_cache = market_data['filtered_vol']
+
+    def fetch_precision(self, symbol: str, usd_pairs) -> tuple:
+        """
+        Fetch the precision for base and quote currencies of a given symbol.
+
+        :param symbol: The symbol to fetch precision for, in the format 'BTC-USD' or 'BTC/USD'.
+        :return: A tuple containing base and quote decimal places.
+        """
+        try:
+            if len(usd_pairs) ==0:
+                return 4, 2, 1e-08, 1e-08 #default values for empty usd_pairs
+
+            if isinstance(symbol, pd.Series):
+                caller_function_name = stack()[1].function  # debugging
+                self.log_manager.debug(f" {caller_function_name}")  # debugging
+                symbol = symbol.iloc[1]
+
+            # Normalize symbol format to 'BTC/USD' for consistent comparison
+
+            if '-' in symbol:
+                ticker = symbol.replace('-', '/')
+            else:
+                ticker = symbol
+            if '/' not in ticker:
+                ticker = f"{ticker}/USD"
+            asset = ticker.split('/')[0]
+            ticker_value = ticker.iloc[0] if isinstance(ticker, pd.Series) else ticker
+
+            if ticker_value == 'USD/USD' or ticker_value == 'USD':
+                return 2, 2, 1e-08, 1e-08
+
+
+            market = usd_pairs.set_index('asset').to_dict(orient='index')  # dataframe to dictionary
+            if market.get(asset):
+                base_precision = market.get(asset,{}).get('precision',{}).get('amount', 1e-08)  # Expected to be a float
+                quote_precision = market.get(asset,{}).get('precision',{}).get('price', 1e-08)  # Expected to be a float
+                base_increment = base_precision  # string
+                quote_increment = quote_precision  # string
+
+                if base_precision <= 0 or quote_precision <= 0:
+                    raise ValueError("Precision value is zero or negative, which may cause a division error.")
+
+                # Calculate decimal places using logarithm
+                base_decimal_places = -int(math.log10(base_precision))
+                quote_decimal_places = -int(math.log10(quote_precision))
+
+                # Check for negative decimal places (should not happen if the log10 is correct)
+                if base_decimal_places < 0 or quote_decimal_places < 0:
+                    raise ValueError("Decimal places cannot be negative.")
+
+                return base_decimal_places, quote_decimal_places, base_increment, quote_increment
+            else:
+                return 4, 2, 1e-08, 1e-08
+
+        except ValueError as e:
+            self.log_manager.error(f"fetch_precision: {e}", exc_info=True)
+            return None, None, None, None
+        except Exception as e:
+            if "No market found" in str(e):
+                self.log_manager.info(f"No market found in market cache for symbol {symbol}.")
+            else:
+                self.log_manager.error(f'fetch_precision: Error processing order for {symbol}: {e}',
+                                       exc_info=True)
+
+        raise ValueError(f"Symbol {symbol} not found in market_cache.")
+
+    def adjust_price_and_size(self, order_data, order_book, response=None) -> tuple[Decimal, Decimal]:
+        try:
+            side = order_data['side'].upper()
+
+            if side == 'SELL':
+                adjusted_price = Decimal(str(order_book['highest_bid']))  # Convert float to string before Decimal
+                adjusted_size = Decimal(str(order_data.get('base_balance', 0)))
+            elif side == 'BUY':
+                adjusted_price = Decimal(str(order_book['lowest_ask']))  # ✅ Ensures precision
+                quote_amount = Decimal(str(order_data.get('quote_amount', 0)))
+                if adjusted_price == 0:
+                    raise ValueError("Adjusted price cannot be zero for BUY order.")
+                adjusted_size = quote_amount / adjusted_price
+            else:
+                raise ValueError(f"Unsupported side: {side}")
+
+            # Capture best bid/ask prices
+            best_bid_price = Decimal(str(order_book['highest_bid']))  # ✅ Convert float to string before Decimal
+            best_ask_price = Decimal(str(order_book['lowest_ask']))  # ✅ Convert float to string before Decimal
+            spread = best_ask_price - best_bid_price
+
+            # Dynamic adjustment factor based on a percentage of the spread
+            adjustment_percentage = Decimal('0.002')  # 0.2%
+            adjustment_factor = spread * adjustment_percentage
+
+            # Ensure the adjustment is significant given the currency's precision
+            precision_str = '1e-{}'.format(order_data.get('quote_decimal', 2))
+            adjustment_factor = max(adjustment_factor, Decimal(precision_str))
+            print(f'Calculated adjustment_factor: {adjustment_factor}')
+
+            # Apply the adjustment factor depending on the side
+            if side == 'BUY':
+                adjusted_price -= adjustment_factor  # Slightly increase the buy price
+            elif side == 'SELL':
+                adjusted_price += adjustment_factor  # Slightly decrease the sell price
+
+            return adjusted_price, adjusted_size
+        except Exception as e:
+            self.log_manager.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
+            return None, None
+
+    def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
+        """
+        Adjust the amount based on the required number of decimal places for a given symbol.
+        Handles both scalar values and pandas Series/DataFrame columns.
+        """
+        try:
+            # Determine the decimal places based on the conversion type
+            if convert == 'base':
+                decimal_places = base_deci
+            elif convert == 'usd':
+                decimal_places = 2
+            elif convert == 'quote':
+                decimal_places = quote_deci
+            else:
+                decimal_places = 8
+
+            # Handle scalar (single value) inputs
+            if isinstance(num_to_adjust, (int, float, Decimal)):
+                return self.float_to_decimal(num_to_adjust, decimal_places)
+
+            # Handle pandas Series or DataFrame column inputs
+            elif isinstance(num_to_adjust, pd.Series):
+                return num_to_adjust.apply(lambda x: self.float_to_decimal(x, decimal_places))
+
+            # Handle pandas DataFrame inputs (if needed)
+            elif isinstance(num_to_adjust, pd.DataFrame):
+                raise ValueError("DataFrame input is not supported for num_to_adjust. Use column-based operations.")
+
+            else:
+                raise TypeError(f"Unsupported input type for num_to_adjust: {type(num_to_adjust)}")
+
+        except Exception as e:
+            self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}', exc_info=True)
+            return None
+
+    def float_to_decimal(self, value, decimal_places):
+        """
+        Convert a float or array-like values to a Decimal with a specified number of decimal places.
+        Supports scalar values and pandas Series for better compatibility with DataFrames.
+        """
+        try:
+            # Construct a string representing the desired decimal format
+            decimal_format = '0.' + '0' * decimal_places if decimal_places > 0 else '0'
+
+            # Handle scalar values
+            if isinstance(value, (int, float, str, Decimal)):
+                value_decimal = Decimal(str(value)).quantize(Decimal(decimal_format), rounding=ROUND_DOWN)
+                return value_decimal
+
+            # Handle pandas Series or NumPy arrays
+            elif isinstance(value, pd.Series):
+                return value.apply(lambda x: Decimal(str(x)).quantize(Decimal(decimal_format), rounding=ROUND_DOWN))
+
+            else:
+                raise TypeError(f"Unsupported input type for float_to_decimal: {type(value)}")
+
+        except Exception as e:
+            self.log_manager.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
+                                   f'Decimal places: {decimal_places}', exc_info=True)
+            raise
+
+    @staticmethod
+    def get_decimal_format(base_decimal: int) -> Decimal:
+        """
+        Generate a Decimal format string based on the number of decimal places.
+
+        :param base_decimal: The number of decimal places for the base value.
+        :return: A Decimal object representing the format.
+        """
+        if base_decimal < 0:
+            raise ValueError("base_decimal must be a positive integer")
+
+        decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
+        return Decimal(decimal_format)  # example 0.00000001
