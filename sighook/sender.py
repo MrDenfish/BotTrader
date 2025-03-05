@@ -356,6 +356,7 @@ class TradeBot:
                 # Order Execution
                 print(f'Part V: Order Execution based on Market Conditions - Start Time:', datetime.datetime.now())
                 submitted_orders = await self.order_manager.execute_actions(strategy_results, holdings_list)
+
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part V: Order Execution')
 
                 # PART VI:

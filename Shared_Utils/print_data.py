@@ -92,7 +92,7 @@ class PrintData:
 
             # ✅ PRINT SUBMITTED ORDERS
             if submitted_orders is not None and len(submitted_orders) > 0:
-                print("� Orders Submitted:")
+                print("✅ Orders Submitted:")
                 print(
                     tabulate(submitted_orders, headers='keys', tablefmt='fancy_outline', showindex=False, stralign='center',
                              numalign='center'))

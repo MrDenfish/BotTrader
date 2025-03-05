@@ -17,18 +17,18 @@ class TradeOrderManager:
     @classmethod
     def get_instance(cls, coinbase_api=None, exchange_client=None, shared_utils_precision=None,
                      validate=None, logmanager=None, alerts=None, ccxt_api=None,
-                     order_book_manager=None, order_types=None, websocket_helper=None, session=None):
+                     order_book_manager=None, order_types=None, websocket_helper=None, session=None, market_data=None):
         """
         Singleton method to ensure only one instance of TradeOrderManager exists.
         If already instantiated, returns the existing instance.
         """
         if cls._instance is None:
             cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, validate, logmanager, alerts,
-                                ccxt_api, order_book_manager, order_types, websocket_helper, session)
+                                ccxt_api, order_book_manager, order_types, websocket_helper, session, market_data)
         return cls._instance
 
     def __init__(self, coinbase_api, exchange_client, shared_utils_precision, validate, logmanager,
-                 alerts, ccxt_api, order_book_manager, order_types, websocket_helper, session):
+                 alerts, ccxt_api, order_book_manager, order_types, websocket_helper, session, market_data):
         """
         Initializes the TradeOrderManager.
         """
@@ -47,9 +47,20 @@ class TradeOrderManager:
         self.websocket_helper = websocket_helper
         self.ccxt_api = ccxt_api
         self.alerts = alerts
+        self.market_data = market_data
         self.shared_utils_precision = shared_utils_precision
         self.session = session
 
+    # def set_trade_parameters(self, market_data, order_management, start_time=None):
+    #
+    #     self.start_time = start_time
+    #     self.market_data = market_data
+    #     self.order_management = order_management
+    #     self.ticker_cache = market_data.get('ticker_cache')
+    #     self.non_zero_balances = order_management.get('non_zero_balances', {})
+    #     self.order_tracker = order_management.get('order_tracker', {})
+    #     self.market_cache_usd = market_data['usd_pairs_cache']
+    #     self.market_cache_vol = market_data['filtered_vol']
 
     @property
     def hodl(self):
@@ -335,7 +346,7 @@ class TradeOrderManager:
                     elif order_type == 'bracket':
                         response, market_price, trailing_price = await self.order_types._handle_bracket_order(order_data, order_book)
                     elif order_type == 'trailing_stop':
-                        print(f"Placing trailing stop order data{order_data['trading_pair']}:  order data stop-loss price: "
+                        print(f"Placing trailing stop order for {order_data['trading_pair']}:  order data stop-loss price: "
                               f"{order_data.get('stop_loss_price')}, highest bid: {highest_bid}")  # debug
                         response = await self.order_types.place_trailing_stop_order(order_book, order_data, order_data.get
                         ('highest_bid'))
@@ -413,6 +424,12 @@ class TradeOrderManager:
 
             # Get available balance
             balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
+            cryto_avail_to_trade = spot_position.get(asset,{}).get('available_to_trade_crypto',0)
+            if cryto_avail_to_trade ==0:
+                side='BUY'
+            else:
+                side='SELL'
+
             usd_bal = float(spot_position.get('USD', {}).get('available_to_trade_fiat', 0))
 
             # Convert trading pair format
@@ -435,7 +452,7 @@ class TradeOrderManager:
 
             # Temporary order details for price/size adjustments
             temp_order = {
-                'side': 'BUY',
+                'side': side,
                 'base_balance': balance,
                 'quote_amount': fiat_avail,
                 'quote_decimal': quote_deci,
@@ -461,7 +478,7 @@ class TradeOrderManager:
                 'trading_pair': trading_pair,
                 'usd_available': usd_bal,
                 'base_balance': balance,
-                'side': 'BUY',
+                'side': side,
                 'quote_decimal': quote_deci,
                 'base_decimal': base_deci,
                 'status_of_order': 'STOP_LIMIT/BUY/ROC'

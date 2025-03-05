@@ -141,19 +141,8 @@ class WebSocketHelper:
         self.alerts = self.listener.alerts  # ✅ Assign alerts from listener
 
         # ✅ Now that everything is assigned, we can safely initialize TradeOrderManager
-        self.trade_order_manager = TradeOrderManager.get_instance(
-            coinbase_api=self.coinbase_api,
-            exchange_client=self.exchange,
-            shared_utils_precision=self.shared_utils_precision,
-            validate=self.validate,
-            logmanager=self.log_manager,
-            alerts=self.alerts,
-            ccxt_api=self.ccxt_api,
-            order_book_manager=self.order_book_manager,  # ✅ Passed correctly
-            order_types=self.order_type_manager,
-            websocket_helper=self,  # ✅ WebSocketHelper instance
-            session=self.coinbase_api.session
-        )
+        self.trade_order_manager = self.listener.trade_order_manager  # ✅ Use existing instance
+
 
         self.sequence_number = None  # Sequence number tracking
 
@@ -1018,7 +1007,7 @@ class WebSocketHelper:
 
                         avg_price = Decimal(spot_positions.get(asset, {}).get('average_entry_price', {}).get('value', 0))
                         balance = Decimal(spot_positions.get(asset, {}).get('total_balance_crypto', 0))
-                        current_price = current_prices.get(symbol.replace('/', '-'), 0)
+                        current_price = current_prices.get(symbol, 0)
                         cost_basis = Decimal(spot_positions.get(asset, {}).get('cost_basis', {}).get('value', 0))
                         required_prices = {
                             'avg_price': avg_price,
@@ -1026,11 +1015,13 @@ class WebSocketHelper:
                             'balance': balance,
                             'status': order_data.get('status', 'UNKNOWN')
                         }
-                        if order_data.get("trailing_stop_active"):
-                            highest_price = max(order_data.get("trailing_stop_price", 0), current_price)
-                            await self.trailing_stop_manager.update_trailing_stop(order_id, symbol, highest_price,
-                                                                                  order_management_snapshot["order_tracker"])
-                            continue
+                        if order_data.get("triggerPrice") is not None:
+                            if order_data.get("triggerPrice") < current_price:
+                                highest_price = max(order_data.get("triggerPrice", 0), current_price)
+                                # may need to cancel exisiting order first
+                                await self.trailing_stop_manager.update_trailing_stop(order_id, symbol, highest_price,
+                                                                                      order_management_snapshot["order_tracker"])
+                                continue
 
                         profit = await self.profit_data_manager._calculate_profitability(symbol,required_prices,
                                                                                          current_prices, usd_pairs)
@@ -1130,13 +1121,18 @@ class WebSocketHelper:
                     if profit_percent_decimal >= self.take_profit and asset not in self.hodl:
                         order_data_updated = await self.trade_order_manager.build_order_data(asset,symbol)
 
-                        print(f"Placing limit order for untracked asset {asset}")
-                        self.sharded_utils_print.print_order_tracker(order_tracker)
-                        if order_data_updated.get('usd_available') > self.order_size and order_data_updated.get(
-                                'side')=='BUY':
-                            response = await self.order_type_manager.place_limit_order(order_data_updated)
-                            print(f"DEBUG: Untracked Asset Order Response: {response}")
-                            await self.order_type_manager.place_limit_order(order_data_updated)
+
+                        if profit_percent_decimal > self.trailing_percentage:
+                            order_book = await self.order_book_manager.get_order_book(order_data_updated)
+                            await self.order_type_manager.place_trailing_stop_order(order_book,order_data_updated,
+                                                                                    current_price)
+                else:
+                    print(f"Placing limit order for untracked asset {asset}")
+                    self.sharded_utils_print.print_order_tracker(order_tracker)
+                    if order_data_updated.get('usd_available') > self.order_size and order_data_updated.get(
+                            'side') == 'BUY':
+                        response = await self.order_type_manager.place_limit_order(order_data_updated)
+                        print(f"DEBUG: Untracked Asset Order Response: {response}")
 
             profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
             print(f'Profit Data Portfolio:')
@@ -1305,12 +1301,6 @@ class WebhookListener:
         self.trailing_stop_manager = TrailingStopManager.get_instance(self.log_manager, self.order_type_manager,
                                                          self.shared_utils_precision)
 
-        self.websocket_helper = WebSocketHelper(self, self.exchange, self.ccxt_api, self.log_manager,
-                                                self.coinbase_api, self.profit_data_manager, self.order_type_manager,
-                                                self.shared_utils_print, self.shared_utils_precision,
-                                                self.shared_utils_debugger, self.trailing_stop_manager,
-                                                self.order_book_manager, self.snapshot_manager)
-
         self.trade_order_manager = TradeOrderManager.get_instance(
             coinbase_api=self.coinbase_api,
             exchange_client=self.exchange,
@@ -1321,9 +1311,16 @@ class WebhookListener:
             ccxt_api=self.ccxt_api,
             order_book_manager=self.order_book_manager,
             order_types=self.order_type_manager,
-            websocket_helper=self,  # ✅ Passing WebSocketHelper instance
-            session=self.coinbase_api.session
+            websocket_helper=self,
+            session=self.coinbase_api.session,
+            market_data=self.market_data
         )
+
+        self.websocket_helper = WebSocketHelper(self, self.exchange, self.ccxt_api, self.log_manager,
+                                                self.coinbase_api, self.profit_data_manager, self.order_type_manager,
+                                                self.shared_utils_print, self.shared_utils_precision,
+                                                self.shared_utils_debugger, self.trailing_stop_manager,
+                                                self.order_book_manager, self.snapshot_manager)
 
         self.webhook_manager = WebHookManager.get_instance(
             logmanager=self.log_manager,
@@ -1787,10 +1784,4 @@ if __name__ == '__main__':
     get_config = config()
     asyncio.run(run_app(get_config))
 
-if __name__ == '__main__':
-    os.environ['PYTHONASYNCIODEBUG'] = '0'
-    logger = logging.getLogger('asyncio')
-    logger.setLevel(logging.ERROR)
 
-    get_config = config()
-    asyncio.run(run_app(get_config))

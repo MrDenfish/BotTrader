@@ -3,6 +3,7 @@ from Shared_Utils.config_manager import CentralConfig as Config
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from inspect import stack
+import json
 import uuid
 
 
@@ -187,54 +188,83 @@ class OrderTypeManager:
             client_order_id = str(uuid.uuid4())
             trailing_percentage = Decimal(self.trailing_percentage)  # Now Decimal for consistency
             market_price = Decimal(market_price)
-            symbol= order_data['trading_pair']
-            taker_fee = Decimal(self.taker_fee)
-            maker_fee = Decimal(self.maker_fee)
-            highest_bid = Decimal(order_book['highest_bid'])
-            lowest_ask = Decimal(order_book['lowest_ask'])
+            symbol = order_data['trading_pair']
             asset = symbol.split('/')[0]
+
+            # ✅ Use Available Balance Instead of Total Balance
             spot_position = self.market_data.get('spot_positions', {})
-            usd_pairs = self.market_data.get('usd_pairs_cache', {})
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset,
-                                                                                      usd_pairs)
-            balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
-            usd_bal = Decimal(spot_position.get('USD', {}).get('total_balance_crypto', 0))
+            available_balance = Decimal(spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
+
+            # ✅ Ensure order size is valid
+            if available_balance <= 0:
+                self.log_manager.error(f"Insufficient funds for {symbol}: {available_balance}")
+                return None
+
+            # ✅ Adjust for Fee Deduction
+            maker_fee = Decimal(self.maker_fee)
+            base_size = available_balance - (available_balance * maker_fee)
+
+            # ✅ Ensure correct decimal precision
+            base_size = self.shared_utils_precision.adjust_precision(
+                order_data['base_decimal'], order_data['quote_decimal'], base_size, convert='base'
+            )
+
+            # ✅ Fetch latest price
             endpoint = 'public'
             ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, endpoint, symbol)
             current_price = Decimal(ticker_data['last'])
+
+            # ✅ Prevent invalid price calculations
             if market_price is None:
                 raise ValueError("Could not retrieve the latest trade price.")
 
-            # Calculate the trailing stop price
-            trailing_stop_price = market_price * (Decimal('1.0') - trailing_percentage / Decimal('100')) \
-                if order_data['side'].upper() == 'SELL' else market_price * (
-                        Decimal('1.0') + trailing_percentage / Decimal('100'))
-
-            # Adjust stop and limit prices for sell orders
-            if order_data['side'].upper() == 'SELL':
-                stop_price = min(trailing_stop_price, (current_price * (Decimal('1.0') - self.trailing_stop))) # Ensures
-                # stop <
-                # last trade price
-                limit_price = stop_price * (Decimal('1.0') + trailing_percentage ) + (stop_price * maker_fee)  # Adjusted
-                # for precision
+            # ✅ Calculate the trailing stop price (Fixed for BUY orders)
+            if order_data['side'].upper() == 'BUY':
+                trailing_stop_price = market_price * (Decimal('1.0') + trailing_percentage / Decimal('100'))
             else:
-                stop_price = max(trailing_stop_price, current_price * Decimal('1.001'))  # Ensures stop > last trade price
-                limit_price = stop_price * (Decimal('0.998') - (stop_price * maker_fee) )  # Adjusted for precision
+                trailing_stop_price = market_price * (Decimal('1.0') - trailing_percentage / Decimal('100'))
 
-            # Adjust prices for precision
-            stop_price = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'], stop_price,
-                                                     convert='quote')
-            limit_price = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'], limit_price,
-                                                      convert='quote')
+            # ✅ Adjust stop price calculation
+            if order_data['side'].upper() == 'BUY':
+                stop_price = max(trailing_stop_price, current_price * Decimal('1.002'))  # Ensure stop is higher for BUY
+            else:
+                stop_price = min(trailing_stop_price, current_price * Decimal('0.998'))  # Ensure stop is lower for SELL
 
-            # Set up the payload
+            # ✅ Adjust limit price calculation
+            if order_data['side'].upper() == 'BUY':
+                limit_price = stop_price * (
+                            Decimal('1.003') + maker_fee)  # Buy limit price must be slightly above stop price
+            else:
+                limit_price = stop_price * (
+                            Decimal('0.997') - maker_fee)  # Sell limit price must be slightly below stop price
+
+            # ✅ Adjust prices for precision
+            stop_price = self.shared_utils_precision.adjust_precision(
+                order_data['base_decimal'], order_data['quote_decimal'], stop_price, convert='quote'
+            )
+            limit_price = self.shared_utils_precision.adjust_precision(
+                order_data['base_decimal'], order_data['quote_decimal'], limit_price, convert='quote'
+            )
+
+            base_balance = self.shared_utils_precision.adjust_precision(
+                order_data['base_decimal'], order_data['quote_decimal'], order_data['base_balance'], convert='base'
+            )
+
+            adjusted_size = self.shared_utils_precision.adjust_precision(
+                order_data['base_decimal'], order_data['quote_decimal'], order_data['adjusted_size'], convert='base'
+            )
+
+            # ✅ Format Trading Pair for Coinbase API
+            product_id = order_data['trading_pair'].replace('/', '-').upper()
+
+            # ✅ Set up the payload
             payload = {
                 "client_order_id": client_order_id,
-                "product_id": order_data['trading_pair'].replace('/', '-'),
+                "product_id": product_id,
                 "side": "SELL" if order_data['side'].upper() == 'SELL' else "BUY",
                 "order_configuration": {
                     "stop_limit_stop_limit_gtd": {
-                        "base_size": str(order_data.get('adjusted_size', order_data['base_balance'])),
+                        "base_size": str(adjusted_size) if adjusted_size > 0 else str(base_balance),
                         "stop_price": str(stop_price),
                         "limit_price": str(limit_price),
                         "end_time": (datetime.now(timezone.utc) + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ'),
@@ -244,20 +274,118 @@ class OrderTypeManager:
                 }
             }
 
-            response = await self.coinbase_api.create_order(payload) # used for trailing stop orders instead of ccxt
+            # ✅ Debugging
+            print(f"Payload before sending: {json.dumps(payload, indent=4)}")
+
+            # ✅ Send order request to Coinbase API
+            response = await self.coinbase_api.create_order(payload)
+
             if response is None:
                 self.log_manager.error(f"Received None as the response from create_order.")
                 return None
-            elif  'Insufficient balance in source account' in response:
-                print(f'{payload}' ) # debugging
+            elif 'Insufficient balance in source account' in response:
+                print(f"� Debugging: Available balance {available_balance}, base_size {base_size}")
                 self.log_manager.info(f"Insufficient funds for trailing stop order: {order_data['trading_pair']}")
                 return None
-            print(f'Trailing stop order placed for {order_data["trading_pair"]}reporting {response}')# debugging
+
+            print(f'Trailing stop order placed for {order_data["trading_pair"]}, response: {response}')  # Debugging
             return response, market_price, trailing_stop_price
 
         except Exception as ex:
             self.log_manager.error(f"Error in place_trailing_stop_order: {str(ex)}", exc_info=True)
             return None
+
+    # async def place_trailing_stop_order(self, order_book, order_data, market_price):
+    #     """
+    #     Places a trailing stop order. Returns the API response as a dictionary.
+    #     """
+    #     try:
+    #         client_order_id = str(uuid.uuid4())
+    #         trailing_percentage = Decimal(self.trailing_percentage)  # Now Decimal for consistency
+    #         market_price = Decimal(market_price)
+    #         symbol= order_data['trading_pair']
+    #         taker_fee = Decimal(self.taker_fee)
+    #         maker_fee = Decimal(self.maker_fee)
+    #         highest_bid = Decimal(order_book['highest_bid'])
+    #         lowest_ask = Decimal(order_book['lowest_ask'])
+    #         asset = symbol.split('/')[0]
+    #         spot_position = self.market_data.get('spot_positions', {})
+    #         usd_pairs = self.market_data.get('usd_pairs_cache', {})
+    #         base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset,
+    #                                                                                   usd_pairs)
+    #         balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
+    #         usd_bal = Decimal(spot_position.get('USD', {}).get('total_balance_crypto', 0))
+    #         endpoint = 'public'
+    #         ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, endpoint, symbol)
+    #         current_price = Decimal(ticker_data['last'])
+    #         if market_price is None:
+    #             raise ValueError("Could not retrieve the latest trade price.")
+    #
+    #         # Calculate the trailing stop price
+    #         trailing_stop_price = market_price * (Decimal('1.0') - trailing_percentage / Decimal('100')) \
+    #             if order_data['side'].upper() == 'SELL' else market_price * (
+    #                     Decimal('1.0') + trailing_percentage / Decimal('100'))
+    #
+    #         # Adjust stop and limit prices for sell orders
+    #         if order_data['side'].upper() == 'SELL':
+    #             stop_price = min(trailing_stop_price, (current_price * (Decimal('1.0') - self.trailing_stop))) # Ensures
+    #             # stop <
+    #             # last trade price
+    #             limit_price = stop_price * (Decimal('1.0') + trailing_percentage ) + (stop_price * maker_fee)  # Adjusted
+    #             # for precision
+    #         else:
+    #             if order_data['side'].upper() == 'BUY':
+    #                 stop_price = max(trailing_stop_price, current_price * Decimal('1.002'))  # Adjusted to ensure it's higher
+    #                 limit_price = stop_price * (Decimal('1.003') + maker_fee)  # Buy limit price must be slightly above
+    #             else:
+    #                 stop_price = min(trailing_stop_price,
+    #                                  current_price * Decimal('0.998'))  # Ensure it's lower for SELL orders
+    #
+    #                 limit_price = stop_price * (Decimal('0.997') - maker_fee)  # Sell limit price must be slightly below
+    #
+    #         # Adjust prices for precision
+    #         stop_price = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'], stop_price,
+    #                                                  convert='quote')
+    #         limit_price = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'], limit_price,
+    #                                                   convert='quote')
+    #         base_balance = self.shared_utils_precision.adjust_precision(order_data['base_decimal'],
+    #                                                                     order_data['quote_decimal'],
+    #                                                                     order_data['base_balance'],convert='base')
+    #
+    #         adjusted_size = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data[
+    #             'quote_decimal'],order_data['adjusted_size'],convert='base')
+    #
+    #         # Set up the payload
+    #         payload = {
+    #             "client_order_id": client_order_id,
+    #             "product_id": order_data['trading_pair'].replace('/', '-'),
+    #             "side": "SELL" if order_data['side'].upper() == 'SELL' else "BUY",
+    #             "order_configuration": {
+    #                 "stop_limit_stop_limit_gtd": {
+    #                     "base_size": str(adjusted_size) if adjusted_size > 0  else str(base_balance),
+    #                     "stop_price": str(stop_price),
+    #                     "limit_price": str(limit_price),
+    #                     "end_time": (datetime.now(timezone.utc) + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    #                     "stop_direction": "STOP_DIRECTION_STOP_DOWN" if order_data['side'].upper() == 'SELL' \
+    #                         else "STOP_DIRECTION_STOP_UP"
+    #                 }
+    #             }
+    #         }
+    #
+    #         response = await self.coinbase_api.create_order(payload) # used for trailing stop orders instead of ccxt
+    #         if response is None:
+    #             self.log_manager.error(f"Received None as the response from create_order.")
+    #             return None
+    #         elif  'Insufficient balance in source account' in response:
+    #             print(f'{payload}' ) # debugging
+    #             self.log_manager.info(f"Insufficient funds for trailing stop order: {order_data['trading_pair']}")
+    #             return None
+    #         print(f'Trailing stop order placed for {order_data["trading_pair"]}reporting {response}')# debugging
+    #         return response, market_price, trailing_stop_price
+    #
+    #     except Exception as ex:
+    #         self.log_manager.error(f"Error in place_trailing_stop_order: {str(ex)}", exc_info=True)
+    #         return None
 
     async def _handle_bracket_order(self, order_data, order_book_details):
         try:
