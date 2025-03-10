@@ -25,11 +25,15 @@ class OrderBookManager:
         self.ccxt_api = ccxt_api  # ✅ Renamed for clarity
 
 
-    async def get_order_book(self, order_data):
+    async def get_order_book(self, order_data,symbol=None):
         """ This method fetches the order book from the exchange and returns it as a dictionary."""
+        if symbol:
+            trading_pair = symbol
+        else:
+            trading_pair = order_data['trading_pair']
+
         endpoint = 'public'
-        order_book = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order_book, endpoint, order_data[
-                                                              'trading_pair'], limit=50)
+        order_book = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order_book, endpoint, trading_pair , limit=50)
         highest_bid, lowest_ask, spread = self.analyze_spread(order_data, order_book)
         order_details = {
             'order_book': order_book,

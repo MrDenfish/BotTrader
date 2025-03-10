@@ -89,10 +89,9 @@ class SenderWebhook:
     def order_size(self):
         return self._order_size
 
-
     async def send_webhook(self, http_session, webhook_payload, retries=3, initial_delay=1, max_delay=60):
         """
-        Sends a webhook with retry logic, backoff, and detailed error handling.
+        Sends a webhook with retry logic, exponential backoff, and cleaner error handling.
 
         Args:
             http_session: aiohttp.ClientSession for making HTTP requests.
@@ -104,25 +103,22 @@ class SenderWebhook:
         delay = initial_delay
         webhook_payload['origin'] = "SIGHOOK"
         webhook_payload['verified'] = "valid or not valid"
-        webhook_payload['uuid'] = webhook_payload.get('uuid', str(uuid.uuid4()))  # Add unique identifier
-        # Ensure UUID is processed only once
+        webhook_payload['uuid'] = webhook_payload.get('uuid', str(uuid.uuid4()))  # Unique identifier for deduplication
+
+        # Prevent duplicate webhooks
         async with self.lock:
             if webhook_payload['uuid'] in self.processed_uuids:
-                self.log_manager.info(f"Duplicate webhook ignored: {webhook_payload['uuid']}")
+                self.log_manager.info(f"� Duplicate webhook ignored: {webhook_payload['uuid']}")
                 return None
             self.processed_uuids.add(webhook_payload['uuid'])
-        if 'order_size' not in webhook_payload or webhook_payload['order_size'] is None:
-            webhook_payload['order_size'] = self.order_size
 
-            # Schedule removal of the UUID after a delay
-            asyncio.get_event_loop().call_later(
-                self.cleanup_delay, lambda: self.remove_uuid(webhook_payload['uuid'])
-            )
+        # Schedule UUID cleanup after delay
+        asyncio.get_event_loop().call_later(self.cleanup_delay, lambda: self.remove_uuid(webhook_payload['uuid']))
 
         for attempt in range(1, retries + 1):
             try:
-                # Attempt to send the webhook
-                self.log_manager.debug(f"Attempting webhook (attempt {attempt}/{retries}): {webhook_payload}")
+                # Attempt webhook send
+                self.log_manager.debug(f"� Attempting webhook ({attempt}/{retries}): {webhook_payload}")
                 response = await http_session.post(
                     self.web_url,
                     data=json.dumps(webhook_payload, default=self.shared_utils_utility.string_default),
@@ -131,44 +127,44 @@ class SenderWebhook:
                 )
                 response_text = await response.text()
 
-                # Check the response status
+                # ✅ Successful request
                 if response.status == 200:
-                    # self.log_manager.debug(f"Webhook sent successfully: {webhook_payload['uuid']}") #debug
                     if webhook_payload['side'] == 'BUY':
-                        self.log_manager.order_sent(f"Alert webhook sent successfully: {webhook_payload['uuid']}")
+                        self.log_manager.order_sent(f"✅ Alert webhook sent successfully: {webhook_payload['uuid']}")
                     return response
-                elif response.status in [403, 404]:
-                    # Non-recoverable errors
-                    self.log_manager.error(f"Non-recoverable error {response.status}: {response_text}")
+
+                # ❌ Handle non-recoverable errors
+                if response.status in [403, 404]:
+                    self.log_manager.error(f"� Non-recoverable error {response.status}: {response_text}")
                     return response
-                elif response.status in [429, 500, 503]:
-                    # Recoverable errors - log and retry
-                    self.log_manager.warning(
-                        f"Recoverable error {response.status}: {response_text}. Retrying..."
-                    )
-                elif response.status == 400:
-                    # Bad request - log and retry
-                    if 'Insufficient balance to sell' in response_text:
-                        self.log_manager.info(f"Insufficient balance to sell: {webhook_payload['pair']} "
-                                              f"{webhook_payload['uuid']}")
+
+                # ⚠️ Handle recoverable errors with clean logging
+                if response.status in [429, 500, 503]:
+                    error_summary = (response_text[:300] + "...") if len(response_text) > 300 else response_text
+                    self.log_manager.warning(f"⚠️ Recoverable {response.status} error: {error_summary} (Retrying...)")
+
+                elif response.status == 400 and 'Insufficient balance to sell' in response_text:
+                    self.log_manager.info(f"� Insufficient balance for {webhook_payload['pair']} {webhook_payload['uuid']}")
                     return response
+
                 else:
-                    raise Exception(f"Unhandled status code {response.status}: {response_text}")
+                    raise Exception(f"Unhandled HTTP {response.status}: {response_text}")
 
             except asyncio.TimeoutError:
-                self.log_manager.error(f"Request timed out (attempt {attempt}/{retries}): {webhook_payload}")
+                self.log_manager.error(f"⏳ Request timeout (attempt {attempt}/{retries}): {webhook_payload}")
+
             except aiohttp.ClientError as e:
-                self.log_manager.error(f"Client error on attempt {attempt}/{retries}: {e}")
+                self.log_manager.error(f"� Client error (attempt {attempt}/{retries}): {e}")
 
-            # Retry logic
+            # ⏳ Retry logic with exponential backoff
             if attempt < retries:
-                sleep_time = delay + random.uniform(0, delay * 0.3)
-                self.log_manager.debug(f"Retrying in {sleep_time:.2f} seconds...")
+                sleep_time = delay + random.uniform(0, delay * 0.3)  # Add jitter
+                self.log_manager.debug(f"� Retrying in {sleep_time:.2f} seconds...")
                 await asyncio.sleep(sleep_time)
-                delay = min(delay * 2, max_delay)
+                delay = min(delay * 2, max_delay)  # Exponential backoff
 
-        # Max retries reached
-        self.log_manager.error(f"Max retries reached for webhook: {webhook_payload['uuid']}")
+        # ❌ Max retries reached
+        self.log_manager.error(f"❌ Max retries reached for webhook: {webhook_payload['uuid']}")
         return None
 
     def remove_uuid(self, uuid):

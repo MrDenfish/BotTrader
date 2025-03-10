@@ -14,6 +14,7 @@ class CustomLogger(logging.Logger):
     LOSS_LEVEL_NUM = 11
     STOP_LOSS_LEVEL_NUM = 15
     INSUFFICIENT_FUNDS = 13
+    BAD_ORDER_NUM = 25
 
     logging.addLevelName(BUY_LEVEL_NUM, "BUY")
     logging.addLevelName(SELL_LEVEL_NUM, "SELL")
@@ -21,6 +22,7 @@ class CustomLogger(logging.Logger):
     logging.addLevelName(PROFIT_LEVEL_NUM, "TAKE_PROFIT")
     logging.addLevelName(LOSS_LEVEL_NUM, "TAKE_LOSS")
     logging.addLevelName(STOP_LOSS_LEVEL_NUM, "STOP_LOSS")
+    logging.addLevelName(BAD_ORDER_NUM, "BAD_ORDER")
     logging.addLevelName(INSUFFICIENT_FUNDS, "INSUFFICIENT_FUNDS")
 
 
@@ -31,6 +33,10 @@ class CustomLogger(logging.Logger):
     def take_profit(self, message, *args, **kwargs):
         if self.isEnabledFor(logging.INFO):
             self._log(logging.INFO, f"TAKE_PROFIT: {message}", args, **kwargs)
+
+    def bad_order(self, message, *args, **kwargs):
+        if self.isEnabledFor(self.BAD_ORDER_NUM):
+            self._log(self.BAD_ORDER_NUM, f"BAD_ORDER: {message}", args, **kwargs)
 
     def insufficient_funds(self, message, *args, **kwargs):
         if self.isEnabledFor(logging.INFO):
@@ -59,6 +65,8 @@ class CustomFormatter(logging.Formatter):
     green = "\x1b[32;21m"
     yellow = "\x1b[33;21m"
     red = "\x1b[31;21m"
+    magenta = "\x1b[35;21m"
+    orange = "\x1b[38;5;214m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
     format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
@@ -66,12 +74,13 @@ class CustomFormatter(logging.Formatter):
     FORMATS = {
         logging.DEBUG: grey + format + reset,
         logging.INFO: grey + format + reset,
-        logging.WARNING: yellow + format + reset,
+        logging.WARNING: orange + format + reset,
         logging.ERROR: red + format + reset,
         logging.CRITICAL: bold_red + format + reset,
         CustomLogger.BUY_LEVEL_NUM: blue + format + reset,
-        CustomLogger.ORDER_SENT_NUM: green + format + reset,
-        CustomLogger.SELL_LEVEL_NUM: green + format + reset
+        CustomLogger.ORDER_SENT_NUM: yellow + format + reset,
+        CustomLogger.SELL_LEVEL_NUM: green + format + reset,
+        CustomLogger.BAD_ORDER_NUM: magenta + format + reset
     }
 
     def format(self, record):

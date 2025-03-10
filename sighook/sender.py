@@ -198,7 +198,7 @@ class TradeBot:
         self.alerts = AlertSystem.get_instance(self.log_manager)
         self.ccxt_api = ApiManager.get_instance(self.exchange, self.log_manager, self.alerts)
         self.async_func = AsyncFunctions()
-        self.indicators = Indicators(self.log_manager)
+
         self.sharded_utils = PrintData.get_instance(self.log_manager)
         self.db_tables = DatabaseTables()
 
@@ -211,7 +211,7 @@ class TradeBot:
         self.shared_utils_precision = PrecisionUtils.get_instance(self.log_manager)
         self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.log_manager)
         self.shared_utils_utility = SharedUtility.get_instance(self.log_manager)
-
+        self.indicators = Indicators(self.log_manager)
         self.snapshot_manager = SnapshotsManager.get_instance( self.shared_data_manager, self.log_manager)
 
         self.portfolio_manager = PortfolioManager.get_instance(self.log_manager, self.ccxt_api, self.exchange,
@@ -245,9 +245,11 @@ class TradeBot:
         # Step 9: Initialize remaining components that depend on DatabaseOps and other managers
         #self.db_initializer = DatabaseInitializer(self.database_session_mngr)
         self.webhook = SenderWebhook.get_instance(self.exchange, self.alerts, self.log_manager, self.shared_utils_utility)
+
         self.trading_strategy = TradingStrategy.get_instance(self.webhook, self.ticker_manager, self.exchange, self.alerts,
                                                 self.log_manager, self.ccxt_api, None, self.max_concurrent_tasks,
-                                                self.database_session_mngr, self.shared_utils_print, self.db_tables)
+                                                self.database_session_mngr, self.shared_utils_print, self.db_tables,
+                                                self.shared_utils_precision)
 
         self.profit_helper = ProfitHelper.get_instance(self.portfolio_manager, self.ticker_manager,
                                                       self.database_session_mngr, self.log_manager, self.profit_data_manager)

@@ -205,58 +205,6 @@ class TradeOrderManager:
             'open_orders': open_orders
         }
 
-    # async def handle_order(self, validate_data, order_book_details, precision_data):
-    #     try:
-    #         take_profit_price = None
-    #         highest_bid = Decimal(order_book_details['highest_bid'])
-    #         lowest_ask = Decimal(order_book_details['lowest_ask'])
-    #         spread = Decimal(order_book_details['spread'])
-    #         base_deci, quote_deci, _, _ = precision_data
-    #         adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(validate_data, order_book_details)
-    #
-    #         self.log_manager.debug(f"Adjusted price: {adjusted_price}, Adjusted size: {adjusted_size}")
-    #
-    #         # Calculate take profit and stop loss prices
-    #         if validate_data['side'] == 'buy':
-    #             take_profit_price = adjusted_price * (1 + self.take_profit)
-    #             adjusted_take_profit_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci,
-    #                                                                                       take_profit_price, convert='quote')
-    #             stop_loss_price = adjusted_price * (1 + self.stop_loss)
-    #         else:  # side == 'sell'
-    #             take_profit_price = adjusted_price * (1 + self.take_profit)
-    #             adjusted_take_profit_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci,
-    #                                                                                       take_profit_price, convert='quote')
-    #
-    #             stop_loss_price = adjusted_price * (1 + self.stop_loss)
-    #
-    #
-    #         adjusted_stop_loss_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, stop_loss_price,
-    #                                                                convert='quote')
-    #         adjusted_size = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_size,
-    #                                                     convert='base')
-    #         order_data = {
-    #             **validate_data,
-    #             'adjusted_price': adjusted_price,
-    #             'adjusted_size': adjusted_size,
-    #             'trading_pair': validate_data['trading_pair'],
-    #             'side': validate_data['side'],
-    #             'stop_loss_price': adjusted_stop_loss_price,
-    #             'usd_available': validate_data['quote_balance'],
-    #             'take_profit_price': adjusted_take_profit_price,
-    #
-    #         }
-    #
-    #         # Decide whether to place a bracket order or a trailing stop order
-    #         if self.should_use_trailing_stop(adjusted_price, highest_bid, lowest_ask):
-    #             return await self.attempt_order_placement(validate_data, order_data, order_type='trailing_stop')
-    #         else:
-    #             return await self.attempt_order_placement(validate_data, order_data, order_type='bracket')
-    #     except Exception as ex:
-    #         self.log_manager.debug(ex)
-    #         return False
-    #     except Exception as ex:
-    #         self.log_manager.debug(ex)
-    #         return False
     async def handle_order(self, validate_data, order_book_details, precision_data):
         try:
             # Extract key data
@@ -277,6 +225,8 @@ class TradeOrderManager:
             spread = Decimal(order_book_details['spread'])
             base_deci, quote_deci, _, _ = precision_data
 
+            # ✅ Calculate adjusted price
+            adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book_details)
             # ✅ Calculate take profit and stop loss prices
             take_profit_price = adjusted_price * (1 + self.take_profit)
             adjusted_take_profit_price = self.shared_utils_precision.adjust_precision(
@@ -290,6 +240,8 @@ class TradeOrderManager:
 
             # ✅ Update `order_data` with additional parameters
             order_data.update({
+                'adjusted_price':adjusted_price,
+                'adjusted_size':adjusted_size,
                 'stop_loss_price': adjusted_stop_loss_price,
                 'take_profit_price': adjusted_take_profit_price,
                 'usd_available': validate_data.get('quote_balance', 0),
@@ -299,21 +251,22 @@ class TradeOrderManager:
             self.log_manager.debug(f"� Final Order Data: {order_data}")
 
             # ✅ Decide order type and place order
-            if self.should_use_trailing_stop(adjusted_price, highest_bid, lowest_ask):
+            if self.should_use_trailing_stop(order_data, adjusted_price, highest_bid, lowest_ask):
                 return await self.attempt_order_placement(validate_data, order_data, order_type='trailing_stop')
             else:
-                return await self.attempt_order_placement(validate_data, order_data, order_type='bracket')
+                return await self.attempt_order_placement(validate_data, order_data, order_type='limit')
 
         except Exception as ex:
             self.log_manager.error(f"⚠️ Error in handle_order: {ex}", exc_info=True)
             return False
 
-    def should_use_trailing_stop(self, adjusted_price, highest_bid, lowest_ask):
+    def should_use_trailing_stop(self, order_data, adjusted_price, highest_bid, lowest_ask):
         # Initial thought for using a trailing stop order is when ROC trigger is met. Signal will come from  sighook.
+        if order_data.get('side') == 'BUY':
+            return False # do not place a trailing stop order for buy orders
+        else:
+            return True # while developing
 
-        # Placeholder logic:
-        return True # while developing
-        # return adjusted_price > (highest_bid + lowest_ask) / 2
 
     async def attempt_order_placement(self, validate_data, order_data, order_type):
         """
@@ -333,16 +286,36 @@ class TradeOrderManager:
 
                     highest_bid = Decimal(order_book['highest_bid'])
                     # Adjust price for post-only orders
-                    if order_data['side'] == 'buy':
+                    if order_data['side'].lower() == 'buy':
                         order_price = min(order_book['highest_bid'], order_book['lowest_ask'] - Decimal('0.0001'))
                     else:
                         order_price = max(order_book['highest_bid'], order_book['lowest_ask'] + Decimal('0.0001'))
 
-                    if order_data['side'] == 'buy':
+                    if order_data['side'].lower() == 'buy':
                         response = await self.order_types.place_limit_order(order_data)
-                        print(f"Attempt # {attempt} "
-                              f"{order_data['trading_pair']}: Adjusted stop price: {order_data['adjusted_price']}, "
-                              f"highest bid price {highest_bid}")  # debug
+                        if not response:
+                            # Adjust price and size
+                            adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book)
+                            adjusted_price = self.shared_utils_precision.adjust_precision(
+                                order_data['base_decimal'], order_data['quote_decimal'],
+                                adjusted_price, 'quote'
+                                )
+                            adjusted_size = self.shared_utils_precision.adjust_precision(
+                                order_data['base_decimal'], order_data['quote_decimal'],
+                                adjusted_size, 'base'
+                                )
+                            # ✅ Update `order_data` with additional parameters
+                            order_data.update(
+                                {
+                                    'adjusted_price':adjusted_price,
+                                    'adjusted_size':adjusted_size
+                                }
+                            )
+                            print(f"Attempt # {attempt} "
+                                  f"{order_data['trading_pair']}: Adjusted stop price: {order_data['adjusted_price']}, "
+                                  f"highest bid price {highest_bid}")  # debug
+                        elif response.get('reason') == 'insufficient_balance':
+                            return False, response
                     elif order_type == 'bracket':
                         response, market_price, trailing_price = await self.order_types._handle_bracket_order(order_data, order_book)
                     elif order_type == 'trailing_stop':
@@ -350,7 +323,7 @@ class TradeOrderManager:
                               f"{order_data.get('stop_loss_price')}, highest bid: {highest_bid}")  # debug
                         response = await self.order_types.place_trailing_stop_order(order_book, order_data, order_data.get
                         ('highest_bid'))
-                    elif order_data['side'] == 'sell':
+                    elif order_data['side'].lower() == 'sell':
                         response = await self.order_types.place_limit_order(order_data)
                         print(f"Attempt # {attempt} "
                               f"{order_data['trading_pair']}: Adjusted stop price: {order_data['adjusted_price']}, "
@@ -437,10 +410,18 @@ class TradeOrderManager:
 
             # Get latest price and calculate potential order size
             price = float(self.market_data.get('current_prices', {}).get(trading_pair, 0))
-            fiat_avail = float(min(self.order_size, usd_bal))
-            size = round(fiat_avail / price, 8) if price > 0 else 0  # Prevent division by zero
-
+            if usd_bal > self.order_size:
+                fiat_avail_for_order = self.order_size
+                usd_avail = usd_bal-self.order_size
+            else:
+                fiat_avail_for_order = usd_bal
+                usd_avail = 0
+            if side == 'BUY':
+                size = round(fiat_avail_for_order / price, 8) if price > 0 else 0  # Prevent division by zero
+            elif side == 'SELL':
+                size = float(spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
             # Prepare initial order data
+
             order_data = {
                 'quote_decimal': quote_deci,
                 'base_decimal': base_deci,
@@ -454,7 +435,8 @@ class TradeOrderManager:
             temp_order = {
                 'side': side,
                 'base_balance': balance,
-                'quote_amount': fiat_avail,
+                'order_size':size,
+                'quote_amount': fiat_avail_for_order,
                 'quote_decimal': quote_deci,
             }
             temp_book = {
@@ -463,11 +445,16 @@ class TradeOrderManager:
             }
 
             # Adjust price and size
-            adjusted_bid, adjusted_size = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book)
-            adjusted_bid = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_bid, 'quote')
-            adjusted_ask, adjusted_size = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book)
-            adjusted_ask = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_ask, 'quote')
+            if side == 'SELL':
+                adjusted_bid, adjusted_size = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book) # sell price
+                adjusted_bid = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_bid, 'quote')
+                adjusted_ask = 0
+            elif side == 'BUY':
+                adjusted_ask, adjusted_size = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book) # buying price
+                adjusted_ask = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_ask, 'quote')
+                adjusted_bid = 0
 
+            # Adjust size based on precision
             adjusted_size = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, size, 'base')
 
             # Final order data
@@ -475,13 +462,15 @@ class TradeOrderManager:
                 'lowest_ask': float(adjusted_ask),
                 'highest_bid': float(adjusted_bid),
                 'adjusted_size': float(adjusted_size),
+                'quote_amount':float(fiat_avail_for_order),
                 'trading_pair': trading_pair,
-                'usd_available': usd_bal,
+                'usd_available': usd_avail,
                 'base_balance': balance,
+                'available_to_trade_crypto': cryto_avail_to_trade,
                 'side': side,
                 'quote_decimal': quote_deci,
                 'base_decimal': base_deci,
-                'status_of_order': 'STOP_LIMIT/BUY/ROC'
+                'status_of_order': 'LIMIT/'+side+'/ROC'
             }
 
             return order_data

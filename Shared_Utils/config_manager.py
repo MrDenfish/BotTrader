@@ -85,8 +85,6 @@ class CentralConfig:
             "_min_volume": "MIN_VOLUME",
             "_max_ohlcv_rows": "MAX_OHLCV_ROWS",
             "_hodl": "HODL",
-            "_buy_target": "BUY_TARGET",
-            "_sell_target": "SELL_TARGET",
             "_take_profit": "TAKE_PROFIT",
             "_stop_loss": "STOP_LOSS",
             "_cxl_buy": "CXL_BUY",
@@ -291,13 +289,6 @@ class CentralConfig:
         except (FileNotFoundError, json.JSONDecodeError) as e:
             print(f"Error loading tb CDP API key JSON: {e}")
             exit(1)
-    @property
-    def buy_target(self):
-        return self._buy_target
-
-    @property
-    def sell_target(self):
-        return self._sell_target
 
     @property
     def webhook_api_key_path(self):

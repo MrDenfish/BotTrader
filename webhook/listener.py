@@ -107,7 +107,7 @@ class CoinbaseAPI:
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
 
         for attempt in range(max_retries):
-            async with self.session.post(f'{self.base_url}{request_path}', headers=headers, json=payload) as response:
+            async with self.session.post(f'{self.rest_url}{request_path}', headers=headers, json=payload) as response:
                 if response.status == 200:
                     return await response.json()
                 elif response.status == 401:
@@ -588,6 +588,10 @@ class WebSocketHelper:
                 return
 
             profit_data_list = []
+            market_data_snapshot, order_management_snapshot = await self.snapshot_manager.get_snapshots()
+            spot_position = market_data_snapshot.get('spot_positions', {})
+            current_prices = market_data_snapshot.get('current_prices', {})
+            usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
 
             for event in events:
                 event_type = event.get("type", "")
@@ -596,7 +600,7 @@ class WebSocketHelper:
                 for order in orders:
                     order_id = order.get("order_id")
                     status = order.get("status")
-                    product = order.get("product_id")
+                    symbol = order.get("product_id")
                     order_side = order.get("order_side")
 
                     # ✅ Handle order status changes
@@ -616,22 +620,34 @@ class WebSocketHelper:
                     if order_side == 'BUY':
                         continue  # Ignore buy orders, only act on sells
 
+                    asset = symbol.split('-')[0]  # Extract asset symbol
+                    avg_price = Decimal(order.get('avg_price', 0)) if order.get('avg_price') else None
+                    cost_basis = Decimal(spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0))
+                    balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
+                    status_of_order = order.get('status')
+
                     filled_value = Decimal(order.get("filled_value", 0))  # Ensure safe Decimal conversion
-                    asset = product.split('-')[0]  # Extract asset symbol
-                    profit = filled_value - self.order_size  # Calculate profit
-                    print(f"� Order {status} profit: {profit:.2f}")
+                    required_prices = {
+                        'avg_price': avg_price,
+                        'cost_basis': cost_basis,
+                        'balance': balance,
+                        'status_of_order': status_of_order
+                    }
+                    base_deci,quote_deci,_,_ = self.shared_utils_precision.fetch_precision(symbol,usd_pairs)
+
+                    profit = await self.profit_data_manager._calculate_profitability(asset, required_prices, current_prices,usd_pairs)
+                    profit_value = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, profit.get('profit'),'quote')
+                    print(f"� Order {status} profit: {profit_value:.2f}")
                     # ✅ Buy BTC when profit is between $1.00 and $2.00
                     if status == "FILLED" and asset not in self.hodl:
-                        if Decimal(1.0) < profit < Decimal(2.0):
-
-                            btc_order_data = await self.trade_order_manager.build_order_data(self,'BTC/USD',product)
+                        if Decimal(1.0) < profit_value < Decimal(2.0):
+                            btc_order_data = await self.trade_order_manager.build_order_data('BTC/USD',symbol)
                             response = await self.order_type_manager.place_limit_order(btc_order_data)
                             print(f"DEBUG: BTC Order Response: {response}")
 
                         # ✅ Buy ETH when profit is greater than $2.00
-                        elif profit > Decimal(2.0):
-
-                            eth_order_data = await self.trade_order_manager.build_order_data(self,'ETH/USD',product)
+                        elif profit_value > Decimal(2.0):
+                            eth_order_data = await self.trade_order_manager.build_order_data('ETH/USD',symbol)
                             response = await self.order_type_manager.place_limit_order(eth_order_data)
                             print(f"DEBUG: ETH Order Response: {response}")
 
@@ -992,10 +1008,13 @@ class WebSocketHelper:
     async def monitor_and_update_active_orders(self, market_data_snapshot, order_management_snapshot):
         """Monitor active orders and update trailing stops or profitability."""
         try:
-
             spot_positions = market_data_snapshot.get('spot_positions', {})
+            coin_info = market_data_snapshot.get('filtered_vol', {})
             current_prices = market_data_snapshot.get('current_prices', {})
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
+            usd_avail = order_management_snapshot.get('non_zero_balances',{})['USD']['available_to_trade_crypto'] # USD is custom
+            profit_data_list = []
+            profit_data_list_new = []
             profit_data_list = []
             profit_data_list_new = []
 
@@ -1004,33 +1023,60 @@ class WebSocketHelper:
                     try:
                         symbol = order_data["symbol"]
                         asset = symbol.split('/')[0]
+                        if asset == 'ADA':
+                            pass
+                        # ✅ Fetch precision values for the asset
+                        precision_data = self.shared_utils_precision.fetch_precision(symbol, usd_pairs)
+                        base_deci, quote_deci, _, _ = precision_data
+
+
+
+                        # ✅ Add precision values to order_data
+                        order_data["quote_decimal"] = quote_deci
+                        order_data["base_decimal"] = base_deci
+                        order_data["product_id"] = symbol
+
 
                         avg_price = Decimal(spot_positions.get(asset, {}).get('average_entry_price', {}).get('value', 0))
                         balance = Decimal(spot_positions.get(asset, {}).get('total_balance_crypto', 0))
                         current_price = current_prices.get(symbol, 0)
                         cost_basis = Decimal(spot_positions.get(asset, {}).get('cost_basis', {}).get('value', 0))
+
                         required_prices = {
                             'avg_price': avg_price,
                             'cost_basis': cost_basis,
                             'balance': balance,
+                            'usd_avail': usd_avail,
                             'status': order_data.get('status', 'UNKNOWN')
                         }
-                        if order_data.get("triggerPrice") is not None:
-                            if order_data.get("triggerPrice") < current_price:
-                                highest_price = max(order_data.get("triggerPrice", 0), current_price)
-                                # may need to cancel exisiting order first
-                                await self.trailing_stop_manager.update_trailing_stop(order_id, symbol, highest_price,
-                                                                                      order_management_snapshot["order_tracker"])
-                                continue
 
-                        profit = await self.profit_data_manager._calculate_profitability(symbol,required_prices,
-                                                                                         current_prices, usd_pairs)
+                        if order_data.get("type") == 'limit' and order_data.get('side') == 'sell':
+                            order_book_details = await self.order_book_manager.get_order_book(order_data, symbol)
+
+                            if order_data.get("price") < current_price:
+                                highest_bid = Decimal(max(order_book_details['order_book']['bids'], key=lambda x: x[0])[0])
+
+                                # ✅ Update trailing stop with highest bid
+                                await self.trailing_stop_manager.update_trailing_stop(
+                                    order_id, symbol, highest_bid,
+                                    order_management_snapshot["order_tracker"], required_prices, order_data
+                                )
+                                continue
+                        elif order_data.get("type") == 'limit' and order_data.get('side') == 'buy':
+                            pass # need to develope code that will amend limit orders and stop orders
+
+                        profit = await self.profit_data_manager._calculate_profitability(
+                            symbol, required_prices, current_prices, usd_pairs
+                        )
+
                         if profit and profit.get('profit', 0) != 0:
                             profit_data_list.append(profit)
 
+                        if Decimal(profit.get('   profit percent', '0').replace('%', '')) / 100 <= self.stop_loss:
+                            await self.listener.handle_order_fill(order_data)
+
                     except Exception as e:
                         self.log_manager.error(f"Error handling tracked order {order_id}: {e}", exc_info=True)
-
 
             if profit_data_list:
                 profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
@@ -1041,6 +1087,7 @@ class WebSocketHelper:
                 print(f'Profit Data Open Orders:\n{profit_df_new.to_string(index=True)}')
 
             await self.monitor_untracked_assets(current_prices, market_data_snapshot, order_management_snapshot)
+
         except Exception as e:
             self.log_manager.error(f"Error in monitor_and_update_active_orders: {e}", exc_info=True)
 
@@ -1063,7 +1110,8 @@ class WebSocketHelper:
 
                 if symbol in self.currency_pairs_ignored:
                     continue
-
+                if asset == 'ADA':
+                    pass
                 balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', {}))
 
                 # Skip tracked assets
@@ -1109,6 +1157,7 @@ class WebSocketHelper:
                 # ✅ Calculate profitability
                 profit = await self.profit_data_manager._calculate_profitability(symbol, required_prices, usd_dict,
                                                                                  usd_pairs)
+                order_data_updated = await self.trade_order_manager.build_order_data(asset, symbol)
                 if profit:
                     profit_value = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, profit.get('profit'),
                                                                                 'quote')
@@ -1119,18 +1168,19 @@ class WebSocketHelper:
                     profit_percent_decimal = Decimal(profit_percent_str) / Decimal(100)  # Convert to decimal
 
                     if profit_percent_decimal >= self.take_profit and asset not in self.hodl:
-                        order_data_updated = await self.trade_order_manager.build_order_data(asset,symbol)
-
-
                         if profit_percent_decimal > self.trailing_percentage:
                             order_book = await self.order_book_manager.get_order_book(order_data_updated)
-                            await self.order_type_manager.place_trailing_stop_order(order_book,order_data_updated,
-                                                                                    current_price)
+                            await self.order_type_manager.place_trailing_stop_order(order_book,order_data_updated, current_price)
+                    elif profit_percent_decimal >= Decimal(0.0) and asset not in self.hodl:
+                        pass
+
+                    elif current_price * profit_percent_decimal < ((1 + self.stop_loss ) *  avg_price) and asset not in self.hodl:
+                        await self.order_type_manager.place_limit_order(order_data_updated)
+
                 else:
                     print(f"Placing limit order for untracked asset {asset}")
                     self.sharded_utils_print.print_order_tracker(order_tracker)
-                    if order_data_updated.get('usd_available') > self.order_size and order_data_updated.get(
-                            'side') == 'BUY':
+                    if order_data_updated.get('usd_available') > self.order_size and order_data_updated.get('side') == 'BUY':
                         response = await self.order_type_manager.place_limit_order(order_data_updated)
                         print(f"DEBUG: Untracked Asset Order Response: {response}")
 
@@ -1228,6 +1278,7 @@ class WebhookListener:
         self.portfolio_uuid = self.bot_config.portfolio_uuid
         self.session = aiohttp.ClientSession()  # Only needed for webhooks
         self.cb_api = self.bot_config.load_webhook_api_key()
+
         self.order_management = {'order_tracker': {}}
         self.shared_data_manager = shared_data_manager
         self.log_manager = logger_manager
@@ -1299,7 +1350,7 @@ class WebhookListener:
         self.market_data_lock = asyncio.Lock()
 
         self.trailing_stop_manager = TrailingStopManager.get_instance(self.log_manager, self.order_type_manager,
-                                                         self.shared_utils_precision)
+                                                         self.shared_utils_precision, self.market_data, self.coinbase_api)
 
         self.trade_order_manager = TradeOrderManager.get_instance(
             coinbase_api=self.coinbase_api,
@@ -1420,12 +1471,49 @@ class WebhookListener:
 
     async def handle_order_fill(self, websocket_msg):
         try:
-            print(f"handle_order_fill started order_tracker:")
-            symbol = websocket_msg['product_id'].replace('-', '/')
-            print(f"Symbol: {symbol}")
+            base_deci =websocket_msg.get('base_decimal')
+            quote_deci = websocket_msg.get('quote_decimal')
 
+            if websocket_msg.get('order_type') == 'stop_limit':
+                websocket_msg['limit_price'] = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_msg.get('limit_price'),'quote')
+
+                websocket_msg['stop_price'] = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_msg.get('stop_price'), 'quote')
+
+                websocket_msg['avg_price'] = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_msg.get('avg_price'), 'quote')
+            elif  websocket_msg.get('order_type') == 'Limit':
+                websocket_msg['stop_price'] = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_msg.get('limit_price'), 'quote')
+            elif websocket_msg.get('type') == 'limit':
+                websocket_msg['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('price'), 'quote')
+            else:
+                pass
+
+
+            self.usd_pairs = self.market_data.get('usd_pairs_cache', {})
+            self.spot_info = self.market_data.get('spot_positions',{})
+            print(f"handle_order_fill started order_tracker:")
+            if websocket_msg.get('status') == 'FILLED':
+                symbol = websocket_msg['symbol']
+                asset = symbol.split('/')[0]
+                print(f"Symbol: {symbol}")
+                order_id = websocket_msg['order_id']
+            elif websocket_msg.get('status') == 'open':
+                symbol = websocket_msg['symbol'].replace('-', '/')
+                asset = symbol.split('/')[0]
+                print(f"Symbol: {symbol}")
+                order_id = websocket_msg['id']
+            else:
+                pass
+
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
+            websocket_msg['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('price'), 'quote')
+
+            websocket_msg['amount'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('amount'), 'base')
             order_data = {
-                'initial_order_id': websocket_msg['order_id'],
+                'initial_order_id': order_id,
                 'side': 'sell',  # Creating a sell order after the buy is filled
                 'base_increment': Decimal('1E-8'),
                 'base_decimal': 8,
@@ -1434,15 +1522,17 @@ class WebhookListener:
                 'quote_currency': symbol.split('/')[1],
                 'trading_pair': symbol,
                 'formatted_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'quote_price': Decimal(websocket_msg['filled_value']),
-                'quote_amount': Decimal(websocket_msg['filled_value']),
-                'base_balance': Decimal(websocket_msg['cumulative_quantity']),
-                'base_price': Decimal(websocket_msg['limit_price'])
+                'quote_price': Decimal(websocket_msg['price']),
+                'quote_amount': Decimal(websocket_msg['amount']),
+                'available_to_trade_crypto':self.spot_info.get(asset,{}).get('available_to_trade_crypto',Decimal(0.0)),
+                'base_balance': Decimal(websocket_msg['remaining']),
+                'base_price': Decimal(websocket_msg['price'])
             }
 
             await self._process_order_fill(order_data)
         except Exception as e:
-            print(f"Error in handle_order_fill: {e}")
+            print(f'websocket_msg:{websocket_msg}')
+            self.log_manager.error(f"Error in handle_order_fill: {e} {websocket_msg}", exc_info=True)
 
     async def _process_order_fill(self, order_data):
         """
@@ -1490,8 +1580,13 @@ class WebhookListener:
         try:
             ip_address = request.remote
             request_json = await request.json()
+            symbol = request_json.get('pair')
+            side = request_json.get('side')
+            order_size = request_json.get('order_size')
+            price = request_json.get('limit_price')
+            origin = request_json.get('origin')
 
-            print(f"Handling webhook request from: {request_json.get('origin')} {request_json.get('pair')} uuid"
+            print(f"Handling webhook request from: {origin} {symbol} uuid"
                   f":{request_json.get('uuid')}")
 
             # Add UUID if missing from TradingView webhook
@@ -1502,9 +1597,10 @@ class WebhookListener:
             # Convert response to JSON manually
             response_text = response.text  # Get raw response text
             response_json = json.loads(response_text)  # Parse JSON
-
+            message = response_json.get('message')
             if response_json.get('success'):
-                self.log_manager.order_sent(f"Webhook response: {response_json}")
+                self.log_manager.order_sent(f"Webhook response: {message} {symbol} side:{side} size:{order_size}. Order originated from "
+                                            f"{origin}")
 
             return response
 
@@ -1692,21 +1788,6 @@ async def initialize_market_data(listener, market_data_manager, shared_data_mana
     await asyncio.sleep(1)  # Prevents race conditions
     market_data_master, order_mgmnt_master = await market_data_manager.update_market_data(time.time())
     listener.initialize_components(market_data_master, order_mgmnt_master, shared_data_manager)
-
-#hell world
-import asyncio
-import logging
-import os
-import time
-from aiohttp import web
-
-
-async def initialize_market_data(listener, market_data_manager, shared_data_manager):
-    """Fetch and initialize market data safely after the event loop starts."""
-    await asyncio.sleep(1)  # Prevents race conditions
-    market_data_master, order_mgmnt_master = await market_data_manager.update_market_data(time.time())
-    listener.initialize_components(market_data_master, order_mgmnt_master, shared_data_manager)
-
 
 async def supervised_task(task_coro, name):
     """Handles and logs errors in background tasks."""

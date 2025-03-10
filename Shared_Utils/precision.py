@@ -96,45 +96,68 @@ class PrecisionUtils:
 
         raise ValueError(f"Symbol {symbol} not found in market_cache.")
 
-    def adjust_price_and_size(self, order_data, order_book, response=None) -> tuple[Decimal, Decimal]:
+    def adjust_price_and_size(self, order_data, order_book) -> tuple[Decimal, Decimal]:
+        """
+        Adjusts price and size based on order book data, ensuring proper precision.
+
+        Args:
+            order_data (dict): Order details containing side, order size, quote amount, etc.
+            order_book (dict): Market order book data containing highest_bid and lowest_ask.
+
+        Returns:
+            tuple[Decimal, Decimal]: Adjusted price and size.
+        """
         try:
             side = order_data['side'].upper()
+            highest_bid = Decimal(str(order_book.get('highest_bid', 0)))
+            lowest_ask = Decimal(str(order_book.get('lowest_ask', 0)))
 
+            if highest_bid == 0 or lowest_ask == 0:
+                raise ValueError("Invalid order book data: highest_bid or lowest_ask is zero.")
+
+            # Determine the base price
             if side == 'SELL':
-                adjusted_price = Decimal(str(order_book['highest_bid']))  # Convert float to string before Decimal
-                adjusted_size = Decimal(str(order_data.get('base_balance', 0)))
+                adjusted_price = highest_bid  # Selling uses highest bid
             elif side == 'BUY':
-                adjusted_price = Decimal(str(order_book['lowest_ask']))  # ✅ Ensures precision
+                adjusted_price = lowest_ask  # Buying uses lowest ask
+            else:
+                raise ValueError(f"Unsupported order side: {side}")
+
+            # Determine adjusted size
+            if side == 'SELL':
+                adjusted_size = Decimal(str(order_data.get('order_size', 0)))
+            else:  # BUY case
                 quote_amount = Decimal(str(order_data.get('quote_amount', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")
                 adjusted_size = quote_amount / adjusted_price
-            else:
-                raise ValueError(f"Unsupported side: {side}")
 
-            # Capture best bid/ask prices
-            best_bid_price = Decimal(str(order_book['highest_bid']))  # ✅ Convert float to string before Decimal
-            best_ask_price = Decimal(str(order_book['lowest_ask']))  # ✅ Convert float to string before Decimal
-            spread = best_ask_price - best_bid_price
-
-            # Dynamic adjustment factor based on a percentage of the spread
+            # Calculate spread and adjustment factor
+            spread = lowest_ask - highest_bid
             adjustment_percentage = Decimal('0.002')  # 0.2%
             adjustment_factor = spread * adjustment_percentage
 
-            # Ensure the adjustment is significant given the currency's precision
-            precision_str = '1e-{}'.format(order_data.get('quote_decimal', 2))
-            adjustment_factor = max(adjustment_factor, Decimal(precision_str))
-            print(f'Calculated adjustment_factor: {adjustment_factor}')
+            # Ensure the adjustment factor respects the asset's precision
+            precision = Decimal(f"1e-{order_data.get('quote_decimal', 2)}")
+            adjustment_factor = max(adjustment_factor, precision)
 
-            # Apply the adjustment factor depending on the side
+            # Adjust both bid and ask
+            adjusted_bid = highest_bid + adjustment_factor  # Increase bid slightly
+            adjusted_ask = lowest_ask - adjustment_factor  # Decrease ask slightly
+
+            # Apply adjusted price for both sides
             if side == 'BUY':
-                adjusted_price -= adjustment_factor  # Slightly increase the buy price
+                adjusted_price = adjusted_ask
             elif side == 'SELL':
-                adjusted_price += adjustment_factor  # Slightly decrease the sell price
+                adjusted_price = adjusted_bid
+
+            # Ensure adjusted price respects precision
+            adjusted_price = adjusted_price.quantize(precision, rounding=ROUND_DOWN)
 
             return adjusted_price, adjusted_size
+
         except Exception as e:
-            self.log_manager.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
+            self.log_manager.error(f"adjust_price_and_size: Error - {e}", exc_info=True)
             return None, None
 
     def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
@@ -166,10 +189,12 @@ class PrecisionUtils:
                 raise ValueError("DataFrame input is not supported for num_to_adjust. Use column-based operations.")
 
             else:
+                caller_function_name = stack()[1].function
+                print(f'{caller_function_name}')
                 raise TypeError(f"Unsupported input type for num_to_adjust: {type(num_to_adjust)}")
 
         except Exception as e:
-            self.log_manager.webhook_logger.error(f'adjust_precision: An error occurred: {e}', exc_info=True)
+            self.log_manager.error(f'adjust_precision: An error occurred: {e}', exc_info=True)
             return None
 
     def float_to_decimal(self, value, decimal_places):
@@ -198,16 +223,20 @@ class PrecisionUtils:
                                    f'Decimal places: {decimal_places}', exc_info=True)
             raise
 
-    @staticmethod
-    def get_decimal_format(base_decimal: int) -> Decimal:
+
+    def get_decimal_format(self, base_decimal: int) -> Decimal:
         """
         Generate a Decimal format string based on the number of decimal places.
 
         :param base_decimal: The number of decimal places for the base value.
         :return: A Decimal object representing the format.
         """
-        if base_decimal < 0:
-            raise ValueError("base_decimal must be a positive integer")
+        try:
+            if base_decimal < 0:
+                raise ValueError("base_decimal must be a positive integer")
 
-        decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
-        return Decimal(decimal_format)  # example 0.00000001
+            decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
+            return Decimal(decimal_format)  # example 0.00000001
+        except Exception as e:
+            self.log_manager.error(f'An error was detected {e}',exc_info=True)
+            return Decimal(0)
