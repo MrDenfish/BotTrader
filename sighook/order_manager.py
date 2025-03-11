@@ -1,5 +1,5 @@
 import pandas as pd
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 import asyncio
 import aiohttp
 import time
@@ -158,11 +158,11 @@ class OrderManager:
             merged_orders['time active > 5 minutes'] = merged_orders['time active (minutes)'] > 5
 
             merged_orders['is_stale'] = (
-                    ((merged_orders['side'] == 'BUY') &
+                    ((merged_orders['side'] == 'buy') &
                     ((merged_orders['price'] < merged_orders['ask'] * Decimal(1 - Decimal(self.cxl_buy))) |
                     (merged_orders['price']   > merged_orders['bid'])) &
                     (merged_orders['time active > 5 minutes'])) |
-                    ((merged_orders['side'] == 'SELL') &
+                    ((merged_orders['side'] == 'sell') &
                     (merged_orders['price'] < merged_orders['ask'] * Decimal(1 - Decimal(self.cxl_sell))))
             )
 
@@ -302,231 +302,355 @@ class OrderManager:
             return None
 
     async def handle_actions(self, order, holdings):
-        """ PART V:
-        Handle buy conditions with limit and market orders.
-        Handle  sell conditions with market ('sro' trigger) limit('bro' trigger) and bracket ('profit'/'loss' trigger)
-        Handle trailing stop orders when they become available
-
-        """
+        """Process buy, sell, and trailing stop conditions based on the order action."""
         await self.open_http_session()  # Ensure session is open
         try:
             asset = order['asset']
             symbol = order['symbol']
             action_type = order.get('action')
 
-            # Extract price, volume, and other order details
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
 
-            price =self.shared_utils_precision.float_to_decimal(order['price'], quote_deci) # quote_deci
+            price = self.shared_utils_precision.float_to_decimal(order['price'], quote_deci)
             volume = order.get('volume', 0)
-            amount = self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', Decimal('0'))
-            result = None
-            if action_type == 'buy':
-                coin_balance = self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', Decimal('0'))
-                usd_balance = Decimal(self.filtered_balances.get('USD', {}).get('available_to_trade_fiat', Decimal('0')))
-                band_ratio = order.get('band_ratio')
-                trigger = order.get('trigger')
-                result = await self.handle_buy_action(symbol, price, coin_balance, usd_balance, band_ratio,  trigger
-                )
-            elif action_type == 'sell':
-                if amount > self.min_sell_value:
-                    result = await self.handle_sell_action(
-                        holdings, symbol, amount, price, order.get('trigger'), order.get('sell_cond')
-                    )
-            elif action_type == 'hold':
-                result = self.handle_trailing_stop(
-                    holdings, symbol, amount, price, order.get('trigger'), order.get('sell_cond')
-                )
+            base_amount = Decimal(self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', 0))
+            base_amount = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,base_amount,convert='base')
+            quote_amount = Decimal(self.filtered_balances.get('USD', {}).get('available_to_trade_fiat', 0))
+            quote_amount = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,quote_amount,convert='quote')
+
+            action_methods = {
+                'buy': self.handle_buy_action,
+                'sell': self.handle_sell_action,
+                'hold': self.handle_trailing_stop
+            }
+
+            if action_type in action_methods:
+                return await action_methods[action_type](holdings, symbol, base_amount, quote_amount,price, order)
             else:
                 self.log_manager.warning(f"Unknown action type: {action_type}")
-                return result
-
-            return result
+                return None
 
         except Exception as e:
             self.log_manager.error(f"Error handling action {order}: {e}", exc_info=True)
             return None
 
-    async def handle_buy_action(self, symbol, price, coin_balance, usd_balance, band_ratio, trigger):
-        """PART V: Order Execution"""
+    async def handle_buy_action(self, holdings, symbol, base_amount, quote_amount, price, order):
+        """Handles buy actions for market and limit orders."""
         try:
-            usd_balance = usd_balance.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-            coin_balance_value = Decimal(coin_balance) * Decimal(price)
+            usd_balance = quote_amount
+            coin_balance_value = base_amount * price
             coin = symbol.split('/')[0]
 
-            if ((usd_balance > 100 and coin_balance_value < self.min_sell_value)
-                    or (usd_balance > 50 and (coin in self.hodl)) and coin  not in self.currency_pairs_ignored):  # accumulate BTC, ETH etc
-                # Prepare buy action data
-                buy_action = 'open_at_limit'
-                buy_order = 'limit'
-                if trigger == 'market_buy':
-                    buy_order = 'market'
+            if ((usd_balance > 100 and coin_balance_value < self.min_sell_value) or
+                    (usd_balance > 50 and coin in self.hodl and coin not in self.currency_pairs_ignored)):  # Accumulate BTC, ETH, etc.
 
-                time_millisecs = int(time.time() * 1000)
-                webhook_payload = {
-                    'timestamp': time_millisecs,
-                    'pair': symbol.replace('/', ''),
-                    'order_id': None,
-                    'action': buy_action,
-                    'order_type': buy_order,
-                    'side': 'BUY',
-                    'order_size': None,
-                    'limit_price': price,
-                    'stop_loss': None,
-                    'take_profit': None,
-                    'origin': "SIGHOOK",
-                    'verified': "valid or not valid "
-                }
-                # Use throttled_send to limit concurrent webhook requests
+                buy_order = 'market' if order.get('trigger') == 'market_buy' else 'limit'
+                webhook_payload = self.build_webhook_payload(symbol, 'buy', buy_order, price, base_amount, quote_amount)
+
                 response = await self.throttled_send(webhook_payload)
-
-                if response:
-                    if response.status in [403, 429, 500]:  #
-                        await self.close_http_session()
-                        return []
-                else:
+                if response and response.status in [403, 429, 500]:
                     await self.close_http_session()
                     return []
-                self.log_manager.buy(f'✅ {symbol} buy signal triggered @ {buy_action} price'
-                                                    f' {price}, USD balance: ${usd_balance}')
-                return ({'buy_action': buy_action, 'buy_pair': symbol, 'buy_limit': price, 'curr_band_ratio':
-                        band_ratio, 'sell_action': None, 'sell_symbol': None, 'sell_limit': None, 'sell_cond': None,
-                         'trigger': trigger})
-            elif usd_balance <= 100:
-                print(f'Insufficient funds ${usd_balance} to buy {symbol}')
-                return None
-            else:
-                print(f'Currently holding {symbol}.Buy signal will not be processed.')
-                return None
-        except Exception as e:
-            self.log_manager.error(f'handle_buy_action: Error processing order  {symbol}: {e}', exc_info=True)
+
+                self.log_manager.buy(f'✅ {symbol} buy signal triggered @ {buy_order} price {price}, USD balance: ${usd_balance}')
+                return {'buy_action': 'open_at_limit', 'buy_pair': symbol, 'buy_limit': price, 'curr_band_ratio': order.get('band_ratio'),
+                        'trigger': order.get('trigger')}
+
+            self.log_manager.info(
+                f'Insufficient funds ${usd_balance} to buy {symbol}' if usd_balance <= 100 else f'Currently holding {symbol}. Buy signal will not be processed.'
+                )
             return None
 
-    async def handle_sell_action(self, holdings, symbol, amount, price, trigger, sell_cond):
-        """PART V: Order Execution"""
+        except Exception as e:
+            self.log_manager.error(f'handle_buy_action: Error processing order {symbol}: {e}', exc_info=True)
+            return None
+
+    async def handle_sell_action(self, holdings, symbol, base_amount, quote_amount,price, order):
+        """Handles sell actions for market, limit, and bracket orders."""
         try:
-            # Prepare sell action data
             coin = symbol.split('/')[0]
-            if trigger not in ['bracket_profit', 'bracket_loss']: # process market & limit orders
-                sell_action, sell_symbol, sell_limit, sell_order = (self.trading_strategy.sell_signal_from_indicators(
-                    symbol, price, trigger, holdings))
-                if sell_action and (coin not in self.hodl):   # Hold specified (.env) coins for accumulation.
-                    time_millisecs = int(time.time() * 1000)
-                    webhook_payload = {
-                        'timestamp': time_millisecs,
-                        'pair': symbol.replace('/', ''),
-                        'order_id': None,
-                        'action': sell_action,
-                        'order_type': sell_order,
-                        'side': 'SELL',
-                        'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
-                        'limit_price': price,
-                        'stop_loss': None,
-                        'take_profit': None,
-                        'origin': "SIGHOOK",
-                        'verified': "valid or not valid "  # this will be used to verify the order
-                    }
-                    # Use throttled_send to limit concurrent webhook requests
+            trigger = order.get('trigger')
+            sell_cond = order.get('sell_cond')
+
+            if trigger not in ['bracket_profit', 'bracket_loss']:  # Process market & limit orders
+                sell_action, sell_symbol, sell_limit, sell_order = self.trading_strategy.sell_signal_from_indicators(
+                    symbol, price, trigger, holdings
+                    )
+
+                if sell_action and coin not in self.hodl:  # Skip coins marked for accumulation
+                    webhook_payload = self.build_webhook_payload(symbol, 'sell', sell_order, price, base_amount, quote_amount)
                     await self.throttled_send(webhook_payload)
-
-                    self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @'
-                                                         f' {sell_action} price' f' {sell_limit}')
-
-                    return ({'buy_action': None, 'buy_pair': None, 'buy_limit': None, 'curr_band_ratio': None,
-                            'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit,
-                             'sell_cond': sell_cond, 'trigger': trigger})
+                    self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @ {sell_action} price {sell_limit}')
+                    return {'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit, 'sell_cond': sell_cond,
+                            'trigger': trigger}
             else:
-                time_millisecs = int(time.time() * 1000)
-                webhook_payload = {
-                    'timestamp': time_millisecs,
-                    'pair': symbol.replace('/', ''),
-                    'order_id': None,
-                    'action': 'close_at_limit',
-                    'order_type': 'bracket',
-                    'side': 'SELL',
-                    'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
-                    'limit_price': price,
-                    'stop_loss': None, # will be computed in webhook place_bracket_order()
-                    'take_profit': None,
-                    'origin': "SIGHOOK",
-                    'verified': "valid or not valid "  # this will be used to verify the order
-                }
-                # Use throttled_send to limit concurrent webhook requests
-                await self.throttled_send(webhook_payload)  # await
+                await self.execute_bracket_order(symbol, price, base_amount, quote_amount, trigger, coin)
 
-                if trigger == 'profit' and coin not in self.hodl:
-                    self.log_manager.take_profit(f'{symbol} sell signal triggered  {trigger} @ sell price'
-                                                                f' {price}')
-                elif trigger == 'loss' and coin not in self.hodl:
-                    self.log_manager.take_loss(f'{symbol} sell signal triggered  {trigger} @ sell price'
-                                                              f' {price}')
-                return None
-        except Exception as e:
-            self.log_manager.error(f'handle_sell_action: Error processing order for {symbol}: {e}',
-                                                  exc_info=True)
             return None
 
-    async def handle_trailing_stop(self, holdings, symbol, amount, price, trigger, sell_cond):
-        """PART V: Order Execution"""
-        try:
-            # Prepare sell action data
-            coin = symbol.split('/')[0]
-            if trigger not in ['profit', 'loss']:
-                sell_action, sell_symbol, sell_limit, sell_order = (self.trading_strategy.sell_signal_from_indicators(
-                    symbol, price, trigger, holdings))
-                if sell_action and (coin not in self.hodl):   # Hold specified (.env) coins for accumulation.
-                    time_millisecs = int(time.time() * 1000)
-                    webhook_payload = {
-                        'timestamp': time_millisecs,
-                        'pair': symbol.replace('/', ''),
-                        'order_id': None,
-                        'action': sell_action,
-                        'order_type': sell_order,
-                        'side': 'SELL',
-                        'order_size': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
-                        'limit_price': price,
-                        'stop_loss': None,
-                        'take_profit': None,
-                        'origin': "SIGHOOK",
-                        'verified': "valid or not valid "  # this will be used to verify the order
-                    }
-
-                    # Use throttled_send to limit concurrent webhook requests
-                    await self.throttled_send(webhook_payload)
-
-                    self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @'
-                                                         f' {sell_action} price' f' {sell_limit}')
-
-                    return ({'buy_action': None, 'buy_pair': None, 'buy_limit': None, 'curr_band_ratio': None,
-                            'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit,
-                             'sell_cond': sell_cond, 'trigger': trigger})
-            else:
-                time_millisecs = int(time.time() * 1000)
-                webhook_payload = {
-                    'timestamp': time_millisecs,
-                    'pair': symbol.replace('/', ''),
-                    'order_id': None,
-                    'action': 'close_at_limit',
-                    'order_type': 'limit',
-                    'side': 'SELL',
-                    'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
-                    'limit_price': price,
-                    'stop_loss': None,
-                    'take_profit': None,
-                    'origin': "SIGHOOK",
-                    'verified': "valid or not valid "  # this will be used to verify the order
-                }
-                # Use throttled_send to limit concurrent webhook requests
-                await self.throttled_send(webhook_payload)
-
-                if trigger == 'profit' and coin not in self.hodl:
-                    self.log_manager.take_profit(f'{symbol} sell signal triggered  {trigger} @ sell price'
-                                                                f' {price}')
-                elif trigger == 'loss' and coin not in self.hodl:
-                    self.log_manager.take_loss(f'{symbol} sell signal triggered  {trigger} @ sell price'
-                                                              f' {price}')
-                return None
         except Exception as e:
-            self.log_manager.error(f'handle_sell_action: Error processing order for {symbol}: {e}',
-                                                  exc_info=True)
+            self.log_manager.error(f'handle_sell_action: Error processing order for {symbol}: {e}', exc_info=True)
             return None
+
+    async def handle_trailing_stop(self, holdings, symbol, base_amount, quote_amount,price, order):
+        """Handles trailing stop sell orders when available."""
+        return await self.handle_sell_action(holdings, symbol, base_amount, quote_amount,price, order)
+
+    async def execute_bracket_order(self, symbol, price, base_amount, quote_amount, trigger, coin):
+        """Executes a bracket order (take profit/loss) when applicable."""
+        webhook_payload = self.build_webhook_payload(symbol, 'sell', 'bracket', price, base_amount, quote_amount)
+        await self.throttled_send(webhook_payload)
+
+        if trigger == 'profit' and coin not in self.hodl:
+            self.log_manager.take_profit(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
+        elif trigger == 'loss' and coin not in self.hodl:
+            self.log_manager.take_loss(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
+
+    def build_webhook_payload(self, symbol, side, order_type, price, base_amount=0, quote_amount=0):
+        """Constructs the webhook payload for sending orders."""
+        return {
+            'timestamp': int(time.time() * 1000),
+            'pair': symbol,
+            'order_id': None,
+            'action': 'close_at_limit' if side == 'sell' and order_type == 'bracket' else side.lower(),
+            'order_type': order_type,
+            'side': side,
+            'quote_amount':quote_amount,
+            'base_amount': base_amount,
+            'limit_price': price,
+            'stop_loss': None,
+            'take_profit': None,
+            'origin': "SIGHOOK",
+            'verified': "valid or not valid"
+        }
+
+    # async def handle_actions(self, order, holdings):
+    #     """ PART V:
+    #     Handle buy conditions with limit and market orders.
+    #     Handle  sell conditions with market ('sro' trigger) limit('bro' trigger) and bracket ('profit'/'loss' trigger)
+    #     Handle trailing stop orders when they become available
+    #
+    #     """
+    #     await self.open_http_session()  # Ensure session is open
+    #     try:
+    #         asset = order['asset']
+    #         symbol = order['symbol']
+    #         action_type = order.get('action')
+    #
+    #         # Extract price, volume, and other order details
+    #         base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
+    #
+    #         price =self.shared_utils_precision.float_to_decimal(order['price'], quote_deci) # quote_deci
+    #         volume = order.get('volume', 0)
+    #         amount = self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', Decimal('0'))
+    #         result = None
+    #         if action_type == 'buy':
+    #             coin_balance = self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', Decimal('0'))
+    #             usd_balance = Decimal(self.filtered_balances.get('USD', {}).get('available_to_trade_fiat', Decimal('0')))
+    #             band_ratio = order.get('band_ratio')
+    #             trigger = order.get('trigger')
+    #             result = await self.handle_buy_action(symbol, price, coin_balance, usd_balance, band_ratio,  trigger
+    #             )
+    #         elif action_type == 'sell':
+    #             if amount > self.min_sell_value:
+    #                 result = await self.handle_sell_action(
+    #                     holdings, symbol, amount, price, order.get('trigger'), order.get('sell_cond')
+    #                 )
+    #         elif action_type == 'hold':
+    #             result = self.handle_trailing_stop(
+    #                 holdings, symbol, amount, price, order.get('trigger'), order.get('sell_cond')
+    #             )
+    #         else:
+    #             self.log_manager.warning(f"Unknown action type: {action_type}")
+    #             return result
+    #
+    #         return result
+    #
+    #     except Exception as e:
+    #         self.log_manager.error(f"Error handling action {order}: {e}", exc_info=True)
+    #         return None
+    #
+    # async def handle_buy_action(self, symbol, price, coin_balance, usd_balance, band_ratio, trigger):
+    #     """PART V: Order Execution"""
+    #     try:
+    #         usd_balance = usd_balance.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    #         coin_balance_value = Decimal(coin_balance) * Decimal(price)
+    #         coin = symbol.split('/')[0]
+    #
+    #         if ((usd_balance > 100 and coin_balance_value < self.min_sell_value)
+    #                 or (usd_balance > 50 and (coin in self.hodl)) and coin  not in self.currency_pairs_ignored):  # accumulate BTC, ETH etc
+    #             # Prepare buy action data
+    #             buy_action = 'open_at_limit'
+    #             buy_order = 'limit'
+    #             if trigger == 'market_buy':
+    #                 buy_order = 'market'
+    #
+    #             time_millisecs = int(time.time() * 1000)
+    #             webhook_payload = {
+    #                 'pair': symbol.replace('/', ''),
+    #                 'side': 'buy',
+    #                 'timestamp': time_millisecs,
+    #                 'quote_amount':0,
+    #                 'base_amount': 0,
+    #                 'action': buy_action,
+    #                 'origin': "SIGHOOK",
+    #                 'uuid':None,
+    #                 'order_type': buy_order,
+    #                 'verified': "valid or not valid "
+    #                 #'limit_price': 0
+    #                 # 'stop_loss': 0,
+    #                 # 'take_profit': 0,
+    #             }
+    #             # Use throttled_send to limit concurrent webhook requests
+    #             response = await self.throttled_send(webhook_payload)
+    #
+    #             if response:
+    #                 if response.status in [403, 429, 500]:  #
+    #                     await self.close_http_session()
+    #                     return []
+    #             else:
+    #                 await self.close_http_session()
+    #                 return []
+    #             self.log_manager.buy(f'✅ {symbol} buy signal triggered @ {buy_action} price'
+    #                                                 f' {price}, USD balance: ${usd_balance}')
+    #             return ({'buy_action': buy_action, 'buy_pair': symbol, 'buy_limit': price, 'curr_band_ratio':
+    #                     band_ratio, 'sell_action': None, 'sell_symbol': None, 'sell_limit': None, 'sell_cond': None,
+    #                      'trigger': trigger})
+    #         elif usd_balance <= 100:
+    #             print(f'Insufficient funds ${usd_balance} to buy {symbol}')
+    #             return None
+    #         else:
+    #             print(f'Currently holding {symbol}.Buy signal will not be processed.')
+    #             return None
+    #     except Exception as e:
+    #         self.log_manager.error(f'handle_buy_action: Error processing order  {symbol}: {e}', exc_info=True)
+    #         return None
+    #
+    # async def handle_sell_action(self, holdings, symbol, amount, price, trigger, sell_cond):
+    #     """PART V: Order Execution"""
+    #     try:
+    #         # Prepare sell action data
+    #         coin = symbol.split('/')[0]
+    #         if trigger not in ['bracket_profit', 'bracket_loss']: # process market & limit orders
+    #             sell_action, sell_symbol, sell_limit, sell_order = (self.trading_strategy.sell_signal_from_indicators(
+    #                 symbol, price, trigger, holdings))
+    #             if sell_action and (coin not in self.hodl):   # Hold specified (.env) coins for accumulation.
+    #                 time_millisecs = int(time.time() * 1000)
+    #                 webhook_payload = {
+    #                     'timestamp': time_millisecs,
+    #                     'pair': symbol.replace('/', ''),
+    #                     'order_id': None,
+    #                     'action': sell_action,
+    #                     'order_type': sell_order,
+    #                     'side': 'sell,
+    #                     'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
+    #                     'limit_price': price,
+    #                     'stop_loss': None,
+    #                     'take_profit': None,
+    #                     'origin': "SIGHOOK",
+    #                     'verified': "valid or not valid "  # this will be used to verify the order
+    #                 }
+    #                 # Use throttled_send to limit concurrent webhook requests
+    #                 await self.throttled_send(webhook_payload)
+    #
+    #                 self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @'
+    #                                                      f' {sell_action} price' f' {sell_limit}')
+    #
+    #                 return ({'buy_action': None, 'buy_pair': None, 'buy_limit': None, 'curr_band_ratio': None,
+    #                         'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit,
+    #                          'sell_cond': sell_cond, 'trigger': trigger})
+    #         else:
+    #             time_millisecs = int(time.time() * 1000)
+    #             webhook_payload = {
+    #                 'timestamp': time_millisecs,
+    #                 'pair': symbol.replace('/', ''),
+    #                 'order_id': None,
+    #                 'action': 'close_at_limit',
+    #                 'order_type': 'bracket',
+    #                 'side': 'sell,
+    #                 'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
+    #                 'limit_price': price,
+    #                 'stop_loss': None, # will be computed in webhook place_bracket_order()
+    #                 'take_profit': None,
+    #                 'origin': "SIGHOOK",
+    #                 'verified': "valid or not valid "  # this will be used to verify the order
+    #             }
+    #             # Use throttled_send to limit concurrent webhook requests
+    #             await self.throttled_send(webhook_payload)  # await
+    #
+    #             if trigger == 'profit' and coin not in self.hodl:
+    #                 self.log_manager.take_profit(f'{symbol} sell signal triggered  {trigger} @ sell price'
+    #                                                             f' {price}')
+    #             elif trigger == 'loss' and coin not in self.hodl:
+    #                 self.log_manager.take_loss(f'{symbol} sell signal triggered  {trigger} @ sell price'
+    #                                                           f' {price}')
+    #             return None
+    #     except Exception as e:
+    #         self.log_manager.error(f'handle_sell_action: Error processing order for {symbol}: {e}',
+    #                                               exc_info=True)
+    #         return None
+    #
+    # async def handle_trailing_stop(self, holdings, symbol, amount, price, trigger, sell_cond):
+    #     """PART V: Order Execution"""
+    #     try:
+    #         # Prepare sell action data
+    #         coin = symbol.split('/')[0]
+    #         if trigger not in ['profit', 'loss']:
+    #             sell_action, sell_symbol, sell_limit, sell_order = (self.trading_strategy.sell_signal_from_indicators(
+    #                 symbol, price, trigger, holdings))
+    #             if sell_action and (coin not in self.hodl):   # Hold specified (.env) coins for accumulation.
+    #                 time_millisecs = int(time.time() * 1000)
+    #                 webhook_payload = {
+    #                     'timestamp': time_millisecs,
+    #                     'pair': symbol.replace('/', ''),
+    #                     'order_id': None,
+    #                     'action': sell_action,
+    #                     'order_type': sell_order,
+    #                     'side': 'sell,
+    #                     'order_size': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
+    #                     'limit_price': price,
+    #                     'stop_loss': None,
+    #                     'take_profit': None,
+    #                     'origin': "SIGHOOK",
+    #                     'verified': "valid or not valid "  # this will be used to verify the order
+    #                 }
+    #
+    #                 # Use throttled_send to limit concurrent webhook requests
+    #                 await self.throttled_send(webhook_payload)
+    #
+    #                 self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @'
+    #                                                      f' {sell_action} price' f' {sell_limit}')
+    #
+    #                 return ({'buy_action': None, 'buy_pair': None, 'buy_limit': None, 'curr_band_ratio': None,
+    #                         'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit,
+    #                          'sell_cond': sell_cond, 'trigger': trigger})
+    #         else:
+    #             time_millisecs = int(time.time() * 1000)
+    #             webhook_payload = {
+    #                 'timestamp': time_millisecs,
+    #                 'pair': symbol.replace('/', ''),
+    #                 'order_id': None,
+    #                 'action': 'close_at_limit',
+    #                 'order_type': 'limit',
+    #                 'side': 'sell,
+    #                 'amount': amount, # the amount allowed to be sold, the actual amount is slightly larger for fees
+    #                 'limit_price': price,
+    #                 'stop_loss': None,
+    #                 'take_profit': None,
+    #                 'origin': "SIGHOOK",
+    #                 'verified': "valid or not valid "  # this will be used to verify the order
+    #             }
+    #             # Use throttled_send to limit concurrent webhook requests
+    #             await self.throttled_send(webhook_payload)
+    #
+    #             if trigger == 'profit' and coin not in self.hodl:
+    #                 self.log_manager.take_profit(f'{symbol} sell signal triggered  {trigger} @ sell price'
+    #                                                             f' {price}')
+    #             elif trigger == 'loss' and coin not in self.hodl:
+    #                 self.log_manager.take_loss(f'{symbol} sell signal triggered  {trigger} @ sell price'
+    #                                                           f' {price}')
+    #             return None
+    #     except Exception as e:
+    #         self.log_manager.error(f'handle_sell_action: Error processing order for {symbol}: {e}',
+    #                                               exc_info=True)
+    #         return None

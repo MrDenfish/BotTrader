@@ -129,7 +129,7 @@ class SenderWebhook:
 
                 # ✅ Successful request
                 if response.status == 200:
-                    if webhook_payload['side'] == 'BUY':
+                    if webhook_payload['side'] == 'buy':
                         self.log_manager.order_sent(f"✅ Alert webhook sent successfully: {webhook_payload['uuid']}")
                     return response
 

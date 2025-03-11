@@ -1,8 +1,11 @@
 
 from Shared_Utils.config_manager import CentralConfig as Config
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from datetime import timezone
+from cachetools import TTLCache
 from inspect import stack
+import pandas as pd
+from decimal import Decimal, ROUND_DOWN
+from datetime import datetime, timedelta
 import json
 import uuid
 
@@ -39,12 +42,15 @@ class OrderTypeManager:
         self.validate = validate
         self.order_book = order_book_manager
         self.websocket_helper = websocket_helper
+        self.validate = validate
         self.ccxt_api = ccxt_api
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.session = session  # Store the session as an attribute
         self.start_time = self.ticker_cache = self.non_zero_balances = self.market_data = None
         self.order_tracker = self.market_cache_usd = self.market_cache_vol = self.order_management = None
+        # ✅ Tracks recent orders to prevent duplicate placements
+        self.recent_orders = TTLCache(maxsize=1000, ttl=10)  # Stores recent orders for 10 seconds
 
         # trade parameters
         self._take_profit = Decimal(self.config.take_profit)
@@ -58,17 +64,6 @@ class OrderTypeManager:
         self._trailing_limit = Decimal(self.config.trailing_limit)
         self._min_sell_value = Decimal(self.config.min_sell_value)
         self._hodl = Config.hodl
-
-
-    # def set_trade_parameters(self, market_data, order_management,  start_time=None):
-        # self.start_time = start_time
-        # self.market_data = market_data
-        # self.order_management = order_management
-        # self.ticker_cache = market_data.get('ticker_cache')
-        # self.non_zero_balances = order_management.get('non_zero_balances', {})
-        # self.order_tracker = order_management.get('order_tracker', {})
-        # self.market_cache_usd = market_data['usd_pairs_cache']
-        # self.market_cache_vol = market_data['filtered_vol']
 
     @property
     def hodl(self):
@@ -114,6 +109,120 @@ class OrderTypeManager:
     def min_sell_value(self):
         return self._min_sell_value
 
+
+
+    async def process_limit_and_tp_sl_orders(self, source, order_data, take_profit=None, stop_loss=None):
+        """
+        Processes limit orders for both WebSocket and Webhook sources.
+        Supports attached Take Profit / Stop Loss (TP/SL) orders.
+
+        Args:
+            source (str): 'WebSocket' or 'Webhook' for tracking the order source.
+            order_data (dict): The order details.
+            take_profit (Decimal, optional): The take profit price level.
+            stop_loss (Decimal, optional): The stop loss price level.
+
+        Returns:
+            dict or None: The API response if successful, None otherwise.
+        """
+        try:
+            self.log_manager.info(f"� Processing Limit Order from {source}: {order_data}")
+
+            # ✅ Step 1: Check for Existing Open Orders (Prevents Duplicate Orders)
+            all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(
+                trading_pair=order_data['trading_pair'], order_data=order_data
+            )
+            open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
+
+            if has_open_order or not self.validate.validate_order_conditions(order_data, open_orders):
+                self.log_manager.warning(f"� Order Blocked - Existing Open Order for {order_data['trading_pair']}")
+                return None
+
+            # ✅ Step 2: Fetch Order Book Data (Ensures Best Execution Price)
+            order_book_details = await self.order_book.get_order_book(order_data)
+            validate_data = self.validate.build_validate_data(order_data, open_orders, order_book_details)
+
+            # ✅ Step 3: Validate Order Against Trading Rules (Avoids Exchange Rejections)
+            base_coin_balance, valid_order, condition = self.validate.fetch_and_validate_rules(validate_data)
+            if not valid_order:
+                self.log_manager.warning(f"� Order Blocked - Trading Rules Violation: {condition}")
+                return None
+
+            # ✅ Step 4: Adjust Price & Validate Data
+            validated_order = await self.validate.validate_and_adjust_order(order_data)
+            if not validated_order:
+                self.log_manager.warning(f"� Order Blocked - Price Adjustment Failed for {order_data['trading_pair']}")
+                return None
+
+            # ✅ Step 5: Ensure the adjusted size is properly truncated
+            quote_decimal = Decimal('1').scaleb(-order_data.get('quote_decimal', 2))  # Convert to Decimal precision
+            amount = Decimal(validated_order['adjusted_size']).quantize(quote_decimal, rounding=ROUND_DOWN)
+
+            self.log_manager.info(f"✅ Adjusted Order Size (Truncated): {amount}")
+
+            # ✅ Step 6: Ensure Sufficient Balance
+            side = validated_order['side'].upper()
+            usd_available = Decimal(validated_order.get('usd_available', 0))
+            available_crypto = Decimal(validated_order.get('available_to_trade_crypto', 0))
+
+            if side == 'BUY' and (amount * validated_order['adjusted_price']) > usd_available:
+                self.log_manager.warning(f"� Order Blocked - Insufficient USD for BUY order.")
+                return None
+            if side == 'SELL' and amount > available_crypto:
+                self.log_manager.warning(f"� Order Blocked - Insufficient Crypto Balance for SELL.")
+                return None
+
+            # ✅ Step 7: Construct the Order Payload
+            client_order_id = str(uuid.uuid4())  # Generate unique order ID
+            order_payload = {
+                "client_order_id": client_order_id,
+                "product_id": validated_order['trading_pair'].replace('/', '-'),
+                "side": validated_order['side'],
+                "order_configuration": {
+                    "limit_limit_gtc": {
+                        "baseSize": str(amount),
+                        "limitPrice": str(validated_order['adjusted_price'])
+                    }
+                }
+            }
+
+            # ✅ Step 8: Attach TP/SL If Provided
+            if take_profit or stop_loss:
+                attached_order_config = {
+                    "trigger_bracket_gtc": {}
+                }
+                if take_profit:
+                    attached_order_config["trigger_bracket_gtc"]["limit_price"] = str(take_profit)
+                if stop_loss:
+                    attached_order_config["trigger_bracket_gtc"]["stop_trigger_price"] = str(stop_loss)
+
+                order_payload["attached_order_configuration"] = attached_order_config
+
+            self.log_manager.info(f"� Submitting Order: {order_payload}")
+
+            # ✅ Step 9: Execute Order
+            response = await self.ccxt_api.ccxt_api_call(
+                self.exchange.create_order, 'private',
+                validated_order['trading_pair'].replace('/', '-'),
+                'limit',
+                validated_order['side'],
+                amount,
+                validated_order['adjusted_price'],
+                params=order_payload
+            )
+
+            # ✅ Step 10: Log Order Result
+            if response:
+                self.log_manager.info(f"✅ Order Placed Successfully: {response}")
+                return response
+            else:
+                self.log_manager.error(f"⚠️ Received None from create_order for {validated_order['trading_pair']}")
+                return None
+
+        except Exception as e:
+            self.log_manager.error(f"❌ Error in process_limit_order: {e}", exc_info=True)
+            return None
+
     async def place_limit_order(self, order_data):
         """
         Places a limit order and returns the order response or None if it fails.
@@ -134,7 +243,7 @@ class OrderTypeManager:
             symbol = order_data['trading_pair'].replace('/', '-')
             side = order_data['side'].upper()
             amount = Decimal(str(order_data['adjusted_size']))
-            price = Decimal(str(order_data.get('highest_bid' if side == 'SELL' else 'lowest_ask', 0)))
+            price = Decimal(str(order_data.get('highest_bid' if side == 'sell' else 'lowest_ask', 0)))
             available_crypto = Decimal(str(order_data.get('available_to_trade_crypto', 0)))
             usd_available = Decimal(str(order_data.get('usd_available', 0)))
             params = {'post_only': True}
@@ -145,10 +254,10 @@ class OrderTypeManager:
                 return None
 
             # ✅ Ensure sufficient balance
-            if side == 'BUY' and (amount * price) > usd_available:
+            if side == 'buy' and (amount * price) > usd_available:
                 self.log_manager.info(f"Insufficient USD for BUY order on {symbol}. Required: {amount * price}, Available: {usd_available}")
                 return None
-            if side == 'SELL' and amount > available_crypto:
+            if side == 'sell' and amount > available_crypto:
                 self.log_manager.info(f"Insufficient {symbol} balance for SELL order. Trying to sell: {amount}, Available: {available_crypto}")
                 return None
 
@@ -164,9 +273,9 @@ class OrderTypeManager:
             min_buffer = Decimal('0.0000001')  # Minimum buffer for micro-priced assets
 
             # ✅ Adjust price dynamically to avoid post-only rejection
-            if side == 'BUY' and price >= latest_lowest_ask:
+            if side == 'buy' and price >= latest_lowest_ask:
                 price = max(latest_lowest_ask * (Decimal('1') - price_buffer_pct), latest_lowest_ask - min_buffer)
-            elif side == 'SELL' and price <= latest_highest_bid:
+            elif side == 'sell' and price <= latest_highest_bid:
                 price = min(latest_highest_bid * (Decimal('1') + price_buffer_pct), latest_highest_bid + min_buffer)
 
             self.log_manager.info(f"✅ Adjusted {side} limit order price: {price} for {symbol}")
@@ -233,19 +342,19 @@ class OrderTypeManager:
                 raise ValueError("Could not retrieve the latest trade price.")
 
             # ✅ Calculate the trailing stop price (Fixed for BUY orders)
-            if order_data['side'].upper() == 'BUY':
+            if order_data['side'].upper() == 'buy':
                 trailing_stop_price = market_price * (Decimal('1.0') + trailing_percentage / Decimal('100'))
             else:
                 trailing_stop_price = market_price * (Decimal('1.0') - trailing_percentage / Decimal('100'))
 
             # ✅ Adjust stop price calculation
-            if order_data['side'].upper() == 'BUY':
+            if order_data['side'].upper() == 'buy':
                 stop_price = max(trailing_stop_price, current_price * Decimal('1.002'))  # Ensure stop is higher for BUY
             else:
                 stop_price = min(trailing_stop_price, current_price * Decimal('0.998'))  # Ensure stop is lower for SELL
 
             # ✅ Adjust limit price calculation
-            if order_data['side'].upper() == 'BUY':
+            if order_data['side'].upper() == 'buy':
                 limit_price = stop_price * (
                             Decimal('1.003') + maker_fee)  # Buy limit price must be slightly above stop price
             else:
@@ -275,7 +384,7 @@ class OrderTypeManager:
             # payload = {
             #     "client_order_id": client_order_id,
             #     "product_id": symbol,
-            #     "side": "SELL" if order_data['side'].upper() == 'SELL' else "BUY",
+            #     "side": "SELL" if order_data['side'].upper() == 'sell else "BUY",
             #     "order_configuration": {
             #         "trigger_bracket_gtd": {
             #             "base_size": str(adjusted_size),
@@ -293,14 +402,14 @@ class OrderTypeManager:
             payload = {
                 "client_order_id": client_order_id,
                 "product_id": product_id,
-                "side": "SELL" if order_data['side'].upper() == 'SELL' else "BUY",
+                "side": "sell" if order_data['side'].upper() == 'sell' else "buy",
                 "order_configuration": {
                     "stop_limit_stop_limit_gtd": {
                         "base_size": str(adjusted_size) if adjusted_size > 0 else str(base_balance),
                         "stop_price": str(stop_price),
                         "limit_price": str(limit_price),
                         "end_time": (datetime.now(timezone.utc) + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ'),
-                        "stop_direction": "STOP_DIRECTION_STOP_DOWN" if order_data['side'].upper() == 'SELL' \
+                        "stop_direction": "STOP_DIRECTION_STOP_DOWN" if order_data['side'].upper() == 'sell' \
                             else "STOP_DIRECTION_STOP_UP"
                     }
                 }
@@ -327,7 +436,8 @@ class OrderTypeManager:
             self.log_manager.error(f"Error in place_trailing_stop_order: {str(ex)}", exc_info=True)
             return None
 
-    async def update_order_payload(self, order_id, symbol, trailing_stop_price, limit_price, amount):
+    @staticmethod
+    async def update_order_payload(order_id, symbol, trailing_stop_price, limit_price, amount):
         return{
             "order_id":order_id,
             "price":str(limit_price),
@@ -403,7 +513,7 @@ class OrderTypeManager:
             payload = {
                 "client_order_id": client_order_id,
                 "product_id": symbol,
-                "side": "SELL" if order_data['side'].upper() == 'SELL' else "BUY",
+                "side": "sell" if order_data['side'].upper() == 'sell' else "buy",
                 "order_configuration": {
                     "trigger_bracket_gtd": {
                         "base_size": str(adjusted_size),

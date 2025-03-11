@@ -186,8 +186,8 @@ class TradingStrategy:
                 buy_sell_matrix.at[asset, 'Sell Signal'] = sell_signal
 
             # ✅ Debugging logs
-            print(f'{strategy_results}')  # Debugging
-            print(f'{buy_sell_matrix.to_string(index=False)}')  # Debugging
+            # print(f'{strategy_results}')  # Debugging
+            # print(f'{buy_sell_matrix.to_string(index=False)}')  # Debugging
 
             return strategy_results, buy_sell_matrix
 
@@ -214,9 +214,9 @@ class TradingStrategy:
                     return 0.0
 
             total_buy_weight = sum(strategy_weights[col] for col in strategy_weights if col.startswith("Buy"))
-            print(f'{total_buy_weight}') #debug
+            # print(f'{total_buy_weight}') #debug
             total_sell_weight = sum(strategy_weights[col] for col in strategy_weights if col.startswith("Sell"))
-            print(f'{total_sell_weight}') #debug
+            # print(f'{total_sell_weight}') #debug
 
             self.buy_target = total_buy_weight * 0.7  # Adjusted threshold
             self.sell_target = total_sell_weight * 0.7  # Adjusted threshold
@@ -239,10 +239,10 @@ class TradingStrategy:
             }
 
             # **✅ Print the buy/sell matrix values for debugging**
-            print(f"\n� DEBUG - Asset: {asset}")
-            for col, value in buy_sell_matrix.loc[asset].items():
-                if col.startswith("Buy") or col.startswith("Sell"):
-                    print(f"{col}: {value}")  # Check raw values
+            # print(f"\n� DEBUG - Asset: {asset}")
+            # for col, value in buy_sell_matrix.loc[asset].items():
+            #     if col.startswith("Buy") or col.startswith("Sell"):
+            #         print(f"{col}: {value}")  # Check raw values
 
             # ✅ Calculate buy score
             buy_score = sum(
@@ -259,8 +259,8 @@ class TradingStrategy:
                 if col.startswith("Sell") and col in strategy_weights
             )
 
-            print(f"� Computed Buy Score: {buy_score}")
-            print(f"� Computed Sell Score: {sell_score}")
+            print(f"� {asset} Computed Buy Score: {buy_score}")
+            print(f"� {asset} Computed Sell Score: {sell_score}")
 
             return buy_score, sell_score
         except Exception as e:
@@ -276,16 +276,16 @@ class TradingStrategy:
 
             buy_signal = (1, buy_score, self.buy_target) if buy_score >= self.buy_target else (0, buy_score, self.buy_target)
             sell_signal = (1, sell_score, self.sell_target) if sell_score >= self.sell_target else (0, sell_score, self.sell_target)
-            print(f'buy_signal:{buy_signal}') #debug
-            print(f'sell_signal:{sell_signal}') #debug
+            # print(f'buy_signal:{buy_signal}') #debug
+            # print(f'sell_signal:{sell_signal}') #debug
             # Resolve conflicting signals (if both are active)
             if buy_signal[0] == 1 and sell_signal[0] == 1:
                 if buy_score > sell_score:
                     sell_signal = (0, sell_score, self.sell_target)
                 else:
                     buy_signal = (0, buy_score, self.buy_target)
-                print(f'buy_signal:{buy_signal}') #debug
-                print(f'sell_signal:{sell_signal}') #debug
+                # print(f'buy_signal:{buy_signal}') #debug
+                # print(f'sell_signal:{sell_signal}') #debug
             return buy_signal, sell_signal
 
         except Exception as e:

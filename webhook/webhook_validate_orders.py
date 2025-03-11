@@ -1,5 +1,5 @@
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from Shared_Utils.config_manager import CentralConfig as Config
 import pandas as pd
 
@@ -7,19 +7,20 @@ class ValidateOrders:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager, shared_utils_precision):
+    def get_instance(cls, logmanager, order_book,shared_utils_precision):
         """
         Singleton method to ensure only one instance of ValidateOrders exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logmanager, shared_utils_precision)
+            cls._instance = cls(logmanager, order_book,shared_utils_precision)
         return cls._instance
 
-    def __init__(self, logmanager, shared_utils_precision):
+    def __init__(self, logmanager, order_book, shared_utils_precision):
         """
         Initializes the ValidateOrders instance.
         """
         self.config = Config()
+        self.order_book = order_book
         self.shared_utils_precision = shared_utils_precision
         self.log_manager = logmanager
 
@@ -27,15 +28,6 @@ class ValidateOrders:
         self._min_sell_value = Decimal(self.config.min_sell_value)
         self._hodl = self.config.hodl  # ✅ Ensure this is used elsewhere
         self._version = self.config.program_version  # ✅ Ensure this is required
-
-
-    # def set_trade_parameters(self, market_data, order_management,  start_time=None):
-    #     self.start_time = start_time
-    #     self.ticker_cache = market_data['ticker_cache']
-    #     self.non_zero_balances = order_management['non_zero_balances']
-    #     self.order_tracker = order_management['order_tracker']
-    #     self.market_cache_usd = market_data['usd_pairs_cache']
-    #     self.market_cache_vol = market_data['filtered_vol']
 
     @property
     def hodl(self):
@@ -48,6 +40,98 @@ class ValidateOrders:
     @property
     def version(self):
         return self._version
+
+    def validate_order_conditions(self, order_details, open_orders):
+        """
+        Validates order conditions based on account balances and active open orders.
+
+        Args:
+        - order_data (dict): Data about the order to validate.
+        - quote_bal (float): Current balance of the quote currency.
+        - base_balance (float): Current balance of the base currency.
+        - open_orders (DataFrame): DataFrame of active open orders.
+
+        Returns:
+        - bool: True if conditions for the order are met, False otherwise.
+        """
+
+        side = order_details.get('side')
+        quote_amount = order_details.get('quote_amount', 0)
+        quote_bal = order_details.get('quote_balance', 0)
+        base_balance = order_details.get('base_balance', 0)
+        symbol = order_details.get('trading_pair', '').replace('/', '-')
+        trailing_stop_active = False  # Flag for trailing stop orders
+
+        try:
+            # First check if there are any open orders at all
+            if open_orders.empty or 'product_id' not in open_orders.columns:
+                # No open orders; check balance conditions for buy/sell actions
+                if side == 'buy':
+                    if quote_bal < quote_amount:
+                        self.log_manager.info(
+                            f"Insufficient quote balance to buy {symbol}. Required: {quote_amount}, Available: {quote_bal}"
+                        )
+                        return False
+                    return True
+                elif side == 'sell':
+                    if base_balance <= 0:
+                        return False
+                    return True
+                else:
+                    self.log_manager.error(f"Unknown order side: {side}", exc_info=True)
+                    return False
+
+            # Check if any open orders exist for the specific symbol
+            if symbol not in open_orders['product_id'].values:
+                # No matching open orders; proceed with balance checks as above
+                if side == 'buy':
+                    if quote_bal < quote_amount:
+                        self.log_manager.info(
+                            f"Insufficient quote balance to buy {symbol}. Required: {quote_amount}, Available: {quote_bal}"
+                        )
+                        return False
+                    return True
+                elif side == 'sell':
+                    if base_balance <= 0:
+                        return False
+                    return True
+
+            # Check open orders for trailing stop conditions if any exist for the symbol
+            if side == 'sell':
+                # Filter open orders to check for an active trailing stop for the symbol
+                trailing_stop_orders = open_orders[
+                    (open_orders['product_id'] == symbol) &
+                    (open_orders['trigger_status'] == 'STOP_PENDING')
+                    ]
+
+                trailing_stop_active = not trailing_stop_orders.empty
+                if trailing_stop_active:
+                    self.log_manager.info(f"Active trailing stop order found for {symbol}.")
+                    return True
+                elif base_balance <= 0:
+                    return False
+
+            # No conditions met for order execution
+            return False
+
+        except KeyError as e:
+            self.log_manager.error(f"KeyError: Missing key in order_data or open_orders: {e}", exc_info=True)
+            return False
+        except Exception as e:
+            self.log_manager.error(f"Error validating order condition: {e}", exc_info=True)
+            return False
+
+    def build_validate_data(self, order_details, open_orders, order_book_details):
+
+        return {
+            **order_details,
+            'base_balance_free': order_details['base_balance'],
+            'quote_amount': order_details['quote_amount'],
+            'highest_bid': order_book_details['highest_bid'],
+            'lowest_ask': order_book_details['lowest_ask'],
+            'spread': order_book_details['spread'],
+            'open_orders': open_orders
+        }
 
     def fetch_and_validate_rules(self, validate_data):
         """ Fetch available balance, validate order conditions, and ensure no duplicate orders exist. """
@@ -109,18 +193,20 @@ class ValidateOrders:
 
         try:
             # Extract key details from validate_data
-            quote_currency = validate_data.get('quote_currency', '')
-            base_currency = validate_data.get('base_currency', '')
             trading_pair = validate_data.get('trading_pair', '')
+            quote_currency = validate_data.get('quote_currency', trading_pair.split('/')[1] )
+            base_currency = validate_data.get('base_currency', trading_pair.split('/')[0] )
             side = validate_data.get('side', '')
 
             # Extract numerical values
-            quote_balance = get_decimal_value('quote_balance')
-            base_balance = get_decimal_value('base_balance_free')
+            quote_balance = get_decimal_value('usd_available')
+            base_balance = get_decimal_value('available_to_trade_crypto')
             highest_bid = get_decimal_value('highest_bid')
-            quote_price = get_decimal_value('quote_price')
+            lowest_ask = get_decimal_value('lowest_ask')
+            quote_price = get_decimal_value('quote_price',(highest_bid+lowest_ask)/2)
+            # quote_price = get_decimal_value('quote_price',
             quote_amount = get_decimal_value('quote_amount')
-            order_size = get_decimal_value('order_size')
+            order_size = get_decimal_value('adjusted_size')
             base_deci = validate_data.get('base_decimal', 0)
             quote_deci = validate_data.get('quote_decimal', 0)
             open_orders = validate_data.get('open_orders', None)
@@ -137,7 +223,7 @@ class ValidateOrders:
             # Compute base balance value in USD equivalent
             base_balance_value = Decimal(0)
             if base_currency != 'USD' and not base_balance.is_zero():
-                base_balance_value = base_balance * highest_bid * quote_price
+                base_balance_value = base_balance *  quote_price
                 base_balance_value = self.shared_utils_precision.adjust_precision(
                     base_deci, quote_deci, base_balance_value, convert=convert
                 )
@@ -180,5 +266,65 @@ class ValidateOrders:
         except Exception as e:
             self.log_manager.error(f'validate_orders: {e}', exc_info=True)
             return None, None, False, None
+
+    async def validate_and_adjust_order(self, order_data):
+        """
+        Validates order data and adjusts price dynamically to ensure post-only compliance.
+        """
+        try:
+            # ✅ Required field check
+            required_fields = ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask', 'available_to_trade_crypto']
+            missing_fields = [field for field in required_fields if order_data.get(field) is None]
+            if missing_fields:
+                self.log_manager.error(f"Missing required fields: {missing_fields}")
+                return None
+
+            side = order_data['side']
+            symbol = order_data['trading_pair'].replace('/', '-')
+            price = Decimal(order_data.get('highest_bid' if side == 'sell' else 'lowest_ask', 0))
+
+            # ✅ Fetch and adjust order book data
+            order_book = await self.order_book.get_order_book(order_data)
+            latest_lowest_ask = Decimal(order_book['order_book']['asks'][0][0]) if order_book['order_book']['asks'] else price
+            latest_highest_bid = Decimal(order_book['order_book']['bids'][0][0]) if order_book['order_book']['bids'] else price
+
+            # ✅ Apply dynamic price buffer (to avoid post-only rejections)
+            price_buffer_pct = Decimal('0.001')  # 0.1% buffer
+            min_buffer = Decimal('0.0000001')
+
+            if side == 'buy' and price >= latest_lowest_ask:
+                price = max(latest_lowest_ask * (Decimal('1') - price_buffer_pct), latest_lowest_ask - min_buffer)
+            elif side == 'sell' and price <= latest_highest_bid:
+                price = min(latest_highest_bid * (Decimal('1') + price_buffer_pct), latest_highest_bid + min_buffer)
+                # ✅ Retrieve quote_decimal and convert it to a Decimal precision format
+                quote_decimal = Decimal('1').scaleb(-order_data.get('quote_decimal', 2))  # Default to 2 decimal places
+                # ✅ Apply quantize() using the correctly formatted precision
+                price = Decimal(price).quantize(quote_decimal, rounding=ROUND_DOWN)
+
+
+
+            # ✅ Ensure sufficient balance
+            available_crypto = Decimal(order_data.get('available_to_trade_crypto', 0))
+            usd_available = Decimal(order_data.get('usd_available', 0))
+            amount = Decimal(order_data['adjusted_size'])
+
+            if side == 'sell' and amount > available_crypto:
+                amount = Decimal(available_crypto).quantize(order_data.get('base_deci', 8), rounding=ROUND_DOWN)
+
+            if side == 'buy' and (amount * price) > usd_available:
+                self.log_manager.info(f"Insufficient USD for BUY order: Required {amount * price}, Available {usd_available}")
+                return None
+            if side == 'sell' and amount > available_crypto:
+                self.log_manager.info(f"Insufficient {symbol} balance for SELL order. Trying to sell {amount}, Available {available_crypto}")
+                return None
+
+            # ✅ Update order data with adjusted price
+            order_data['adjusted_price'] = price
+            return order_data
+
+        except Exception as e:
+            self.log_manager.error(f"Error in validate_and_adjust_order: {e}", exc_info=True)
+            return None
+
 
 

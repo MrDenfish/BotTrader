@@ -1,7 +1,7 @@
 
 from datetime import datetime
 from decimal import Decimal
-from inspect import stack
+#from inspect import stack
 import socket
 import pandas as pd
 import math
@@ -252,10 +252,10 @@ class TradeBotUtils:
         try:
             side = order_data['side'].upper()
 
-            if side == 'SELL':
+            if side == 'sell':
                 adjusted_price = Decimal(order_book['highest_bid'])
                 adjusted_size = Decimal(order_data.get('base_balance', 0))
-            elif side == 'BUY':
+            elif side == 'buy':
                 adjusted_price = Decimal(order_book['lowest_ask'])
                 quote_amount = Decimal(order_data.get('quote_amount', 0))
                 if adjusted_price == 0:
@@ -279,9 +279,9 @@ class TradeBotUtils:
             print(f'Calculated adjustment_factor: {adjustment_factor}')
 
             # Apply the adjustment factor depending on the side
-            if side == 'BUY':
+            if side == 'buy':
                 adjusted_price += adjustment_factor  # Slightly increase the buy price
-            elif side == 'SELL':
+            elif side == 'sell':
                 adjusted_price -= adjustment_factor  # Slightly decrease the sell price
 
             return adjusted_price, adjusted_size

@@ -74,16 +74,16 @@ class WebHookManager:
         """
 
         return {
-            'trading_pair': request_json['pair'][:-3] + '/' + request_json['pair'][-3:],
+            'trading_pair': request_json['pair'],
             'side': 'buy' if 'open' in request_json.get('action') else 'sell',
-            'quote_amount': Decimal(request_json['order_size']),
-            'base_amount': Decimal('0') if 'open' in request_json['action'] else  Decimal(request_json['order_size']),
-            'base_currency': request_json['pair'][:-3], # Extract base currency,
-            'quote_currency':  request_json['pair'][-3:],  # Extract quote currency will always be USD or BTC
+            'quote_amount': Decimal(request_json['quote_amount']), #dollar amount
+            'base_amount': Decimal('0') if 'open' in request_json['action'] else  Decimal(request_json['base_amount']),#crypto amount
+            'base_currency': request_json['pair'].split('/')[0], # Extract base currency,
+            'quote_currency':  request_json['pair'].split('/')[1],  # Extract quote currency will always be USD or BTC
             'action': request_json.get('action'),
             'origin': request_json.get('origin'),
             'uuid': request_json.get('uuid'),
-            'time': request_json.get('time', datetime.now().isoformat())
+            'time': request_json.get('timestamp', datetime.now().isoformat())
         }
 
     async def handle_action(self, order_details, precision_data):

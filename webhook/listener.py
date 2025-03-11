@@ -1,3 +1,4 @@
+
 import asyncio
 import ccxt
 import aiohttp
@@ -6,16 +7,15 @@ import pandas as pd
 import uuid
 import time
 from aiohttp import web
-from inspect import stack
-import websocket # debug
-import json, requests
+#from inspect import stack
+import json
 from datetime import datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import logging
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.debugger import Debugging
-from Shared_Utils.config_manager import CentralConfig as config
+from Shared_Utils.config_manager import CentralConfig as Config
 from SharedDataManager.shared_data_manager import SharedDataManager
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.ticker_manager import TickerManager
@@ -26,7 +26,7 @@ from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from alert_system import AlertSystem
 from coinbase import jwt_generator
-from coinbase.websocket import (WSClient, WSUserClient, WSClientConnectionClosedException, WSClientException)
+from coinbase.websocket import (WSClient, WSUserClient)
 from Api_manager.api_manager import ApiManager
 from webhook_utils import TradeBotUtils
 from webhook_validate_orders import ValidateOrders
@@ -35,13 +35,13 @@ from webhook_order_manager import TradeOrderManager
 from webhook_order_types import OrderTypeManager
 from webhook_manager import WebHookManager
 from inspect import stack # debugging
-from sighook.database_table_models import Base
+#from sighook.database_table_models import Base
 
 
 
 class CoinbaseAPI:
     def __init__(self, session):
-        self.config = config()
+        self.config = Config()
         self.api_key = self.config.load_websocket_api_key().get('name')
         self.api_secret = self.config.load_websocket_api_key().get('signing_key')
         self.user_url = self.config.load_websocket_api_key().get('user_api_url')  # for manual use not SDK
@@ -128,7 +128,7 @@ class WebSocketHelper:
         WebSocketHelper is responsible for managing WebSocket connections and API integrations.
         """
         # Core configurations
-        self.config = config()
+        self.config = Config()
         self.listener = listener
         self.exchange = exchange
         self.ccxt_api = ccxt_api
@@ -609,7 +609,7 @@ class WebSocketHelper:
                     elif status == "OPEN":
                         print(f"✅ Order {order_id} is now open.")
                     elif status == "FILLED":
-                        if order_side == 'SELL':
+                        if order_side == 'sell':
                             print(f"� Order {order_id} has been FILLED! Calling handle_order_fill().")
                             await self.listener.handle_order_fill(order)
                         print(f"� Order {order_id}")
@@ -617,7 +617,7 @@ class WebSocketHelper:
                         print(f"� Order {order_id} was cancelled.")
 
                     # ✅ Maintain existing logic for BTC buy orders after profitable sales
-                    if order_side == 'BUY':
+                    if order_side == 'buy':
                         continue  # Ignore buy orders, only act on sells
 
                     asset = symbol.split('-')[0]  # Extract asset symbol
@@ -641,14 +641,13 @@ class WebSocketHelper:
                     # ✅ Buy BTC when profit is between $1.00 and $2.00
                     if status == "FILLED" and asset not in self.hodl:
                         if Decimal(1.0) < profit_value < Decimal(2.0):
-                            btc_order_data = await self.trade_order_manager.build_order_data('BTC/USD',symbol)
-                            response = await self.order_type_manager.place_limit_order(btc_order_data)
+                            btc_order_data = await self.trade_order_manager.build_order_data('BTC/USD', symbol)
+                            response = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
                             print(f"DEBUG: BTC Order Response: {response}")
 
-                        # ✅ Buy ETH when profit is greater than $2.00
                         elif profit_value > Decimal(2.0):
-                            eth_order_data = await self.trade_order_manager.build_order_data('ETH/USD',symbol)
-                            response = await self.order_type_manager.place_limit_order(eth_order_data)
+                            eth_order_data = await self.trade_order_manager.build_order_data('ETH/USD', symbol)
+                            response = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", eth_order_data)
                             print(f"DEBUG: ETH Order Response: {response}")
 
         except Exception as channel_error:
@@ -705,7 +704,7 @@ class WebSocketHelper:
                                     roc_order_data = await self.trade_order_manager.build_order_data(asset,product_id)
                                     print(f"DEBUG: ROC Order Data: {roc_order_data}")
                                     if roc_order_data.get('usd_available') > self.order_size and roc_order_data.get(
-                                            'side') == 'BUY':
+                                            'side') == 'buy':
                                         response = await self.order_type_manager.place_limit_order(roc_order_data)
                                         if response:
                                             print(f"‼️ ROC ALERT: {product_id} changed {roc:.2f}%  a buy order was placed")
@@ -771,7 +770,7 @@ class WebSocketHelper:
             amount = Decimal(order.get('leaves_quantity', 0)) if order.get('leaves_quantity') else None
 
             # ✅ Handle missing price for SELL orders
-            if not initial_price and side == 'SELL':
+            if not initial_price and side == 'sell':
                 initial_price = Decimal(spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
                 cost_basis = Decimal(spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0))
             else:
@@ -781,7 +780,7 @@ class WebSocketHelper:
             status_of_order = f"{order.get('order_type', 'UNKNOWN')}/{order.get('order_side', 'UNKNOWN')}/{order.get('status', 'UNKNOWN')}"
 
             # ✅ Profit Calculation for SELL Orders
-            if initial_price and side == 'SELL':
+            if initial_price and side == 'sell':
                 required_prices = {
                     'avg_price': avg_price,
                     'cost_basis': cost_basis,
@@ -814,7 +813,7 @@ class WebSocketHelper:
                     'amount': amount,
                     'stopPrice': stop_price,
                     'average_price': avg_price,
-                    'profit': profit if side == 'SELL' else None,
+                    'profit': profit if side == 'sell' else None,
                     'status_of_order': status_of_order
                 }
                 self.log_manager.info(f"New order {order_id} added to tracker.")
@@ -942,7 +941,7 @@ class WebSocketHelper:
             items (dict): Order data to add or update in the tracker.
             items['order_id'] (str): Unique identifier for the order.
             items['symbol'] (str): Trading pair (e.g., 'BTC/USD').
-            items['side'] (str): Order side ('BUY' or 'SELL').
+            items['side'] (str): Order side ('buy or 'sell).
             items['stop_price'] (Decimal): Stop price for the order.
             items['avg_price'] (Decimal): Average price of the order.
             items['amount'] (Decimal): Order amount.
@@ -963,7 +962,7 @@ class WebSocketHelper:
                 self.log_manager.warning(f"Invalid order data: order_id={items.get('order_id')}, symbol={symbol}")
                 return
             initial_price = 0
-            if side == 'BUY':
+            if side == 'buy':
                 initial_price = limit_price
             if order_id not in order_tracker:
                 # Add a new order to the tracker
@@ -1175,12 +1174,12 @@ class WebSocketHelper:
                         pass
 
                     elif current_price * profit_percent_decimal < ((1 + self.stop_loss ) *  avg_price) and asset not in self.hodl:
-                        await self.order_type_manager.place_limit_order(order_data_updated)
+                        response = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", order_data_updated)
 
                 else:
                     print(f"Placing limit order for untracked asset {asset}")
                     self.sharded_utils_print.print_order_tracker(order_tracker)
-                    if order_data_updated.get('usd_available') > self.order_size and order_data_updated.get('side') == 'BUY':
+                    if order_data_updated.get('usd_available') > self.order_size and order_data_updated.get('side') == 'buy':
                         response = await self.order_type_manager.place_limit_order(order_data_updated)
                         print(f"DEBUG: Untracked Asset Order Response: {response}")
 
@@ -1327,10 +1326,10 @@ class WebhookListener:
         self.profit_data_manager = ProfitDataManager.get_instance(self.shared_utils_precision, self.shared_utils_print,
                                                                   self.log_manager)
 
-        self.validate = ValidateOrders.get_instance(self.log_manager, self.shared_utils_precision)
-
         self.order_book_manager = OrderBookManager.get_instance(self.exchange, self.shared_utils_precision, self.log_manager,
                                                    self.ccxt_api)
+
+        self.validate = ValidateOrders.get_instance(self.log_manager, self.order_book_manager, self.shared_utils_precision)
 
         self.order_type_manager = OrderTypeManager.get_instance(
             coinbase_api=self.coinbase_api,
@@ -1495,19 +1494,20 @@ class WebhookListener:
             self.usd_pairs = self.market_data.get('usd_pairs_cache', {})
             self.spot_info = self.market_data.get('spot_positions',{})
             print(f"handle_order_fill started order_tracker:")
+            symbol = None
+            order_id = None
+
             if websocket_msg.get('status') == 'FILLED':
                 symbol = websocket_msg['symbol']
-                asset = symbol.split('/')[0]
                 print(f"Symbol: {symbol}")
                 order_id = websocket_msg['order_id']
             elif websocket_msg.get('status') == 'open':
                 symbol = websocket_msg['symbol'].replace('-', '/')
-                asset = symbol.split('/')[0]
                 print(f"Symbol: {symbol}")
                 order_id = websocket_msg['id']
             else:
                 pass
-
+            asset = symbol.split('/')[0]
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
             websocket_msg['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('price'), 'quote')
 
@@ -1585,9 +1585,8 @@ class WebhookListener:
             order_size = request_json.get('order_size')
             price = request_json.get('limit_price')
             origin = request_json.get('origin')
-
-            print(f"Handling webhook request from: {origin} {symbol} uuid"
-                  f":{request_json.get('uuid')}")
+            if origin == 'TradingView':
+                print(f"Handling webhook request from: {origin} {symbol} uuid :{request_json.get('uuid')}") # debug
 
             # Add UUID if missing from TradingView webhook
             request_json['uuid'] = request_json.get('uuid', str(uuid.uuid4()))
@@ -1615,6 +1614,17 @@ class WebhookListener:
                 self.processed_uuids.add(uuid)
 
         asyncio.get_event_loop().call_later(60*5, lambda: self.processed_uuids.remove(uuid))
+
+    # helper methods used in process_webhook()
+    def is_ip_whitelisted(self, ip_address: str) -> bool:
+        return ip_address in self.bot_config.get_whitelist()
+
+    def is_valid_origin(self, origin: str) -> bool:
+        return 'SIGHOOK' in origin or 'TradingView' in origin
+
+    def is_valid_precision(self, precision_data: tuple) -> bool:
+        return all(p is not None for p in precision_data)
+
 
     async def process_webhook(self, request_json, ip_address) -> web.Response:
         try:
@@ -1683,15 +1693,6 @@ class WebhookListener:
             self.log_manager.error(f"Error processing webhook: {e}", exc_info=True)
             return web.json_response({"success": False, "message": "Internal server error"}, status=500)
 
-    # Helper Methods
-    def is_ip_whitelisted(self, ip_address: str) -> bool:
-        return ip_address in self.bot_config.get_whitelist()
-
-    def is_valid_origin(self, origin: str) -> bool:
-        return 'SIGHOOK' in origin or 'TradingView' in origin
-
-    def is_valid_precision(self, precision_data: tuple) -> bool:
-        return all(p is not None for p in precision_data)
 
     async def get_prices(self, trade_data: dict, market_data_snapshot: dict) -> tuple:
         try:
@@ -1862,7 +1863,7 @@ if __name__ == '__main__':
     logger = logging.getLogger('asyncio')
     logger.setLevel(logging.ERROR)
 
-    get_config = config()
+    get_config = Config()
     asyncio.run(run_app(get_config))
 
 
