@@ -7,7 +7,7 @@ from Api_manager.api_exceptions import (InsufficientFundsException, ProductIDExc
                                     MaintenanceException)
 from Api_manager.api_exceptions import RateLimitException, BadRequestException, NotFoundException, InternalServerErrorException
 from Api_manager.api_exceptions import UnknownException
-from Shared_Utils.config_manager import CentralConfig as config
+from Shared_Utils.config_manager import CentralConfig as Config
 from inspect import stack # debugging
 
 class WebHookManager:
@@ -26,7 +26,7 @@ class WebHookManager:
         """
         Initializes the WebHookManager.
         """
-        self.config = config()
+        self.config = Config()
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.trade_order_manager = trade_order_manager
@@ -34,6 +34,7 @@ class WebHookManager:
         self.session = session
 
         # Trading parameters
+        self._order_size = Decimal(self.config.order_size)
         self._taker_fee = Decimal(self.config.taker_fee)
         self._maker_fee = Decimal(self.config.maker_fee)
 
@@ -45,69 +46,149 @@ class WebHookManager:
     def maker_fee(self):
         return self._maker_fee
 
-    def calculate_order_size(self, side, usd_amount, base_amount, quote_price, base_price, base_decimal):
-        # Convert USD to BTC
-        quote_amount = None
+    @property
+    def order_size(self):
+        return self._order_size
+
+    async def handle_action(self, order_details, precision_data):
+        """ Handle the action from the webhook request. Place an order on Coinbase Pro. """
+        try:
+            response = await self.trade_order_manager.place_order(order_details, precision_data)
+            # True if order conditions are met False if they are not met
+            if not response:
+                return True, {"message": "Order placement successful"} # ✅ Order successfully placed
+            else:
+                return False, {"message": "Order placement failed"}  # ❌ Order failed
+
+        except InsufficientFundsException:
+            self.log_manager.info(f'handle_action: Insufficient funds')
+            self.alerts.callhome(
+                'Insufficient funds', f'Insufficient funds {order_details["trading_pair"]} at '
+                                      f'{order_details["formatted_time"]}'
+                )
+            return False, {"message": "Insufficient funds"}
+
+        except ProductIDException:
+            self.log_manager.info(f'handle_action: product id exception')
+            self.alerts.callhome(
+                'Product ID Exception', f'Product ID exception {order_details["trading_pair"]} at '
+                                        f'{order_details["formatted_time"]}'
+                )
+            return False, {"message": "Invalid trading pair"}
+
+        except SizeTooSmallException:
+            return False, {"message": "Order too small"}
+
+        except MaintenanceException:
+            return False, {"message": "Exchange is under maintenance"}
+
+        except Exception as e:
+            await self.handle_webhook_error(e, order_details, precision_data)
+            self.log_manager.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
+            return False, {"message": "Internal server error"}
+
+    def calculate_order_size(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci):
+        """
+        Calculates order size and converts base amount to its USD equivalent (base_value).
+
+        Args:
+            side (str): 'buy' or 'sell'
+            order_amount (Decimal): Amount of asset to trade
+            usd_amount (Decimal): Available USD balance
+            base_amount (Decimal): Available crypto balance
+            quote_price (Decimal): Price of the quote currency
+            base_price (Decimal): Price of the base currency
+            quote_deci (int): Precision of quote currency
+            base_deci (int): Precision of base currency
+
+        Returns:
+            tuple: (base_order_size, order_amount, base_value)
+        """
         try:
             taker_fee = float(self.taker_fee)
             maker_fee = float(self.maker_fee)
-            # Convert BTC(quote currency) to Base Currency (e.g., ETH)
+
+            base_order_size = None
+            base_value = Decimal(0)  # Default to zero to avoid NoneType errors
+
             if side == 'buy':
-                quote_amount = usd_amount / (quote_price * Decimal(1.001 + taker_fee))  # Adjust quote amount to cover fees
-                base_order_size = quote_amount / base_price
-                formatted_decimal = self.shared_utils_precision.get_decimal_format(base_decimal)
-                base_order_size = base_order_size.quantize(formatted_decimal, rounding=ROUND_HALF_UP)
+                # Calculate how much base currency we can buy
+                base_order_size = order_amount / (base_price * Decimal(1.001 + taker_fee))  # Adjust for fees
+                base_value = base_order_size * base_price  # The cost in USD should match order_amount
+
             elif side == 'sell':
-                base_order_size = base_amount
-            else:
-                base_order_size = None
-            return base_order_size, quote_amount
+                # Ensure we don't sell more than available
+                base_order_size = min(order_amount, base_amount)
+                base_value = base_order_size * base_price  # Convert crypto amount to USD
+
+            # Convert to proper decimal precision
+            formatted_base_decimal = self.shared_utils_precision.get_decimal_format(base_deci)
+            formatted_quote_decimal = self.shared_utils_precision.get_decimal_format(quote_deci)
+
+            if base_order_size is not None:
+                base_order_size = base_order_size.quantize(formatted_base_decimal, rounding=ROUND_HALF_UP)
+
+            if base_value is not None:
+                base_value = base_value.quantize(formatted_quote_decimal, rounding=ROUND_HALF_UP)
+
+            # Debugging logs to confirm values
+            self.log_manager.debug(
+                f"Calculated order size: side={side}, base_order_size={base_order_size}, order_amount={order_amount}, base_value={base_value}"
+            )
+
+            return base_order_size, order_amount, base_value
+
         except Exception as e:
-            caller_function_name = stack()[1].function  # debugging
-            print(f'{caller_function_name} -  quote amount:{quote_amount}, base price:{base_price}')
+            caller_function_name = stack()[1].function  # Debugging
+            print(f'{caller_function_name} - base_amount: {base_amount}, base_price: {base_price}')
             self.log_manager.error(f'calculate_order_size: An unexpected error occurred: {e}', exc_info=True)
+            return None, None, None  # Return safe defaults on error
 
-    @staticmethod
-    def parse_webhook_data(request_json):
+    def parse_webhook_request(self, request_json):
         """
-        Extract relevant trade data from the webhook JSON.
+        Parses incoming webhook request data and returns a formatted dictionary.
+
+        Args:
+            request_json (dict): Incoming webhook data.
+
+        Returns:
+            dict: Parsed order data.
         """
-
-        return {
-            'trading_pair': request_json['pair'],
-            'side': 'buy' if 'open' in request_json.get('action') else 'sell',
-            'quote_amount': Decimal(request_json['quote_amount']), #dollar amount
-            'base_amount': Decimal('0') if 'open' in request_json['action'] else  Decimal(request_json['base_amount']),#crypto amount
-            'base_currency': request_json['pair'].split('/')[0], # Extract base currency,
-            'quote_currency':  request_json['pair'].split('/')[1],  # Extract quote currency will always be USD or BTC
-            'action': request_json.get('action'),
-            'origin': request_json.get('origin'),
-            'uuid': request_json.get('uuid'),
-            'time': request_json.get('timestamp', datetime.now().isoformat())
-        }
-
-    async def handle_action(self, order_details, precision_data):
-        """ Handle the action from the webhook request. Place an order on Coinbase Pro."""
         try:
-            await self.trade_order_manager.place_order(order_details, precision_data)
-        except InsufficientFundsException:
-            self.log_manager.info(f'handle_action: Insufficient funds')
-            self.alerts.callhome('Insufficient funds', f'Insufficient funds  {order_details["trading_pair"]} at '
-                                                       f'{order_details["formatted_time"]}')
-        except ProductIDException:
-            self.log_manager.info(f'handle_action: product id exception')
-            self.alerts.callhome('product id exception', f'product id  exception  {order_details["trading_pair"]} at '
-                                                         f'{order_details["formatted_time"]}')
-        except SizeTooSmallException:
-            print('Order too small')
-            # Handle this specific error differently
-        except MaintenanceException:
-            print('MaintenanceException')
-            # Maybe implement a retry logic
+            return {
+                # ✅ Extract trading pair safely
+                'trading_pair': request_json.get('pair', 'UNKNOWN/UNKNOWN'),
+
+                # ✅ Determine side safely
+                'side': 'buy' if 'open' in request_json.get('action', '') or request_json.get('action') == 'buy' else 'sell',
+
+                # ✅ Convert quote_amount safely to Decimal, default to 0 if missing
+                'quote_avail_balance': Decimal(request_json.get('quote_avail_balance', '0')), # amount od USD available to buy crypto
+
+                'order_amount': self._order_size if not request_json.get('order_amount') else Decimal(request_json.get('order_amount')),
+
+                # ✅ Ensure base_amount is correctly assigned for buy/sell conditions
+                'base_avail_balance': Decimal('0') if 'open' in request_json.get('action', '') else Decimal(request_json.get(
+                    'base_avail_to_trade', '0')),
+
+                # ✅ Extract base and quote currencies safely
+                'base_currency': request_json.get('pair', 'UNKNOWN/UNKNOWN').split('/')[0],
+                'quote_currency': request_json.get('pair', 'UNKNOWN/UNKNOWN').split('/')[1],
+
+                # ✅ Extract other key values safely
+                'action': request_json.get('action', 'UNKNOWN'),
+                'origin': request_json.get('origin', 'UNKNOWN'),
+                'uuid': request_json.get('uuid'),  # Default to a random UUID if missing
+
+                # ✅ Ensure timestamp is always an integer (milliseconds)
+                'time': int(request_json.get('timestamp', time.time() * 1000)),
+            }
+
         except Exception as e:
-            # Catch-all for other exceptions
-            await self.handle_webhook_error(e, order_details, precision_data)
-            self.log_manager.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
+            self.log_manager.error(f"❌ Error parsing webhook request: {e}")
+            return None
+
+
 
     async def handle_webhook_error(self, e, order_details, precision_data):
         """Handle errors that occur while processing an old_webhook request."""

@@ -30,13 +30,13 @@ class CentralConfig:
         self._order_size = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
-        self._rsi_window = self._atr_window = self._rsi_buy = None
+        self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_to_buy = None
         self._rsi_sell = self._sma_fast = self._sma_slow = self._sma = None
         self._buy_ratio = self._sell_ratio = self._sma_volatility = self._hodl = None
         self._cxl_buy = self._cxl_sell = self._take_profit = self._roc_24hr = None
         self._stop_loss = self._csv_dir = self._web_url = self._sleep_time = None
         self._docker_staticip = self._tv_whitelist = self._coin_whitelist = None
-        self._taker_fee = self._maker_fee = self._trailing_stop = None
+        self._taker_fee = self._maker_fee = self._trailing_stop = self._min_sell_value =None
         self._trailing_limit = self._db_pool_size = self._db_max_overflow = None
         self._sighook_api_key_path = self._websocket_api_key_path = None
         self._webhook_api_key_path = self._api_key = self._api_secret = None
@@ -48,8 +48,6 @@ class CentralConfig:
         # Default values
         self._json_config = {}
         self._log_level = "INFO"
-        self._trailing_percentage = Decimal("0.5")
-        self._min_sell_value = Decimal("0.01")
         self._currency_pairs_ignored = []
         self.is_docker = os.getenv("RUNNING_IN_DOCKER", "false").lower() == "true"
 
@@ -82,7 +80,8 @@ class CentralConfig:
             "_order_size": "ORDER_SIZE",
             "_trailing_percentage": "TRAILING_PERCENTAGE",
             "_min_sell_value": "MIN_SELL_VALUE",
-            "_min_volume": "MIN_VOLUME",
+            "_max_value_to_buy":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
+            "_min_volume": "MIN_VOLUME", # min daily volume strategies use to evaluate ovhlc data
             "_max_ohlcv_rows": "MAX_OHLCV_ROWS",
             "_hodl": "HODL",
             "_take_profit": "TAKE_PROFIT",
@@ -358,7 +357,11 @@ class CentralConfig:
 
     @property
     def min_sell_value(self):
-        return self._min_sell_value
+        return Decimal(self._min_sell_value)
+
+    @property
+    def max_value_to_buy(self):
+        return Decimal(self._max_value_to_buy)
 
     @property
     def stop_loss(self):

@@ -321,13 +321,14 @@ class TradingStrategy:
                 for col, value in buy_sell_matrix.loc[asset].items()
                 if col.startswith("Sell") and col in strategy_weights
             )
-
+            self.buy_target =3.0 # debug
             # Dynamically calculate buy and sell targets
-            self.buy_target = sum(
-                strategy_weights[col]
-                for col, value in buy_sell_matrix.loc[asset].items()
-                if col.startswith("Buy") and col in strategy_weights
-            )
+
+            # self.buy_target = sum(
+            #     strategy_weights[col]
+            #     for col, value in buy_sell_matrix.loc[asset].items()
+            #     if col.startswith("Buy") and col in strategy_weights
+            # )
 
             self.sell_target = sum(
                 strategy_weights[col]
@@ -511,7 +512,7 @@ class TradingStrategy:
             if isinstance(holdings, pd.DataFrame):
                 holdings = holdings.to_dict('records')
             coin = symbol.split('/')[0]
-            sell_order = 'bracket' # for testing default is limit
+            sell_order = 'limit' # for testing default is limit
             if trigger == 'market_sell':
                 sell_order = 'market'
             if any(item['asset'] == coin for item in holdings):

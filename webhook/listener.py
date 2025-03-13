@@ -642,12 +642,12 @@ class WebSocketHelper:
                     if status == "FILLED" and asset not in self.hodl:
                         if Decimal(1.0) < profit_value < Decimal(2.0):
                             btc_order_data = await self.trade_order_manager.build_order_data('BTC/USD', symbol)
-                            response = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
+                            response, tp, sl = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
                             print(f"DEBUG: BTC Order Response: {response}")
 
                         elif profit_value > Decimal(2.0):
                             eth_order_data = await self.trade_order_manager.build_order_data('ETH/USD', symbol)
-                            response = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", eth_order_data)
+                            response, tp, sl = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", eth_order_data)
                             print(f"DEBUG: ETH Order Response: {response}")
 
         except Exception as channel_error:
@@ -1169,12 +1169,12 @@ class WebSocketHelper:
                     if profit_percent_decimal >= self.take_profit and asset not in self.hodl:
                         if profit_percent_decimal > self.trailing_percentage:
                             order_book = await self.order_book_manager.get_order_book(order_data_updated)
-                            await self.order_type_manager.place_trailing_stop_order(order_book,order_data_updated, current_price)
+                            await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", order_data_updated)
                     elif profit_percent_decimal >= Decimal(0.0) and asset not in self.hodl:
                         pass
 
                     elif current_price * profit_percent_decimal < ((1 + self.stop_loss ) *  avg_price) and asset not in self.hodl:
-                        response = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", order_data_updated)
+                        response, tp, sl = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", order_data_updated)
 
                 else:
                     print(f"Placing limit order for untracked asset {asset}")
@@ -1300,6 +1300,10 @@ class WebhookListener:
                 'enableRateLimit': True,
                 'verbose': False
             })
+
+
+
+
 
         # Initialize ccxt exchange
         self.exchange = setup_exchange()
@@ -1469,6 +1473,8 @@ class WebhookListener:
             await asyncio.sleep(60)
 
     async def handle_order_fill(self, websocket_msg):
+        """Process existing orders that are Open or Active or have beend filled"""
+
         try:
             base_deci =websocket_msg.get('base_decimal')
             quote_deci = websocket_msg.get('quote_decimal')
@@ -1512,29 +1518,15 @@ class WebhookListener:
             websocket_msg['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('price'), 'quote')
 
             websocket_msg['amount'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('amount'), 'base')
-            order_data = {
-                'initial_order_id': order_id,
-                'side': 'sell',  # Creating a sell order after the buy is filled
-                'base_increment': Decimal('1E-8'),
-                'base_decimal': 8,
-                'quote_decimal': 2,
-                'base_currency': symbol.split('/')[0],
-                'quote_currency': symbol.split('/')[1],
-                'trading_pair': symbol,
-                'formatted_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'quote_price': Decimal(websocket_msg['price']),
-                'quote_amount': Decimal(websocket_msg['amount']),
-                'available_to_trade_crypto':self.spot_info.get(asset,{}).get('available_to_trade_crypto',Decimal(0.0)),
-                'base_balance': Decimal(websocket_msg['remaining']),
-                'base_price': Decimal(websocket_msg['price'])
-            }
+            product_id = symbol.replace('/', '-')
+            order_data = await self.trade_order_manager.build_order_data(asset, product_id)
 
-            await self._process_order_fill(order_data)
+            await self._process_order_fill('WebSocket', order_data)
         except Exception as e:
             print(f'websocket_msg:{websocket_msg}')
             self.log_manager.error(f"Error in handle_order_fill: {e} {websocket_msg}", exc_info=True)
 
-    async def _process_order_fill(self, order_data):
+    async def _process_order_fill(self, source,order_data):
         """
         Process an order fill and place a corresponding trailing stop order.
 
@@ -1547,46 +1539,54 @@ class WebhookListener:
             order_book = await self.order_book_manager.get_order_book(order_data)
 
             # Use TrailingStopManager to place a trailing stop order
-            trailing_stop_order_id, trailing_stop_price = await self.trailing_stop_manager.place_trailing_stop(
-                order_data, order_book
-            )
 
-            if trailing_stop_order_id:
-                # Add the trailing stop order to the order_tracker
-                self.order_management['order_tracker'][trailing_stop_order_id] = {
-                    'symbol': order_data['trading_pair'],
-                    'initial_price': trailing_stop_price,
-                    'purchase_price': order_data['base_price'],
-                    'amount': order_data['base_balance'],
-                    'trailing_stop_price': trailing_stop_price,
-                    'limit_price': order_data['base_price'] * Decimal('1.002')  # Example limit price adjustment
-                }
+            response_data, tp, sl= await self.order_type_manager.process_limit_and_tp_sl_orders(source, order_data)
 
-                print(f"Order tracker updated with trailing stop order: {trailing_stop_order_id}")
+            if response_data:
+                if response_data["order_id"]:
+                    # Add the trailing stop order to the order_tracker
+                    self.order_management['order_tracker'][response_data["order_id"]] = {
+                        'symbol': order_data['trading_pair'],
+                        'take_profit_price': tp,
+                        'purchase_price': order_data['base_price'],
+                        'amount': order_data['base_avail_balance'],
+                        'stop_loss_price': sl,
+                        'limit_price': order_data['base_price'] * Decimal('1.002')  # Example limit price adjustment
+                    }
+                    order_id = response_data.get("order_id")
+                    print(f"Order tracker updated with trailing stop order: {order_id}")
 
-                # Remove the associated buy order from the order_tracker
-                associated_buy_order_id = order_data['initial_order_id']
-                if associated_buy_order_id in self.order_management['order_tracker']:
-                    del self.order_management['order_tracker'][associated_buy_order_id]
-                    print(f"Removed associated buy order {associated_buy_order_id} from order_tracker")
+                    # Remove the associated buy order from the order_tracker
+                    associated_buy_order_id = order_data['initial_order_id']
+                    if associated_buy_order_id in self.order_management['order_tracker']:
+                        del self.order_management['order_tracker'][associated_buy_order_id]
+                        print(f"Removed associated buy order {associated_buy_order_id} from order_tracker")
 
-            else:
-                print(f"Failed to place trailing stop order for {order_data['trading_pair']}")
+                else:
+                    print(f"Failed to place trailing stop order for {order_data['trading_pair']}")
 
-        except Exception as e:            self.log_manager.error(f"Error in _process_order_fill: {e}", exc_info=True)
+        except Exception as e:
+            self.log_manager.error(f"Error in _process_order_fill: {e}", exc_info=True)
 
     async def handle_webhook(self, request: web.Request) -> web.Response:
         """ Processes incoming webhook requests and delegates to WebHookManager. """
         try:
             ip_address = request.remote
+
+            # Print request headers for debugging
+            print(f"� Request Headers: {dict(request.headers)}")  # Debugging line
+
             request_json = await request.json()
+            print(f"✅ Receiving webhook: {request_json}")  # Debug
+
             symbol = request_json.get('pair')
             side = request_json.get('side')
-            order_size = request_json.get('order_size')
+            order_amount = request_json.get('order_amount')
             price = request_json.get('limit_price')
             origin = request_json.get('origin')
+
             if origin == 'TradingView':
-                print(f"Handling webhook request from: {origin} {symbol} uuid :{request_json.get('uuid')}") # debug
+                print(f"Handling webhook request from: {origin} {symbol} uuid :{request_json.get('uuid')}")  # Debug
 
             # Add UUID if missing from TradingView webhook
             request_json['uuid'] = request_json.get('uuid', str(uuid.uuid4()))
@@ -1597,18 +1597,24 @@ class WebhookListener:
             response_text = response.text  # Get raw response text
             response_json = json.loads(response_text)  # Parse JSON
             message = response_json.get('message')
-            if response_json.get('success'):
-                self.log_manager.order_sent(f"Webhook response: {message} {symbol} side:{side} size:{order_size}. Order originated from "
-                                            f"{origin}")
 
+            if response_json.get('success'):
+                self.log_manager.order_sent(
+                    f"Webhook response: {message} {symbol} side:{side} size:{order_amount}. Order originated from {origin}"
+                )
+            print(f'{response_text}')
             return response
 
+        except json.JSONDecodeError:
+            self.log_manager.error("� JSON Decode Error: Invalid JSON received")
+            return web.json_response({"success": False, "message": "Invalid JSON format"}, status=400)
+
         except Exception as e:
-            self.log_manager.error(f"Unhandled exception in handle_webhook: {str(e)}", exc_info=True)
+            self.log_manager.error(f"� Unhandled exception in handle_webhook: {str(e)}", exc_info=True)
             return web.json_response({"success": False, "message": "Internal server error"}, status=500)
 
     async def add_uuid_to_cache(self, uuid):
-        print(f"Adding uuid to cache: {uuid}")
+        #print(f"Adding uuid to cache: {uuid}")# debug
         async with self.lock:
             if uuid not in self.processed_uuids:
                 self.processed_uuids.add(uuid)
@@ -1625,34 +1631,34 @@ class WebhookListener:
     def is_valid_precision(self, precision_data: tuple) -> bool:
         return all(p is not None for p in precision_data)
 
-
     async def process_webhook(self, request_json, ip_address) -> web.Response:
         try:
-            # Validate basic webhook structure
             webhook_uuid = request_json.get('uuid')
             if not webhook_uuid:
-                return web.json_response({"success": False, "message": "Missing 'uuid' in request"}, status=400)
+                return web.json_response({"success": False, "message": "Missing 'uuid' in request"}, status=200)
 
             if webhook_uuid in self.processed_uuids:
                 self.log_manager.info(f"Duplicate webhook detected: {webhook_uuid}")
-                return web.json_response({"success": True, "message": "Duplicate webhook ignored"}, status=200)
+                return web.json_response({"success": False, "message": "Duplicate webhook ignored"}, status=200)
 
             await self.add_uuid_to_cache(webhook_uuid)
 
             if not request_json.get('action'):
-                return web.json_response({"success": False, "message": "Missing 'action' in request"}, status=400)
+                return web.json_response({"success": False, "message": "Missing 'action' in request"}, status=200)
 
             # Validate IP whitelist
             if not self.is_ip_whitelisted(ip_address):
-                return web.json_response({"success": False, "message": "Unauthorized"}, status=401)
+                return web.json_response({"success": False, "message": "Unauthorized"}, status=200)
 
             # Validate origin
             if not self.is_valid_origin(request_json.get('origin', '')):
-                return web.json_response({"success": False, "message": "Invalid content type"}, status=415)
+                return web.json_response({"success": False, "message": "Invalid content type"}, status=200)
 
             # Extract trade data and fetch market data snapshot
-            trade_data = self.webhook_manager.parse_webhook_data(request_json)
+            trade_data = self.webhook_manager.parse_webhook_request(request_json)
             asset = trade_data.get('trading_pair').split('/')[0]
+
+            # Get market and order snapshots
             combined_snapshot = await self.snapshot_manager.get_market_data_snapshot()
             market_data_snapshot = combined_snapshot["market_data"]
             order_management_snapshot = combined_snapshot["order_management"]
@@ -1662,37 +1668,51 @@ class WebhookListener:
             precision_data = self.shared_utils_precision.fetch_precision(trade_data['trading_pair'], usd_pairs)
             if not self.is_valid_precision(precision_data):
                 self.log_manager.error(f"Failed to fetch precision data for {trade_data['trading_pair']}")
-                return web.json_response({"success": False, "message": 'Failed to fetch precision data'}, status=500)
+                return web.json_response({"success": False, "message": "Failed to fetch precision data"}, status=200)
 
-            base_price, quote_price =  await self.get_prices(trade_data, market_data_snapshot)
+            base_price, quote_price = await self.get_prices(trade_data, market_data_snapshot)
 
-            # fetch usd balance
-            usd_balance = order_management_snapshot.get('non_zero_balances', {}).get('USD')['total_balance_crypto']
-            # never owned may have a zero balance need to check all cryptos
-
+            # Fetch balances
+            usd_balance = order_management_snapshot.get('non_zero_balances', {}).get('USD', {})['total_balance_crypto']
             asset_obj = order_management_snapshot.get('non_zero_balances', {}).get(asset, None)
             base_balance = getattr(asset_obj, 'total_balance_crypto', 0) if asset_obj else 0
 
-            # Calculate order size
-            base_order_size, quote_amount = self.calculate_order_size(trade_data, base_price, quote_price,
-                                                                          precision_data)
-            if trade_data["side"] == 'buy' and (not base_order_size or not quote_amount):
-                return web.json_response({"success": False, "message": "Invalid order size"}, status=400)
-            if trade_data["side"] == 'sell' and base_balance < float(self.min_sell_value):
-                return web.json_response({"success": False, "message": "Insufficient balance to sell"}, status=400)
-            # Build order details
-            order_details = self.build_order_details(trade_data, base_balance, base_price, quote_price, base_order_size,
-                                                     quote_amount, usd_balance, precision_data)
+            # Calculate order size and base asset value in USD
+            base_order_size, quote_order_size, base_value = self.calculate_order_size(
+                trade_data, base_price, quote_price, precision_data
+            )
 
-            # Delegate action to WebHookManager
-            json_response = await self.webhook_manager.handle_action(order_details, precision_data)
-            await self.websocket_helper.refresh_open_orders()  # Refresh order tracker
-            return web.json_response({"success": True, "message": "Action processed successfully"}, status=200)
+            # ✅ Check for insufficient balance
+            if trade_data["side"] == 'sell' and base_value < float(self.min_sell_value):
+                self.log_manager.warning(f"❌ Insufficient balance to sell {asset}: {base_value} USD (min required: {self.min_sell_value} USD)")
+                return web.json_response(
+                    {
+                        "success": False,
+                        "message": "Insufficient balance to sell",
+                        "reason": f"Available balance: {base_balance} {asset}, Required: {self.min_sell_value} USD"
+                    }, status=200
+                )
+
+            # Build order details
+            order_details = self.build_order_details(
+                trade_data, base_balance, base_price, quote_price,
+                base_order_size, quote_order_size, usd_balance, precision_data
+            )
+
+            # ✅ Attempt order placement
+            order_success, order_response = await self.webhook_manager.handle_action(order_details, precision_data)
+
+            # ✅ Always return 200 OK, with JSON indicating success or failure
+            if order_success:
+                return web.json_response({"success": True, "message": "Order successfully submitted"}, status=200)
+            else:
+                error_msg = order_response.get('message', 'Order submission failed')
+                self.log_manager.error(f"❌ Order failed: {error_msg}")
+                return web.json_response({"success": False, "message": error_msg}, status=200)
 
         except Exception as e:
             self.log_manager.error(f"Error processing webhook: {e}", exc_info=True)
-            return web.json_response({"success": False, "message": "Internal server error"}, status=500)
-
+            return web.json_response({"success": False, "message": "Internal server error"}, status=200)
 
     async def get_prices(self, trade_data: dict, market_data_snapshot: dict) -> tuple:
         try:
@@ -1710,16 +1730,25 @@ class WebhookListener:
             return Decimal(0), Decimal(0)
 
     def calculate_order_size(self, trade_data: dict, base_price: Decimal, quote_price: Decimal, precision_data: tuple):
-        base_deci, _, _, _ = precision_data
+        """
+        Wrapper function to call webhook_manager's calculate_order_size with correct arguments.
+        """
+        base_deci, quote_deci, _, _ = precision_data  # Extract precision values
         return self.webhook_manager.calculate_order_size(
-            trade_data["side"], trade_data["quote_amount"], trade_data.get("base_amount", 0), quote_price, base_price,
+            trade_data.get("side"),
+            trade_data.get("order_amount"),
+            trade_data.get("quote_avail_balance"),  # This is USD balance for buying
+            trade_data.get("base_avail_balance", 0),  # Base asset balance for selling
+            quote_price,
+            base_price,
+            quote_deci,
             base_deci
         )
 
     def build_order_details(self, trade_data: dict, base_balance: str, base_price: Decimal, quote_price: Decimal,
-                            base_order_size: Decimal, quote_amount: Decimal, usd_balance:Decimal, precision_data: tuple) \
+                            base_order_size: Decimal, quote_avail_balance: Decimal, usd_balance:Decimal, precision_data: tuple) \
                             -> dict:
-        base_deci, quote_deci, base_increment, quote_increment = precision_data
+        base_deci, quote_deci, quote_increment, base_increment = precision_data
         return {
             'side': trade_data['side'],
             'base_increment': self.shared_utils_precision.float_to_decimal(base_increment, base_deci),
@@ -1730,11 +1759,12 @@ class WebhookListener:
             'trading_pair': trade_data['trading_pair'],
             'formatted_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             'quote_price': quote_price,
-            'quote_amount': quote_amount,
-            'base_balance': base_balance,
+            'order_amount': trade_data['order_amount'],
+            'quote_avail_balance': quote_avail_balance,
+            'base_avail_balance': base_balance,
             'quote_balance': usd_balance,
             'base_price': base_price,
-            'order_size': base_order_size
+            'base_order_size': base_order_size
         }
 
     async def periodic_save(self, interval: int = 60):

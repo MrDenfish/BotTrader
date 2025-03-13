@@ -51,7 +51,7 @@ class TrailingStopManager:
         try:
             adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book)
             trailing_stop_price = adjusted_price * (1 - self.trailing_percentage / 100)
-
+            #await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
             response = await self.order_type_manager.place_trailing_stop_order(order_book, order_data, adjusted_price)
 
             if response:

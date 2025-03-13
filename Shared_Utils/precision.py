@@ -125,9 +125,9 @@ class PrecisionUtils:
 
             # Determine adjusted size
             if side == 'SELL':
-                adjusted_size = Decimal(str(order_data.get('order_size', 0)))
+                adjusted_size = Decimal(str(order_data.get('sell_amount', 0)))
             else:  # BUY case
-                quote_amount = Decimal(str(order_data.get('quote_amount', 0)))
+                quote_amount = Decimal(str(order_data.get('buy_amount', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")
                 adjusted_size = quote_amount / adjusted_price

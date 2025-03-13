@@ -109,8 +109,6 @@ class OrderTypeManager:
     def min_sell_value(self):
         return self._min_sell_value
 
-
-
     async def process_limit_and_tp_sl_orders(self, source, order_data, take_profit=None, stop_loss=None):
         """
         Processes limit orders for both WebSocket and Webhook sources.
@@ -135,49 +133,52 @@ class OrderTypeManager:
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
 
             if has_open_order or not self.validate.validate_order_conditions(order_data, open_orders):
-                self.log_manager.warning(f"� Order Blocked - Existing Open Order for {order_data['trading_pair']}")
-                return None
+                self.log_manager.warning(f"⚠️ Order Blocked - Existing Open Order for {order_data['trading_pair']}")
+                return None, None, None
 
             # ✅ Step 2: Fetch Order Book Data (Ensures Best Execution Price)
             order_book_details = await self.order_book.get_order_book(order_data)
+
+            # ✅ Step 3: Use validate_data Instead of order_data
             validate_data = self.validate.build_validate_data(order_data, open_orders, order_book_details)
 
-            # ✅ Step 3: Validate Order Against Trading Rules (Avoids Exchange Rejections)
+            # ✅ Step 4: Validate Order Against Trading Rules
             base_coin_balance, valid_order, condition = self.validate.fetch_and_validate_rules(validate_data)
             if not valid_order:
-                self.log_manager.warning(f"� Order Blocked - Trading Rules Violation: {condition}")
-                return None
+                self.log_manager.warning(f"⚠️ Order Blocked - Trading Rules Violation: {condition}")
+                return None, None, None
 
-            # ✅ Step 4: Adjust Price & Validate Data
-            validated_order = await self.validate.validate_and_adjust_order(order_data)
+            # ✅ Step 5: Adjust Price & Validate Data (Using validate_data)
+            validated_order = await self.validate.validate_and_adjust_order(validate_data)
             if not validated_order:
-                self.log_manager.warning(f"� Order Blocked - Price Adjustment Failed for {order_data['trading_pair']}")
-                return None
+                self.log_manager.warning(f"⚠️ Order Blocked - Price Adjustment Failed for {validate_data['trading_pair']}")
+                return None, None, None
 
-            # ✅ Step 5: Ensure the adjusted size is properly truncated
-            quote_decimal = Decimal('1').scaleb(-order_data.get('quote_decimal', 2))  # Convert to Decimal precision
-            amount = Decimal(validated_order['adjusted_size']).quantize(quote_decimal, rounding=ROUND_DOWN)
+            # ✅ Step 6: Ensure Adjusted Order Size is Correctly Truncated
+            quote_decimal = Decimal('1').scaleb(-validated_order.get('quote_decimal', 2))  # Convert to Decimal precision
+            base_decimal = Decimal('1').scaleb(-validated_order.get('base_decimal', 2))  # Convert to Decimal precision
+            amount = Decimal(validated_order['adjusted_size']).quantize(base_decimal, rounding=ROUND_DOWN)
 
             self.log_manager.info(f"✅ Adjusted Order Size (Truncated): {amount}")
 
-            # ✅ Step 6: Ensure Sufficient Balance
+            # ✅ Step 7: Ensure Sufficient Balance
             side = validated_order['side'].upper()
             usd_available = Decimal(validated_order.get('usd_available', 0))
             available_crypto = Decimal(validated_order.get('available_to_trade_crypto', 0))
 
             if side == 'BUY' and (amount * validated_order['adjusted_price']) > usd_available:
-                self.log_manager.warning(f"� Order Blocked - Insufficient USD for BUY order.")
-                return None
+                self.log_manager.warning(f"⚠️ Order Blocked - Insufficient USD for BUY order.")
+                return None, None, None
             if side == 'SELL' and amount > available_crypto:
-                self.log_manager.warning(f"� Order Blocked - Insufficient Crypto Balance for SELL.")
-                return None
+                self.log_manager.warning(f"⚠️ Order Blocked - Insufficient Crypto Balance for SELL.")
+                return None, None, None
 
-            # ✅ Step 7: Construct the Order Payload
+            # ✅ Step 8: Construct the Order Payload
             client_order_id = str(uuid.uuid4())  # Generate unique order ID
             order_payload = {
                 "client_order_id": client_order_id,
                 "product_id": validated_order['trading_pair'].replace('/', '-'),
-                "side": validated_order['side'],
+                "side": validated_order['side'].upper(),
                 "order_configuration": {
                     "limit_limit_gtc": {
                         "baseSize": str(amount),
@@ -186,7 +187,7 @@ class OrderTypeManager:
                 }
             }
 
-            # ✅ Step 8: Attach TP/SL If Provided
+            # ✅ Step 9: Attach TP/SL If Provided
             if take_profit or stop_loss:
                 attached_order_config = {
                     "trigger_bracket_gtc": {}
@@ -200,28 +201,27 @@ class OrderTypeManager:
 
             self.log_manager.info(f"� Submitting Order: {order_payload}")
 
-            # ✅ Step 9: Execute Order
-            response = await self.ccxt_api.ccxt_api_call(
-                self.exchange.create_order, 'private',
-                validated_order['trading_pair'].replace('/', '-'),
-                'limit',
-                validated_order['side'],
-                amount,
-                validated_order['adjusted_price'],
-                params=order_payload
-            )
+            # ✅ Step 10: Execute Order
+            response_data = await self.coinbase_api.create_order(order_payload)
 
-            # ✅ Step 10: Log Order Result
-            if response:
-                self.log_manager.info(f"✅ Order Placed Successfully: {response}")
-                return response
+            if response_data:
+                response, limit_price, stop_price = response_data  # Unpack tuple
+
+                if response == 'success':  # Now it's correctly accessing the dictionary
+                    order_id = response_data["order_id"]
+                    self.log_manager.info(f"Attached Take Profit/Stop Loss (TP/SL) : {order_id}")
+                    return response_data, take_profit, stop_loss
+                else:
+                    self.log_manager.error(f"Failed to place trailing stop order: {response_data.get('failure_reason')}")
+                    return None, None, None
             else:
-                self.log_manager.error(f"⚠️ Received None from create_order for {validated_order['trading_pair']}")
-                return None
+                return None, None, None
 
         except Exception as e:
             self.log_manager.error(f"❌ Error in process_limit_order: {e}", exc_info=True)
-            return None
+            return None,  None, None
+
+
 
     async def place_limit_order(self, order_data):
         """
@@ -370,7 +370,7 @@ class OrderTypeManager:
             )
 
             base_balance = self.shared_utils_precision.adjust_precision(
-                order_data['base_decimal'], order_data['quote_decimal'], order_data['base_balance'], convert='base'
+                order_data['base_decimal'], order_data['quote_decimal'], order_data['base_avail_balance'], convert='base'
             )
 
             adjusted_size = self.shared_utils_precision.adjust_precision(

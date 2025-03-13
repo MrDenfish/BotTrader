@@ -1,5 +1,5 @@
 
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from Shared_Utils.config_manager import CentralConfig as Config
 import pandas as pd
 
@@ -25,7 +25,8 @@ class ValidateOrders:
         self.log_manager = logmanager
 
         # Only store necessary attributes
-        self._min_sell_value = Decimal(self.config.min_sell_value)
+        self._min_sell_value = self.config.min_sell_value
+        self._max_value_to_buy = self.config.max_value_to_buy
         self._hodl = self.config.hodl  # ✅ Ensure this is used elsewhere
         self._version = self.config.program_version  # ✅ Ensure this is required
 
@@ -36,6 +37,10 @@ class ValidateOrders:
     @property
     def min_sell_value(self):
         return self._min_sell_value  # Minimum value of a sell order
+
+    @property
+    def max_value_to_buy(self):
+        return self._max_value_to_buy  # max value of a sell order
 
     @property
     def version(self):
@@ -56,9 +61,10 @@ class ValidateOrders:
         """
 
         side = order_details.get('side')
-        quote_amount = order_details.get('quote_amount', 0)
-        quote_bal = order_details.get('quote_balance', 0)
-        base_balance = order_details.get('base_balance', 0)
+        quote_available_balance = order_details.get('quote_available_balance', 0)
+        order_size = order_details.get('order_amount', 0)
+        quote_bal = order_details.get('quote_avail_balance', 0)
+        base_balance = order_details.get('base_avail_balance', 0)
         symbol = order_details.get('trading_pair', '').replace('/', '-')
         trailing_stop_active = False  # Flag for trailing stop orders
 
@@ -67,9 +73,9 @@ class ValidateOrders:
             if open_orders.empty or 'product_id' not in open_orders.columns:
                 # No open orders; check balance conditions for buy/sell actions
                 if side == 'buy':
-                    if quote_bal < quote_amount:
+                    if quote_bal < quote_available_balance:
                         self.log_manager.info(
-                            f"Insufficient quote balance to buy {symbol}. Required: {quote_amount}, Available: {quote_bal}"
+                            f"Insufficient quote balance to buy {symbol}. Required: {order_size}, Available: {quote_bal}"
                         )
                         return False
                     return True
@@ -85,9 +91,9 @@ class ValidateOrders:
             if symbol not in open_orders['product_id'].values:
                 # No matching open orders; proceed with balance checks as above
                 if side == 'buy':
-                    if quote_bal < quote_amount:
+                    if quote_bal < order_size:
                         self.log_manager.info(
-                            f"Insufficient quote balance to buy {symbol}. Required: {quote_amount}, Available: {quote_bal}"
+                            f"Insufficient quote balance to buy {symbol}. Required: {order_size}, Available: {quote_bal}"
                         )
                         return False
                     return True
@@ -125,8 +131,8 @@ class ValidateOrders:
 
         return {
             **order_details,
-            'base_balance_free': order_details['base_balance'],
-            'quote_amount': order_details['quote_amount'],
+            'base_avail_balance': order_details['base_avail_balance'],
+            'order_amount': order_details['order_amount'],
             'highest_bid': order_book_details['highest_bid'],
             'lowest_ask': order_book_details['lowest_ask'],
             'spread': order_book_details['spread'],
@@ -194,36 +200,38 @@ class ValidateOrders:
         try:
             # Extract key details from validate_data
             trading_pair = validate_data.get('trading_pair', '')
-            quote_currency = validate_data.get('quote_currency', trading_pair.split('/')[1] )
-            base_currency = validate_data.get('base_currency', trading_pair.split('/')[0] )
+            quote_currency = validate_data.get('quote_currency', trading_pair.split('/')[1])
+            base_currency = validate_data.get('base_currency', trading_pair.split('/')[0])
             side = validate_data.get('side', '')
 
             # Extract numerical values
-            quote_balance = get_decimal_value('usd_available')
-            base_balance = get_decimal_value('available_to_trade_crypto')
+            quote_avail_balance = get_decimal_value('quote_avail_balance')
+            base_balance = get_decimal_value('base_avail_balance')
             highest_bid = get_decimal_value('highest_bid')
             lowest_ask = get_decimal_value('lowest_ask')
-            quote_price = get_decimal_value('quote_price',(highest_bid+lowest_ask)/2)
-            # quote_price = get_decimal_value('quote_price',
-            quote_amount = get_decimal_value('quote_amount')
-            order_size = get_decimal_value('adjusted_size')
-            base_deci = validate_data.get('base_decimal', 0)
+            quote_price = get_decimal_value('quote_price', (highest_bid + lowest_ask) / 2)
+            order_amount = get_decimal_value('order_amount')
+            base_order_size = get_decimal_value('base_order_size')
+            base_deci = validate_data.get('base_decimal', 0)  # Extract base decimal precision
             quote_deci = validate_data.get('quote_decimal', 0)
             open_orders = validate_data.get('open_orders', None)
 
             condition = None
             valid_order = False
 
+            # ✅ **Quantize base_balance to the correct decimal places**
+            base_balance = base_balance.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_HALF_UP)
+
             # Adjust precision for quote balance
             convert = 'usd' if quote_currency == 'USD' else 'quote'
             adjusted_quote_balance = self.shared_utils_precision.adjust_precision(
-                base_deci, quote_deci, quote_balance, convert=convert
+                base_deci, quote_deci, quote_avail_balance, convert=convert
             )
 
             # Compute base balance value in USD equivalent
             base_balance_value = Decimal(0)
             if base_currency != 'USD' and not base_balance.is_zero():
-                base_balance_value = base_balance *  quote_price
+                base_balance_value = base_balance * quote_price
                 base_balance_value = self.shared_utils_precision.adjust_precision(
                     base_deci, quote_deci, base_balance_value, convert=convert
                 )
@@ -248,17 +256,17 @@ class ValidateOrders:
             hodling = base_currency in self.hodl
 
             if side == 'buy':
-                if adjusted_quote_balance < quote_amount:
+                if adjusted_quote_balance < order_amount:
                     self.log_manager.info(
                         f'validate_orders: Insufficient funds ${adjusted_quote_balance} to {side} {trading_pair}. '
-                        f'Required: ${quote_amount:.2f}'
+                        f'Required: ${order_amount:.2f}'
                     )
-                elif adjusted_quote_balance > quote_amount and (hodling or base_balance_value <= Decimal('10.01')):
+                elif adjusted_quote_balance >= order_amount and (hodling or base_balance_value <= self.max_value_to_buy):
                     condition = 'buy'
                     valid_order = True
 
             elif side == 'sell' and not hodling:
-                condition = 'not hodling'
+                condition = f'{trading_pair} has insufficient balance to sell'
                 valid_order = base_balance_value > Decimal('1.0')
 
             return base_balance, base_balance_value, valid_order, condition
@@ -282,6 +290,8 @@ class ValidateOrders:
             side = order_data['side']
             symbol = order_data['trading_pair'].replace('/', '-')
             price = Decimal(order_data.get('highest_bid' if side == 'sell' else 'lowest_ask', 0))
+            formatted_decimal = self.shared_utils_precision.get_decimal_format(order_data.get('quote_decimal'))
+            price = price.quantize(formatted_decimal, rounding=ROUND_HALF_UP)
 
             # ✅ Fetch and adjust order book data
             order_book = await self.order_book.get_order_book(order_data)
@@ -320,11 +330,16 @@ class ValidateOrders:
 
             # ✅ Update order data with adjusted price
             order_data['adjusted_price'] = price
+            order_data['adjusted_size'] = amount
             return order_data
 
         except Exception as e:
             self.log_manager.error(f"Error in validate_and_adjust_order: {e}", exc_info=True)
             return None
+
+
+
+
 
 
 

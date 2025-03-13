@@ -3,7 +3,6 @@ from Shared_Utils.config_manager import CentralConfig
 import aiohttp
 import asyncio
 import random
-import uuid
 import json
 
 
@@ -102,18 +101,19 @@ class SenderWebhook:
         """
         delay = initial_delay
         webhook_payload['origin'] = "SIGHOOK"
-        webhook_payload['verified'] = "valid or not valid"
-        webhook_payload['uuid'] = webhook_payload.get('uuid', str(uuid.uuid4()))  # Unique identifier for deduplication
+        uuid = webhook_payload.get('order_id')  # Unique identifier for deduplication
 
         # Prevent duplicate webhooks
         async with self.lock:
-            if webhook_payload['uuid'] in self.processed_uuids:
-                self.log_manager.info(f"� Duplicate webhook ignored: {webhook_payload['uuid']}")
+            if uuid in self.processed_uuids:
+                self.log_manager.info(f"� Duplicate webhook ignored: {uuid}")
                 return None
-            self.processed_uuids.add(webhook_payload['uuid'])
+            self.processed_uuids.add(uuid)
 
         # Schedule UUID cleanup after delay
-        asyncio.get_event_loop().call_later(self.cleanup_delay, lambda: self.remove_uuid(webhook_payload['uuid']))
+        # asyncio.get_event_loop().call_later(self.cleanup_delay, lambda: self.remove_uuid(webhook_payload['uuid']))
+
+        print(f"� Sending webhook: {webhook_payload}")
 
         for attempt in range(1, retries + 1):
             try:
@@ -126,11 +126,13 @@ class SenderWebhook:
                     timeout=45
                 )
                 response_text = await response.text()
+                self.log_manager.debug(f" ✅ Sending webhook: {json.dumps(webhook_payload, indent=2)}",exc_info=True)
 
                 # ✅ Successful request
                 if response.status == 200:
                     if webhook_payload['side'] == 'buy':
-                        self.log_manager.order_sent(f"✅ Alert webhook sent successfully: {webhook_payload['uuid']}")
+                        self.log_manager.order_sent(f"✅ Alert webhook sent successfully: {uuid}")
+
                     return response
 
                 # ❌ Handle non-recoverable errors
@@ -144,7 +146,7 @@ class SenderWebhook:
                     self.log_manager.warning(f"⚠️ Recoverable {response.status} error: {error_summary} (Retrying...)")
 
                 elif response.status == 400 and 'Insufficient balance to sell' in response_text:
-                    self.log_manager.info(f"� Insufficient balance for {webhook_payload['pair']} {webhook_payload['uuid']}")
+                    self.log_manager.info(f"� Insufficient balance for {webhook_payload['pair']} {uuid} response text:{response_text}")
                     return response
 
                 else:
@@ -164,14 +166,14 @@ class SenderWebhook:
                 delay = min(delay * 2, max_delay)  # Exponential backoff
 
         # ❌ Max retries reached
-        self.log_manager.error(f"❌ Max retries reached for webhook: {webhook_payload['uuid']}")
+        self.log_manager.error(f"❌ Max retries reached for webhook: {uuid}")
         return None
 
-    def remove_uuid(self, uuid):
-        """Safely remove a UUID from the processed set."""
-        try:
-            self.processed_uuids.remove(uuid)
-            self.log_manager.debug(f"UUID {uuid} removed from processed set after {self.cleanup_delay} seconds.")
-        except KeyError:
-            # UUID might already be removed or not found
-            self.log_manager.debug(f"Attempted to remove nonexistent UUID {uuid}. Ignoring.")
+    # def remove_uuid(self, uuid):
+    #     """Safely remove a UUID from the processed set."""
+    #     try:
+    #         self.processed_uuids.remove(uuid)
+    #         self.log_manager.debug(f"UUID {uuid} removed from processed set after {self.cleanup_delay} seconds.")
+    #     except KeyError:
+    #         # UUID might already be removed or not found
+    #         self.log_manager.debug(f"Attempted to remove nonexistent UUID {uuid}. Ignoring.")

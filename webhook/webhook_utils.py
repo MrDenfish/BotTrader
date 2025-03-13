@@ -254,7 +254,7 @@ class TradeBotUtils:
 
             if side == 'sell':
                 adjusted_price = Decimal(order_book['highest_bid'])
-                adjusted_size = Decimal(order_data.get('base_balance', 0))
+                adjusted_size = Decimal(order_data.get('base_avail_balance', 0))
             elif side == 'buy':
                 adjusted_price = Decimal(order_book['lowest_ask'])
                 quote_amount = Decimal(order_data.get('quote_amount', 0))

@@ -107,7 +107,7 @@ class ProfitabilityManager:
         Create a standardized sell order dictionary for a given holding.
         """
         unrealized_profit = holding['unrealized_profit_loss']
-        trigger = 'bracket_profit' if unrealized_profit > 0 else 'bracket_loss'
+        trigger = 'tp_sl' if unrealized_profit > 0 else 'limit'
 
         return {
             'asset': holding['asset'],
