@@ -1,5 +1,5 @@
 from smtplib import SMTP_SSL
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 import aiohttp
 import asyncio
 import random
@@ -168,12 +168,3 @@ class SenderWebhook:
         # ❌ Max retries reached
         self.log_manager.error(f"❌ Max retries reached for webhook: {uuid}")
         return None
-
-    # def remove_uuid(self, uuid):
-    #     """Safely remove a UUID from the processed set."""
-    #     try:
-    #         self.processed_uuids.remove(uuid)
-    #         self.log_manager.debug(f"UUID {uuid} removed from processed set after {self.cleanup_delay} seconds.")
-    #     except KeyError:
-    #         # UUID might already be removed or not found
-    #         self.log_manager.debug(f"Attempted to remove nonexistent UUID {uuid}. Ignoring.")

@@ -1,10 +1,5 @@
 
-from datetime import datetime
-from decimal import Decimal
-#from inspect import stack
-import socket
 import pandas as pd
-import math
 
 
 class TradeBotUtils:
@@ -43,124 +38,6 @@ class TradeBotUtils:
         self.market_cache_vol = market_data.get('market_cache_filtered_vol', None)
 
     @staticmethod
-    def validate_order_tracker(order_tracker):
-        """
-        Validates the type and structure of order_tracker.
-
-        Args:
-            order_tracker: The object to validate.
-
-        Returns:
-            tuple: (is_valid, message), where:
-                is_valid (bool): True if order_tracker is valid and non-empty.
-                message (str): Description of the issue or success message.
-        """
-        if order_tracker is None:
-            return False, "order_tracker is None."
-
-        if isinstance(order_tracker, (list, dict)):
-            if len(order_tracker) == 0:
-
-                return False, "order_tracker is an empty list or dictionary."
-            return True, "order_tracker is a valid non-empty list or dictionary."
-
-        if isinstance(order_tracker, pd.DataFrame):
-            if order_tracker.empty:
-                return False, "order_tracker is an empty DataFrame."
-            return True, "order_tracker is a valid non-empty DataFrame."
-
-        return False, f"order_tracker is of invalid type: {type(order_tracker)}"
-
-
-    @staticmethod
-    def get_my_ip_address():
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
-        return ip_address
-
-    async def fetch_precision(self, symbol: str) -> tuple:
-        """
-        Fetch the precision for base and quote currencies of a given symbol.
-
-        :param symbol: The symbol to fetch precision for.
-        :return: A tuple containing base and quote decimal places.
-        """
-        try:
-            markets = []
-            endpoint = 'public'  # for rate limiting
-            params = {
-                'offset': 0,  # Skip the first 0 items
-                'paginate': True,  # Enable automatic pagination
-                'paginationCalls': 10,  # Set the max number of pagination calls if necessary
-                'limit': 1000  # Set the max number of items to return
-            }
-            # Run the synchronous fetch_markets method in the default executor
-            markets = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_markets, endpoint, params=params)
-            if markets is None:
-                raise ValueError("Failed to fetch markets.")
-
-            for market in markets:
-                if market['symbol'] == symbol:
-                    base_precision = float(market['precision']['amount'])  # float
-                    quote_precision = float(market['precision']['price'])  # float
-                    base_increment = market['info']['base_increment']  # string
-                    quote_increment = market['info']['quote_increment']  # string
-
-                    if base_precision == 0 or quote_precision == 0:
-                        raise ValueError("Precision value is zero, which may cause a division error.")
-                    base_decimal_places = -int(math.log10(base_precision))
-                    quote_decimal_places = -int(math.log10(quote_precision))
-                    # Check for negative decimal places
-                    if base_decimal_places < 0:
-                        raise ValueError("Base decimal places cannot be negative.")
-
-                    return base_decimal_places, quote_decimal_places, base_increment, quote_increment
-        except self.exchange.NetworkError as e:
-            self.log_manager.error(f"Network issue when fetching markets: {e}")
-        except self.exchange.ExchangeError as e:
-            self.log_manager.error(f"Exchange issue encountered: {e}")
-        except Exception as e:
-            self.log_manager.error(f"Unexpected error in fetch_precision: {e}", exc_info=True)
-
-        return None, None, None, None  # Default return on error
-
-    async def check_order_status(self, symbol, order_id):
-        """
-        Check the status of an order using the order_id.
-        Returns the status as a string (e.g., 'OPEN', 'FILLED', 'CANCELED').
-        """
-        try:
-            # Extract order details
-
-            endpoint = 'private'
-
-            # Fetch detailed order information
-            order_info = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order, endpoint, order_id, symbol)
-
-            if order_info:
-                return order_info.get('status', 'UNKNOWN')  # return raw order info if available
-            else:
-                print(f"Order {order_id} not found.")
-                return 'NOT_FOUND'
-        except Exception as e:
-            print(f"Error checking order status for {order_id}: {e}")
-            return 'ERROR'
-
-    @staticmethod
-    def get_symbol_or_trading_pair(order):
-        # Check if 'symbol' is in the dictionary (for nested structures)
-        if isinstance(order, dict):
-            for key, value in order.items():
-                if isinstance(value, dict):
-                    if 'symbol' in value:
-                        return value['symbol']
-                elif key == 'trading_pair':
-                    return order['trading_pair']
-
-        # If 'symbol' or 'trading_pair' was not found at this point, raise an exception or return None
-        return None
-
-    @staticmethod
     async def format_open_orders(open_orders: list) -> pd.DataFrame:
         """
         Format the open orders data received from the ccxt api(Coinbase Cloud) call.
@@ -170,146 +47,266 @@ class TradeBotUtils:
         """
 
         data_to_load = [{
-                'order_id': order['id'],
-                'product_id': order['info']['product_id'],
-                'side': order['info']['side'],
-                'size': order['amount'],
-                'price': order['price'],
-                'trigger_status': order['info']['trigger_status'],
-                'trigger_price': order['triggerPrice'],
-                'stop_price': order['stopPrice'],
-                'filled': order['filled'],
-                'remaining': order['remaining'],
-                'time active': order['info']['created_time']
+            'order_id': order['id'],
+            'product_id': order['info']['product_id'],
+            'side': order['info']['side'],
+            'size': order['amount'],
+            'price': order['price'],
+            'trigger_status': order['info']['trigger_status'],
+            'trigger_price': order['triggerPrice'],
+            'stop_price': order['stopPrice'],
+            'filled': order['filled'],
+            'remaining': order['remaining'],
+            'time active': order['info']['created_time']
         } for order in open_orders]
         df = pd.DataFrame(data_to_load)
 
         return df
 
-    async def fetch_wallets(self):
-        """fetch wallet holdings and available balance."""
+    # @staticmethod
+    # def validate_order_tracker(order_tracker):
+    #     """
+    #     Validates the type and structure of order_tracker.
+    #
+    #     Args:
+    #         order_tracker: The object to validate.
+    #
+    #     Returns:
+    #         tuple: (is_valid, message), where:
+    #             is_valid (bool): True if order_tracker is valid and non-empty.
+    #             message (str): Description of the issue or success message.
+    #     """
+    #     if order_tracker is None:
+    #         return False, "order_tracker is None."
+    #
+    #     if isinstance(order_tracker, (list, dict)):
+    #         if len(order_tracker) == 0:
+    #
+    #             return False, "order_tracker is an empty list or dictionary."
+    #         return True, "order_tracker is a valid non-empty list or dictionary."
+    #
+    #     if isinstance(order_tracker, pd.DataFrame):
+    #         if order_tracker.empty:
+    #             return False, "order_tracker is an empty DataFrame."
+    #         return True, "order_tracker is a valid non-empty DataFrame."
+    #
+    #     return False, f"order_tracker is of invalid type: {type(order_tracker)}"
 
-        endpoint = 'private'
-        params = {'paginate': True, 'paginationCalls': 100}
-        wallets = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_accounts, endpoint, params)
-        filtered_wallets = self.filter_non_zero_wallets(wallets)
-        return filtered_wallets
 
-    def filter_non_zero_wallets(self, wallets):
-        try:
-            non_zero_wallets = []
-            for wallet in wallets:
-                if wallet['code'] == 'BCH':  # Skip BCH wallet for now
-                    pass
-                available_balance = Decimal(wallet['info']['available_balance']['value'])
-                hold_balance = Decimal(wallet['info']['hold']['value'])
-                total_balance = available_balance + hold_balance
-                if total_balance > 0:
-                    non_zero_wallets.append(wallet)
-            return non_zero_wallets
-        except Exception as e:
-            self.log_manager.sighook_logger.error(f'filter_non_zero_wallets: {e}', exc_info=True)
+    # @staticmethod
+    # def get_my_ip_address():
+    #     hostname = socket.gethostname()
+    #     ip_address = socket.gethostbyname(hostname)
+    #     return ip_address
 
-    async def get_account_balance(self, currencies, get_staked=False):
+    # async def fetch_precision(self, symbol: str) -> tuple:
+    #     """
+    #     Fetch the precision for base and quote currencies of a given symbol.
+    #
+    #     :param symbol: The symbol to fetch precision for.
+    #     :return: A tuple containing base and quote decimal places.
+    #     """
+    #     try:
+    #         markets = []
+    #         endpoint = 'public'  # for rate limiting
+    #         params = {
+    #             'offset': 0,  # Skip the first 0 items
+    #             'paginate': True,  # Enable automatic pagination
+    #             'paginationCalls': 10,  # Set the max number of pagination calls if necessary
+    #             'limit': 1000  # Set the max number of items to return
+    #         }
+    #         # Run the synchronous fetch_markets method in the default executor
+    #         markets = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_markets, endpoint, params=params)
+    #         if markets is None:
+    #             raise ValueError("Failed to fetch markets.")
+    #
+    #         for market in markets:
+    #             if market['symbol'] == symbol:
+    #                 base_precision = float(market['precision']['amount'])  # float
+    #                 quote_precision = float(market['precision']['price'])  # float
+    #                 base_increment = market['info']['base_increment']  # string
+    #                 quote_increment = market['info']['quote_increment']  # string
+    #
+    #                 if base_precision == 0 or quote_precision == 0:
+    #                     raise ValueError("Precision value is zero, which may cause a division error.")
+    #                 base_decimal_places = -int(math.log10(base_precision))
+    #                 quote_decimal_places = -int(math.log10(quote_precision))
+    #                 # Check for negative decimal places
+    #                 if base_decimal_places < 0:
+    #                     raise ValueError("Base decimal places cannot be negative.")
+    #
+    #                 return base_decimal_places, quote_decimal_places, base_increment, quote_increment
+    #     except self.exchange.NetworkError as e:
+    #         self.log_manager.error(f"Network issue when fetching markets: {e}")
+    #     except self.exchange.ExchangeError as e:
+    #         self.log_manager.error(f"Exchange issue encountered: {e}")
+    #     except Exception as e:
+    #         self.log_manager.error(f"Unexpected error in fetch_precision: {e}", exc_info=True)
+    #
+    #     return None, None, None, None  # Default return on error
 
-        balances = {}
-        accounts = None
-        try:
-            endpoint = 'private'  # for rate limiting
-            params = {
-                'offset': 0,  # Skip the first 0 items
-                'paginate': True,  # Enable automatic pagination
-                'paginationCalls': 50,  # Set the max number of pagination calls if necessary
-                'limit': 300  # Set the max number of items to return
-            }
-            accounts = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_balance, endpoint, params=params)
-            wallets = await self.fetch_wallets()
-            if get_staked:
-                return accounts, wallets  # Return the full accounts object
-            # Check if accounts is None
-            if wallets is None:
-                self.log_manager.error('get_account_balance: Failed to fetch accounts', exc_info=True)
-                return accounts, {currency: None for currency in currencies}
+    # async def check_order_status(self, symbol, order_id):
+    #     """
+    #     Check the status of an order using the order_id.
+    #     Returns the status as a string (e.g., 'OPEN', 'FILLED', 'CANCELED').
+    #     """
+    #     try:
+    #         # Extract order details
+    #
+    #         endpoint = 'private'
+    #
+    #         # Fetch detailed order information
+    #         order_info = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order, endpoint, order_id, symbol)
+    #
+    #         if order_info:
+    #             return order_info.get('status', 'UNKNOWN')  # return raw order info if available
+    #         else:
+    #             print(f"Order {order_id} not found.")
+    #             return 'NOT_FOUND'
+    #     except Exception as e:
+    #         print(f"Error checking order status for {order_id}: {e}")
+    #         return 'ERROR'
 
-            for wallet in wallets:
-                if currencies[0] in wallet['code']:
-                    balances = {'asset': currencies[0],
-                                'free': float(wallet['info']['available_balance']['value']),
-                                'hold': float(wallet['info']['hold']['value'])}
-                    break
-                else:
-                    balances = None
-                    self.log_manager.debug(f'get_account_balance: {wallet} not found in accounts')
-            # print(f'balances: {balances}')
-            return accounts, balances
-        except Exception as e:
-            my_ip = self.get_my_ip_address()
-            self.log_manager.debug(
-                f'get_account_balance: Exception occurred during API call from IP {my_ip}: {e}', exc_info=True)
-            return accounts, {currency: None for currency in currencies}
+    # @staticmethod
+    # def get_symbol_or_trading_pair(order):
+    #     # Check if 'symbol' is in the dictionary (for nested structures)
+    #     if isinstance(order, dict):
+    #         for key, value in order.items():
+    #             if isinstance(value, dict):
+    #                 if 'symbol' in value:
+    #                     return value['symbol']
+    #             elif key == 'trading_pair':
+    #                 return order['trading_pair']
+    #
+    #     # If 'symbol' or 'trading_pair' was not found at this point, raise an exception or return None
+    #     return None
 
-    def adjust_price_and_size(self, order_data, order_book, response=None) -> tuple[Decimal, Decimal]:
-        try:
-            side = order_data['side'].upper()
 
-            if side == 'sell':
-                adjusted_price = Decimal(order_book['highest_bid'])
-                adjusted_size = Decimal(order_data.get('base_avail_balance', 0))
-            elif side == 'buy':
-                adjusted_price = Decimal(order_book['lowest_ask'])
-                quote_amount = Decimal(order_data.get('quote_amount', 0))
-                if adjusted_price == 0:
-                    raise ValueError("Adjusted price cannot be zero for BUY order.")
-                adjusted_size = quote_amount / adjusted_price
-            else:
-                raise ValueError(f"Unsupported side: {side}")
 
-            # Capture best bid/ask prices
-            best_bid_price = Decimal(order_book['highest_bid'])
-            best_ask_price = Decimal(order_book['lowest_ask'])
-            spread = best_ask_price - best_bid_price
+    # async def fetch_wallets(self):
+    #     """fetch wallet holdings and available balance."""
+    #
+    #     endpoint = 'private'
+    #     params = {'paginate': True, 'paginationCalls': 100}
+    #     wallets = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_accounts, endpoint, params)
+    #     filtered_wallets = self.filter_non_zero_wallets(wallets)
+    #     return filtered_wallets
+    #
+    # def filter_non_zero_wallets(self, wallets):
+    #     try:
+    #         non_zero_wallets = []
+    #         for wallet in wallets:
+    #             if wallet['code'] == 'BCH':  # Skip BCH wallet for now
+    #                 pass
+    #             available_balance = Decimal(wallet['info']['available_balance']['value'])
+    #             hold_balance = Decimal(wallet['info']['hold']['value'])
+    #             total_balance = available_balance + hold_balance
+    #             if total_balance > 0:
+    #                 non_zero_wallets.append(wallet)
+    #         return non_zero_wallets
+    #     except Exception as e:
+    #         self.log_manager.sighook_logger.error(f'filter_non_zero_wallets: {e}', exc_info=True)
 
-            # Dynamic adjustment factor based on a percentage of the spread
-            adjustment_percentage = Decimal('0.002')  # 0.2%
-            adjustment_factor = spread * adjustment_percentage
+    # async def get_account_balance(self, currencies, get_staked=False):
+    #
+    #     balances = {}
+    #     accounts = None
+    #     try:
+    #         endpoint = 'private'  # for rate limiting
+    #         params = {
+    #             'offset': 0,  # Skip the first 0 items
+    #             'paginate': True,  # Enable automatic pagination
+    #             'paginationCalls': 50,  # Set the max number of pagination calls if necessary
+    #             'limit': 300  # Set the max number of items to return
+    #         }
+    #         accounts = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_balance, endpoint, params=params)
+    #         wallets = await self.fetch_wallets()
+    #         if get_staked:
+    #             return accounts, wallets  # Return the full accounts object
+    #         # Check if accounts is None
+    #         if wallets is None:
+    #             self.log_manager.error('get_account_balance: Failed to fetch accounts', exc_info=True)
+    #             return accounts, {currency: None for currency in currencies}
+    #
+    #         for wallet in wallets:
+    #             if currencies[0] in wallet['code']:
+    #                 balances = {'asset': currencies[0],
+    #                             'free': float(wallet['info']['available_balance']['value']),
+    #                             'hold': float(wallet['info']['hold']['value'])}
+    #                 break
+    #             else:
+    #                 balances = None
+    #                 self.log_manager.debug(f'get_account_balance: {wallet} not found in accounts')
+    #         # print(f'balances: {balances}')
+    #         return accounts, balances
+    #     except Exception as e:
+    #         my_ip = self.get_my_ip_address()
+    #         self.log_manager.debug(
+    #             f'get_account_balance: Exception occurred during API call from IP {my_ip}: {e}', exc_info=True)
+    #         return accounts, {currency: None for currency in currencies}
 
-            # Ensure the adjustment is significant given the currency's precision
-            precision_str = '1e-{}'.format(order_data.get('quote_decimal', 2))
-            adjustment_factor = max(adjustment_factor, Decimal(precision_str))
-            print(f'Calculated adjustment_factor: {adjustment_factor}')
+    # def adjust_price_and_size(self, order_data, order_book, response=None) -> tuple[Decimal, Decimal]:
+    #     try:
+    #         side = order_data['side'].upper()
+    #
+    #         if side == 'sell':
+    #             adjusted_price = Decimal(order_book['highest_bid'])
+    #             adjusted_size = Decimal(order_data.get('base_avail_balance', 0))
+    #         elif side == 'buy':
+    #             adjusted_price = Decimal(order_book['lowest_ask'])
+    #             quote_amount = Decimal(order_data.get('quote_amount', 0))
+    #             if adjusted_price == 0:
+    #                 raise ValueError("Adjusted price cannot be zero for BUY order.")
+    #             adjusted_size = quote_amount / adjusted_price
+    #         else:
+    #             raise ValueError(f"Unsupported side: {side}")
+    #
+    #         # Capture best bid/ask prices
+    #         best_bid_price = Decimal(order_book['highest_bid'])
+    #         best_ask_price = Decimal(order_book['lowest_ask'])
+    #         spread = best_ask_price - best_bid_price
+    #
+    #         # Dynamic adjustment factor based on a percentage of the spread
+    #         adjustment_percentage = Decimal('0.002')  # 0.2%
+    #         adjustment_factor = spread * adjustment_percentage
+    #
+    #         # Ensure the adjustment is significant given the currency's precision
+    #         precision_str = '1e-{}'.format(order_data.get('quote_decimal', 2))
+    #         adjustment_factor = max(adjustment_factor, Decimal(precision_str))
+    #         print(f'Calculated adjustment_factor: {adjustment_factor}')
+    #
+    #         # Apply the adjustment factor depending on the side
+    #         if side == 'buy':
+    #             adjusted_price += adjustment_factor  # Slightly increase the buy price
+    #         elif side == 'sell':
+    #             adjusted_price -= adjustment_factor  # Slightly decrease the sell price
+    #
+    #         return adjusted_price, adjusted_size
+    #     except Exception as e:
+    #         self.log_manager.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
+    #         return None, None
 
-            # Apply the adjustment factor depending on the side
-            if side == 'buy':
-                adjusted_price += adjustment_factor  # Slightly increase the buy price
-            elif side == 'sell':
-                adjusted_price -= adjustment_factor  # Slightly decrease the sell price
+    # @staticmethod
+    # def get_decimal_format(base_decimal: int) -> Decimal:
+    #     """
+    #     Generate a Decimal format string based on the number of decimal places.
+    #
+    #     :param base_decimal: The number of decimal places for the base value.
+    #     :return: A Decimal object representing the format.
+    #     """
+    #     if base_decimal < 0:
+    #         raise ValueError("base_decimal must be a positive integer")
+    #
+    #     decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
+    #     return Decimal(decimal_format)  # example 0.00000001
 
-            return adjusted_price, adjusted_size
-        except Exception as e:
-            self.log_manager.error(f'adjust_price_and_size: An error occurred: {e}', exc_info=True)
-            return None, None
-
-    @staticmethod
-    def get_decimal_format(base_decimal: int) -> Decimal:
-        """
-        Generate a Decimal format string based on the number of decimal places.
-
-        :param base_decimal: The number of decimal places for the base value.
-        :return: A Decimal object representing the format.
-        """
-        if base_decimal < 0:
-            raise ValueError("base_decimal must be a positive integer")
-
-        decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
-        return Decimal(decimal_format)  # example 0.00000001
-
-    @staticmethod
-    def convert_timestamp_to_datetime(timestamp_ms):
-        # Divide by 1000 to convert milliseconds to seconds
-        timestamp_s = float(timestamp_ms) / 1000.0
-        # Create datetime object from timestamp
-        dt = datetime.fromtimestamp(timestamp_s)
-        return dt
+    # @staticmethod
+    # def convert_timestamp_to_datetime(timestamp_ms):
+    #     # Divide by 1000 to convert milliseconds to seconds
+    #     timestamp_s = float(timestamp_ms) / 1000.0
+    #     # Create datetime object from timestamp
+    #     dt = datetime.fromtimestamp(timestamp_s)
+    #     return dt
 
     # async def check_funds(self, required_amount):
     #     """Currently not implemented. Implement this method to check account balance."""

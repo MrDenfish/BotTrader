@@ -20,9 +20,10 @@ class TickerManager:
     @classmethod
     async def get_instance(cls, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
         """Ensures only one instance of TickerManager is created."""
-        async with cls._lock:
-            if cls._instance is None:
-                cls._instance = cls(shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api)
+        if cls._instance is None:
+            async with cls._lock:
+                if cls._instance is None:  # Double-check after acquiring the lock
+                    cls._instance = cls(shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api)
         return cls._instance
 
     def __init__(self, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
@@ -45,7 +46,7 @@ class TickerManager:
 
     async def update_ticker_cache(self, open_orders=None, start_time=None) -> tuple:
         """
-        Update ticker cache with market and portfolio data.
+        Update market_data dictionary with market and portfolio data.
 
         Args:
             open_orders (list): List of open orders (optional).
@@ -103,60 +104,6 @@ class TickerManager:
             self.log_manager.error(f"Error in update_ticker_cache: {e}", exc_info=True)
             return {}, {}
 
-    # async def update_ticker_cache(self, open_orders=None):
-    #     """Fetch and prepare updated market data while ensuring completeness."""
-    #     try:
-    #         # Fetch market data
-    #         market_data = await self.ccxt_api.ccxt_api_call(
-    #             self.exchange.fetch_markets, 'public', params={'paginate': True, 'limit': 1000}
-    #         )
-    #
-    #         if not market_data:
-    #             self.log_manager.error("❌ Market data retrieval failed. Returning empty dataset.")
-    #             return {}, {}
-    #
-    #         # Fetch portfolio breakdown (balances)
-    #         non_zero_balances = await self.fetch_and_filter_balances(self.portfolio_uuid)
-    #
-    #         if non_zero_balances is None:
-    #             self.log_manager.warning("⚠️ No non-zero balances found. Using empty dictionary.")
-    #             non_zero_balances = {}
-    #
-    #         # Process market data and balances
-    #         supported_vol_markets, supported_usd_markets = self.filter_volume_for_market_data(market_data)
-    #
-    #         if not supported_vol_markets or not supported_usd_markets:
-    #             self.log_manager.warning("⚠️ Market volume filtering returned empty sets. Market data may be incomplete.")
-    #
-    #         # Fetch ticker data
-    #         tickers_cache = await self.parallel_fetch_and_update(supported_vol_markets)
-    #
-    #         # Ensure critical data exists before returning
-    #         new_market_data = {
-    #             "current_prices": tickers_cache if not tickers_cache.empty else {},
-    #             "usd_pairs_cache": supported_usd_markets,
-    #             "portfolio_summary": non_zero_balances
-    #         }
-    #
-    #         new_order_management = {
-    #             "order_tracker": {},
-    #             "non_zero_balances": non_zero_balances
-    #         }
-    #
-    #         # Validate before returning
-    #         if "current_prices" not in new_market_data:
-    #             self.log_manager.error("⚠️ 'current_prices' missing from new_market_data! Assigning empty dictionary.")
-    #             new_market_data["current_prices"] = {}
-    #
-    #         if "order_tracker" not in new_order_management:
-    #             self.log_manager.error("⚠️ 'order_tracker' missing from new_order_management! Assigning empty dictionary.")
-    #             new_order_management["order_tracker"] = {}
-    #
-    #         return new_market_data, new_order_management
-    #
-    #     except Exception as e:
-    #         self.log_manager.error(f"❌ Error updating MarketDataManager: {e}", exc_info=True)
-    #         return {}, {}
 
     async def fetch_and_filter_balances(self, portfolio_uuid: str) -> dict:
         """
@@ -489,7 +436,7 @@ class TickerManager:
 
                 return response  # Return valid response
             except Exception as e:
-                self.log_manager.error(f"Attempt {attempt + 1} failed: {e}")
+                self.log_manager.error(f"Attempt {attempt + 1} failed: {e}",exc_info=True)
                 if attempt == max_retries - 1:
                     self.log_manager.error("Max retries reached for get_portfolio_breakdown.")
                     return None

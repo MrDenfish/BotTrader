@@ -1,6 +1,6 @@
 
 from decimal import Decimal
-from Shared_Utils.config_manager import CentralConfig as config
+from Config.config_manager import CentralConfig as config
 import pandas as pd
 from inspect import stack # debugging
 
@@ -19,6 +19,8 @@ class ProfitDataManager:
     def __init__(self, shared_utils_precision, shared_utils_print_data, log_manager):
         self.config = config()
         self._hodl = self.config.hodl
+        self._stop_loss = Decimal(self.config.stop_loss)
+        self._take_profit = Decimal(self.config.take_profit)
         self.ticker_cache = None
         self.market_cache = None
         self.min_volume = None
@@ -32,6 +34,14 @@ class ProfitDataManager:
     @property
     def hodl(self):
         return self._hodl
+
+    @property
+    def stop_loss(self):
+        return self._stop_loss
+
+    @property
+    def take_profit(self):
+        return self._take_profit
 
     def set_trade_parameters(self, market_data, order_management, start_time=None):
         try:
@@ -143,3 +153,26 @@ class ProfitDataManager:
             print(f"Error consolidating profit data: {e}")
             return None
 
+    async def calculate_tp_sl(self, order_price, base_deci, quote_deci):
+        """
+        Calculate Take Profit (TP) and Stop Loss (SL) prices with proper precision.
+
+        Args:
+            order_price (Decimal): The base price of the order.
+            base_deci (int): Base currency precision.
+            quote_deci (int): Quote currency precision.
+
+        Returns:
+            tuple: (take_profit, stop_loss) adjusted to correct precision.
+        """
+        try:
+            tp = order_price * (1 + self.take_profit)
+            sl = order_price * (1 + self.stop_loss)
+
+            adjusted_tp = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, tp, convert='quote')
+            adjusted_sl = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, sl, convert='quote')
+
+            return adjusted_tp, adjusted_sl
+        except Exception as e:
+            self.log_manager.error(f"⚠️ Error in calculate_tp_sl: {e}", exc_info=True)
+            return None, None

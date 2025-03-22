@@ -5,17 +5,17 @@ from decimal import Decimal
 import time
 import ccxt.async_support as ccxt  # import ccxt as ccxt
 import pandas as pd
-from alerts_msgs_webhooks import AlertSystem, SenderWebhook
 from SharedDataManager.shared_data_manager import SharedDataManager
+from sighook.alerts_msgs_webhooks import AlertSystem, SenderWebhook
 from Shared_Utils.logging_manager import LoggerManager
-from indicators import Indicators
-from database_ops import DatabaseOpsManager
-from database_table_models import DatabaseTables
-from holdings_process_manager import HoldingsProcessor
-from database_session_manager import DatabaseSessionManager
+from sighook.indicators import Indicators
+from sighook.database_ops import DatabaseOpsManager
+from sighook.database_table_models import DatabaseTables
+from sighook.holdings_process_manager import HoldingsProcessor
+from sighook.database_session_manager import DatabaseSessionManager
 from Shared_Utils.debugger import Debugging
 from Shared_Utils.database_checker import DatabaseIntegrity
-from Shared_Utils.config_manager import CentralConfig as bot_config
+from Config.config_manager import CentralConfig as bot_config
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.dates_and_times import DatesAndTimes
 from Shared_Utils.print_data import PrintData
@@ -24,14 +24,14 @@ from Shared_Utils.snapshots_manager import SnapshotsManager
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.ticker_manager import TickerManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
-from async_functions import AsyncFunctions
+from sighook.async_functions import AsyncFunctions
 from Api_manager.api_manager import ApiManager
-from portfolio_manager import PortfolioManager
-from market_manager import MarketManager
-from order_manager import OrderManager
-from trading_strategy import TradingStrategy
-from profit_manager import ProfitabilityManager
-from profit_helper import ProfitHelper
+from sighook.portfolio_manager import PortfolioManager
+from MarketDataManager.market_manager import MarketManager
+from sighook.order_manager import OrderManager
+from sighook.trading_strategy import TradingStrategy
+from sighook.profit_manager import ProfitabilityManager
+from sighook.profit_helper import ProfitHelper
 import logging
 
 # from pyinstrument import Profiler # debugging
@@ -43,9 +43,11 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, shared_data_mgr, log_mgr=None):
+    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, log_mgr=None):
         self.shared_data_manager = shared_data_mgr
         self.app_config = bot_config()
+        self.rest_client = rest_client
+        self.portfolio_uuid = portfolio_uuid
         self.log_manager = log_mgr or shared_data_mgr.log_manager
         self.database_session_mngr = shared_data_mgr.database_session_manager
         if not self.app_config._is_loaded:
@@ -144,7 +146,7 @@ class TradeBot:
             if not self.database_session_mngr.database.is_connected:
                 await self.database_session_mngr.connect()
 
-            market_data_manager = MarketDataUpdater.get_instance(
+            market_data_manager = await MarketDataUpdater.get_instance(
                 ticker_manager=self.ticker_manager,
                 log_manager=self.log_manager
             )
@@ -217,8 +219,9 @@ class TradeBot:
         self.portfolio_manager = PortfolioManager.get_instance(self.log_manager, self.ccxt_api, self.exchange,
                                                   self.max_concurrent_tasks, self.shared_utils_precision,
                                                   self.shared_utils_datas_and_times, self.shared_utils_utility, )
-        self.ticker_manager = TickerManager.get_instance(self.shared_utils_debugger, self.shared_utils_print,
-                                                       self.log_manager, None, None, self.exchange, self.ccxt_api)
+
+        self.ticker_manager =  await TickerManager.get_instance(self.shared_utils_debugger, self.shared_utils_print,
+                                                       self.log_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api)
 
         self.database_utility = DatabaseIntegrity.get_instance( self.app_config, self.db_tables, self.log_manager)
 
@@ -267,7 +270,7 @@ class TradeBot:
                                                          self.max_concurrent_tasks, self.database_session_mngr.database,
                                                          self.db_tables)
 
-        self.market_data_manager = MarketDataUpdater.get_instance(ticker_manager=self.ticker_manager,
+        self.market_data_manager = await MarketDataUpdater.get_instance(ticker_manager=self.ticker_manager,
                                                                   log_manager=self.log_manager)
 
         # Step 12: Initialize ProfitDataManager last, after all other dependencies are set
@@ -398,7 +401,7 @@ class TradeBot:
 
 
                 # Check and update trailing stop orders and prepare webhook signal
-                # this function is now performed with listener using websockets
+                # this function is now performed with webhook using websockets
                 # await self.order_manager.check_prepare_trailing_stop_orders(open_orders, current_prices)
 
                 (holdings_list, _, _, _) = self.portfolio_manager.get_portfolio_data(self.start_time)

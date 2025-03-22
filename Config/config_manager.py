@@ -26,11 +26,11 @@ class CentralConfig:
         """Set default values for all configuration attributes."""
         self.db_url = self.db_user = self.db_password = self.db_host = None
         self.db_port = self._api_url = self._json_config = None
-        self._phone = self._email = self._e_mailpass = self._my_email = None
+        self._phone = self._email = self._e_mailpass = self._my_email = self._min_order_amount = None
         self._order_size = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
-        self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_to_buy = None
+        self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_of_crypto_to_buy_more = None
         self._rsi_sell = self._sma_fast = self._sma_slow = self._sma = None
         self._buy_ratio = self._sell_ratio = self._sma_volatility = self._hodl = None
         self._cxl_buy = self._cxl_sell = self._take_profit = self._roc_24hr = None
@@ -43,6 +43,7 @@ class CentralConfig:
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
         self._assets_ignored = self._buy_target = self._sell_target = None
         self._quote_currency = self._trailing_percentage = self._min_volume = None
+        self._roc_5min = None
 
 
         # Default values
@@ -79,8 +80,9 @@ class CentralConfig:
             "_quote_currency": "QUOTE_CURRENCY",
             "_order_size": "ORDER_SIZE",
             "_trailing_percentage": "TRAILING_PERCENTAGE",
+            "_min_order_amount":"MIN_ORDER_AMOUNT",
             "_min_sell_value": "MIN_SELL_VALUE",
-            "_max_value_to_buy":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
+            "_max_value_of_crypto_to_buy_more":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
             "_min_volume": "MIN_VOLUME", # min daily volume strategies use to evaluate ovhlc data
             "_max_ohlcv_rows": "MAX_OHLCV_ROWS",
             "_hodl": "HODL",
@@ -89,6 +91,7 @@ class CentralConfig:
             "_cxl_buy": "CXL_BUY",
             "_cxl_sell": "CXL_SELL",
             "_roc_24hr": "ROC_24HR",
+            "_roc_5min":"ROC_5min",
             "_docker_staticip": "DOCKER_STATICIP",
             "_tv_whitelist": "TV_WHITELIST",
             "_coin_whitelist": "COIN_WHITELIST",
@@ -231,13 +234,18 @@ class CentralConfig:
             raise
 
     def load_channels(self):
-        """Load and return the WebSocket API channels as a list of channel names."""
+        """Load and return WebSocket API channels as a list of channel names."""
         try:
-            websocket_config = self.websocket_api  # Fetch the websocket config
-            return list(websocket_config.get("channel_names", {}).values())
+            websocket_config = self.load_websocket_api_key()  # ✅ Load the correct JSON config
+
+            # ✅ Extract market and user channels (only the keys, not values)
+            market_channels = list(websocket_config.get("market_channels", {}).keys())
+            user_channels = list(websocket_config.get("user_channels", {}).keys())
+
+            return market_channels, user_channels
         except Exception as e:
             print(f"Error loading channels: {e}")
-            return []
+            return [], []  # Return empty lists in case of failure
 
     def get_database_dir(self):
         # Always use config.json for database dir
@@ -356,12 +364,16 @@ class CentralConfig:
         return self._assets_ignored
 
     @property
+    def min_order_amount(self):
+        return Decimal(self._min_order_amount)
+
+    @property
     def min_sell_value(self):
         return Decimal(self._min_sell_value)
 
     @property
-    def max_value_to_buy(self):
-        return Decimal(self._max_value_to_buy)
+    def max_value_of_crypto_to_buy_more(self):
+        return Decimal(self._max_value_of_crypto_to_buy_more)
 
     @property
     def stop_loss(self):
@@ -514,6 +526,10 @@ class CentralConfig:
     @property
     def roc_24hr(self):
         return int(self._roc_24hr)
+
+    @property
+    def roc_5min(self):
+        return int(self._roc_5min)
 
     @property
     def csv_dir(self):

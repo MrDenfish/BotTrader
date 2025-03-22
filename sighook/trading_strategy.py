@@ -2,9 +2,9 @@
 import asyncio
 import pandas as pd
 from sqlalchemy import select
-from indicators import Indicators
+from sighook.indicators import Indicators
 from decimal import Decimal
-from Shared_Utils.config_manager import CentralConfig as config
+from Config.config_manager import CentralConfig as config
 
 
 class TradingStrategy:

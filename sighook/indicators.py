@@ -1,4 +1,4 @@
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 from decimal import Decimal
 import numpy as np
 import matplotlib.pyplot as plt

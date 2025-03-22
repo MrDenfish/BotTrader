@@ -7,29 +7,21 @@ class PrecisionUtils:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logmanager):
+    def get_instance(cls, logmanager, market_data=None):
         """ Ensures only one instance of PrecisionUtils is created. """
         if cls._instance is None:
-            cls._instance = cls(logmanager)
+            cls._instance = cls(logmanager, market_data)
         return cls._instance
 
-    def __init__(self, logmanager):
+    def __init__(self, logmanager,  market_data):
         """ Initialize PrecisionUtils. """
         if PrecisionUtils._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
+        self.market_data = market_data
         self.log_manager = logmanager
 
 
-
-
-    # def set_trade_parameters(self, market_data, order_management,  start_time=None):
-    #     self.start_time = start_time
-    #     self.ticker_cache = market_data['ticker_cache']
-    #     self.non_zero_balances = order_management.get('non_zero_balances', {})
-    #     self.order_tracker = order_management.get('order_tracker', {})
-    #     self.market_cache_usd = market_data['usd_pairs_cache']
-    #     self.market_cache = market_data['filtered_vol']
 
     def fetch_precision(self, symbol: str, usd_pairs) -> tuple:
         """
@@ -39,6 +31,8 @@ class PrecisionUtils:
         :return: A tuple containing base and quote decimal places.
         """
         try:
+            if usd_pairs is None:
+                usd_pairs = self.market_data['usd_pairs_cache']
             if len(usd_pairs) ==0:
                 return 4, 2, 1e-08, 1e-08 #default values for empty usd_pairs
 
@@ -125,12 +119,13 @@ class PrecisionUtils:
 
             # Determine adjusted size
             if side == 'SELL':
-                adjusted_size = Decimal(str(order_data.get('sell_amount', 0)))
+                adjusted_size = Decimal(str(max(order_data.get('sell_amount', 0) , order_data.get('base_avail_to_trade', 0) )))
             else:  # BUY case
-                quote_amount = Decimal(str(order_data.get('buy_amount', 0)))
+                quote_amount = Decimal(str(order_data.get('order_amount', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")
                 adjusted_size = quote_amount / adjusted_price
+
 
             # Calculate spread and adjustment factor
             spread = lowest_ask - highest_bid
@@ -138,8 +133,10 @@ class PrecisionUtils:
             adjustment_factor = spread * adjustment_percentage
 
             # Ensure the adjustment factor respects the asset's precision
-            precision = Decimal(f"1e-{order_data.get('quote_decimal', 2)}")
-            adjustment_factor = max(adjustment_factor, precision)
+            precision_quote = Decimal(f"1e-{order_data.get('quote_decimal', 2)}")
+            precision_base = Decimal(f"1e-{order_data.get('base_decimal',8)}")
+            precision = min(precision_quote, precision_base)
+            adjustment_factor = max(adjustment_factor, precision_quote)
 
             # Adjust both bid and ask
             adjusted_bid = highest_bid + adjustment_factor  # Increase bid slightly
@@ -151,8 +148,11 @@ class PrecisionUtils:
             elif side == 'SELL':
                 adjusted_price = adjusted_bid
 
-            # Ensure adjusted price respects precision
-            adjusted_price = adjusted_price.quantize(precision, rounding=ROUND_DOWN)
+            # Ensure adjusted price and size respects precision
+            adjusted_price = adjusted_price.quantize(precision_quote, rounding=ROUND_DOWN)
+            adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
+
+
 
             return adjusted_price, adjusted_size
 

@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import time
 import uuid
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 
 class OrderManager:
     _instance = None
@@ -271,7 +271,7 @@ class OrderManager:
             return df
         except Exception as e:
             # Handle exceptions and log the error
-            print(f"Error in format_open_orders_from_dict: {e}")
+            self.log_manager.error(f"Error in format_open_orders_from_dict: {e}")
             return pd.DataFrame()
 
     async def execute_actions(self, strategy_results, holdings):

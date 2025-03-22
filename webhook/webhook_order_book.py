@@ -29,6 +29,8 @@ class OrderBookManager:
         """ This method fetches the order book from the exchange and returns it as a dictionary."""
         if symbol:
             trading_pair = symbol
+            if trading_pair == 'MOG/USD':
+                pass
         else:
             trading_pair = order_data['trading_pair']
 

@@ -5,7 +5,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timedelta
 from databases import Database
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 
 
 class MarketManager:
@@ -57,26 +57,6 @@ class MarketManager:
         async with self.request_semaphore:
             await asyncio.sleep(self.exchange.rateLimit / 1000)  # Enforce rate limit
             return await func(*args, **kwargs)
-
-    def update_market_cache_with_holdings(self):
-        """
-        Update the 'holding' column in 'market_cache_usd' with values from the 'filtered' dictionary in 'non_zero_balances'.
-        """
-        try:
-            # Access 'filtered' dictionary
-            filtered = self.non_zero_balances.get('filtered', {})
-
-            # Define a helper function to fetch holding for an asset
-            def get_holding_for_asset(asset):
-                return filtered.get(asset, {}).get('holding', 0.0)
-
-            # Update the 'holding' column in the DataFrame
-            self.market_cache_usd['holding'] = self.market_cache_usd['asset'].apply(get_holding_for_asset)
-
-            self.log_manager.info("Successfully updated 'holding' column in 'market_cache_usd'.")
-        except Exception as e:
-            self.log_manager.error(f"Error updating market_cache_usd with holdings: {e}", exc_info=True)
-            raise
 
 
     async def fetch_and_store_ohlcv_data(self, symbols, mode='update', timeframe='1m', limit=300):
@@ -154,6 +134,7 @@ class MarketManager:
         Fetch OHLCV data for a given symbol with optional `since` timestamp and limit.
         """
         all_ohlcv = []
+        symbol = symbol.replace('-', '/')
         pagination_calls = params.get('paginationCalls', 10)
         try:
             for _ in range(pagination_calls):

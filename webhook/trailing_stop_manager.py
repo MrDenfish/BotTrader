@@ -1,6 +1,6 @@
 import asyncio
 from decimal import Decimal
-from Shared_Utils.config_manager import CentralConfig as Bot_config
+from Config.config_manager import CentralConfig as Bot_config
 
 class TrailingStopManager:
     _instance = None

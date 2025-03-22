@@ -7,7 +7,7 @@ from Api_manager.api_exceptions import (InsufficientFundsException, ProductIDExc
                                     MaintenanceException)
 from Api_manager.api_exceptions import RateLimitException, BadRequestException, NotFoundException, InternalServerErrorException
 from Api_manager.api_exceptions import UnknownException
-from Shared_Utils.config_manager import CentralConfig as Config
+from Config.config_manager import CentralConfig as Config
 from inspect import stack # debugging
 
 class WebHookManager:
@@ -53,12 +53,11 @@ class WebHookManager:
     async def handle_action(self, order_details, precision_data):
         """ Handle the action from the webhook request. Place an order on Coinbase Pro. """
         try:
-            response = await self.trade_order_manager.place_order(order_details, precision_data)
-            # True if order conditions are met False if they are not met
-            if not response:
-                return True, {"message": "Order placement successful"} # ✅ Order successfully placed
+            order_success, response_msg = await self.trade_order_manager.place_order(order_details, precision_data)
+            if order_success:
+                return True, {"success": True, "message": "Order successfully placed"}
             else:
-                return False, {"message": "Order placement failed"}  # ❌ Order failed
+                return False, response_msg
 
         except InsufficientFundsException:
             self.log_manager.info(f'handle_action: Insufficient funds')
@@ -82,10 +81,12 @@ class WebHookManager:
         except MaintenanceException:
             return False, {"message": "Exchange is under maintenance"}
 
+
         except Exception as e:
-            await self.handle_webhook_error(e, order_details, precision_data)
-            self.log_manager.error(f'Handle_action: An unexpected error occurred: {e}', exc_info=True)
-            return False, {"message": "Internal server error"}
+
+            self.log_manager.error(f"⚠️ Error in handle_action: {e}", exc_info=True)
+
+            return False, {"error": f"Unexpected error: {e}"}
 
     def calculate_order_size(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci):
         """

@@ -1,5 +1,5 @@
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dateutil import parser
 import pandas as pd
 
@@ -40,6 +40,11 @@ class DatesAndTimes:
             trade['record_type'] = 'trade'  # Default value
 
         return trade
+
+    def time_sanity_check(self, safe_since):
+        if safe_since > int(datetime.utcnow().timestamp() * 1000):
+            self.log_manager.warning("Adjusted `since` timestamp is in the future. Using fallback.")
+            safe_since = int((datetime.utcnow() - timedelta(minutes=6)).timestamp() * 1000)
 
     @staticmethod
     def standardize_timestamp(timestamp):

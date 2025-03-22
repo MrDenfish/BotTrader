@@ -1,5 +1,5 @@
 from decimal import Decimal
-from Shared_Utils.config_manager import CentralConfig as Config
+from Config.config_manager import CentralConfig as Config
 
 class ProfitHelper:
     _instance = None

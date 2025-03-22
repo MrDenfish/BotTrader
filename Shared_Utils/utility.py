@@ -1,6 +1,7 @@
 
 from decimal import Decimal
 import pandas as pd
+import asyncio
 import socket
 
 class SharedUtility:
@@ -29,6 +30,19 @@ class SharedUtility:
         if isinstance(obj, Decimal):
             return str(obj)
         raise TypeError
+
+    @staticmethod
+    async def get_event_loop():
+        """Returns the running event loop or creates a new one if none exists."""
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:  # No running loop found
+            return asyncio.new_event_loop()
+
+    def log_event_loop(self, name):
+        """Logs the current event loop ID."""
+        loop_id = id(asyncio.get_running_loop())
+        self.log_manager.info(f"� {name} is running in event loop: {loop_id}")
 
     def refresh_authentication(self):
         try:

@@ -1,6 +1,6 @@
 
 from decimal import Decimal, ROUND_DOWN, InvalidOperation
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 import pandas as pd
 import asyncio
 

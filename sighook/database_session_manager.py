@@ -1,6 +1,6 @@
 
 from sqlalchemy.ext.asyncio import create_async_engine
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 from sighook.database_table_models import OHLCVData
 from sighook.database_ops import DatabaseOpsManager
 from databases import Database
@@ -92,6 +92,8 @@ class DatabaseSessionManager:
                 self.log_manager, self.profit_extras, self.config, self.database, *args, **kwargs
             )
         return self.database_ops
+    async def _fetch_last_5min_ohlcv(self,symbol):
+        return await self.database_ops.fetch_last_5min_ohlcv(symbol)
 
     async def process_data(self, start_time):
         """Delegates processing to DatabaseOpsManager within a transaction."""

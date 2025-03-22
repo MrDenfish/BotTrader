@@ -4,7 +4,7 @@ class MarketDataUpdater:
     _instance = None
 
     @classmethod
-    def get_instance(cls, ticker_manager, log_manager):
+    async def get_instance(cls, ticker_manager, log_manager):
         loop = asyncio.get_running_loop()
 
         if cls._instance is None or cls._instance_loop != loop:

@@ -1,6 +1,6 @@
 
 
-from Shared_Utils.config_manager import CentralConfig
+from Config.config_manager import CentralConfig
 from Shared_Utils.precision import PrecisionUtils
 from decimal import Decimal
 from databases import Database
