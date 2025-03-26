@@ -1,9 +1,11 @@
-from smtplib import SMTP_SSL
-from Config.config_manager import CentralConfig
-import aiohttp
 import asyncio
-import random
 import json
+import random
+from smtplib import SMTP_SSL
+
+import aiohttp
+
+from Config.config_manager import CentralConfig
 
 
 class AlertSystem:
@@ -137,9 +139,26 @@ class SenderWebhook:
 
                 # ❌ Handle non-recoverable errors
                 if response.status in [403, 404]:
-                    self.log_manager.error(f"� Non-recoverable error {response.status}: {response_text}")
+                    self.log_manager.error(f"‼️ Non-recoverable error {response.status}: {response_text}")
                     return response
-
+                if response.status in [413, 414]:
+                    self.log_manager.error(f" ⚠️ Insufficient balance to complete order {response.status}: {response_text}")
+                    return response
+                if response.status in [411]:
+                    self.log_manager.error(f" ⚠️ Open order, unable to complete order {response.status}: {response_text}")
+                    return response
+                if response.status in [412]:
+                    self.log_manager.error(f" ⚠️ Unable to adjust price, order was not placed {response.status}: {response_text}")
+                    return response
+                if response.status in [415]:
+                    self.log_manager.error(
+                        f" ⚠️ Crypto balance value is greater than $1.00, order was not placed {response.status}:"
+                        f" {response_text}"
+                    )
+                    return response
+                if response.status in [416, 417]:
+                    self.log_manager.error(f" ‼️ Order may be incomplete, order was not placed {response.status}: {response_text}")
+                    return response
                 # ⚠️ Handle recoverable errors with clean logging
                 if response.status in [429, 500, 503]:
                     error_summary = (response_text[:300] + "...") if len(response_text) > 300 else response_text
@@ -150,13 +169,13 @@ class SenderWebhook:
                     return response
 
                 else:
-                    raise Exception(f"Unhandled HTTP {response.status}: {response_text}")
+                    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
 
             except asyncio.TimeoutError:
-                self.log_manager.error(f"⏳ Request timeout (attempt {attempt}/{retries}): {webhook_payload}")
+                self.log_manager.error(f"‼️ Request timeout (attempt {attempt}/{retries}): {webhook_payload}")
 
             except aiohttp.ClientError as e:
-                self.log_manager.error(f"� Client error (attempt {attempt}/{retries}): {e}")
+                self.log_manager.error(f"‼️ Client error (attempt {attempt}/{retries}): {e}")
 
             # ⏳ Retry logic with exponential backoff
             if attempt < retries:

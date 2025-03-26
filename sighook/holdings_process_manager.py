@@ -1,8 +1,11 @@
 
-from decimal import ROUND_DOWN
 from decimal import Decimal
-from Shared_Utils.precision import PrecisionUtils
+from decimal import ROUND_DOWN
+
 import pandas as pd
+
+from Shared_Utils.precision import PrecisionUtils
+
 
 class HoldingsProcessor:
     _instance = None
@@ -104,7 +107,7 @@ class HoldingsProcessor:
 
             # Prepare trailing stop orders
             trailing_stop_orders = (
-                open_orders[open_orders['trigger_status'] == 'STOP_PENDING']
+                open_orders[open_orders['order_type'] == 'STOP_PENDING']
                 if open_orders is not None and not open_orders.empty else pd.DataFrame()
             )
 

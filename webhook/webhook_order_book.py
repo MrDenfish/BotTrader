@@ -1,6 +1,6 @@
-
 from decimal import ROUND_DOWN
 
+from webhook.webhook_validate_orders import OrderData
 
 
 class OrderBookManager:
@@ -24,19 +24,16 @@ class OrderBookManager:
         self.log_manager = logmanager
         self.ccxt_api = ccxt_api  # ✅ Renamed for clarity
 
-
-    async def get_order_book(self, order_data,symbol=None):
+    async def get_order_book(self, order_data: OrderData, symbol=None):
         """ This method fetches the order book from the exchange and returns it as a dictionary."""
         if symbol:
             trading_pair = symbol
-            if trading_pair == 'MOG/USD':
-                pass
         else:
-            trading_pair = order_data['trading_pair']
+            trading_pair = order_data.trading_pair
 
         endpoint = 'public'
         order_book = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order_book, endpoint, trading_pair , limit=50)
-        highest_bid, lowest_ask, spread = self.analyze_spread(order_data, order_book)
+        highest_bid, lowest_ask, spread = self.analyze_spread(order_data.quote_decimal, order_book)
         order_details = {
             'order_book': order_book,
             'highest_bid': highest_bid,
@@ -46,10 +43,9 @@ class OrderBookManager:
 
         return order_details
 
-    def analyze_spread(self, order_data, order_book):
+    def analyze_spread(self, quote_deci, order_book):
         # Convert quote_deci to a format string for quantization
         try:
-            quote_deci = order_data['quote_decimal']
             quantize_format = self.shared_utils_precision.get_decimal_format(quote_deci)
             highest_bid_float = order_book['bids'][0][0] if order_book['bids'] else None
             lowest_ask_float = order_book['asks'][0][0] if order_book['asks'] else None

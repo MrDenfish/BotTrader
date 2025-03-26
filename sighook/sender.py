@@ -1,38 +1,40 @@
 import asyncio
-import aiohttp
 import datetime
-from decimal import Decimal
+import logging
 import time
+from decimal import Decimal
+
+import aiohttp
 import ccxt.async_support as ccxt  # import ccxt as ccxt
 import pandas as pd
-from SharedDataManager.shared_data_manager import SharedDataManager
-from sighook.alerts_msgs_webhooks import AlertSystem, SenderWebhook
-from Shared_Utils.logging_manager import LoggerManager
-from sighook.indicators import Indicators
-from sighook.database_ops import DatabaseOpsManager
-from sighook.database_table_models import DatabaseTables
-from sighook.holdings_process_manager import HoldingsProcessor
-from sighook.database_session_manager import DatabaseSessionManager
-from Shared_Utils.debugger import Debugging
-from Shared_Utils.database_checker import DatabaseIntegrity
+
+from Api_manager.api_manager import ApiManager
 from Config.config_manager import CentralConfig as bot_config
-from Shared_Utils.precision import PrecisionUtils
-from Shared_Utils.dates_and_times import DatesAndTimes
-from Shared_Utils.print_data import PrintData
-from Shared_Utils.utility import SharedUtility
-from Shared_Utils.snapshots_manager import SnapshotsManager
 from MarketDataManager.market_data_manager import MarketDataUpdater
+from MarketDataManager.market_manager import MarketManager
 from MarketDataManager.ticker_manager import TickerManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
+from SharedDataManager.shared_data_manager import SharedDataManager
+from Shared_Utils.database_checker import DatabaseIntegrity
+from Shared_Utils.dates_and_times import DatesAndTimes
+from Shared_Utils.debugger import Debugging
+from Shared_Utils.logging_manager import LoggerManager
+from Shared_Utils.precision import PrecisionUtils
+from Shared_Utils.print_data import PrintData
+from Shared_Utils.snapshots_manager import SnapshotsManager
+from Shared_Utils.utility import SharedUtility
+from sighook.alerts_msgs_webhooks import AlertSystem, SenderWebhook
 from sighook.async_functions import AsyncFunctions
-from Api_manager.api_manager import ApiManager
-from sighook.portfolio_manager import PortfolioManager
-from MarketDataManager.market_manager import MarketManager
+from sighook.database_ops import DatabaseOpsManager
+from sighook.database_session_manager import DatabaseSessionManager
+from sighook.database_table_models import DatabaseTables
+from sighook.holdings_process_manager import HoldingsProcessor
+from sighook.indicators import Indicators
 from sighook.order_manager import OrderManager
-from sighook.trading_strategy import TradingStrategy
-from sighook.profit_manager import ProfitabilityManager
+from sighook.portfolio_manager import PortfolioManager
 from sighook.profit_helper import ProfitHelper
-import logging
+from sighook.profit_manager import ProfitabilityManager
+from sighook.trading_strategy import TradingStrategy
 
 # from pyinstrument import Profiler # debugging
 
@@ -359,7 +361,7 @@ class TradeBot:
 
                 # PART V:
                 # Order Execution
-                print(f'Part V: Order Execution based on Market Conditions - Start Time:', datetime.datetime.now())
+                print(f'Part V: Order Execution based on Market conditions - Start Time:', datetime.datetime.now())
                 submitted_orders = await self.order_manager.execute_actions(strategy_results, holdings_list)
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part V: Order Execution')

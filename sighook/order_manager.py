@@ -1,10 +1,13 @@
-import pandas as pd
-from decimal import Decimal
 import asyncio
-import aiohttp
 import time
 import uuid
+from decimal import Decimal
+
+import aiohttp
+import pandas as pd
+
 from Config.config_manager import CentralConfig
+
 
 class OrderManager:
     _instance = None
@@ -38,6 +41,7 @@ class OrderManager:
         self._cxl_buy = self.config.cxl_buy
         self._cxl_sell = self.config.cxl_sell
         self._currency_pairs_ignored = self.config.currency_pairs_ignored
+        self._assets_ignored = self.config.assets_ignored
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self.market_cache_vol, self.ticker_cache, self.filtered_balances, self.min_volume = None, None, None, None
         self.http_session, self.start_time, self.web_url  = None, None, None
@@ -84,6 +88,10 @@ class OrderManager:
     @property
     def currency_pairs_ignored(self):
         return self._currency_pairs_ignored
+
+    @property
+    def assets_ignored(self):
+        return self._assets_ignored
 
     async def open_http_session(self):
         if self.http_session is None:
@@ -231,47 +239,72 @@ class OrderManager:
         Returns:
             pd.DataFrame: A DataFrame containing formatted open order data.
         """
-        try:
-            # Convert the dictionary to a list of dictionaries
-            data_to_load = [
-                {
-                    'order_id': order_id,
-                    'product_id': order['info']['product_id'],
-                    'side': order['info']['side'],
-                    'size': order['amount'],
-                    'price': round(order['price'],8),
-                    'trigger_status': order['info']['trigger_status'],
-                    'trigger_price': order.get('triggerPrice'),  # Use .get() to handle missing keys
-                    'stop_price': order.get('stopPrice'),
-                    'filled': order['filled'],
-                    'remaining': order['remaining'],
-                    'time active': order['info']['created_time']
-                }
-                for order_id, order in open_orders_dict.items()
-            ]
 
-            # Create a DataFrame from the list
+        def parse_float_safe(value):
+            try:
+                return float(value) if value not in ("", None) else None
+            except ValueError:
+                return None
+
+        try:
+            data_to_load = []
+
+            for order_id, order in open_orders_dict.items():
+                order_type = order.get('type', '').upper()
+                info = order.get('info', {})
+                common_fields = {
+                    'order_id': order_id,
+                    'product_id': info.get('product_id'),
+                    'side': info.get('side'),
+                    'filled': order.get('filled'),
+                    'remaining': order.get('remaining'),
+                    'order_type': order_type,
+                    'time active': info.get('created_time')
+                }
+
+                if order_type == 'LIMIT':
+                    common_fields.update(
+                        {
+                            'size': order.get('amount'),
+                            'price': round(order.get('price', 0), 8) if order.get('price') is not None else None,
+                            'trigger_price': order.get('triggerPrice'),
+                            'stop_price': order.get('stopPrice')
+                        }
+                    )
+
+                elif order_type == 'TAKE_PROFIT_STOP_LOSS':
+                    trigger_config = info.get('order_configuration', {}).get('trigger_bracket_gtc', {})
+                    common_fields.update(
+                        {
+                            'size': parse_float_safe(trigger_config.get('base_size')),
+                            'price': parse_float_safe(trigger_config.get('limit_price')),
+                            'trigger_price': parse_float_safe(trigger_config.get('stop_trigger_price')),
+                            'stop_price': parse_float_safe(trigger_config.get('stop_loss_price')),
+                        }
+                    )
+
+                else:
+                    self.log_manager.warning(f"⚠️ Skipping unsupported order type: {order_type}")
+                    continue
+
+                data_to_load.append(common_fields)
+
             df = pd.DataFrame(data_to_load)
 
-            # Ensure `time active` is parsed as datetime
-            df['time active'] = pd.to_datetime(df['time active'], errors='coerce')
-
-            # Calculate the time active in minutes
-            current_time = pd.Timestamp.utcnow()
-            df['time active (minutes)'] = df['time active'].apply(
-                lambda x: (current_time - x).total_seconds() / 60 if pd.notnull(x) else None)
-
-            # Convert to numeric type and check if time active exceeds 5 minutes
-            df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')
-            df['time active > 5 minutes'] = df['time_temp'] > 5
-
-            # Drop temporary column if not needed
-            df.drop(columns=['time_temp'])
+            if not df.empty:
+                df['time active'] = pd.to_datetime(df['time active'], errors='coerce')
+                current_time = pd.Timestamp.utcnow()
+                df['time active (minutes)'] = df['time active'].apply(
+                    lambda x: (current_time - x).total_seconds() / 60 if pd.notnull(x) else None
+                )
+                df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')
+                df['time active > 5 minutes'] = df['time_temp'] > 5
+                df.drop(columns=['time_temp'], inplace=True)
 
             return df
+
         except Exception as e:
-            # Handle exceptions and log the error
-            self.log_manager.error(f"Error in format_open_orders_from_dict: {e}")
+            self.log_manager.error(f"❌ Error in format_open_orders_from_dict: {e}", exc_info=True)
             return pd.DataFrame()
 
     async def execute_actions(self, strategy_results, holdings):
@@ -348,8 +381,7 @@ class OrderManager:
             coin = symbol.split('/')[0]
 
             if ((usd_balance > 100 and coin_balance_value < self.min_sell_value) or
-                    (usd_balance > 50 and coin in self.hodl and coin not in self.currency_pairs_ignored)):  # Accumulate BTC, ETH, etc.
-
+                    (usd_balance > 50 and coin not in self.hodl and coin not in [self.currency_pairs_ignored, self.assets_ignored])):
                 buy_order = 'market' if order.get('trigger') == 'market_buy' else 'limit'
                 webhook_payload = self.build_webhook_payload(symbol, 'buy', buy_order, price, base_avail_to_trade, quote_avail_balance)
 

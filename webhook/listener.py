@@ -1,49 +1,41 @@
-
 import asyncio
-import ccxt
-import aiohttp
-import signal
-import os
-import pandas as pd
-import uuid
-import time
-from aiohttp import web
-import websockets
-#from inspect import stack
 import json
-from collections import deque
+import logging
+import time
+import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
-import logging
-from sighook.sender import TradeBot
-from Shared_Utils.logging_manager import LoggerManager
-from Shared_Utils.print_data import PrintData
-from Shared_Utils.debugger import Debugging
+from inspect import stack  # debugging
+from typing import Optional
+
+import aiohttp
+import ccxt
+import pandas as pd
+import websockets
+from aiohttp import web
+from coinbase import jwt_generator
+
+from Api_manager.api_manager import ApiManager
 from Config.config_manager import CentralConfig as Config
-from SharedDataManager.shared_data_manager import SharedDataManager
-from MarketDataManager.market_data_manager import MarketDataUpdater
-from MarketDataManager.market_manager import MarketManager
 from MarketDataManager.ohlcv_manager import OHLCVManager
 from MarketDataManager.ticker_manager import TickerManager
-from sighook.database_session_manager import DatabaseSessionManager
-from webhook.trailing_stop_manager import TrailingStopManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from Shared_Utils.dates_and_times import DatesAndTimes
+from Shared_Utils.debugger import Debugging
+from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.precision import PrecisionUtils
+from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
 from webhook.alert_system import AlertSystem
-from coinbase import jwt_generator
-from Api_manager.api_manager import ApiManager
-from webhook.webhook_utils import TradeBotUtils
-from webhook.webhook_validate_orders import ValidateOrders
+from webhook.trailing_stop_manager import TrailingStopManager
+from webhook.webhook_manager import WebHookManager
 from webhook.webhook_order_book import OrderBookManager
 from webhook.webhook_order_manager import TradeOrderManager
 from webhook.webhook_order_types import OrderTypeManager
-from webhook.webhook_manager import WebHookManager
-from inspect import stack # debugging
-
-
+from webhook.webhook_utils import TradeBotUtils
+from webhook.webhook_validate_orders import OrderData
+from webhook.webhook_validate_orders import ValidateOrders
 
 
 class CoinbaseAPI:
@@ -56,6 +48,10 @@ class CoinbaseAPI:
         self.market_url = self.config.load_websocket_api_key().get('market_api_url')
         self.base_url = self.config.load_websocket_api_key().get('base_url')
         self.rest_url = self.config.load_websocket_api_key().get('rest_api_url')
+
+        # fees
+        self._taker_fee = Decimal(self.config.taker_fee)
+        self._maker_fee = Decimal(self.config.maker_fee)
 
         log_config = {"log_level": logging.INFO}
         self.webhook_logger = LoggerManager(log_config)
@@ -70,6 +66,14 @@ class CoinbaseAPI:
 
         self.jwt_token = None
         self.jwt_expiry = None
+
+    @property
+    def taker_fee(self):
+        return self._taker_fee
+
+    @property
+    def maker_fee(self):
+        return self._maker_fee
 
     def generate_rest_jwt(self, method='GET', request_path='/api/v3/brokerage/orders'):
         try:
@@ -147,6 +151,42 @@ class CoinbaseAPI:
             self.log_manager.error(f"❗ Unexpected Error in create_order: {e}", exc_info=True)
             return {"error": "Unexpected Error", "details": str(e)}
 
+    async def get_fee_rates(self):
+        """
+        Retrieves maker and taker fee rates from Coinbase.
+        Returns:
+            dict: Dictionary containing maker and taker fee rates, or error details.
+        """
+        try:
+            request_path = '/fees'
+            jwt_token = self.generate_rest_jwt('GET', request_path)
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {jwt_token}',
+            }
+
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+            url = 'https://api.exchange.coinbase.com/fees'
+            async with (self.session.get(f'{url}', headers=headers) as response):
+                response_text = await response.text()
+
+                if response.status == 200:
+                    return await response.json()
+                elif response.status == 500:
+                    default_fees = {
+                        "maker_fee": self.maker_fee,
+                        "taker_fee": self.taker_fee}
+                    self.log_manager.error(f"❌ Internal Server Error: default fees are being used")
+                    return default_fees
+                else:
+                    self.log_manager.error(f"❌ Error fetching fees: {response.status} → {response_text}")
+                    return {"error": f"HTTP {response.status}", "details": response_text}
+
+        except Exception as e:
+            self.log_manager.error(f"❌ Exception while retrieving fees: {e}", exc_info=True)
+            return {"error": "Exception", "details": str(e)}
+
     async def update_order(self, payload, max_retries=3):
         request_path = '/api/v3/brokerage/orders/edit'
         jwt_token = self.generate_rest_jwt('POST', request_path)
@@ -195,6 +235,15 @@ class WebSocketManager:
             asyncio.create_task(self.periodic_restart())
         except Exception as e:
             self.log_manager.error(f"Error starting WebSockets: {e}", exc_info=True)
+
+    async def connect_market_stream(self):
+        """Reconnect the market WebSocket."""
+        await self.connect_websocket(self.market_ws_url, is_user_ws=False)
+
+    async def connect_user_stream(self):
+        """Reconnect the user WebSocket."""
+        await self.connect_websocket(self.user_ws_url, is_user_ws=True)
+
 
     async def periodic_restart(self):
         """Restart WebSockets every 4 hours to ensure stability."""
@@ -252,7 +301,8 @@ class WebSocketManager:
 
 
 class WebSocketHelper:
-    def __init__(self, listener, exchange, ccxt_api, log_manager, coinbase_api,
+    def __init__(
+            self, listener, websocket_manager, exchange, ccxt_api, log_manager, coinbase_api,
                  profit_data_manager, order_type_manager, shared_utils_print, shared_utils_precision, shared_utils_utility,
                  shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager
                  ):
@@ -262,6 +312,7 @@ class WebSocketHelper:
         # Core configurations
         self.config = Config()
         self.listener = listener
+        self.websocket_manager = websocket_manager
         self.exchange = exchange
         self.ccxt_api = ccxt_api
         self.coinbase_api = coinbase_api
@@ -313,7 +364,8 @@ class WebSocketHelper:
         self._trailing_stop = Decimal(self.config.trailing_stop)
         self._hodl = self.config.hodl
         self._order_size = Decimal(self.config.order_size)
-        self._roc_5min = Decimal(self.config._roc_5min)  # ROC calculation threshold
+        self._roc_5min = Decimal(self.config._roc_5min)
+
 
         # Snapshot and data managers
         self.profit_data_manager = profit_data_manager
@@ -395,19 +447,19 @@ class WebSocketHelper:
 
         return self.jwt_token
 
-    async def async_message_handler(self, message):
-        """Example async function to process messages."""
-        self.shared_utils_utility.log_event_loop("async_message_handler")  # debug
-        await asyncio.sleep(1)  # Simulate async processing
-        print(f"Processed message asynchronously: {message}")
+    # async def async_message_handler(self, message):
+    #     """Example async function to process messages."""
+    #     self.shared_utils_utility.log_event_loop("async_message_handler")  # debug
+    #     await asyncio.sleep(1)  # Simulate async processing
+    #     print(f"Processed message asynchronously: {message}")
 
-    async def async_initialize_market_client(self):
-        """Wraps initialize_market_client() in an async-safe way using an executor."""
-        self.shared_utils_utility.log_event_loop("async_initialize_market_client")  # debug
-
-        """Ensure that initialize_market_client runs inside the event loop."""
-        self.shared_utils_utility.log_event_loop("async_initialize_market_client")  # debug
-        return self.initialize_market_client()
+    # async def async_initialize_market_client(self):
+    #     """Wraps initialize_market_client() in an async-safe way using an executor."""
+    #     self.shared_utils_utility.log_event_loop("async_initialize_market_client")  # debug
+    #
+    #     """Ensure that initialize_market_client runs inside the event loop."""
+    #     self.shared_utils_utility.log_event_loop("async_initialize_market_client")  # debug
+    #     return self.initialize_market_client()
 
     async def _on_user_message_wrapper(self, message):
         try:
@@ -427,7 +479,8 @@ class WebSocketHelper:
             data = json.loads(message)
             if data.get("type") == "error":
                 self.log_manager.error(f"❌ WebSocket Error: {data.get('message')} | Full message: {data}")
-                await self.retry_connection(self.connect_and_subscribe_market)
+                await self.reconnect()
+
                 return
 
             channel = data.get("channel")
@@ -435,7 +488,7 @@ class WebSocketHelper:
                 #self.log_manager.info(f"✅ Subscribed to ticker_batch: {data}")
                 await self.process_ticker_batch_update(data)
             elif channel == "trades":
-                await self.process_trade_updates(data)
+                await self.listener.process_trade_updates(data)
                 self.log_manager.info(f"✅ Subscribed to trades: {data}")
             elif channel == "heartbeats":
                 self.last_heartbeat = time.time()  # Update the heartbeat timestamp
@@ -453,7 +506,7 @@ class WebSocketHelper:
         except Exception as e:
             self.log_manager.error(f"❌ Error processing market message: {e}", exc_info=True)
 
-    async def subscribe_market(self, product_ids=None):
+    async def subscribe_market(self):
         """Subscribe to Market WebSocket channels."""
         try:
             async with self.subscription_lock:
@@ -534,104 +587,106 @@ class WebSocketHelper:
         except Exception as e:
             self.log_manager.error(f"User subscription error: {e}", exc_info=True)
 
-    async def resubscribe(self):
-        """Re-subscribe to WebSocket channels after disconnection or authentication failure."""
-        try:
-            self.subscribed_channels.clear()
-            # Re-subscribe to both market and user channels
-            await self.subscribe_market()
-            await self.subscribe_user()
-
-            self.log_manager.info("Re-subscribed to WebSocket channels successfully.")
-
-        except Exception as e:
-            self.log_manager.error(f"Error during re-subscription: {e}", exc_info=True)
+    # async def resubscribe(self):
+    #     """Re-subscribe to WebSocket channels after disconnection or authentication failure."""
+    #     try:
+    #         self.subscribed_channels.clear()
+    #         # Re-subscribe to both market and user channels
+    #         await self.subscribe_market()
+    #         await self.subscribe_user()
+    #
+    #         self.log_manager.info("Re-subscribed to WebSocket channels successfully.")
+    #
+    #     except Exception as e:
+    #         self.log_manager.error(f"Error during re-subscription: {e}", exc_info=True)
 
     async def reconnect(self):
+        """Reconnects both market and user WebSockets with exponential backoff."""
         if self.reconnect_attempts >= 5:
             self.log_manager.error("Max reconnect attempts reached. Manual intervention needed.")
-            return  # ✅ Prevent infinite recursion
+            return
 
-        delay = min(2 ** self.reconnect_attempts, 60)  # ✅ Exponential backoff up to 60s
+        delay = min(2 ** self.reconnect_attempts, 60)
         self.log_manager.warning(f"Reconnecting in {delay} seconds...")
         await asyncio.sleep(delay)
 
         try:
-            await self.connect_and_subscribe_market()
-            await self.connect_and_subscribe_user()
-            self.reconnect_attempts = 0  # ✅ Reset counter on success
+            # ✅ Use dedicated methods in WebSocketManager
+            await self.websocket_manager.connect_market_stream()
+            await self.websocket_manager.connect_user_stream()
+
+            self.reconnect_attempts = 0
             self.log_manager.info("Reconnected successfully.")
         except Exception as e:
-            self.reconnect_attempts += 1  # ✅ Increment counter
+            self.reconnect_attempts += 1
             self.log_manager.error(f"Reconnection failed: {e}", exc_info=True)
             await self.reconnect()
 
-
-    async def subscribe_with_validation(self, client, subscription):
-        product_ids = subscription.get('product_ids', [])
-        channels = subscription.get('channel', [])
-
-        if not channels:
-            self.log_manager.warning("Subscription attempt with empty channels. Subscription aborted.")
-            return  # Prevent subscription with empty channels
-
-        # Allow empty product_ids for 'user' channel, but require for others
-        if not product_ids and not any(channel in ['user'] for channel in channels):
-            self.log_manager.warning(
-                "Subscription attempt with empty product_ids for non-user/non-heartbeats channel. Subscription aborted.")
-            return
-
-
-        for channel in channels:
-            try:
-                subscription_message = {
-                    "type": "subscribe_market",
-                    "channel": [channel],
-                    "product_ids": product_ids
-                }
-
-                if channel == 'heartbeats':
-                    # Use market_client for heartbeats without JWT
-                    if self.market_client and self.market_client.websocket.open:
-                        await self.market_client.websocket.send(json.dumps(subscription_message))
-                        self.log_manager.info(
-                            "Successfully subscribed to heartbeats channel using market_client.")
-                    else:
-                        self.log_manager.warning("Market client WebSocket is not open. Cannot subscribe_market to heartbeats.")
-
-                elif channel == 'user':
-                    # User channel requires authentication (JWT)
-                    if self.user_client and self.user_client.websocket.open:
-                        await self.user_client.websocket.send(json.dumps(subscription_message))
-                        self.log_manager.info(
-                            f"Successfully subscribed to user channel: {channel} for products: {product_ids}")
-                    else:
-                        self.log_manager.warning("User client WebSocket is not open. Cannot subscribe_market to user channel.")
-
-                else:
-                    # General market data subscriptions (no JWT required)
-                    if self.market_client and self.market_client.websocket.open:
-                        await self.market_client.websocket.send(json.dumps(subscription_message))
-                        self.log_manager.info(
-                            f"Successfully subscribed to market channel: {channel} for products: {product_ids}")
-                    else:
-                        self.log_manager.warning(
-                            f"Market client WebSocket is not open. Cannot subscribe_market to market channel: {channel}")
-
-            except Exception as e:
-                self.log_manager.error(f"Error during subscription to channel {channel}: {e}", exc_info=True)
-                await self.retry_connection(
-                    lambda: self.connect_and_subscribe_user() if client == self.user_client else self.connect_and_subscribe_market
-                )
-
-    async def monitor_heartbeat(self):
-        """Monitor heartbeats from the WebSocket and reconnect if missing."""
-        while True:
-            await asyncio.sleep(30)  # ✅ Check every 30 seconds
-
-            if hasattr(self, "last_heartbeat") and time.time() - self.last_heartbeat > 60:
-                self.log_manager.warning("No heartbeat detected in 60 seconds. Reconnecting...")
-                await self.reconnect()
+    # async def subscribe_with_validation(self, client, subscription):
+    #     product_ids = subscription.get('product_ids', [])
+    #     channels = subscription.get('channel', [])
+    #
+    #     if not channels:
+    #         self.log_manager.warning("Subscription attempt with empty channels. Subscription aborted.")
+    #         return  # Prevent subscription with empty channels
+    #
+    #     # Allow empty product_ids for 'user' channel, but require for others
+    #     if not product_ids and not any(channel in ['user'] for channel in channels):
+    #         self.log_manager.warning(
+    #             "Subscription attempt with empty product_ids for non-user/non-heartbeats channel. Subscription aborted.")
+    #         return
+    #
+    #
+    #     for channel in channels:
+    #         try:
+    #             subscription_message = {
+    #                 "type": "subscribe_market",
+    #                 "channel": [channel],
+    #                 "product_ids": product_ids
+    #             }
+    #
+    #             if channel == 'heartbeats':
+    #                 # Use market_client for heartbeats without JWT
+    #                 if self.market_client and self.market_client.websocket.open:
+    #                     await self.market_client.websocket.send(json.dumps(subscription_message))
+    #                     self.log_manager.info(
+    #                         "Successfully subscribed to heartbeats channel using market_client.")
+    #                 else:
+    #                     self.log_manager.warning("Market client WebSocket is not open. Cannot subscribe_market to heartbeats.")
+    #
+    #             elif channel == 'user':
+    #                 # User channel requires authentication (JWT)
+    #                 if self.user_client and self.user_client.websocket.open:
+    #                     await self.user_client.websocket.send(json.dumps(subscription_message))
+    #                     self.log_manager.info(
+    #                         f"Successfully subscribed to user channel: {channel} for products: {product_ids}")
+    #                 else:
+    #                     self.log_manager.warning("User client WebSocket is not open. Cannot subscribe_market to user channel.")
+    #
+    #             else:
+    #                 # General market data subscriptions (no JWT required)
+    #                 if self.market_client and self.market_client.websocket.open:
+    #                     await self.market_client.websocket.send(json.dumps(subscription_message))
+    #                     self.log_manager.info(
+    #                         f"Successfully subscribed to market channel: {channel} for products: {product_ids}")
+    #                 else:
+    #                     self.log_manager.warning(
+    #                         f"Market client WebSocket is not open. Cannot subscribe_market to market channel: {channel}")
+    #
+    #         except Exception as e:
+    #             self.log_manager.error(f"Error during subscription to channel {channel}: {e}", exc_info=True)
+    #             await self.retry_connection(
+    #                 lambda: self.connect_and_subscribe_user() if client == self.user_client else self.connect_and_subscribe_market
+    #             )
+    #
+    # async def monitor_heartbeat(self):
+    #     """Monitor heartbeats from the WebSocket and reconnect if missing."""
+    #     while True:
+    #         await asyncio.sleep(30)  # ✅ Check every 30 seconds
+    #
+    #         if hasattr(self, "last_heartbeat") and time.time() - self.last_heartbeat > 60:
+    #             self.log_manager.warning("No heartbeat detected in 60 seconds. Reconnecting...")
+    #             await self.reconnect()
 
     async def _handle_subscription_error(self):
         """Handles the WebSocket subscription error by resubscribing."""
@@ -777,14 +832,16 @@ class WebSocketHelper:
                     # ✅ Buy BTC when profit is between $1.00 and $2.00
                     if status == "FILLED" and asset not in self.hodl:
                         if Decimal(1.0) < profit_value < Decimal(2.0):
-                            btc_order_data = await self.trade_order_manager.build_order_data('BTC/USD', symbol)
+                            btc_order_data = await self.trade_order_manager.build_order_data('Websocket', 'BTC/USD', symbol)
+                            print(f' ⚠️ process_user_channel - Order Data: {btc_order_data.debug_summary(verbose=True)}')  # Debug
                             order_success, response_msg = await self.trade_order_manager.place_order(btc_order_data)
 
                             #response, tp, sl = await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
                             print(f"DEBUG: BTC Order Response: {response_msg}")
 
                         elif profit_value > Decimal(2.0):
-                            eth_order_data = await self.trade_order_manager.build_order_data('ETH/USD', symbol)
+                            eth_order_data = await self.trade_order_manager.build_order_data('Websocket', 'ETH/USD', symbol)
+                            print(f' ⚠️ process_user_channel - Order Data: {eth_order_data.debug_summary(verbose=True)}')  # Debug
                             order_success, response_msg = await self.trade_order_manager.place_order(eth_order_data)
                             print(f"DEBUG: ETH Order Response: {response_msg}")
 
@@ -792,31 +849,31 @@ class WebSocketHelper:
         except Exception as channel_error:
             self.log_manager.error(f"Error processing user channel data: {channel_error}", exc_info=True)
 
-    async def handle_order_update(self, order, profit_data_list):
-
-        """
-        Handle updates to individual orders.
-
-        Args:
-            order (dict): The order data from the event.
-        """
-        try:
-            order_tracker = self.listener.order_management.get('order_tracker', {})
-
-            # Handle open orders
-            if order.get('status') == 'OPEN':
-                # Delegate updating the order to the lower-level function
-                await self.update_order_in_tracker(order, profit_data_list)
-
-            # Remove closed or canceled orders from tracker
-            elif order.get('status') not in {"OPEN", None}:
-                order_id = order.get('order_id')
-                if order_id in order_tracker:
-                    order_tracker.pop(order_id, None)
-                    self.log_manager.info(f"Order {order_id} removed from tracker in real-time.")
-
-        except Exception as order_error:
-            self.log_manager.error(f"Error handling order update: {order_error}", exc_info=True)
+    # async def handle_order_update(self, order, profit_data_list):
+    #
+    #     """
+    #     Handle updates to individual orders.
+    #
+    #     Args:
+    #         order (dict): The order data from the event.
+    #     """
+    #     try:
+    #         order_tracker = self.listener.order_management.get('order_tracker', {})
+    #
+    #         # Handle open orders
+    #         if order.get('status') == 'OPEN':
+    #             # Delegate updating the order to the lower-level function
+    #             await self.update_order_in_tracker(order, profit_data_list)
+    #
+    #         # Remove closed or canceled orders from tracker
+    #         elif order.get('status') not in {"OPEN", None}:
+    #             order_id = order.get('order_id')
+    #             if order_id in order_tracker:
+    #                 order_tracker.pop(order_id, None)
+    #                 self.log_manager.info(f"Order {order_id} removed from tracker in real-time.")
+    #
+    #     except Exception as order_error:
+    #         self.log_manager.error(f"Error handling order update: {order_error}", exc_info=True)
 
     async def process_ticker_batch_update(self, data):
         """
@@ -828,34 +885,36 @@ class WebSocketHelper:
         try:
             events = data.get("events", [])
             timestamp = time.time()  # Current timestamp
-
+            roc_5m = None
             for event in events:
                 tickers = event.get("tickers", [])
+
                 for ticker in tickers:
                     product_id = ticker.get("product_id")  # e.g., 'BTC-USD'
                     current_price = Decimal(ticker.get("price", "0"))
+                    base_volume = Decimal(ticker.get("volume_24_h", "0"))
+                    usd_volume = Decimal(base_volume * current_price)
+                    if usd_volume > Decimal(1000000):
+                        # ✅ Fetch last 5-minute OHLCV data from SharedDataManager
+                        oldest_close_5m, latest_close_5m = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id, limit=5)
+                        oldest_close_3m, latest_close_3m = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id, limit=3)
 
-                    # ✅ Fetch last 5-minute OHLCV data from SharedDataManager
-                    oldest_close, latest_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
+                        if oldest_close_5m and latest_close_5m:
+                            # ✅ Calculate 5-minute Rate of Change (ROC)
+                            roc_5m = Decimal(((latest_close_5m - oldest_close_5m) / oldest_close_5m) * 100)
+                        if oldest_close_3m and latest_close_3m:
 
-                    if oldest_close and latest_close:
-                        # ✅ Calculate 5-minute Rate of Change (ROC)
-                        roc_5min = ((latest_close - oldest_close) / oldest_close) * 100
-
-                        # ✅ Trigger trade if ROC exceeds threshold (e.g., 3%)
-                        if roc_5min >= self.roc_5min:
-                            trading_pair = product_id.replace("-", "/")
-                            symbol = trading_pair.split("/")[0]
-
-                            roc_order_data = await self.trade_order_manager.build_order_data(symbol, trading_pair)
-                            roc_order_data['source'] = 'Websocket'
-                            order_success, response_msg = await self.trade_order_manager.place_order(roc_order_data)
-
-                            print(f"‼️ ROC ALERT: {product_id} increased by {roc_5min:.2f}% in 5 minutes. A buy order was placed!")
-
-
-                    # self.previous_prices[product_id] = current_price
-                    self.log_manager.debug(f"Updated price for {product_id}: {current_price}")
+                            roc_3m = Decimal(((latest_close_3m - oldest_close_3m) / oldest_close_3m) * 100)
+                            # ✅ Calculate 5-minute Rate of Change (ROC)
+                            # ✅ Trigger trade if ROC exceeds threshold (e.g., 5% or 3%)
+                            if roc_5m >= self.roc_5min or (roc_3m >= self.roc_5min):
+                                trading_pair = product_id.replace("-", "/")
+                                symbol = trading_pair.split("/")[0]
+                                roc_order_data = await self.trade_order_manager.build_order_data('Websocket', symbol, trading_pair)
+                                print(f' ⚠️ process_ticker_batch_update - Order Data: {roc_order_data.debug_summary(verbose=True)}')  # Debug
+                                roc_order_data.source = 'Websocket'
+                                order_success, response_msg = await self.trade_order_manager.place_order(roc_order_data)
+                                print(f"‼️ ROC ALERT: {product_id} increased by {roc_5m:.2f}% in 5 minutes. A buy order was placed!")
 
         except Exception as e:
             self.log_manager.error(f"Error processing ticker_batch data: {e}", exc_info=True)
@@ -885,6 +944,7 @@ class WebSocketHelper:
 
         Args:
             order (dict): Order data to update in the tracker.
+            profit_data_list (list): List to store profit data.
         """
         try:
             # ✅ Fetch necessary snapshots only once
@@ -993,6 +1053,7 @@ class WebSocketHelper:
         Args:
             order (dict): The order data to process.
             event_type (str): The type of event triggering this function (e.g., 'update').
+            profit_data_list (list): List to store profit data.
         """
         try:
             # Get a reference to the master order_tracker
@@ -1164,42 +1225,43 @@ class WebSocketHelper:
             profit_data_list_new = []
 
             async with self.order_tracker_lock:
-                for order_id, order_data in order_management_snapshot.get("order_tracker", {}).items():
+                order_tracker_snapshot = dict(order_management_snapshot.get("order_tracker", {}))
+                for order_id, raw_order in order_tracker_snapshot.items():
+                    order_data = OrderData.from_dict(raw_order)
+
                     try:
-                        symbol = order_data["symbol"]
+                        symbol = order_data.trading_pair
                         asset = symbol.split('/')[0]
-                        if asset == 'ADA':
-                            pass
                         # ✅ Fetch precision values for the asset
                         precision_data = self.shared_utils_precision.fetch_precision(symbol, usd_pairs)
                         base_deci, quote_deci, _, _ = precision_data
 
-
-
                         # ✅ Add precision values to order_data
-                        order_data["quote_decimal"] = quote_deci
-                        order_data["base_decimal"] = base_deci
-                        order_data["product_id"] = symbol
+                        order_data.quote_decimal = quote_deci
+                        order_data.base_decimal = base_deci
+                        order_data.product_id = symbol
 
-
-                        avg_price = Decimal(spot_positions.get(asset, {}).get('average_entry_price', {}).get('value', 0))
+                        avg_price = spot_positions.get(asset, {}).get('average_entry_price', {}).get('value', 0)
+                        avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
                         balance = Decimal(spot_positions.get(asset, {}).get('total_balance_crypto', 0))
+                        balance = Decimal(balance).quantize(Decimal('1.' + '0' * quote_deci))
                         current_price = current_prices.get(symbol, 0)
-                        cost_basis = Decimal(spot_positions.get(asset, {}).get('cost_basis', {}).get('value', 0))
+                        cost_basis = spot_positions.get(asset, {}).get('cost_basis', {}).get('value', 0)
+                        cost_basis = Decimal(cost_basis).quantize(Decimal('1.' + '0' * quote_deci))
 
                         required_prices = {
                             'avg_price': avg_price,
                             'cost_basis': cost_basis,
                             'balance': balance,
                             'usd_avail': usd_avail,
-                            'status': order_data.get('status', 'UNKNOWN')
+                            'status': order_data.status
                         }
 
-                        if order_data.get("type") == 'limit' and order_data.get('side') == 'sell':
-                            order_book_details = await self.order_book_manager.get_order_book(order_data, symbol)
+                        if order_data.type == 'limit' and order_data.side == 'sell':
+                            order_book = await self.order_book_manager.get_order_book(order_data, symbol)
 
-                            if order_data.get("price") < current_price:
-                                highest_bid = Decimal(max(order_book_details['order_book']['bids'], key=lambda x: x[0])[0])
+                            if order_data.price < current_price:
+                                highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
 
                                 # ✅ Update trailing stop with highest bid
                                 await self.trailing_stop_manager.update_trailing_stop(
@@ -1207,7 +1269,7 @@ class WebSocketHelper:
                                     order_management_snapshot["order_tracker"], required_prices, order_data
                                 )
                                 continue
-                        elif order_data.get("type") == 'limit' and order_data.get('side') == 'buy':
+                        elif order_data.type == 'limit' and order_data.side == 'buy':
                             pass # need to develope code that will amend limit orders and stop orders
 
                         profit = await self.profit_data_manager._calculate_profitability(
@@ -1231,12 +1293,12 @@ class WebSocketHelper:
                 profit_df_new = self.profit_data_manager.consolidate_profit_data(profit_data_list_new)
                 print(f'Profit Data Open Orders:\n{profit_df_new.to_string(index=True)}')
 
-            await self.monitor_untracked_assets(current_prices, market_data_snapshot, order_management_snapshot)
+            await self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot)
 
         except Exception as e:
             self.log_manager.error(f"Error in monitor_and_update_active_orders: {e}", exc_info=True)
 
-    async def monitor_untracked_assets(self, current_prices, market_data_snapshot, order_management_snapshot):
+    async def monitor_untracked_assets(self, market_data_snapshot, order_management_snapshot):
         """Monitors untracked assets and places sell orders if they are profitable."""
         try:
             order_tracker = order_management_snapshot.get('order_tracker', {})
@@ -1246,7 +1308,6 @@ class WebSocketHelper:
 
             df = pd.DataFrame(usd_pairs)
             profit_data_list = []
-            profit_df = pd.DataFrame()
 
             usd_dict = df.set_index('symbol')['price'].to_dict()
 
@@ -1300,9 +1361,9 @@ class WebSocketHelper:
                 }
 
                 # ✅ Calculate profitability
-                profit = await self.profit_data_manager._calculate_profitability(symbol, required_prices, usd_dict,
-                                                                                 usd_pairs)
-                order_data_updated = await self.trade_order_manager.build_order_data(asset, symbol)
+                profit = await self.profit_data_manager._calculate_profitability(symbol, required_prices, usd_dict, usd_pairs)
+                order_data_updated = await self.trade_order_manager.build_order_data('Websocket', asset, symbol)
+                print(f' ⚠️ monitor_untracked_assets - Order Data: {order_data_updated.debug_summary(verbose=True)}')  # Debug
                 if profit:
                     profit_value = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, profit.get('profit'),'quote')
                     if profit_value != 0.0:
@@ -1315,6 +1376,7 @@ class WebSocketHelper:
                         if profit_percent_decimal > self.trailing_percentage:
                             order_book = await self.order_book_manager.get_order_book(order_data_updated)
                             order_success, response_msg = await self.trade_order_manager.place_order(order_data_updated, precision_data)
+                            print(f' ⚠️ monitor_untracked_assets - Order Data: {order_data_updated.debug_summary(verbose=True)}')  # Debug
                             #await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", order_data_updated)
                     elif profit_percent_decimal >= Decimal(0.0) and asset not in self.hodl:
                         pass
@@ -1412,7 +1474,8 @@ class WebhookListener:
     handling market data updates, order management, and webhooks."""
 
     _exchange_instance_count = 0
-    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager, session, market_manager):
+
+    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager, session, market_manager, market_data_manager):
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
             print("REST client is not initialized. Initializing now...")
@@ -1427,8 +1490,10 @@ class WebhookListener:
         self.order_management = {'order_tracker': {}}
         self.shared_data_manager = shared_data_manager
         self.market_manager = market_manager
+        self.market_data_manager = market_data_manager
         self.log_manager = logger_manager
-        self.webhook_manager, self.ticker_manager, self.utility = None, None, None  # Initialize webhook manager properly
+        self.webhook_manager = self.ticker_manager = self.utility = None  # Initialize webhook manager properly
+        self.ohlcv_manager = None
         self.processed_uuids = set()
 
         # Core Utilites
@@ -1453,6 +1518,7 @@ class WebhookListener:
         # ✅ Step 1: Create WebSocketHelper With Placeholders
         self.websocket_helper = WebSocketHelper(
             listener=self,
+            websocket_manager=None,  # Placeholder
             exchange=self.exchange, # Placeholder
             ccxt_api=self.ccxt_api, # Placeholder
             log_manager=self.log_manager,
@@ -1473,6 +1539,8 @@ class WebhookListener:
 
 
         self.websocket_manager = WebSocketManager(self.bot_config, self.ccxt_api, self.log_manager, self.websocket_helper)
+
+        self.websocket_helper.websocket_manager = self.websocket_manager
 
         self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, self.log_manager)
 
@@ -1544,7 +1612,7 @@ class WebhookListener:
         )
 
         self.websocket_helper = WebSocketHelper(
-            self, self.exchange, self.ccxt_api, self.log_manager,
+            self, self.websocket_manager, self.exchange, self.ccxt_api, self.log_manager,
             self.coinbase_api, self.profit_data_manager, self.order_type_manager,
             self.shared_utils_print, self.shared_utils_precision, self.shared_utils_utility, self.shared_utils_debugger,
             self.trailing_stop_manager, self.order_book_manager, self.snapshot_manager, self.trade_order_manager,None
@@ -1600,21 +1668,6 @@ class WebhookListener:
         self.shared_data_manager.market_data = market_data_master
         self.shared_data_manager.order_management = order_mgmnt_master
 
-    # async def initialize_websockets(self):
-    #     """Initialize WebSocketHelper with market data and WebSocket subscriptions."""
-    #     self.log_manager.info('Initializing WebhookListener...  ')
-    #     #  Start monitoring user heartbeats in the background
-    #     asyncio.create_task(self.websocket_helper.monitor_user_heartbeat())
-    #
-    #     try:
-    #         self.start_time = time.time()
-    #         await asyncio.gather(
-    #             self.websocket_helper.connect_and_subscribe_market(),
-    #             self.websocket_helper.connect_and_subscribe_user()
-    #         )
-    #         self.log_manager.info("WebSocketHelper successfully initialized.")
-    #     except Exception as e:
-    #         self.log_manager.error(f"Error during WebSocketHelper initialization: {e}", exc_info=True)
 
     async def refresh_market_data(self):
         """Refresh market_data and manage orders periodically."""
@@ -1654,27 +1707,33 @@ class WebhookListener:
             # Sleep before next update
             await asyncio.sleep(60)
 
-    async def handle_order_fill(self, websocket_msg):
+    async def handle_order_fill(self, websocket_order_data: OrderData):
         """Process existing orders that are Open or Active or have beend filled"""
 
         try:
-            base_deci =websocket_msg.get('base_decimal')
-            quote_deci = websocket_msg.get('quote_decimal')
+            base_deci = websocket_order_data.base_decimal
+            quote_deci = websocket_order_data.quote_decimal
 
-            if websocket_msg.get('order_type') == 'stop_limit':
-                websocket_msg['limit_price'] = self.shared_utils_precision.adjust_precision(
-                    base_deci, quote_deci, websocket_msg.get('limit_price'),'quote')
+            if websocket_order_data.type == 'stop_limit':
+                websocket_order_data.limit_price = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.limit_price, 'quote'
+                )
 
-                websocket_msg['stop_price'] = self.shared_utils_precision.adjust_precision(
-                    base_deci, quote_deci, websocket_msg.get('stop_price'), 'quote')
+                websocket_order_data.stop_loss_price = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.stop_loss_price, 'quote'
+                )
 
-                websocket_msg['avg_price'] = self.shared_utils_precision.adjust_precision(
-                    base_deci, quote_deci, websocket_msg.get('avg_price'), 'quote')
-            elif  websocket_msg.get('order_type') == 'Limit':
-                websocket_msg['stop_price'] = self.shared_utils_precision.adjust_precision(
-                    base_deci, quote_deci, websocket_msg.get('limit_price'), 'quote')
-            elif websocket_msg.get('type') == 'limit':
-                websocket_msg['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('price'), 'quote')
+                websocket_order_data.average_price = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.average_price, 'quote'
+                )
+            elif websocket_order_data.type == 'Limit':
+                websocket_order_data.stop_loss_price = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.limit_price, 'quote'
+                )
+            elif websocket_order_data.type == 'limit':
+                websocket_order_data.price = (
+                    self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_order_data.price, 'quote')
+                )
             else:
                 pass
 
@@ -1685,31 +1744,36 @@ class WebhookListener:
             symbol = None
             order_id = None
 
-            if websocket_msg.get('status') == 'FILLED':
-                symbol = websocket_msg['symbol']
+            if websocket_order_data.status.lower() == 'filled':
+                symbol = websocket_order_data.trading_pair
                 print(f"Symbol: {symbol}")
-                order_id = websocket_msg['order_id']
-            elif websocket_msg.get('status') == 'open':
-                symbol = websocket_msg['symbol'].replace('-', '/')
+                order_id = websocket_order_data.order_id
+            elif websocket_order_data.status.lower() == 'open':
+                symbol = websocket_order_data.trading_pair.replace('-', '/')
                 print(f"Symbol: {symbol}")
-                order_id = websocket_msg['id']
+                order_id = websocket_order_data.order_id
             else:
                 pass
             asset = symbol.split('/')[0]
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
-            if websocket_msg['price']:
-                websocket_msg['price'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('price'), 'quote')
-            if websocket_msg['amount']:
-                websocket_msg['amount'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, websocket_msg.get('amount'),'base')
+            if websocket_order_data.price:
+                websocket_order_data.price = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.price, 'quote'
+                )
+            if websocket_order_data.order_amount:
+                websocket_order_data.order_amount = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.order_amount, 'base'
+                )
             product_id = symbol.replace('/', '-')
-            order_data = await self.trade_order_manager.build_order_data(asset, product_id)
+            order_data = await self.trade_order_manager.build_order_data('Websocket', asset, product_id)
+            print(f' ⚠️ handle_order_fill - Order Data: {order_data.debug_summary(verbose=True)}')  # Debug
 
             await self._process_order_fill('WebSocket', order_data)
         except Exception as e:
-            print(f'websocket_msg:{websocket_msg}')
-            self.log_manager.error(f"Error in handle_order_fill: {e} {websocket_msg}", exc_info=True)
+            print(f'websocket_msg:{websocket_order_data}')
+            self.log_manager.error(f"Error in handle_order_fill: {e} {websocket_order_data}", exc_info=True)
 
-    async def _process_order_fill(self, source,order_data):
+    async def _process_order_fill(self, source, order_data: OrderData):
         """
         Process an order fill and place a corresponding trailing stop order.
 
@@ -1722,20 +1786,21 @@ class WebhookListener:
             order_book = await self.order_book_manager.get_order_book(order_data)
 
             # Use TrailingStopManager to place a trailing stop order
-            order_data['source']=source
+            order_data.source = source
             response_data = await self.order_type_manager.process_limit_and_tp_sl_orders(source, order_data)
 
             if response_data:
-                if response_data.get('details',{}).get("Order id"):
+                if response_data.get('details', {}).get("order_id"):
                     pass
+                    print(f'REVIEW CODE FOR TRAILING STOP ORDER (1789)*********************************')
                     # Add the trailing stop order to the order_tracker
                     self.order_management['order_tracker'][response_data["order_id"]] = {
-                        'symbol': order_data['trading_pair'],
+                        'symbol': order_data.trading_pair,
                         'take_profit_price': tp,
-                        'purchase_price': order_data['base_price'],
-                        'amount': order_data['base_avail_balance'],
+                        'purchase_price': order_data.average_price,
+                        'amount': order_data.order_amount,
                         'stop_loss_price': sl,
-                        'limit_price': order_data['base_price'] * Decimal('1.002')  # Example limit price adjustment
+                        'limit_price': order_data.limit_price * Decimal('1.002')  # Example limit price adjustment
                     }
                     order_id = response_data.get("order_id")
                     print(f"Order tracker updated with trailing stop order: {order_id}")
@@ -1810,120 +1875,104 @@ class WebhookListener:
             self.log_manager.error(f"� Unhandled exception in handle_webhook: {str(e)}", exc_info=True)
             return web.json_response({"success": False, "message": "Internal server error"}, status=500)
 
-    async def add_uuid_to_cache(self, check_uuid):
-        #print(f"Adding uuid to cache: {uuid}")# debug
+    async def add_uuid_to_cache(self, check_uuid: str) -> None:
+        """
+        Add a UUID to the processed set and schedule its removal after 5 minutes.
+
+        Args:
+            check_uuid (str): The UUID to track temporarily to avoid duplicate processing.
+        """
         async with self.lock:
             if check_uuid not in self.processed_uuids:
                 self.processed_uuids.add(check_uuid)
+                self.log_manager.debug(f"✅ UUID added to cache: {check_uuid}")
 
-        asyncio.get_event_loop().call_later(60*5, lambda: self.processed_uuids.remove(uuid))
+        def remove_uuid_later(uuid_to_remove: str):
+            try:
+                self.processed_uuids.remove(uuid_to_remove)
+                self.log_manager.debug(f"� UUID automatically removed from cache: {uuid_to_remove}")
+            except KeyError:
+                self.log_manager.warning(f"⚠️ UUID not found in cache during removal: {uuid_to_remove}")
+
+        # ⏱️ Schedule removal after 5 minutes (300 seconds)
+        asyncio.get_event_loop().call_later(300, remove_uuid_later, check_uuid)
 
     # helper methods used in process_webhook()
     def is_ip_whitelisted(self, ip_address: str) -> bool:
         return ip_address in self.bot_config.get_whitelist()
 
-    def is_valid_origin(self, origin: str) -> bool:
+    @staticmethod
+    def is_valid_origin(origin: Optional[str]) -> bool:
+        if not origin:
+            return False
         return 'SIGHOOK' in origin or 'TradingView' in origin
 
-    def is_valid_precision(self, precision_data: tuple) -> bool:
+    @staticmethod
+    def is_valid_precision(precision_data: tuple) -> bool:
+        if not precision_data:
+            return False
         return all(p is not None for p in precision_data)
 
     async def process_webhook(self, request_json, ip_address) -> web.Response:
         try:
             webhook_uuid = request_json.get('uuid')
             if not webhook_uuid:
-                return web.json_response({"success": False, "message": "Missing 'uuid' in request"}, status=200)
+                return web.json_response({"success": False, "message": "Missing 'uuid' in request"}, status=410)
 
             if webhook_uuid in self.processed_uuids:
                 self.log_manager.info(f"Duplicate webhook detected: {webhook_uuid}")
-                return web.json_response({"success": False, "message": "Duplicate webhook ignored"}, status=200)
+                return web.json_response({"success": False, "message": "Duplicate webhook ignored"}, status=410)
 
             await self.add_uuid_to_cache(webhook_uuid)
 
             if not request_json.get('action'):
-                return web.json_response({"success": False, "message": "Missing 'action' in request"}, status=200)
+                return web.json_response({"success": False, "message": "Missing 'action' in request"}, status=410)
 
-            # Validate IP whitelist
             if not self.is_ip_whitelisted(ip_address):
-                return web.json_response({"success": False, "message": "Unauthorized"}, status=200)
+                return web.json_response({"success": False, "message": "Unauthorized"}, status=401)
 
-            # Validate origin
-            if not self.is_valid_origin(request_json.get('origin', '')):
-                return web.json_response({"success": False, "message": "Invalid content type"}, status=200)
+            if not WebhookListener.is_valid_origin(request_json.get('origin', '')):
+                return web.json_response({"success": False, "message": "Invalid origin"}, status=403)
 
-            # Extract trade data and fetch market data snapshot
+            # Parse trade data and fetch market/order snapshots
             trade_data = self.webhook_manager.parse_webhook_request(request_json)
-            asset = trade_data.get('trading_pair').split('/')[0]
+            product_id = trade_data.get('trading_pair')
+            asset = product_id.split('/')[0]
 
-            # Get market and order snapshots
             combined_snapshot = await self.snapshot_manager.get_market_data_snapshot()
             market_data_snapshot = combined_snapshot["market_data"]
-            spot_position_snapshot = market_data_snapshot ["spot_positions"]
             order_management_snapshot = combined_snapshot["order_management"]
-            usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
+            usd_pairs = market_data_snapshot.get("usd_pairs_cache", {})
 
-            # Fetch precision and prices
-            precision_data = self.shared_utils_precision.fetch_precision(trade_data['trading_pair'], usd_pairs)
+            precision_data = self.shared_utils_precision.fetch_precision(trade_data["trading_pair"], usd_pairs)
             if not self.is_valid_precision(precision_data):
-                self.log_manager.error(f"Failed to fetch precision data for {trade_data['trading_pair']}")
-                return web.json_response({"success": False, "message": "Failed to fetch precision data"}, status=200)
+                return web.json_response({"success": False, "message": "Failed to fetch precision data"}, status=422)
 
             base_price, quote_price = await self.get_prices(trade_data, market_data_snapshot)
 
-            # Fetch balances
-            usd_balance = order_management_snapshot.get('non_zero_balances', {}).get('USD', {})['total_balance_crypto']
-            asset_obj = order_management_snapshot.get('non_zero_balances', {}).get(asset, None)
-            base_balance = getattr(asset_obj, 'total_balance_crypto', 0) if asset_obj else 0
+            asset_obj = order_management_snapshot.get("non_zero_balances", {}).get(asset)
+            base_balance = getattr(asset_obj, "total_balance_crypto", 0) if asset_obj else 0
 
-            # Calculate order size and base asset value in USD
-            base_order_size, quote_order_size, base_value = self.calculate_order_size(
-                trade_data, base_price, quote_price, precision_data
-            )
-
-            # ✅ Check for insufficient balance
-            if trade_data["side"] == 'sell' and base_value < float(self.min_sell_value):
-                self.log_manager.warning(f"❌ Insufficient balance to sell {asset}: {base_value} USD (min required: {self.min_sell_value} USD)")
+            _, _, base_value = self.calculate_order_size(trade_data, base_price, quote_price, precision_data)
+            if trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
                 return web.json_response(
                     {
                         "success": False,
-                        "message": "Insufficient balance to sell",
-                        "reason": f"Available balance: {base_balance} {asset}, Required: {self.min_sell_value} USD"
-                    }, status=200
+                        "message": f"Insufficient balance to sell {asset} (requires {self.min_sell_value} USD)"
+                    }, status=400
                 )
 
-            # Build order details for webhook orders
-            cryto_avail_to_trade = spot_position_snapshot.get(asset, {}).get('available_to_trade_crypto', 0)
-            order_details = self.trade_order_manager.build_order_details_webhooks(
-                self.shared_utils_precision,trade_data, base_balance, base_price, quote_price,
-                base_order_size, quote_order_size, usd_balance, cryto_avail_to_trade, precision_data
-                )
+            # Build order and place it
+            order_details = await self.trade_order_manager.build_order_data("Webhook", asset, product_id)
+            print(f' ⚠️ process_webhook - Order Data: {order_details.debug_summary(verbose=True)}')
 
-            # ✅ Attempt order placement
-            order_success, order_response = await self.webhook_manager.handle_action(order_details, precision_data)
-
-            # ✅ Always return 200 OK, with JSON indicating success or failure
-            if order_success:
-                return web.json_response({"success": True, "message": "Order successfully submitted"}, status=200)
-
-            elif order_response.get('error') == 'open_order':
-                print("Order rejected: ", order_response['Condition'])
-                return web.json_response({f"success": False, 'message': order_response['Condition']}, status=200)
-            elif order_response.get('error_response', {}).get('error') == 'Insufficient Balance':
-                self.log_manager.error(f"Order failed: {order_response['error']}")
-                return web.json_response({"success": False, "message": "Insufficient balance"}, status=200)
-            else:
-                order_error = order_response.get('error_response', {}).get('error', 'Unknown error')
-                self.log_manager.error(f" Order failed: {order_error}")
-                x = float(order_response.get('details', {}).get('Quote Available Balance', 0))
-                order_response['details']['Quote Available Balance'] = float(order_response.get('details', {}).get('Quote Available Balance', 0) )
-                order_response['details']['Order Size']  = float(order_response.get('details', {}).get('Order Size', 0))
-
-                self.log_manager.info(f"Order failed: {order_response['error']}")
-                return web.json_response({"success": False, "message": order_response}, status=200)
+            response = await self.webhook_manager.handle_action(order_details, precision_data)
+            code = response.get("code", 200)
+            return web.json_response(response, status=code)
 
         except Exception as e:
             self.log_manager.error(f"Error processing webhook: {e}", exc_info=True)
-            return web.json_response({"success": False, "message": "Internal server error"}, status=200)
+            return web.json_response({"success": False, "message": f"Internal error: {e}"}, status=500)
 
     async def get_prices(self, trade_data: dict, market_data_snapshot: dict) -> tuple:
         try:

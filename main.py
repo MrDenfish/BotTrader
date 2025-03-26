@@ -1,22 +1,23 @@
+
 import asyncio
 import logging
-import signal
 import os
+import signal
 import time
+
 import aiohttp
 from aiohttp import web
 
 from Config.config_manager import CentralConfig as Config
-from Shared_Utils.logging_manager import LoggerManager
+from MarketDataManager.market_data_manager import MarketDataUpdater
 from SharedDataManager.shared_data_manager import SharedDataManager
+from Shared_Utils.logging_manager import LoggerManager
+from Shared_Utils.snapshots_manager import SnapshotsManager
 from sighook.database_session_manager import DatabaseSessionManager
 from sighook.sender import TradeBot
-from webhook.listener import WebhookListener
-from MarketDataManager.market_data_manager import MarketDataUpdater
 from webhook.listener import WebSocketHelper
 from webhook.listener import WebSocketManager
-
-
+from webhook.listener import WebhookListener
 
 shutdown_event = asyncio.Event()
 
@@ -37,13 +38,23 @@ async def load_config():
 async def init_shared_data(log_manager):
     database_session_manager = DatabaseSessionManager(None, log_manager)
     shared_data_manager = SharedDataManager.get_instance(log_manager, database_session_manager)
+    snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, logger)
     await shared_data_manager.initialize()
     return shared_data_manager
 
 
-async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid,log_manager):
-    trade_bot = TradeBot(shared_data_mgr=shared_data_manager, rest_client=None, portfolio_uuid=None, log_mgr=log_manager)
+async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, log_manager):
+    trade_bot = TradeBot(shared_data_mgr=shared_data_manager, rest_client=rest_client, portfolio_uuid=portfolio_uuid, log_mgr=log_manager)
     await trade_bot.async_init()
+
+    try:
+        while not shutdown_event.is_set():
+            await trade_bot.run_bot()
+            await asyncio.sleep(5)  # Polling delay (or use internal logic)
+    except asyncio.CancelledError:
+        log_manager.info("sighook task cancelled.")
+    finally:
+        log_manager.info("sighook shutdown complete.")
     return trade_bot
 
 
@@ -56,7 +67,8 @@ async def run_webhook(config, shared_data_manager, log_manager, trade_bot=None):
             database_session_manager=shared_data_manager.database_session_manager,
             logger_manager=log_manager,
             session=session,
-            market_manager=None
+            market_manager=None,
+            market_data_manager=None
         )
         listener.rest_client = config.rest_client
         listener.portfolio_uuid = config.portfolio_uuid
@@ -82,6 +94,7 @@ async def run_webhook(config, shared_data_manager, log_manager, trade_bot=None):
 
         websocket_helper = WebSocketHelper(
             listener=listener,
+            websocket_manager=None,
             exchange=listener.exchange,
             ccxt_api=listener.ccxt_api,
             log_manager=listener.log_manager,
@@ -154,7 +167,7 @@ async def main():
     if args.run == 'sighook':
         log_manager = await setup_logger('sighook_logger')
         shared_data_manager = await init_shared_data(log_manager)
-        await run_sighook(config, shared_data_manager, None, None,log_manager)
+        await run_sighook(config, shared_data_manager, config.rest_client, config.portfolio_uuid, log_manager)
 
     elif args.run == 'webhook':
         log_manager = await setup_logger('webhook_logger')
@@ -164,10 +177,10 @@ async def main():
     elif args.run == 'both':
         sighook_logger = await setup_logger('sighook_logger')
         shared_data_manager = await init_shared_data(sighook_logger)
-        trade_bot = await run_sighook(config, shared_data_manager, None, None,sighook_logger)
-
+        sighook_task = asyncio.create_task(run_sighook(config, shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger))
         webhook_logger = await setup_logger('webhook_logger')
-        await run_webhook(config, shared_data_manager, webhook_logger, trade_bot=trade_bot)
+        await run_webhook(config, shared_data_manager, webhook_logger)
+        await sighook_task
 
 
 if __name__ == "__main__":

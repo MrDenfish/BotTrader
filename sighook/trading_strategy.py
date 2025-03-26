@@ -1,10 +1,12 @@
 
 import asyncio
+from decimal import Decimal
+
 import pandas as pd
 from sqlalchemy import select
-from sighook.indicators import Indicators
-from decimal import Decimal
+
 from Config.config_manager import CentralConfig as config
+from sighook.indicators import Indicators
 
 
 class TradingStrategy:
@@ -12,14 +14,18 @@ class TradingStrategy:
     _instance = None
 
     @classmethod
-    def get_instance(cls, webhook, tickermanager, exchange, alerts, logmanager, ccxt_api, metrics,
-                        max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision):
+    def get_instance(
+            cls, webhook, ticker_manager, exchange, alerts, logmanager, ccxt_api, metrics,
+            max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision
+    ):
         if cls._instance is None:
-            cls._instance = cls(webhook, tickermanager, exchange, alerts, logmanager, ccxt_api, metrics,
+            cls._instance = cls(
+                webhook, ticker_manager, exchange, alerts, logmanager, ccxt_api, metrics,
                                 max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, webhook, tickermanager, exchange, alerts, logmanager, ccxt_api, metrics,
+    def __init__(
+            self, webhook, ticker_manager, exchange, alerts, logmanager, ccxt_api, metrics,
                  max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision):
         self.config = config()
         self._version = self.config.program_version
@@ -28,7 +34,7 @@ class TradingStrategy:
         self.ccxt_exceptions = ccxt_api
         self.log_manager = logmanager
 
-        self.ticker_manager = tickermanager
+        self.ticker_manager = ticker_manager
         self.indicators = Indicators(logmanager)
         self._buy_rsi = self.config._rsi_buy
         self._sell_rsi = self.config._rsi_sell
@@ -103,6 +109,13 @@ class TradingStrategy:
     @property
     def sell_ratio(self):
         return self._sell_ratio
+
+    STRATEGY_WEIGHTS = {
+        'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 2.5,
+        'Buy ROC': 2.0, 'Buy MACD': 1.8, 'Buy Swing': 2.2, 'Sell Ratio': 1.2,
+        'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5, 'Sell ROC': 2.0,
+        'Sell MACD': 1.8, 'Sell Swing': 2.2
+    }
 
     async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, open_orders):
         """Process all rows, updating buy_sell_matrix with the latest indicator values."""
@@ -195,16 +208,10 @@ class TradingStrategy:
             self.log_manager.error(f"❌ Error in process_all_rows: {e}", exc_info=True)
             return strategy_results, buy_sell_matrix
 
-
-    def update_dynamic_targets(self, asset, buy_sell_matrix):
+    def update_dynamic_targets(self, asset: str, buy_sell_matrix: pd.DataFrame):
         """Update dynamic buy & sell targets based on strategy weights."""
         try:
-            strategy_weights = {
-                'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 2.5,
-                'Buy ROC': 2.0, 'Buy MACD': 1.8, 'Buy Swing': 2.2, 'Sell Ratio': 1.2,
-                'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5, 'Sell ROC': 2.0,
-                'Sell MACD': 1.8, 'Sell Swing': 2.2
-            }
+            weights = self.STRATEGY_WEIGHTS
 
             def safe_float(val):
                 """Ensure the threshold is a valid float or default to 0."""
@@ -213,9 +220,9 @@ class TradingStrategy:
                 except (TypeError, ValueError):
                     return 0.0
 
-            total_buy_weight = sum(strategy_weights[col] for col in strategy_weights if col.startswith("Buy"))
+            total_buy_weight = sum(weights[col] for col in weights if col.startswith("Buy"))
             # print(f'{total_buy_weight}') #debug
-            total_sell_weight = sum(strategy_weights[col] for col in strategy_weights if col.startswith("Sell"))
+            total_sell_weight = sum(weights[col] for col in weights if col.startswith("Sell"))
             # print(f'{total_sell_weight}') #debug
 
             self.buy_target = total_buy_weight * 0.7  # Adjusted threshold
@@ -231,12 +238,7 @@ class TradingStrategy:
     def compute_weighted_scores(self, asset, buy_sell_matrix):
         """Compute weighted buy and sell scores based on strategy decisions and weights."""
         try:
-            strategy_weights = {
-                'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 2.5,
-                'Buy ROC': 2.0, 'Buy MACD': 1.8, 'Buy Swing': 2.2, 'Sell Ratio': 1.2,
-                'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5, 'Sell ROC': 2.0,
-                'Sell MACD': 1.8, 'Sell Swing': 2.2
-            }
+            weights = self.STRATEGY_WEIGHTS
 
             # **✅ Print the buy/sell matrix values for debugging**
             # print(f"\n� DEBUG - Asset: {asset}")
@@ -246,17 +248,17 @@ class TradingStrategy:
 
             # ✅ Calculate buy score
             buy_score = sum(
-                min(value[0] * strategy_weights[col], 10)  # Cap max contribution to 10 per indicator
+                min(value[0] * weights[col], 10)  # Cap max contribution to 10 per indicator
                 if isinstance(value, tuple) and len(value) == 3 else 0
                 for col, value in buy_sell_matrix.loc[asset].items()
-                if col.startswith("Buy") and col in strategy_weights
+                if col.startswith("Buy") and col in weights
             )
 
             # ✅ Calculate sell score
             sell_score = sum(
-                (value[0] * strategy_weights[col]) if isinstance(value, tuple) and len(value) == 3 else 0
+                (value[0] * weights[col]) if isinstance(value, tuple) and len(value) == 3 else 0
                 for col, value in buy_sell_matrix.loc[asset].items()
-                if col.startswith("Sell") and col in strategy_weights
+                if col.startswith("Sell") and col in weights
             )
 
             print(f"� {asset} Computed Buy Score: {buy_score}")
@@ -297,12 +299,7 @@ class TradingStrategy:
         try:
             most_recent_row = bollinger_df.iloc[-1]  # Use the latest available row
 
-            strategy_weights = {
-                'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 2.5,
-                'Buy ROC': 2.0, 'Buy MACD': 1.8, 'Buy Swing': 2.2, 'Sell Ratio': 1.2,
-                'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5, 'Sell ROC': 2.0,
-                'Sell MACD': 1.8, 'Sell Swing': 2.2
-            }
+            weights = self.STRATEGY_WEIGHTS
 
             # Ensure asset exists in buy_sell_matrix
             if asset not in buy_sell_matrix.index:
@@ -311,17 +308,17 @@ class TradingStrategy:
 
             # Compute weighted buy and sell scores
             buy_score = sum(
-                value[0] * strategy_weights[col]  # Decision (0/1) * Weight
+                value[0] * weights[col]  # Decision (0/1) * Weight
                 for col, value in buy_sell_matrix.loc[asset].items()
                 if col.startswith("Buy") and col in strategy_weights
             )
 
             sell_score = sum(
-                value[0] * strategy_weights[col]
+                value[0] * weights[col]
                 for col, value in buy_sell_matrix.loc[asset].items()
                 if col.startswith("Sell") and col in strategy_weights
             )
-            self.buy_target =3.0 # debug
+
             # Dynamically calculate buy and sell targets
 
             # self.buy_target = sum(
@@ -331,7 +328,7 @@ class TradingStrategy:
             # )
 
             self.sell_target = sum(
-                strategy_weights[col]
+                weights[col]
                 for col, value in buy_sell_matrix.loc[asset].items()
                 if col.startswith("Sell") and col in strategy_weights
             )

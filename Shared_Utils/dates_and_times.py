@@ -1,9 +1,9 @@
+from datetime import datetime, timezone
 
-from datetime import datetime, timezone, timedelta
-from dateutil import parser
 import pandas as pd
-
 import pytz
+from dateutil import parser
+
 
 class DatesAndTimes:
     _instance = None
@@ -41,10 +41,13 @@ class DatesAndTimes:
 
         return trade
 
-    def time_sanity_check(self, safe_since):
-        if safe_since > int(datetime.utcnow().timestamp() * 1000):
+    def time_sanity_check(self, safe_since_ms: int) -> int:
+        """Ensure the given timestamp is not in the future. If it is, roll it back by 6 minutes."""
+        now_ms = int(datetime.utcnow().timestamp() * 1000)
+        if safe_since_ms >= now_ms:
             self.log_manager.warning("Adjusted `since` timestamp is in the future. Using fallback.")
-            safe_since = int((datetime.utcnow() - timedelta(minutes=6)).timestamp() * 1000)
+            return now_ms - 6 * 60 * 1000  # Roll back 6 minutes
+        return safe_since_ms
 
     @staticmethod
     def standardize_timestamp(timestamp):

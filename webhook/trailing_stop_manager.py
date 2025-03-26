@@ -1,6 +1,8 @@
-import asyncio
+
 from decimal import Decimal
+
 from Config.config_manager import CentralConfig as Bot_config
+
 
 class TrailingStopManager:
     _instance = None
@@ -38,6 +40,7 @@ class TrailingStopManager:
         return Decimal(self._trailing_percentage)
 
     async def place_trailing_stop(self, order_data, order_book):
+        print(f"‼️ NOT IMPLEMENTED YET ‼️")
         """
         Places a trailing stop order based on the given order data and order book.
 
@@ -48,27 +51,27 @@ class TrailingStopManager:
         Returns:
             tuple: (order_id, trailing_stop_price)
         """
-        try:
-            adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book)
-            trailing_stop_price = adjusted_price * (1 - self.trailing_percentage / 100)
-            #await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
-            response = await self.order_type_manager.place_trailing_stop_order(order_book, order_data, adjusted_price)
-
-            if response:
-                response_data, limit_price, stop_price = response  # Unpack tuple
-
-                if response_data.get("success"):  # Now it's correctly accessing the dictionary
-                    order_id = response_data["order_id"]
-                    self.log_manager.info(f"Trailing stop order placed: {order_id}")
-                    return order_id, trailing_stop_price
-                else:
-                    self.log_manager.error(f"Failed to place trailing stop order: {response_data.get('failure_reason')}")
-                    return None, None
-            else:
-                return None, None
-        except Exception as e:
-            self.log_manager.error(f"Error placing trailing stop: {e}", exc_info=True)
-            return None, None
+        # try:
+        #     adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book)
+        #     trailing_stop_price = adjusted_price * (1 - self.trailing_percentage / 100)
+        #     #await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
+        #     response = await self.order_type_manager.place_trailing_stop_order(order_book, order_data, adjusted_price)
+        #
+        #     if response:
+        #         response_data, limit_price, stop_price = response  # Unpack tuple
+        #
+        #         if response_data.get("success"):  # Now it's correctly accessing the dictionary
+        #             order_id = response_data["order_id"]
+        #             self.log_manager.info(f"Trailing stop order placed: {order_id}")
+        #             return order_id, trailing_stop_price
+        #         else:
+        #             self.log_manager.error(f"Failed to place trailing stop order: {response_data.get('failure_reason')}")
+        #             return None, None
+        #     else:
+        #         return None, None
+        # except Exception as e:
+        #     self.log_manager.error(f"Error placing trailing stop: {e}", exc_info=True)
+        #     return None, None
 
     async def update_trailing_stop(self, order_id, symbol, highest_price, order_tracker, required_prices, order_data):
         """

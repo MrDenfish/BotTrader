@@ -1,14 +1,16 @@
 
-from decimal import ROUND_HALF_UP
 import time
 from decimal import Decimal
-from datetime import datetime
+from decimal import ROUND_HALF_UP
+from inspect import stack  # debugging
+
 from Api_manager.api_exceptions import (InsufficientFundsException, ProductIDException, SizeTooSmallException,
-                                    MaintenanceException)
+                                        MaintenanceException)
 from Api_manager.api_exceptions import RateLimitException, BadRequestException, NotFoundException, InternalServerErrorException
 from Api_manager.api_exceptions import UnknownException
 from Config.config_manager import CentralConfig as Config
-from inspect import stack # debugging
+from webhook.webhook_validate_orders import OrderData
+
 
 class WebHookManager:
     _instance = None
@@ -50,43 +52,54 @@ class WebHookManager:
     def order_size(self):
         return self._order_size
 
-    async def handle_action(self, order_details, precision_data):
-        """ Handle the action from the webhook request. Place an order on Coinbase Pro. """
+    async def handle_action(self, order_details: OrderData, precision_data: tuple) -> dict:
+        """
+        Handle the action from the webhook request. Place an order on Coinbase.
+
+        Returns:
+            dict: Unified response dictionary (same format used by attempt_order_placement).
+        """
         try:
-            order_success, response_msg = await self.trade_order_manager.place_order(order_details, precision_data)
-            if order_success:
-                return True, {"success": True, "message": "Order successfully placed"}
-            else:
-                return False, response_msg
-
+            success, response = await self.trade_order_manager.place_order(order_details, precision_data)
+            return response  # Already structured by attempt_order_placement
         except InsufficientFundsException:
-            self.log_manager.info(f'handle_action: Insufficient funds')
-            self.alerts.callhome(
-                'Insufficient funds', f'Insufficient funds {order_details["trading_pair"]} at '
-                                      f'{order_details["formatted_time"]}'
-                )
-            return False, {"message": "Insufficient funds"}
-
+            self.log_manager.warning("Insufficient funds error raised in handle_action.")
+            return {
+                "success": False,
+                "code": "413",
+                "message": "Insufficient funds",
+                "error_response": {"error": "INSUFFICIENT_FUND"},
+            }
         except ProductIDException:
-            self.log_manager.info(f'handle_action: product id exception')
-            self.alerts.callhome(
-                'Product ID Exception', f'Product ID exception {order_details["trading_pair"]} at '
-                                        f'{order_details["formatted_time"]}'
-                )
-            return False, {"message": "Invalid trading pair"}
-
+            self.log_manager.warning("Invalid product ID in handle_action.")
+            return {
+                "success": False,
+                "code": "412",
+                "message": "Invalid trading pair",
+                "error_response": {"error": "INVALID_PRODUCT_ID"},
+            }
         except SizeTooSmallException:
-            return False, {"message": "Order too small"}
-
+            return {
+                "success": False,
+                "code": "414",
+                "message": "Order size too small",
+                "error_response": {"error": "SIZE_TOO_SMALL"},
+            }
         except MaintenanceException:
-            return False, {"message": "Exchange is under maintenance"}
-
-
+            return {
+                "success": False,
+                "code": "503",
+                "message": "Exchange under maintenance",
+                "error_response": {"error": "EXCHANGE_MAINTENANCE"},
+            }
         except Exception as e:
-
-            self.log_manager.error(f"⚠️ Error in handle_action: {e}", exc_info=True)
-
-            return False, {"error": f"Unexpected error: {e}"}
+            self.log_manager.error(f"Unhandled error in handle_action: {e}", exc_info=True)
+            return {
+                "success": False,
+                "code": "500",
+                "message": f"Unexpected error: {e}",
+                "error_response": {"error": str(e)},
+            }
 
     def calculate_order_size(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci):
         """
@@ -106,6 +119,7 @@ class WebHookManager:
             tuple: (base_order_size, order_amount, base_value)
         """
         try:
+
             taker_fee = float(self.taker_fee)
             maker_fee = float(self.maker_fee)
 

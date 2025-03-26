@@ -1,12 +1,10 @@
-
-from datetime import datetime, timedelta
-from sqlalchemy.sql import text
-from sqlalchemy import select
-from decimal import Decimal
-from inspect import stack # debugging
-import pandas as pd
 import asyncio
 import json
+from decimal import Decimal
+from inspect import stack  # debugging
+
+import pandas as pd
+from sqlalchemy.sql import text
 
 
 class CustomJSONDecoder(json.JSONDecoder):
@@ -151,45 +149,45 @@ class SharedDataManager:
             raise TypeError("avg_quote_volume is not a Decimal.")
         return market_data
 
-    async def fetch_last_5min_ohlcv(self, symbol):
-        """
-        Fetch OHLCV data for the last 5 minutes from the database.
-
-        Args:
-            symbol (str): Trading pair (e.g., 'BTC-USD').
-
-        Returns:
-            tuple: (oldest_close_price, latest_close_price) or (None, None) if data is unavailable.
-        """
-        try:
-            now = datetime.utcnow()
-            five_min_ago = now - timedelta(minutes=5)
-
-            # ✅ Use SQLAlchemy engine for querying
-            async with self.database_session_manager.engine.begin() as conn:
-                query = text("""
-                    SELECT time, close FROM ohlcv_data
-                    WHERE symbol = :symbol AND time >= :five_min_ago
-                    ORDER BY time ASC
-                """)
-                symbol = symbol.replace("-", "/")  # Ensure symbol format is consistent
-                result = await conn.execute(query, {"symbol": symbol, "five_min_ago": five_min_ago})
-
-                rows = result.fetchall()
-
-                if len(rows) < 2:  # Ensure at least 2 candles exist
-                    self.log_manager.warning(f"⚠️ Insufficient OHLCV data for {symbol} (Only {len(rows)} rows)")
-                    return None, None
-
-                # ✅ Extract oldest & latest close prices
-                oldest_close_price = rows[0]["close"]
-                latest_close_price = rows[-1]["close"]
-
-                return oldest_close_price, latest_close_price
-
-        except Exception as e:
-            self.log_manager.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
-            return None, None
+    # async def fetch_last_5min_ohlcv(self, symbol):
+    #     """
+    #     Fetch OHLCV data for the last 5 minutes from the database.
+    #
+    #     Args:
+    #         symbol (str): Trading pair (e.g., 'BTC-USD').
+    #
+    #     Returns:
+    #         tuple: (oldest_close_price, latest_close_price) or (None, None) if data is unavailable.
+    #     """
+    #     try:
+    #         now = datetime.utcnow()
+    #         five_min_ago = now - timedelta(minutes=5)
+    #
+    #         # ✅ Use SQLAlchemy engine for querying
+    #         async with self.database_session_manager.engine.begin() as conn:
+    #             query = text("""
+    #                 SELECT time, close FROM ohlcv_data
+    #                 WHERE symbol = :symbol AND time >= :five_min_ago
+    #                 ORDER BY time ASC
+    #             """)
+    #             symbol = symbol.replace("-", "/")  # Ensure symbol format is consistent
+    #             result = await conn.execute(query, {"symbol": symbol, "five_min_ago": five_min_ago})
+    #
+    #             rows = result.fetchall()
+    #
+    #             if len(rows) < 2:  # Ensure at least 2 candles exist
+    #                 self.log_manager.warning(f"⚠️ Insufficient OHLCV data for {symbol} (Only {len(rows)} rows)")
+    #                 return None, None
+    #
+    #             # ✅ Extract oldest & latest close prices
+    #             oldest_close_price = rows[0]["close"]
+    #             latest_close_price = rows[-1]["close"]
+    #
+    #             return oldest_close_price, latest_close_price
+    #
+    #     except Exception as e:
+    #         self.log_manager.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
+    #         return None, None
 
     async def fetch_market_data(self):
         """Fetch market_data from the database via DatabaseSessionManager."""
