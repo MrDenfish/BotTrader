@@ -1,9 +1,10 @@
 import asyncio
-import pandas as pd
-from ccxt.base.errors import BadSymbol
 from decimal import Decimal
 
-from inspect import stack  # debugging
+import pandas as pd
+from ccxt.base.errors import BadSymbol
+
+
 class PortfolioPosition:
     def __init__(self, asset, available_to_trade, total_balance):
         self.asset = asset

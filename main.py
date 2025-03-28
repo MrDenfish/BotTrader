@@ -43,24 +43,29 @@ async def init_shared_data(log_manager):
     return shared_data_manager
 
 
-async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, log_manager):
-    trade_bot = TradeBot(shared_data_mgr=shared_data_manager, rest_client=rest_client, portfolio_uuid=portfolio_uuid, log_mgr=log_manager)
+async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, log_manager, startup_event):
+    await startup_event.wait()  # ⏳ Wait until webhook sets the flag
+
+    trade_bot = TradeBot(
+        shared_data_mgr=shared_data_manager,
+        rest_client=rest_client,
+        portfolio_uuid=portfolio_uuid,
+        log_mgr=log_manager
+    )
     await trade_bot.async_init()
 
     try:
         while not shutdown_event.is_set():
             await trade_bot.run_bot()
-            await asyncio.sleep(5)  # Polling delay (or use internal logic)
+            await asyncio.sleep(5)
     except asyncio.CancelledError:
         log_manager.info("sighook task cancelled.")
     finally:
         log_manager.info("sighook shutdown complete.")
-    return trade_bot
 
 
-async def run_webhook(config, shared_data_manager, log_manager, trade_bot=None):
+async def run_webhook(config, shared_data_manager, log_manager, startup_event=None, trade_bot=None):
     async with aiohttp.ClientSession() as session:
-        # Step 1: Init listener with placeholder
         listener = WebhookListener(
             bot_config=config,
             shared_data_manager=shared_data_manager,
@@ -73,18 +78,14 @@ async def run_webhook(config, shared_data_manager, log_manager, trade_bot=None):
         listener.rest_client = config.rest_client
         listener.portfolio_uuid = config.portfolio_uuid
 
-        # Step 2: Delay async_init until market_manager is resolved
         if trade_bot is None:
-            # We need a placeholder TradeBot to resolve MarketManager
             trade_bot = TradeBot(shared_data_mgr=shared_data_manager, rest_client=listener.rest_client, portfolio_uuid=listener.portfolio_uuid,
                                  log_mgr=log_manager)
-            await trade_bot.load_bot_components()  # Only initialize components, skip full data loading
+            await trade_bot.load_bot_components()
 
         listener.market_manager = trade_bot.market_manager
-        # Step 3: Now run async_init
         await listener.async_init()
 
-        # Step 4: Continue rest of setup
         listener.market_data_manager = await MarketDataUpdater.get_instance(
             listener.ticker_manager, log_manager
         )
@@ -111,13 +112,16 @@ async def run_webhook(config, shared_data_manager, log_manager, trade_bot=None):
             trade_order_manager=listener.trade_order_manager,
             ohlcv_manager=listener.ohlcv_manager
         )
-
         websocket_manager = WebSocketManager(config, listener.coinbase_api, log_manager, websocket_helper)
+
         listener.websocket_manager = websocket_manager
         listener.websocket_helper = websocket_helper
 
         market_data_master, order_mgmnt_master = await listener.market_data_manager.update_market_data(time.time())
         listener.initialize_components(market_data_master, order_mgmnt_master, shared_data_manager)
+
+        if startup_event:
+            startup_event.set()  # ✅ Signal to sighook that data is ready
 
         asyncio.create_task(websocket_manager.start_websockets())
 
@@ -149,6 +153,7 @@ async def run_webhook(config, shared_data_manager, log_manager, trade_bot=None):
         await graceful_shutdown(listener, runner)
 
 
+
 async def graceful_shutdown(listener, runner):
     if hasattr(listener, 'shutdown'):
         await listener.shutdown()
@@ -175,11 +180,23 @@ async def main():
         await run_webhook(config, shared_data_manager, log_manager)
 
     elif args.run == 'both':
+        # � New logic to launch both sighook and webhook concurrently
         sighook_logger = await setup_logger('sighook_logger')
         shared_data_manager = await init_shared_data(sighook_logger)
-        sighook_task = asyncio.create_task(run_sighook(config, shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger))
+
+        # Shared event to coordinate when sighook should begin
+        startup_event = asyncio.Event()
+
+        # Launch sighook in the background
+        sighook_task = asyncio.create_task(
+            run_sighook(config, shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger, startup_event)
+        )
+
+        # Now launch webhook (this will call startup_event.set() when ready)
         webhook_logger = await setup_logger('webhook_logger')
-        await run_webhook(config, shared_data_manager, webhook_logger)
+        await run_webhook(config, shared_data_manager, webhook_logger, startup_event)
+
+        # Await sighook shutdown
         await sighook_task
 
 

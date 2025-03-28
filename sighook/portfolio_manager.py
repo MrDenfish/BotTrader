@@ -1,12 +1,12 @@
 
-from decimal import Decimal, ROUND_DOWN, InvalidOperation
-from Config.config_manager import CentralConfig
-import pandas as pd
-import asyncio
-
-
 import asyncio
 from decimal import Decimal
+from decimal import ROUND_DOWN, InvalidOperation
+
+import pandas as pd
+
+from Config.config_manager import CentralConfig
+
 
 class PortfolioManager:
     """ Manages portfolio-related tasks such as market data caching and order evaluation. """
@@ -38,7 +38,8 @@ class PortfolioManager:
         self._buy_ratio = self.app_config._buy_ratio
         self._sell_ratio = self.app_config._sell_ratio
         self._min_volume = Decimal(self.app_config.min_volume)
-        self._roc_24hr = Decimal(self.app_config.roc_24hr)
+        self._roc_buy_24h = Decimal(self.app_config.roc_buy_24h)
+        self._roc_sell_24h = Decimal(self.app_config.roc_sell_24h)
 
         # External dependencies
         self.exchange = exchange
@@ -88,12 +89,16 @@ class PortfolioManager:
         return self._sell_ratio
 
     @property
-    def roc_24hr(self):
-        return int(self._roc_24hr)
+    def roc_buy_24h(self):
+        return int(self._roc_buy_24h)
+
+    @property
+    def roc_sell_24h(self):
+        return int(self._roc_sell_24h)
 
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
         """PART II: Trade Database Updates and Portfolio Management
-        Filter ticker cache by volume > 1 million and price change > roc_24hr %. """
+        Filter ticker cache by volume > 1 million and price change > roc_sell_24h %. """
         filtered_ticker_cache = pd.DataFrame()
         #  Extract list of unique cryptocurrencies from buy_sell_matrix
         if not buy_sell_matrix.empty:
@@ -161,8 +166,8 @@ class PortfolioManager:
         """
         buy_sell_columns = {
             'Buy Ratio': self.buy_ratio, 'Buy Touch': None, 'W-Bottom': None, 'Buy RSI': self.buy_rsi,
-            'Buy ROC': self.roc_24hr, 'Buy MACD': 0, 'Buy Swing': None, 'Sell Ratio': self.sell_ratio,
-            'Sell Touch': None, 'M-Top': None, 'Sell RSI': self.sell_rsi, 'Sell ROC': -(self.roc_24hr/2),
+            'Buy ROC': self.roc_buy_24h, 'Buy MACD': 0, 'Buy Swing': None, 'Sell Ratio': self.sell_ratio,
+            'Sell Touch': None, 'M-Top': None, 'Sell RSI': self.sell_rsi, 'Sell ROC': self.roc_sell_24h,
             'Sell MACD': 0, 'Sell Swing': None, 'Buy Signal': 0, 'Sell Signal': 0
         }
 
@@ -185,7 +190,7 @@ class PortfolioManager:
 
                 # Fix: Apply absolute value only to 'price change %' and correctly structure conditions
                 filtered_df = rows_to_add[
-                    (abs(rows_to_add['price change %']) >= self.roc_24hr) &
+                    (abs(rows_to_add['price change %']) >= self.roc_sell_24h) &  # use the lowest  roc 24h value
                     (rows_to_add['quote volume'] >= self.min_volume)
                     ]
 

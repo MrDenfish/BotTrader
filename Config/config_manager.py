@@ -1,8 +1,9 @@
-import os
 import json
+import os
+from decimal import Decimal
+
 from coinbase.rest import RESTClient
 from dotenv import load_dotenv
-from decimal import Decimal
 
 
 class CentralConfig:
@@ -33,7 +34,7 @@ class CentralConfig:
         self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_of_crypto_to_buy_more = None
         self._rsi_sell = self._sma_fast = self._sma_slow = self._sma = None
         self._buy_ratio = self._sell_ratio = self._sma_volatility = self._hodl = None
-        self._cxl_buy = self._cxl_sell = self._take_profit = self._roc_24hr = None
+        self._cxl_buy = self._cxl_sell = self._take_profit = None
         self._stop_loss = self._csv_dir = self._web_url = self._sleep_time = None
         self._docker_staticip = self._tv_whitelist = self._coin_whitelist = None
         self._taker_fee = self._maker_fee = self._trailing_stop = self._min_sell_value =None
@@ -43,7 +44,7 @@ class CentralConfig:
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
         self._assets_ignored = self._buy_target = self._sell_target = None
         self._quote_currency = self._trailing_percentage = self._min_volume = None
-        self._roc_5min = None
+        self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
 
 
         # Default values
@@ -90,7 +91,9 @@ class CentralConfig:
             "_stop_loss": "STOP_LOSS",
             "_cxl_buy": "CXL_BUY",
             "_cxl_sell": "CXL_SELL",
-            "_roc_24hr": "ROC_24HR",
+            "_roc_buy_24h": "ROC_BUY_24H",
+            "_roc_sell_24h": "ROC_SELL_24H",
+            "_roc_window": "ROC_WINDOW",
             "_roc_5min":"ROC_5min",
             "_docker_staticip": "DOCKER_STATICIP",
             "_tv_whitelist": "TV_WHITELIST",
@@ -524,8 +527,16 @@ class CentralConfig:
         return self._cxl_sell
 
     @property
-    def roc_24hr(self):
-        return int(self._roc_24hr)
+    def roc_buy_24h(self):
+        return int(self._roc_buy_24h)
+
+    @property
+    def roc_sell_24h(self):
+        return int(self._roc_sell_24h)
+
+    @property
+    def roc_window(self):
+        return int(self._roc_window)
 
     @property
     def roc_5min(self):

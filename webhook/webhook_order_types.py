@@ -134,7 +134,7 @@ class OrderTypeManager:
             asset = order_data.base_currency
             trading_pair = order_data.trading_pair
 
-            print(f"✅ Processing Limit Order from {source}: {order_data}")
+            print(f"✅ Processing TP SL Order from {source}: {order_data}")
 
             # ✅ Step 1: Check for existing open orders
             all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=trading_pair)
@@ -221,166 +221,34 @@ class OrderTypeManager:
             self.log_manager.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)
             return None
 
-    # async def process_limit_and_tp_sl_orders(self,source: str,order_data: OrderData,take_profit: Optional[Decimal] = None,
-    #                                          stop_loss: Optional[Decimal] = None) -> Union[dict, None]:
-    #
-    #     """
-    #     Processes limit orders with attached Take Profit (TP) and Stop Loss (SL).
-    #
-    #     Args:
-    #         source (str): 'WebSocket' or 'Webhook' for tracking the order source.
-    #         order_data (dict): Order details.
-    #         take_profit (Decimal, optional): Take profit price.
-    #         stop_loss (Decimal, optional): Stop loss price.
-    #
-    #     Returns:
-    #         dict or None: The API response if successful, None otherwise.
-    #     """
-    #     try:
-    #         caller_function_name = stack()[1].function  # Debug
-    #         self.shared_utils_utility.log_event_loop(f"{caller_function_name}")  # Debug log
-    #
-    #         print(f"✅ Processing Limit Order from {source}: {order_data}")
-    #         asset = order_data.get('trading_pair').split('/')[0]
-    #
-    #         # ✅ Step 1: Check for Existing Open Orders
-    #         all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=order_data['trading_pair'])
-    #         open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
-    #
-    #         if has_open_order:
-    #             return {
-    #                 'error': 'open_order',
-    #                 'code': 411,
-    #                 'message': f"⚠️ Order Blocked - Existing Open Order for {order_data['trading_pair']}"
-    #             }
-    #
-    #         # ✅ Refresh Order Book
-    #         order_book = await self.order_book_manager.get_order_book(order_data)
-    #         highest_bid, lowest_ask = Decimal(order_book['highest_bid']), Decimal(order_book['lowest_ask'])
-    #
-    #         # ✅ Adjust Price to Avoid Rejections
-    #         order_price = (
-    #             min(highest_bid, lowest_ask - Decimal('0.0001'))
-    #             if order_data.get('details', {}).get('side').lower() == 'buy'
-    #
-    #             else max(highest_bid, lowest_ask + Decimal('0.0001'))
-    #         )
-    #         order_data['adjusted_price'] = order_price
-    #         order_data['highest_bid'] = highest_bid
-    #         order_data['lowest_ask'] = lowest_ask
-    #
-    #         # ✅ Step 2: Validate Order Against Trading Rules
-    #         response_msg = self.validate.fetch_and_validate_rules(order_data)
-    #         if not response_msg.get('details', {}).get('condition'):
-    #             msg = response_msg.get('error')
-    #         else:
-    #             msg = response_msg.get('details', {}).get('condition')
-    #
-    #         if not response_msg.get('is_valid'):
-    #            return {
-    #                 'error': 'order_not_valid',
-    #                 'code': response_msg.get('code'),
-    #                 'message': f"⚠️ Order Blocked {asset} - Trading Rules Violation: {msg}"
-    #             }
-    #
-    #         # ✅ Step 3: Adjust Order Price & Validate Data
-    #         order_data, validated_order = await self.validate.validate_and_adjust_order(order_data)
-    #
-    #         if not validated_order['is_valid']:
-    #             return {
-    #                 'error': 'price_adjustment_failed',
-    #                 'code':  response_msg.get('code'),
-    #                 'message': f"⚠️ Order Blocked - Price Adjustment Failed: {validated_order.get('details', {}).get('condition')}"
-    #             }
-    #
-    #         # ✅ Step 4: Adjust Order Size
-    #         base_decimal = Decimal('1').scaleb(-validated_order.get('base_decimal', 2))
-    #         amount = Decimal(order_data['adjusted_size']).quantize(base_decimal, rounding=ROUND_DOWN)
-    #
-    #         if take_profit:
-    #             take_profit = Decimal(take_profit).quantize(base_decimal, rounding=ROUND_DOWN)
-    #         if stop_loss:
-    #             stop_loss = Decimal(stop_loss).quantize(base_decimal, rounding=ROUND_DOWN)
-    #
-    #         # ✅ Step 5: Ensure Sufficient Balance
-    #         side = order_data['side'].upper()
-    #         usd_available = Decimal(order_data.get('usd_available', 0))
-    #         required_usd = amount * Decimal(order_data['adjusted_price'])
-    #
-    #         if side == 'BUY' and required_usd > usd_available:
-    #             return {
-    #                 'error': 'Insufficient_USD',
-    #                 'code':  response_msg.get('code'),
-    #                 'message': f"⚠️ Order Blocked - Insufficient USD (${usd_available}) for {asset} BUY order. Required: ${required_usd}"
-    #             }
-    #
-    #         if side == 'SELL' and amount > Decimal(order_data.get('available_to_trade_crypto', 0)):
-    #             return {
-    #                 'error': 'Insufficient_crypto',
-    #                 'code':  response_msg.get('code'),
-    #                 'message': f"⚠️ Order Blocked - Insufficient Crypto to sell {asset}."
-    #             }
-    #
-    #         # ✅ Step 6: Build Order Payload
-    #         client_order_id = str(uuid.uuid4())  # Generate unique order ID
-    #         order_payload = {
-    #             "client_order_id": client_order_id,
-    #             "product_id": order_data['trading_pair'].replace('/', '-'),
-    #             "side": order_data['side'].upper(),
-    #             "order_configuration": {
-    #                 "limit_limit_gtc": {
-    #                     "baseSize": str(amount),
-    #                     "limitPrice": str(order_data['adjusted_price'])
-    #                 }
-    #             },
-    #             "attached_order_configuration": {
-    #                 "trigger_bracket_gtc": {
-    #                     "limit_price": str(take_profit),
-    #                     "stop_trigger_price": str(stop_loss)
-    #                 }
-    #             }
-    #         }
-    #
-    #         self.log_manager.info(f"� Submitting Order: {order_payload}")
-    #
-    #         # ✅ Step 7: Execute Order
-    #         response_data = await self.coinbase_api.create_order(order_payload)
-    #
-    #         if response_data.get('success'):
-    #             order_id = response_data.get('success_response', {}).get('order_id')
-    #             self.log_manager.info(f"✅ Order Placed Successfully with TP/SL: {order_id}")
-    #             return response_data
-    #
-    #         # ✅ Step 8: Handle Specific Errors
-    #         return response_data
-    #
-    #     except Exception as e:
-    #         self.log_manager.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)
-    #         return None
-
-    async def place_limit_order(self, order_data: OrderData):
+    async def place_limit_order(self, source, order_data: OrderData):
         """
         Places a limit order and returns the order response or None if it fails.
         Handles price validation in fast-moving markets.
         """
         try:
-            self.log_manager.debug(f"Placing limit order with data: {order_data}")
+
+            self.log_manager.debug(f"Placing limit order from {source} with data: {order_data}")
             caller_function_name = stack()[1].function
 
             # ✅ Required fields check
             required_fields = ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask', 'available_to_trade_crypto']
-            missing_fields = [field for field in required_fields if order_data.get(field) is None]
+            missing_fields = [field for field in required_fields if order_data is None]
             if missing_fields:
                 self.log_manager.error(f"Missing required fields: {missing_fields} called by: {caller_function_name}")
                 return None
 
             # ✅ Extracting values
-            symbol = order_data['trading_pair'].replace('/', '-')
-            side = order_data['side'].upper()
-            amount = Decimal(str(order_data['base_avail_to_trade']))
-            price = Decimal(str(order_data.get('highest_bid' if side == 'sell' else 'lowest_ask', 0)))
-            available_crypto = Decimal(str(order_data.get('available_to_trade_crypto', 0)))
-            usd_available = Decimal(str(order_data.get('usd_available', 0)))
+            symbol = order_data.trading_pair.replace('/', '-')
+            side = order_data.side.upper()
+            amount = Decimal(str(order_data.adjusted_size))
+            price = Decimal(str(order_data.highest_bid) if side == 'sell' else order_data.lowest_ask)
+            available_crypto = Decimal(str(order_data.available_to_trade_crypto))
+            if order_data.side == 'buy':
+                usd_available = Decimal(str(order_data.usd_avail_balance))
+            else:
+                usd_available = Decimal(str(order_data.usd_balance))
+
             params = {'post_only': True}
 
             # ✅ Ensure valid price
@@ -392,12 +260,12 @@ class OrderTypeManager:
             if side == 'BUY' and (amount * price) > usd_available:
                 self.log_manager.info(f"Insufficient USD for BUY order on {symbol}. Required: {amount * price}, Available: {usd_available}")
                 return None
-            if side == 'SELL' and amount >= available_crypto:
+            if side == 'SELL' and amount > available_crypto:
                 self.log_manager.info(f"Insufficient {symbol} balance for SELL order. Trying to sell: {amount}, Available: {available_crypto}")
                 return None
 
             # ✅ Refresh order book to get latest bid/ask
-            latest_order_book = await self.order_book_manager.k(order_data, symbol)
+            latest_order_book = await self.order_book_manager.get_order_book(order_data, symbol)
             latest_lowest_ask = Decimal(str(latest_order_book['order_book']['asks'][0][0])) \
                 if latest_order_book['order_book']['asks'] else price
             latest_highest_bid = Decimal(str(latest_order_book['order_book']['bids'][0][0])) \

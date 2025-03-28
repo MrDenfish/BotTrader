@@ -1,10 +1,12 @@
 
 import asyncio
+from datetime import datetime, timedelta
+
 import pandas as pd
+from databases import Database
 from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
-from datetime import datetime, timedelta
-from databases import Database
+
 from Config.config_manager import CentralConfig
 
 
@@ -164,7 +166,7 @@ class MarketManager:
 
                 # Ensure `time` is timezone-aware (UTC)
                 df['time'] = df['time'].dt.tz_localize(None).dt.tz_localize('UTC')
-
+                df = df.sort_values(by='time', ascending=True)
                 return {'symbol': symbol, 'data': df}
 
         except Exception as e:
@@ -267,7 +269,7 @@ class MarketManager:
 
     async def get_last_timestamp(self, symbol):
         """
-        Get the last timestamp for a symbol from the OHLCV table.
+        Get the last timestamp for a symbol from the OHLCV table oldest.
         """
         query = (
             select(self.db_tables.OHLCVData.time)

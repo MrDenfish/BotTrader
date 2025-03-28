@@ -40,7 +40,7 @@ class TradingStrategy:
         self._sell_rsi = self.config._rsi_sell
         self._buy_ratio = self.config._buy_ratio
         self._sell_ratio = self.config._sell_ratio
-        self._roc_24hr = self.config._roc_24hr
+        self._roc_buy_24h = self.config._roc_buy_24h
         self._hodl = self.config._hodl
         self.market_metrics = metrics
         self.webhook = webhook
@@ -87,8 +87,8 @@ class TradingStrategy:
         return self._hodl
 
     @property
-    def roc_24hr(self):
-        return int(self._roc_24hr)
+    def roc_buy_24h(self):
+        return int(self._roc_buy_24h)
 
     @property
     def max_ohlcv_rows(self):
@@ -122,12 +122,17 @@ class TradingStrategy:
         skipped_symbols = []
         strategy_results = []
 
+        # Define dynamic indicators (those that set their own thresholds)
+        dynamic_threshold_indicators = {
+            'Buy Touch', 'Sell Touch', 'W-Bottom', 'M-Top',
+            'Buy Swing', 'Sell Swing', 'Buy MACD', 'Sell MACD'
+        }
+
         try:
-            # ✅ Ensure 'asset' is the index
             if "asset" in buy_sell_matrix.columns:
                 buy_sell_matrix.set_index("asset", inplace=True)
 
-            # Fetch OHLCV data asynchronously
+            # Fetch OHLCV data
             tasks = {
                 row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
                 for _, row in filtered_ticker_cache.iterrows()
@@ -142,65 +147,57 @@ class TradingStrategy:
                 temp_symbol = symbol.replace("/", "-")
                 _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
 
-                # ✅ Skip if there's an open order or asset is in the HODL list
                 if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.hodl:
                     skipped_symbols.append(temp_symbol)
                     continue
 
                 ohlcv_df = ohlcv_data_dict[symbol]
-                ohlcv_df = self.indicators.calculate_indicators(ohlcv_df, quote_deci)  # ✅ Now includes Bollinger Bands
+                ohlcv_df = self.indicators.calculate_indicators(ohlcv_df, quote_deci)
 
-                # ✅ Ensure valid indicators before proceeding
                 if ohlcv_df is None or ohlcv_df.empty:
                     self.log_manager.error(f"⚠️ Invalid OHLCV data for {symbol}")
                     continue
 
                 action_data = self.decide_action(ohlcv_df, symbol)
-                strategy_results.append(
-                    {
-                        'asset': asset,
-                        'symbol': symbol,
-                        **action_data
-                    }
-                )
+                strategy_results.append({'asset': asset, 'symbol': symbol, **action_data})
 
                 if asset not in buy_sell_matrix.index:
-                    self.log_manager.warning(f"⚠️ Asset {asset} not found in buy_sell_matrix index. Skipping update.")
+                    self.log_manager.warning(f"⚠️ Asset {asset} not in matrix. Skipping.")
                     continue
 
-                # ✅ Update buy_sell_matrix values
+                # ✅ Update indicators in buy_sell_matrix
                 for col in buy_sell_matrix.columns:
                     if col in ohlcv_df.columns:
-                        computed_value = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty and not ohlcv_df[col].isna().all() else 0
-                        computed_value = computed_value[1] if isinstance(computed_value, tuple) and len(computed_value) > 1 else computed_value
-                        computed_value = float(computed_value) if computed_value is not None else 0.0
-                        existing_tuple = buy_sell_matrix.at[asset, col]
+                        value = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty and not ohlcv_df[col].isna().all() else 0
+                        value = value[1] if isinstance(value, tuple) and len(value) > 1 else value
+                        value = float(value) if value is not None else 0.0
 
-                        threshold = float(existing_tuple[2]) if (
-                                isinstance(existing_tuple, tuple) and len(existing_tuple) == 3 and existing_tuple[2] is not None
-                        ) else 0.0
+                        current = buy_sell_matrix.at[asset, col]
+                        existing_threshold = (
+                            float(current[2]) if isinstance(current, tuple) and len(current) == 3 and current[2] is not None
+                            else None
+                        )
 
-                        decision = 1 if computed_value > threshold else 0
-                        buy_sell_matrix.at[asset, col] = (decision, computed_value, threshold)
+                        # ✅ Only fallback to 0.0 if the indicator is NOT dynamic
+                        if existing_threshold is None:
+                            threshold = 0.0 if col not in dynamic_threshold_indicators else None
+                        else:
+                            threshold = existing_threshold
 
-                # ✅ Update buy_target & sell_target using strategy weights
+                        # Avoid comparison if threshold is None
+                        decision = 0
+                        if threshold is not None:
+                            decision = 1 if value > threshold else 0
+
+                        buy_sell_matrix.at[asset, col] = (decision, value, threshold)
+
+                # Compute target levels and signals
                 self.update_dynamic_targets(asset, buy_sell_matrix)
+                buy_score, sell_score = self.compute_weighted_scores(asset, buy_sell_matrix)
 
-                # ✅ Compute buy & sell signal scores
-                buy_signal_value, sell_signal_value = self.compute_weighted_scores(asset, buy_sell_matrix)
-
-                # ✅ Debugging: Check computed scores
-                print(f"✅ Computed Buy Score for {asset}: {buy_signal_value}")
-                print(f"✅ Computed Sell Score for {asset}: {sell_signal_value}")
-
-                # ✅ Apply structured signal logic
-                buy_signal, sell_signal = self.compute_signals(buy_signal_value, sell_signal_value)
+                buy_signal, sell_signal = self.compute_signals(buy_score, sell_score)
                 buy_sell_matrix.at[asset, 'Buy Signal'] = buy_signal
                 buy_sell_matrix.at[asset, 'Sell Signal'] = sell_signal
-
-            # ✅ Debugging logs
-            # print(f'{strategy_results}')  # Debugging
-            # print(f'{buy_sell_matrix.to_string(index=False)}')  # Debugging
 
             return strategy_results, buy_sell_matrix
 
@@ -261,9 +258,6 @@ class TradingStrategy:
                 if col.startswith("Sell") and col in weights
             )
 
-            print(f"� {asset} Computed Buy Score: {buy_score}")
-            print(f"� {asset} Computed Sell Score: {sell_score}")
-
             return buy_score, sell_score
         except Exception as e:
             self.log_manager.error(f"Error computing weighted scores: {e}", exc_info=True)
@@ -294,60 +288,6 @@ class TradingStrategy:
             self.log_manager.error(f"Error computing final buy/sell signals: {e}", exc_info=True)
             return (0, 0.0, 0.0), (0, 0.0, 0.0)
 
-    def update_buy_sell_matrix(self, asset, buy_sell_matrix, bollinger_df):
-        """Update buy_sell_matrix using weighted strategy scores."""
-        try:
-            most_recent_row = bollinger_df.iloc[-1]  # Use the latest available row
-
-            weights = self.STRATEGY_WEIGHTS
-
-            # Ensure asset exists in buy_sell_matrix
-            if asset not in buy_sell_matrix.index:
-                self.log_manager.warning(f"Asset {asset} not found in buy_sell_matrix. Skipping update.")
-                return buy_sell_matrix
-
-            # Compute weighted buy and sell scores
-            buy_score = sum(
-                value[0] * weights[col]  # Decision (0/1) * Weight
-                for col, value in buy_sell_matrix.loc[asset].items()
-                if col.startswith("Buy") and col in strategy_weights
-            )
-
-            sell_score = sum(
-                value[0] * weights[col]
-                for col, value in buy_sell_matrix.loc[asset].items()
-                if col.startswith("Sell") and col in strategy_weights
-            )
-
-            # Dynamically calculate buy and sell targets
-
-            # self.buy_target = sum(
-            #     strategy_weights[col]
-            #     for col, value in buy_sell_matrix.loc[asset].items()
-            #     if col.startswith("Buy") and col in strategy_weights
-            # )
-
-            self.sell_target = sum(
-                weights[col]
-                for col, value in buy_sell_matrix.loc[asset].items()
-                if col.startswith("Sell") and col in strategy_weights
-            )
-
-            # Compute Buy & Sell Signals
-            buy_signal = (1, buy_score, self.buy_target) if buy_score >= self.buy_target else (0, buy_score, self.buy_target)
-            sell_signal = (1, sell_score, self.sell_target) if sell_score >= self.sell_target else (
-            0, sell_score, self.sell_target)
-
-            # Update Buy & Sell Signals in the matrix
-            buy_sell_matrix.at[asset, 'Buy Signal'] = buy_signal
-            buy_sell_matrix.at[asset, 'Sell Signal'] = sell_signal
-
-            return buy_sell_matrix
-
-        except Exception as e:
-            self.log_manager.error(f"Error updating buy_sell_matrix: {e}", exc_info=True)
-            return buy_sell_matrix
-
     @staticmethod
     def symbol_has_open_order(symbol, open_orders):
         """ PART IV:
@@ -361,13 +301,11 @@ class TradingStrategy:
         except Exception as e:
             return False
 
-
     async def fetch_ohlcv_data_from_db(self, asset):
         """ PART IV:
         Fetch OHLCV data from the database for a given asset.
-         verify if this is sufficient for indicator calculations
-         (e.g., MACD or Bollinger Bands require lookback periods)."""
-
+        Verify if this is sufficient for indicator calculations
+        (e.g., MACD or Bollinger Bands require lookback periods)."""
 
         query = (
             select(self.db_tables.OHLCVData)
@@ -375,6 +313,7 @@ class TradingStrategy:
             .order_by(self.db_tables.OHLCVData.time.desc())
             .limit(self.max_ohlcv_rows)
         )
+
         try:
             ohlcv_data = await self.db_manager.database.fetch_all(query)
 
@@ -389,13 +328,16 @@ class TradingStrategy:
                     'volume': data['volume']
                 } for data in ohlcv_data])
 
-                # Check for NaN values in the DataFrame
+                # ✅ Sort in ascending order so indicators work correctly
+                ohlcv_df = ohlcv_df.sort_values(by='time', ascending=True).reset_index(drop=True)
+
                 if ohlcv_df.isnull().values.any():
                     self.log_manager.error(f"NaN values detected in OHLCV data for {asset}")
                     return None
                 if len(ohlcv_df) < 720:
-                    self.log_manager.warning(f"Insufficient OHLCV data for {asset}. Rows fetched: {len(ohlcv_df)}") # Log a warning if the DataFrame is too small
-                return ohlcv_df  # Return the DataFrame
+                    self.log_manager.warning(f"Insufficient OHLCV data for {asset}. Rows fetched: {len(ohlcv_df)}")
+
+                return ohlcv_df
             return None
         except Exception as e:
             self.log_manager.error(f"Error fetching OHLCV data for {asset}: {e}", exc_info=True)
@@ -502,7 +444,8 @@ class TradingStrategy:
 
 
     def sell_signal_from_indicators(self, symbol, price, trigger, holdings):
-        """PART V: Order Execution"""
+        """PART V: Order Execution
+        calling method:  order_manager.handle_sell_action()"""
         try:
             # Convert DataFrame to list of dictionaries if holdings is a DataFrame ( it will be when it comes from
             # "process_sell_order" function)

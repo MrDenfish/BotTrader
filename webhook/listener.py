@@ -1,3 +1,4 @@
+
 import asyncio
 import json
 import logging
@@ -1785,12 +1786,18 @@ class WebhookListener:
             # Fetch the order book for price and size adjustments
             order_book = await self.order_book_manager.get_order_book(order_data)
 
-            # Use TrailingStopManager to place a trailing stop order
+            # Use take profit stop loss
             order_data.source = source
-            response_data = await self.order_type_manager.process_limit_and_tp_sl_orders(source, order_data)
+            order_success, response_msg = await self.trade_order_manager.place_order(order_data)
+            if response_msg:
+                response_data = response_msg
+                if response_data.get('error') == 'OPEN_ORDER':
+                    return
+            else:
+                return
 
             if response_data:
-                if response_data.get('details', {}).get("order_id"):
+                if response_data.get('details', {}).get("Order_id"):
                     pass
                     print(f'REVIEW CODE FOR TRAILING STOP ORDER (1789)*********************************')
                     # Add the trailing stop order to the order_tracker
@@ -1811,18 +1818,7 @@ class WebhookListener:
                         del self.order_management['order_tracker'][associated_buy_order_id]
                         print(f"Removed associated buy order {associated_buy_order_id} from order_tracker")
 
-                elif response_data['error'] == 'open_order':
-                    print(f"{response_data['message']}")
-                elif  response_data['error'] == 'no_balance':
-                    print(f"{response_data['message']}")
-                elif response_data['error'] == 'no_order':
-                    print(f"{response_data['message']}")
-                elif response_data['error'] == 'no_price':
-                    print(f"{response_data['message']}")
-                elif response_data['error'] == 'no_amount':
-                    print(f"{response_data['message']}")
-                else:
-                    print(f"Error placing trailing stop order: {response_data['message']}")
+
 
             else:
                 print("No response data received from order_type_manager.process_limit_and_tp_sl_orders")

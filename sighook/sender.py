@@ -306,7 +306,7 @@ class TradeBot:
         open_orders = pd.DataFrame()
         ohlcv_data_dict = {}  # dictionary to hold ohlcv data
 
-
+        test_token = 0
         try:
             loop = asyncio.get_running_loop()  # Get the correct running loop
             while not AsyncFunctions.shutdown_event.is_set():
@@ -329,10 +329,15 @@ class TradeBot:
                 #   Order cancellation and Data Collection
                 print(f"Exchange instance. Total instances: {TradeBot._exchange_instance_count}")
                 print(f'Part III: Order cancellation and OHLCV Data Collection - Start Time:', datetime.datetime.now())
-
                 if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
                     # Step 1: Get open orders (if needed for Part III logic)
                     open_orders = await self.order_manager.get_open_orders()
+
+                    if open_orders is None or open_orders.empty:  # debug
+                        print("No open orders found.")
+                        test_token = 1
+                    else:
+                        test_tocken = 0
                     # self.market_manager.utility.print_elapsed_time(self.market_manager.start_time, 'open_orders')
 
                     # Step 2: Initialize or update OHLCV data
@@ -377,6 +382,11 @@ class TradeBot:
                 if self.exchange is not None:
                     await self.exchange.close()
 
+                if open_orders is None or open_orders.empty:  # debug
+                    print("No open orders found.")
+                    test_token = 1
+                else:
+                    test_tocken = 0
                 self.shared_utils_print.print_data(self.min_volume, open_orders, buy_sell_matrix, submitted_orders,
                                                    aggregated_df)
 

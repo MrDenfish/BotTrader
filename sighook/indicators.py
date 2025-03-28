@@ -1,7 +1,12 @@
-from Config.config_manager import CentralConfig
+
 from decimal import Decimal
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from Config.config_manager import CentralConfig
+
 
 class Indicators:
     """PART III: Trading Strategies"""
@@ -18,6 +23,9 @@ class Indicators:
         self.macd_slow = int(self.config._macd_slow)
         self.macd_signal = int(self.config._macd_signal)
         self.rsi_window = int(self.config._rsi_window)
+        self.roc_window = int(self.config._roc_window)  # # default is 4
+        self.roc_buy_24h = int(self.config._roc_buy_24h)  # default is 5
+        self.roc_sell_24h = int(self.config._roc_sell_24h)  # default is 2
         self.rsi_buy = int(self.config._rsi_buy)
         self.rsi_sell = int(self.config._rsi_sell)
         self.buy_ratio = Decimal(self.config._buy_ratio)
@@ -29,28 +37,22 @@ class Indicators:
 
     def calculate_indicators(self, df, quote_deci, indicators_config=None):
         """Calculate all required indicators for buy/sell decisions with weighted scoring."""
+
+        debug = False  # Toggle this for detailed output
         try:
             if df.empty:
                 raise ValueError("Input DataFrame is empty")
 
-            min_required_rows = 50  # Ensure enough data
-            if len(df) < min_required_rows:
+            if len(df) < 50:
                 self.log_manager.warning(f"Insufficient OHLCV data. Rows fetched: {len(df)}")
                 return df
 
-            # Default indicator configuration
             if indicators_config is None:
                 indicators_config = {
-                    'bollinger': True,
-                    'trends': True,
-                    'macd': True,
-                    'rsi': True,
-                    'roc': True,
-                    'w_bottoms': True,
-                    'swing_trading': True,
+                    'bollinger': True, 'trends': True, 'macd': True,
+                    'rsi': True, 'roc': True, 'w_bottoms': True, 'swing_trading': True,
                 }
 
-            # ✅ Define strategy weights (Will later be dynamically updated)
             self.strategy_weights = {
                 'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 2.5,
                 'Buy ROC': 2.0, 'Buy MACD': 1.8, 'Buy Swing': 2.2,
@@ -58,37 +60,41 @@ class Indicators:
                 'Sell ROC': 2.0, 'Sell MACD': 1.8, 'Sell Swing': 2.2
             }
 
-            # ✅ Initialize all signal columns
+            # Initialize all columns with (0, None, None)
             signal_columns = list(self.strategy_weights.keys()) + ['Buy Signal', 'Sell Signal']
             for signal in signal_columns:
                 df[signal] = [(0, None, None)] * len(df)
 
-            # ✅ Bollinger Bands Calculation (only once)
             if indicators_config.get('bollinger'):
                 df['basis'] = df['close'].rolling(window=self.bb_window).mean()
                 df['std'] = df['close'].rolling(window=self.bb_window).std()
                 df['upper'] = df['basis'] + 2 * df['std']
                 df['lower'] = df['basis'] - 2 * df['std']
                 df[['upper', 'lower']] = df[['upper', 'lower']].replace(0, np.nan).bfill()
-                df['band_ratio'] = df['upper'] / df['lower']
-                df['band_ratio'] = df['band_ratio'].replace(0, np.nan).bfill()
+                df['band_ratio'] = (df['upper'] / df['lower']).replace(0, np.nan).bfill()
 
-                # ✅ Compute `Buy Touch`, `Sell Touch`, `Buy Ratio`, and `Sell Ratio`
                 df['prev_close'] = df['close'].shift(1)
                 df['prev_upper'] = df['upper'].shift(1)
                 df['prev_lower'] = df['lower'].shift(1)
 
-                df['Buy Touch'] = df.apply(
-                    lambda row: (1, round(row['close'], quote_deci), round(row['upper'], quote_deci))
-                    if row['prev_close'] <= row['prev_upper'] and row['close'] > row['upper'] else
-                    (0, round(row['close'], quote_deci), round(row['upper'], quote_deci)), axis=1
-                )
+                def compute_buy_touch(row):
+                    close = round(row['close'], quote_deci)
+                    upper = round(row['upper'], quote_deci) if pd.notna(row['upper']) else 0.0
+                    if pd.notna(row['prev_close']) and pd.notna(row['prev_upper']):
+                        if row['prev_close'] < row['prev_upper'] and row['close'] >= row['upper']:
+                            return (1, close, upper)
+                    return (0, close, upper)
 
-                df['Sell Touch'] = df.apply(
-                    lambda row: (1, round(row['close'], quote_deci), round(row['lower'], quote_deci))
-                    if row['prev_close'] >= row['prev_lower'] and row['close'] < row['lower'] else
-                    (0, round(row['close'], quote_deci), round(row['lower'], quote_deci)), axis=1
-                )
+                def compute_sell_touch(row):
+                    close = round(row['close'], quote_deci)
+                    lower = round(row['lower'], quote_deci) if pd.notna(row['lower']) else 0.0
+                    if pd.notna(row['prev_close']) and pd.notna(row['prev_lower']):
+                        if row['prev_close'] >= row['prev_lower'] and row['close'] < row['lower']:
+                            return (1, close, lower)
+                    return (0, close, lower)
+
+                df['Buy Touch'] = df.apply(compute_buy_touch, axis=1)
+                df['Sell Touch'] = df.apply(compute_sell_touch, axis=1)
 
                 df['Buy Ratio'] = df.apply(
                     lambda row: (1, round(row['band_ratio'], quote_deci), self.buy_ratio)
@@ -102,46 +108,114 @@ class Indicators:
                     axis=1
                 )
 
-            # ✅ Calculate Trends
             if indicators_config.get('trends'):
                 df['50_sma'] = df['close'].rolling(window=self.sma_fast).mean()
                 df['200_sma'] = df['close'].rolling(window=self.sma_slow).mean()
                 df['sma'] = df['close'].rolling(window=self.sma).mean()
                 df['volatility'] = df['close'].rolling(window=self.sma_volatility).std()
 
-            # ✅ Calculate MACD
             if indicators_config.get('macd'):
-                df['EMA_fast'] = df['close'].ewm(span=self.macd_fast, min_periods=1, adjust=False).mean()
-                df['EMA_slow'] = df['close'].ewm(span=self.macd_slow, min_periods=1, adjust=False).mean()
+                df['EMA_fast'] = df['close'].ewm(span=self.macd_fast, adjust=False).mean()
+                df['EMA_slow'] = df['close'].ewm(span=self.macd_slow, adjust=False).mean()
                 df['MACD'] = df['EMA_fast'] - df['EMA_slow']
-                df['Signal_Line'] = df['MACD'].ewm(span=self.macd_signal, min_periods=1, adjust=False).mean()
+                df['Signal_Line'] = df['MACD'].ewm(span=self.macd_signal, adjust=False).mean()
                 df['MACD_Histogram'] = df['MACD'] - df['Signal_Line']
 
-                df['Buy MACD'] = df.apply(
-                    lambda row: (1, round(row['MACD_Histogram'], 4), 0) if row['MACD_Histogram'] > 0 else
-                    (0, round(row['MACD_Histogram'], 4), 0), axis=1
-                )
+                df['Buy MACD'] = df['MACD_Histogram'].apply(lambda v: (1, round(v, 4), 0) if v > 0 else (0, round(v, 4), 0))
+                df['Sell MACD'] = df['MACD_Histogram'].apply(lambda v: (1, round(v, 4), 0) if v < 0 else (0, round(v, 4), 0))
 
-                df['Sell MACD'] = df.apply(
-                    lambda row: (1, round(row['MACD_Histogram'], 4), 0) if row['MACD_Histogram'] < 0 else
-                    (0, round(row['MACD_Histogram'], 4), 0), axis=1
-                )
-
-            # ✅ RSI Calculation
+            # RSI
             delta = df['close'].diff()
-            gain = delta.where(delta > 0, 0).rolling(window=self.rsi_window, min_periods=1).mean()
-            loss = -delta.where(delta < 0, 0).rolling(window=self.rsi_window, min_periods=1).mean()
-            rs = gain / loss.replace(0, np.nan)
+            gain = delta.where(delta > 0, 0.0)
+            loss = -delta.where(delta < 0, 0.0)
+            avg_gain = gain.rolling(window=self.rsi_window, min_periods=self.rsi_window).mean()
+            avg_loss = loss.rolling(window=self.rsi_window, min_periods=self.rsi_window).mean()
+            rs = avg_gain / avg_loss.replace(0, np.nan)
             df['RSI'] = 100 - (100 / (1 + rs))
-            df['RSI'] = df['RSI'].clip(0, 100).fillna(50)
+            df['RSI'] = df['RSI'].fillna(50).clip(0, 100)
+
+            if debug:
+                print("Recent RSI values:")
+                print(df[['time', 'close', 'RSI']].tail(10))
+
+            df['Buy RSI'] = df['RSI'].apply(
+                lambda r: (1, round(r, 2), 30.0) if r < self.rsi_buy else (0, round(r, 2), 30.0)
+            )
+
+            df['Sell RSI'] = df['RSI'].apply(
+                lambda r: (1, round(r, 2), 70.0) if r > self.rsi_sell else (0, round(r, 2), 70.0)
+            )
 
             # ✅ Rate of Change (ROC)
-            df['ROC'] = df['close'].pct_change(min(3, len(df))) * 100
-            df['ROC_Diff'] = df['ROC'].diff()
-            df[['ROC', 'ROC_Diff']] = df[['ROC', 'ROC_Diff']].fillna(0)
+            roc_window = getattr(self, 'roc_window', 3)
+            self.buy_roc_threshold = getattr(self, 'buy_roc_threshold', self.roc_buy_24h)
+            self.sell_roc_threshold = getattr(self, 'sell_roc_threshold', -self.roc_sell_24h)
+            # Percentage change over `roc_window` periods
+            df['ROC'] = df['close'].pct_change(periods=roc_window) * 100
+            df['ROC'] = df['ROC'].fillna(0)
 
-            # ✅ Identify W-Bottoms & M-Tops
-            df['W-Bottom'], df['M-Top'] = self.identify_w_bottoms_m_tops(df, quote_deci)
+            # ROC change over time
+            df['ROC_Diff'] = df['ROC'].diff().fillna(0)
+
+            # Optional debug log (just for reviewing)
+            if debug:
+                print(f"\nROC debug (window={roc_window}):")
+                print(df[['time', 'close', 'ROC', 'ROC_Diff']].tail(10))
+
+            # ✅ Buy ROC signal
+            df['Buy ROC'] = df['ROC'].apply(
+                lambda r: (1, round(r, 2), self.buy_roc_threshold)
+                if r > self.buy_roc_threshold else (0, round(r, 2), self.buy_roc_threshold)
+            )
+
+            # ✅ Sell ROC signal
+            df['Sell ROC'] = df['ROC'].apply(
+                lambda r: (1, round(r, 2), self.sell_roc_threshold)
+                if r < self.sell_roc_threshold else (0, round(r, 2), self.sell_roc_threshold)
+            )
+
+            # W-Bottom / M-Top
+            if indicators_config.get('w_bottoms'):
+                df['W-Bottom'], df['M-Top'] = self.identify_w_bottoms_m_tops(df, quote_deci)
+
+            # ✅ Buy/Sell Swing Integration
+            if indicators_config.get('swing_trading'):
+                volatility_mean = df['volatility'].mean()
+                swing_window = 30
+
+                df['rolling_high'] = df['close'].rolling(window=swing_window).max()
+                df['rolling_low'] = df['close'].rolling(window=swing_window).min()
+
+                def buy_swing_logic(row):
+                    if (
+                            row['close'] > row['50_sma'] and
+                            row['RSI'] >= self.rsi_buy and row['RSI'] <= self.rsi_sell and
+                            row['MACD'] > row['Signal_Line'] and
+                            row['close'] > row['200_sma'] and
+                            row['volatility'] > 0.8 * volatility_mean and
+                            row['close'] >= row['rolling_high']
+                    ):
+                        if debug:
+                            print(f"Buy Swing ✅ at {row.name}: close={row['close']}, high={row['rolling_high']}")
+                        return (1, round(row['close'], quote_deci), None)
+                    return (0, round(row['close'], quote_deci), None)
+
+                def sell_swing_logic(row):
+                    if (
+                            row['close'] < row['50_sma'] and
+                            row['RSI'] >= self.rsi_buy and row['RSI'] <= self.rsi_sell and
+                            row['MACD'] < row['Signal_Line'] and
+                            row['close'] < row['200_sma'] and
+                            row['volatility'] < 1.2 * volatility_mean and
+                            row['close'] <= row['rolling_low']
+                    ):
+                        if debug:
+                            print(f"Sell Swing ✅ at {row.name}: close={row['close']}, low={row['rolling_low']}")
+                        return (1, round(row['close'], quote_deci), None)
+                    return (0, round(row['close'], quote_deci), None)
+
+                df['Buy Swing'] = df.apply(buy_swing_logic, axis=1)
+                df['Sell Swing'] = df.apply(sell_swing_logic, axis=1)
 
             return df
 
@@ -149,94 +223,55 @@ class Indicators:
             self.log_manager.error(f"Error in calculate_indicators(): {e}", exc_info=True)
             return None
 
-    # def calculate_bollinger_bands(self, df, quote_deci,length=None, mult=None):
-    #     try:
-    #         if df.empty:
-    #             raise ValueError("Input DataFrame is empty")
-    #         length = length or self.bb_window
-    #         bb_std = mult or self.bb_std
-    #         # Calculate the Bollinger Bands
-    #         df['basis'] = df['close'].rolling(window=length).mean()  # Simple moving average
-    #         df['std'] = df['close'].rolling(window=length).std()  # Rolling standard deviation
-    #         df['upper'] = df['basis'] + df['std'] * bb_std
-    #         df['lower'] = df['basis'] - df['std'] * bb_std
-    #         df['band_ratio'] = df['upper'] / df['lower']
-    #
-    #         # Ensure no NaN values before applying conditions
-    #         df[['upper', 'lower', 'band_ratio']] = df[['upper', 'lower', 'band_ratio']].fillna(0.0)
-    #
-    #         # Apply structured tuple format (0/1 (0 does not meet the condition, 1 does meet the condition, computed_value,
-    #         # threshold)
-    #
-    #         df['prev_close'] = df['close'].shift(1)
-    #         df['prev_upper'] = df['upper'].shift(1)
-    #         df['prev_lower'] = df['lower'].shift(1)
-    #
-    #         df['Buy Touch'] = df.apply(
-    #             lambda row: (
-    #                 1, round(row['close'], quote_deci), round(row['upper'], quote_deci))
-    #             if row['prev_close'] <= row['prev_upper'] and row['close'] > row['upper'] else
-    #             (0, round(row['close'], quote_deci), round(row['upper'], quote_deci)), axis=1
-    #         )
-    #
-    #         df['Sell Touch'] = df.apply(
-    #             lambda row: (
-    #                 1, round(row['close'], quote_deci), round(row['lower'], quote_deci))
-    #             if row['prev_close'] >= row['prev_lower'] and row['close'] < row['lower'] else
-    #             (0, round(row['close'], quote_deci), round(row['lower'], quote_deci)), axis=1
-    #         )
-    #
-    #         df['Buy Ratio'] = df.apply(
-    #             lambda row: (
-    #                 1, round(row['band_ratio'], quote_deci), self.buy_ratio
-    #             ) if row['band_ratio'] > self.buy_ratio else (0, round(row['band_ratio'], quote_deci), self.buy_ratio),
-    #             axis=1
-    #         )
-    #
-    #         df['Sell Ratio'] = df.apply(
-    #             lambda row: (
-    #                 1, round(row['band_ratio'], quote_deci), self.sell_ratio
-    #             ) if row['band_ratio'] < self.sell_ratio else (0, round(row['band_ratio'], quote_deci), self.sell_ratio),
-    #             axis=1
-    #         )
-    #
-    #         # Drop NaN values after all calculations
-    #         df.dropna(subset=['basis', 'upper', 'lower', 'band_ratio'])
-    #
-    #         return df
-    #
-    #     except ValueError as e:
-    #         if "DataFrame is empty" in str(e):
-    #             return None
-    #     except Exception as e:
-    #         self.log_manager.error(f"Error in calculate_bollinger_bands(): {e}", exc_info=True)
-    #         return df
-
-    def swing_trading_signals(self, df):
+    def swing_trading_signals(self, df, quote_deci):
+        """
+        Detect Buy Swing and Sell Swing signals based on price trend, momentum, and volatility.
+        Returns the modified DataFrame with Buy Swing and Sell Swing columns updated.
+        """
         try:
-            # Compute overall volatility mean to prevent AttributeError
-            volatility_mean = df['volatility'].mean()
+            # ✅ Use existing volatility column or compute if missing
+            if 'volatility' not in df.columns or df['volatility'].isna().all():
+                df['volatility'] = df['close'].rolling(window=self.sma_volatility).std()
 
-            # Calculate Buy Swing conditions
+            volatility_mean = df['volatility'].mean()
+            atr_threshold = df['volatility'].median() * 0.03  # Dynamic threshold
+
+            # ✅ Add Buy Swing Signal
             df['Buy Swing'] = df.apply(
-                lambda row: (1, round(row['close'], 2), None)
-                if (row['close'] > row['50_sma'] and
-                    30 <= row['RSI'] <= 70 and
-                    row['MACD'] > row['Signal_Line'] and
-                    row['close'] > row['200_sma'] and
-                    row['volatility'] > volatility_mean * 0.8)  # Use precomputed mean
-                else (0, round(row['close'], 2), None), axis=1
+                lambda row: (
+                    1,
+                    round(row['close'], quote_deci),
+                    round(volatility_mean * 0.8, quote_deci)
+                ) if (
+                        row['close'] > row['50_sma'] and
+                        row['RSI'] > 50 and
+                        row['MACD'] > row['Signal_Line'] and
+                        row['volatility'] > volatility_mean * 0.8
+                ) else (
+                    0,
+                    round(row['close'], quote_deci),
+                    round(volatility_mean * 0.8, quote_deci)
+                ),
+                axis=1
             )
 
-            # Calculate Sell Swing conditions
+            # ✅ Add Sell Swing Signal
             df['Sell Swing'] = df.apply(
-                lambda row: (1, round(row['close'], 2), None)
-                if (row['close'] < row['50_sma'] and
-                    30 <= row['RSI'] <= 70 and
-                    row['MACD'] < row['Signal_Line'] and
-                    row['close'] < row['200_sma'] and
-                    row['volatility'] < volatility_mean * 1.2)  # Use precomputed mean
-                else (0, round(row['close'], 2), None), axis=1
+                lambda row: (
+                    1,
+                    round(row['close'], quote_deci),
+                    round(volatility_mean * 1.2, quote_deci)
+                ) if (
+                        row['close'] < row['50_sma'] and
+                        row['RSI'] < 50 and
+                        row['MACD'] < row['Signal_Line'] and
+                        row['volatility'] < volatility_mean * 1.2
+                ) else (
+                    0,
+                    round(row['close'], quote_deci),
+                    round(volatility_mean * 1.2, quote_deci)
+                ),
+                axis=1
             )
 
             return df
@@ -249,6 +284,9 @@ class Indicators:
         """
         Identify W-Bottom and M-Top patterns using dynamically determined parameters.
         """
+        #  debug flags
+        debug = False
+
         try:
             # ✅ Initialize W-Bottom & M-Top lists
             w_bottoms = [(0, 0.0, 0.0)] * len(df)  # Changed from None → 0.0
@@ -260,7 +298,7 @@ class Indicators:
             # ✅ Dynamic `min_price_change` using ATR
             df['atr'] = df['high'].rolling(self.atr_window).max() - df['low'].rolling(self.atr_window).min()
             df['atr'] = df['atr'].bfill().fillna(0.0)  # Ensure no NaN values
-            min_price_change = df['atr'].median() * 0.1  # 10% of median ATR
+            min_price_change = df['atr'].median() * 0.065  # 6.5% of median ATR
 
             # ✅ Dynamic rolling window for volume confirmation
             volatility = df['close'].pct_change().rolling(self.atr_window + 7).std()
@@ -278,12 +316,25 @@ class Indicators:
                         prev['low'] < prev['lower'] and
                         curr['lower'] < curr['low'] < next_row['low'] and
                         next_row['close'] > next_row['basis'] and
-                        next_row['volume'] > next_row['volume_mean']
+                        # next_row['volume'] > next_row['volume_mean'] #default
+                        next_row['volume'] > (1.025 * next_row['volume_mean'])  # debug
                 ):
+
+                    if debug:
+                        print(f"W-Bottom candidate at {df.index[i]}:")
+                        print(f"  prev.low={prev['low']}, prev.lower={prev['lower']}")
+                        print(f"  curr.low={curr['low']}, curr.lower={curr['lower']}")
+                        print(f"  next.close={next_row['close']}, next.basis={next_row['basis']}")
+                        print(f"  next.volume={next_row['volume']}, mean={next_row['volume_mean']}")
+
                     if last_w_bottom is None or (i - last_w_bottom) >= min_time_between_signals:
                         if last_w_bottom is None or abs(curr['low'] - df.iloc[last_w_bottom]['low']) / df.iloc[last_w_bottom][
                             'low'] > min_price_change:
-                            df.at[df.index[i], 'W-Bottom'] = (1, round(curr['low'], quote_deci), round(min_price_change, quote_deci)) # ✅ FIXED
+                            df.at[df.index[i], 'W-Bottom'] = (
+                                1,
+                                round(curr['low'], quote_deci),
+                                round(min_price_change, quote_deci)
+                            )
                             last_w_bottom = i
 
                 # ✅ M-Top Detection
@@ -293,13 +344,27 @@ class Indicators:
                         next_row['close'] < next_row['basis'] and
                         next_row['volume'] > next_row['volume_mean']
                 ):
+                    if debug:
+                        print(f"M-Top candidate at {df.index[i]}:")
+                        print(f"  prev.high={prev['high']}, prev.upper={prev['upper']}")
+                        print(f"  curr.high={curr['high']}, curr.upper={curr['upper']}")
+                        print(f"  next.close={next_row['close']}, next.basis={next_row['basis']}")
+                        print(f"  next.volume={next_row['volume']}, mean={next_row['volume_mean']}")
+
                     if last_m_top is None or (i - last_m_top) >= min_time_between_signals:
                         if last_m_top is None or abs(curr['high'] - df.iloc[last_m_top]['high']) / df.iloc[last_m_top][
                             'high'] > min_price_change:
-                            df.at[df.index[i], 'M-Top'] = (1, round(curr['high'], quote_deci), round(min_price_change, quote_deci))  # ✅ FIXED
+                            df.at[df.index[i], 'M-Top'] = (
+                                1,
+                                round(curr['high'], quote_deci),
+                                round(min_price_change, quote_deci)
+                            )
                             last_m_top = i
 
-            return w_bottoms, m_tops
+            print("Valid Bollinger Bands entries:", df[['upper', 'lower', 'basis']].dropna().shape[0])
+
+            return df['W-Bottom'].tolist(), df['M-Top'].tolist()
+
 
         except Exception as e:
             self.log_manager.error(f"Error in identify_w_bottoms_m_tops(): {e}", exc_info=True)
