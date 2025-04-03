@@ -34,10 +34,10 @@ class CentralConfig:
         self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_of_crypto_to_buy_more = None
         self._rsi_sell = self._sma_fast = self._sma_slow = self._sma = None
         self._buy_ratio = self._sell_ratio = self._sma_volatility = self._hodl = None
-        self._cxl_buy = self._cxl_sell = self._take_profit = None
+        self._cxl_buy = self._cxl_sell = self._take_profit = self._shill_coins = None
         self._stop_loss = self._csv_dir = self._web_url = self._sleep_time = None
         self._docker_staticip = self._tv_whitelist = self._coin_whitelist = None
-        self._taker_fee = self._maker_fee = self._trailing_stop = self._min_sell_value =None
+        self._trailing_stop = self._min_sell_value = None
         self._trailing_limit = self._db_pool_size = self._db_max_overflow = None
         self._sighook_api_key_path = self._websocket_api_key_path = None
         self._webhook_api_key_path = self._api_key = self._api_secret = None
@@ -118,15 +118,13 @@ class CentralConfig:
             "_sma_volatility": "SMA_VOLATILITY",
             "_api_url": "API_URL",
             "_pagekite_whitelist": "PAGEKITE_WHITELIST",
-            "_taker_fee": "TAKER_FEE",
-            "_maker_fee": "MAKER_FEE",
             "_trailing_stop": "TRAILING_STOP",
             "_trailing_limit": "TRAILING_LIMIT",
             "_api_key": "API_KEY",
             "_api_secret": "API_SECRET",
             "_passphrase": "PASSPHRASE",
             "_currency_pairs_ignored": "CURRENCY_PAIRS_IGNORED",
-            "_assets_ignored": "ASSETS_IGNORED",
+            "_shill_coins": "SHILL_COINS",
             "_sleep_time": 'SLEEP',
             "_web_url": 'WEB_URL',
         }
@@ -359,6 +357,10 @@ class CentralConfig:
         return self._hodl
 
     @property
+    def shill_coins(self):
+        return self._shill_coins
+
+    @property
     def currency_pairs_ignored(self):
         return self._currency_pairs_ignored
 
@@ -414,14 +416,6 @@ class CentralConfig:
     @property
     def trailing_limit(self):
         return self._trailing_limit
-
-    @property
-    def taker_fee(self):
-        return self._taker_fee
-
-    @property
-    def maker_fee(self):
-        return self._maker_fee
 
     @property
     def phone(self):

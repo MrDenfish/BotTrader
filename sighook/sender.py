@@ -5,7 +5,6 @@ import time
 from decimal import Decimal
 
 import aiohttp
-import ccxt.async_support as ccxt  # import ccxt as ccxt
 import pandas as pd
 
 from Api_manager.api_manager import ApiManager
@@ -18,6 +17,7 @@ from SharedDataManager.shared_data_manager import SharedDataManager
 from Shared_Utils.database_checker import DatabaseIntegrity
 from Shared_Utils.dates_and_times import DatesAndTimes
 from Shared_Utils.debugger import Debugging
+from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
@@ -32,7 +32,6 @@ from sighook.holdings_process_manager import HoldingsProcessor
 from sighook.indicators import Indicators
 from sighook.order_manager import OrderManager
 from sighook.portfolio_manager import PortfolioManager
-from sighook.profit_helper import ProfitHelper
 from sighook.profit_manager import ProfitabilityManager
 from sighook.trading_strategy import TradingStrategy
 
@@ -45,12 +44,15 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, log_mgr=None):
+    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, logger_manager=None):
         self.shared_data_manager = shared_data_mgr
         self.app_config = bot_config()
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
-        self.log_manager = log_mgr or shared_data_mgr.log_manager
+        # Logger injection
+        self.logger_manager = logger_manager
+        self.logger = logger_manager.get_logger('sighook_logger') if logger_manager else logging.getLogger('default')
+
         self.database_session_mngr = shared_data_mgr.database_session_manager
         if not self.app_config._is_loaded:
             self.app_config._load_configuration()  # Ensure config is fully loaded
@@ -83,22 +85,22 @@ class TradeBot:
     def csv_dir(self):
         return self._csv_dir
 
-    def setup_exchange(self):
-        self.exchange = getattr(ccxt, 'coinbase')
-        TradeBot._exchange_instance_count += 1
-        print(f"Exchange instance created. Total instances: {TradeBot._exchange_instance_count}")  # debug
-        return self.exchange({
-            'apiKey': self.cb_api.get('name'),
-            'secret': self.cb_api.get('privateKey'),
-            'enableRateLimit': True,
-            'verbose': False
-        })
+    # def setup_exchange(self):
+    #     self.exchange = getattr(ccxt, 'coinbase')
+    #     TradeBot._exchange_instance_count += 1
+    #     print(f"TradeBot Exchange instance created. Total instances: {TradeBot._exchange_instance_count}")  # debug
+    #     return self.exchange({
+    #         'apiKey': self.cb_api.get('name'),
+    #         'secret': self.cb_api.get('privateKey'),
+    #         'enableRateLimit': True,
+    #         'verbose': False
+    #     })
 
     async def async_init(self):
         """ Initialize bot components asynchronously, ensuring the database connection is ready first. """
 
         # ✅ Ensure SnapshotsManager is correctly retrieved as a singleton
-        self.snapshots_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.log_manager)
+        self.snapshots_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger_manager)
 
         # Initialize other components that may depend on the database
         await self.load_bot_components()
@@ -109,12 +111,6 @@ class TradeBot:
         self.order_management = order_management
 
         await self.load_initial_data()
-
-    def setup_logger(self):
-        """Initialize the logging manager."""
-        log_config = {"log_level": logging.INFO}
-        self.sighook_logger = LoggerManager(log_config)
-        self.log_manager = self.sighook_logger.get_logger('sighook_logger')
 
     async def refresh_trade_data(self):
         try:
@@ -132,10 +128,10 @@ class TradeBot:
 
             return market_data_snapshot, order_management_snapshot
         except ValueError as ve:
-            self.log_manager.error(f"Invalid snapshot data: {ve}", exc_info=True)
+            self.logger.error(f"❌Invalid snapshot data: {ve}", exc_info=True)
             return {}, {}
         except Exception as e:
-            self.log_manager.error(f"Error refreshing trade data: {e}", exc_info=True)
+            self.logger.error(f" ❌ Error refreshing trade data: {e}", exc_info=True)
             return {}, {}
 
     async def load_initial_data(self):
@@ -150,7 +146,7 @@ class TradeBot:
 
             market_data_manager = await MarketDataUpdater.get_instance(
                 ticker_manager=self.ticker_manager,
-                log_manager=self.log_manager
+                logger_manager=self.logger
             )
 
             # Use already initialized market_data and order_management
@@ -171,117 +167,113 @@ class TradeBot:
             self.market_manager.set_trade_parameters(self.start_time, self.market_data,self.order_management)
             self.webhook.set_trade_parameters(self.start_time, self.market_data, self.web_url) # SenderwebHook
 
+            self.profit_data_manager.set_trade_parameters(self.market_data, self.order_management, self.start_time)
             self.profit_manager.set_trade_parameters(self.start_time, self.market_data, self.web_url)
 
-            self.profit_data_manager.set_trade_parameters(self.market_data, self.order_management, self.start_time)
+
             self.trading_strategy.set_trade_parameters(self.start_time, self.market_data)
-            self.profit_helper.set_trade_parameters(self.start_time, self.market_data, self.web_url)
             self.database_session_mngr.set_trade_parameters(self.start_time, self.market_data, self.order_management)
             self.database_ops.set_trade_parameters(self.start_time, self.market_data, self.order_management)
             self.holdings_processor.set_trade_parameters(self.start_time, self.market_data, self.order_management)
 
-            await self.database_session_mngr.process_data(self.start_time)
+            await self.database_session_mngr.process_data()
 
             self.shared_utils_print.print_elapsed_time(self.start_time, 'Part Ie: Database Loading is complete, session closed')
 
         except Exception as e:
-            self.log_manager.error(f'Failed to initialize data on startup {e}', exc_info=True)
+            self.logger.error(f'❌ Failed to initialize data on startup {e}', exc_info=True)
         finally:
             await self.exchange.close()
             TradeBot._exchange_instance_count -= 1
             print(f"Exchange instance closed. Total instances: {TradeBot._exchange_instance_count}")
 
     async def load_bot_components(self):
-        """ Initialize all components required by the TradeBot. """
+        """Initialize all components required by the TradeBot."""
 
-        # Step 1: Initialize essential components first
-        log_config = {"log_level": logging.INFO}
-        self.sighook_logger = LoggerManager(log_config) # Assign the logger
-        self.log_manager = self.sighook_logger.get_logger('sighook_logger')
-        self.exchange = self.setup_exchange()
-        self.alerts = AlertSystem.get_instance(self.log_manager)
-        self.ccxt_api = ApiManager.get_instance(self.exchange, self.log_manager, self.alerts)
+        # Core Utilities
+        self.exchange_mgr = ExchangeManager.get_instance(self.cb_api)
+        self.exchange = self.exchange_mgr.get_exchange()
+        self.sharded_utils = PrintData.get_instance(self.logger)
+        self.shared_utils_print = PrintData.get_instance(self.logger)
+        self.shared_utils_debugger = Debugging()
+        self.shared_utils_precision = PrecisionUtils.get_instance(self.logger)
+        self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.logger)
+        self.shared_utils_utility = SharedUtility.get_instance(self.logger)
+
+        self.alerts = AlertSystem.get_instance(self.logger)
+        self.ccxt_api = ApiManager.get_instance(self.exchange, self.logger, self.alerts)
         self.async_func = AsyncFunctions()
 
-        self.sharded_utils = PrintData.get_instance(self.log_manager)
         self.db_tables = DatabaseTables()
 
-        # Step 2: Initialize database session manager with dependencies initialized in __main__ TradeBot
         self.database_session_mngr = self.shared_data_manager.database_session_manager
 
-        # Step 3: Initialize the remaining components that do not depend on DatabaseOpsManager
-        self.shared_utils_print = PrintData.get_instance(self.log_manager)
-        self.shared_utils_debugger = Debugging()
-        self.shared_utils_precision = PrecisionUtils.get_instance(self.log_manager)
-        self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.log_manager)
-        self.shared_utils_utility = SharedUtility.get_instance(self.log_manager)
-        self.indicators = Indicators(self.log_manager)
-        self.snapshot_manager = SnapshotsManager.get_instance( self.shared_data_manager, self.log_manager)
+        self.indicators = Indicators(self.logger)
+        self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger)
 
-        self.portfolio_manager = PortfolioManager.get_instance(self.log_manager, self.ccxt_api, self.exchange,
-                                                  self.max_concurrent_tasks, self.shared_utils_precision,
-                                                  self.shared_utils_datas_and_times, self.shared_utils_utility, )
+        self.portfolio_manager = PortfolioManager.get_instance(
+            self.logger, self.ccxt_api, self.exchange,
+            self.max_concurrent_tasks, self.shared_utils_precision,
+            self.shared_utils_datas_and_times, self.shared_utils_utility,
+        )
 
-        self.ticker_manager =  await TickerManager.get_instance(self.shared_utils_debugger, self.shared_utils_print,
-                                                       self.log_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api)
+        self.ticker_manager = await TickerManager.get_instance(
+            self.app_config, self.shared_utils_debugger, self.shared_utils_print,
+            self.logger, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api
+        )
 
-        self.database_utility = DatabaseIntegrity.get_instance( self.app_config, self.db_tables, self.log_manager)
+        self.database_utility = DatabaseIntegrity.get_instance(self.app_config, self.db_tables, self.logger)
 
-        # Step 4: Now initialize csv_manager and profit_extras so that they can be passed to DatabaseOpsManager
+        self.profit_data_manager = ProfitDataManager.get_instance(
+            self.shared_utils_precision, self.shared_utils_print, self.logger
+        )
 
-        self.profit_data_manager = ProfitDataManager.get_instance(self.shared_utils_precision, self.shared_utils_print,
-                                                       self.log_manager)
+        self.holdings_processor = HoldingsProcessor.get_instance(self.logger, self.profit_data_manager)
 
-        # Step 5: Initialize holdings_processor
-        self.holdings_processor = HoldingsProcessor.get_instance(self.log_manager, self.profit_data_manager)
-
-        # Step 6: Initialize DatabaseOpsManager with all dependencies
         self.database_ops = DatabaseOpsManager.get_instance(
-            self.exchange, self.ccxt_api, self.log_manager, self.profit_extras, self.portfolio_manager,
+            self.exchange, self.ccxt_api, self.logger, self.profit_extras, self.portfolio_manager,
             self.holdings_processor, self.database_session_mngr.database, self.db_tables, self.profit_data_manager,
-            self.snapshots_manager)
+            self.snapshot_manager
+        )
 
-        # Step 7: Now that DatabaseOpsManager is initialized, update the placeholders in csv_manager and profit_extras
-
-        # Step 8: Update DatabaseSessionManager with initialized components
         self.database_session_mngr.database_ops = self.database_ops
         self.database_session_mngr.profit_extras = self.profit_extras
 
-        # Step 9: Initialize remaining components that depend on DatabaseOps and other managers
-        #self.db_initializer = DatabaseInitializer(self.database_session_mngr)
-        self.webhook = SenderWebhook.get_instance(self.exchange, self.alerts, self.log_manager, self.shared_utils_utility)
+        self.webhook = SenderWebhook.get_instance(
+            self.exchange, self.alerts, self.logger, self.shared_utils_utility
+        )
 
-        self.trading_strategy = TradingStrategy.get_instance(self.webhook, self.ticker_manager, self.exchange, self.alerts,
-                                                self.log_manager, self.ccxt_api, None, self.max_concurrent_tasks,
-                                                self.database_session_mngr, self.shared_utils_print, self.db_tables,
-                                                self.shared_utils_precision)
+        self.trading_strategy = TradingStrategy.get_instance(
+            self.webhook, self.ticker_manager, self.exchange, self.alerts,
+            self.logger, self.ccxt_api, None, self.max_concurrent_tasks,
+            self.database_session_mngr, self.shared_utils_print, self.db_tables,
+            self.shared_utils_precision
+        )
 
-        self.profit_helper = ProfitHelper.get_instance(self.portfolio_manager, self.ticker_manager,
-                                                      self.database_session_mngr, self.log_manager, self.profit_data_manager)
+        self.order_manager = OrderManager.get_instance(
+            self.trading_strategy, self.ticker_manager, self.exchange,
+            self.webhook, self.alerts, self.logger, self.ccxt_api,
+            self.shared_utils_precision, self.max_concurrent_tasks
+        )
 
-        self.order_manager = OrderManager.get_instance(self.trading_strategy, self.ticker_manager, self.exchange,
-                                                      self.webhook, self.alerts, self.log_manager, self.ccxt_api,
-                                                       self.profit_helper, self.shared_utils_precision,
-                                                       self.max_concurrent_tasks)
+        self.market_manager = MarketManager.get_instance(
+            self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
+            self.logger, self.ccxt_api, self.ticker_manager, self.portfolio_manager,
+            self.max_concurrent_tasks, self.database_session_mngr.database, self.db_tables
+        )
 
+        self.market_data_manager = await MarketDataUpdater.get_instance(
+            ticker_manager=self.ticker_manager,
+            logger_manager=self.logger
+        )
 
-        # Step 11: Initialize MarketManager
-        self.market_manager = MarketManager.get_instance(self.tradebot, self.exchange, self.order_manager,
-                                                         self.trading_strategy, self.log_manager, self.ccxt_api,
-                                                         self.ticker_manager, self.portfolio_manager,
-                                                         self.max_concurrent_tasks, self.database_session_mngr.database,
-                                                         self.db_tables)
+        self.profit_manager = ProfitabilityManager.get_instance(
+            self.exchange, self.ccxt_api, self.portfolio_manager, self.holdings_processor,
+            self.database_ops, self.order_manager, self.trading_strategy,
+            self.profit_data_manager, self.logger
+        )
 
-        self.market_data_manager = await MarketDataUpdater.get_instance(ticker_manager=self.ticker_manager,
-                                                                  log_manager=self.log_manager)
-
-        # Step 12: Initialize ProfitDataManager last, after all other dependencies are set
-        self.profit_manager = ProfitabilityManager.get_instance(self.exchange, self.ccxt_api, self.portfolio_manager,
-                                                   self.holdings_processor, self.database_ops, self.order_manager,
-                                                   self.trading_strategy, self.profit_helper, self.profit_extras,
-                                                   self.log_manager)
-
-        print(f"TradeBot:load_bot_components() loaded successfully.")
+        print("✅ TradeBot:load_bot_components() completed successfully.")
 
     async def start(self):
         """ Start the bot after initialization. """
@@ -290,7 +282,7 @@ class TradeBot:
                 await self.async_init()
                 await self.run_bot()
         except Exception as e:
-            self.log_manager.error(f"Failed to start the bot: {e}", exc_info=True)
+            self.logger.error(f"❌Failed to start the bot: {e}", exc_info=True)
         finally:
             if self.database_session_mngr and self.database_session_mngr.database.is_connected:
                 await self.database_session_mngr.disconnect()
@@ -439,7 +431,7 @@ class TradeBot:
         except asyncio.CancelledError:
             self.save_data_on_exit(profit_data)
         except Exception as e:
-            self.log_manager.error(f"Error in main loop: {e}", exc_info=True)
+            self.logger.error(f"❌Error in main loop: {e}", exc_info=True)
             await self.exchange.close()  # close the exchange connection
             TradeBot._exchange_instance_count -= 1  # debug
         finally:

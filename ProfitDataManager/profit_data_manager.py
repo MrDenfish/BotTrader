@@ -1,22 +1,25 @@
 
 from decimal import Decimal
-from Config.config_manager import CentralConfig as config
+from inspect import stack  # debugging
+
 import pandas as pd
-from inspect import stack # debugging
+
+from Config.config_manager import CentralConfig as config
+from webhook.webhook_validate_orders import OrderData
 
 
 class ProfitDataManager:
     _instance = None
     @classmethod
-    def get_instance(cls, shared_utils_precision, shared_utils_print_data, log_manager):
+    def get_instance(cls, shared_utils_precision, shared_utils_print_data, logger_manager):
         """
         Singleton method to ensure only one instance of ProfitDataManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(shared_utils_precision, shared_utils_print_data, log_manager)
+            cls._instance = cls(shared_utils_precision, shared_utils_print_data, logger_manager)
         return cls._instance
 
-    def __init__(self, shared_utils_precision, shared_utils_print_data, log_manager):
+    def __init__(self, shared_utils_precision, shared_utils_print_data, logger_manager):
         self.config = config()
         self._hodl = self.config.hodl
         self._stop_loss = Decimal(self.config.stop_loss)
@@ -25,7 +28,7 @@ class ProfitDataManager:
         self.market_cache = None
         self.min_volume = None
         self.last_ticker_update = None
-        self.log_manager = log_manager
+        self.logger = logger_manager.get_logger('webhook_logger')
         self.shared_utils_print_data = shared_utils_print_data
         self.shared_utils_precision = shared_utils_precision
         self.start_time = None
@@ -57,19 +60,19 @@ class ProfitDataManager:
             self.min_volume = Decimal(avg_quote_volume) if avg_quote_volume else Decimal('0')
 
             if self.ticker_cache.empty: # list is empty
-                self.log_manager.warning("Ticker cache is empty. Defaulting to empty list.")
+                self.logger.warning("Ticker cache is empty. Defaulting to empty list.")
             if not self.market_cache_vol: # list is empty
-                self.log_manager.warning("Market cache volume is empty. Defaulting to empty list.")
+                self.logger.warning("Market cache volume is empty. Defaulting to empty list.")
             if not avg_quote_volume:
-                self.log_manager.warning("Average quote volume is missing. Defaulting to 0.")
+                self.logger.warning("Average quote volume is missing. Defaulting to 0.")
 
-            self.log_manager.info("Trade parameters set successfully.")
+            self.logger.info("Trade parameters set successfully.")
 
         except Exception as e:
-            self.log_manager.error(f"Error setting trade parameters: {e}", exc_info=True)
+            self.logger.error(f"❌ Error setting trade parameters: {e}", exc_info=True)
             raise
 
-    async def _calculate_profitability(self, symbol, required_prices, current_prices, usd_pairs):
+    async def calculate_profitability(self, symbol, required_prices, current_prices, usd_pairs):
         """
         Calculate profitability for a given asset using current balances and market prices.
         Returns a consolidated profit data dictionary.
@@ -91,15 +94,15 @@ class ProfitDataManager:
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(ticker, usd_pairs)
 
             # ✅ Convert Values Once
-            balance = Decimal(required_prices.get('balance', 0))
+            asset_balance = Decimal(required_prices.get('asset_balance', 0))
             avg_price = Decimal(required_prices.get('avg_price', 0))
             cost_basis = Decimal(required_prices.get('cost_basis', 0))
 
             # ✅ Guard Against Cost Basis Errors
-            per_unit_cost_basis = cost_basis / balance if balance > 0 else Decimal(0)
+            per_unit_cost_basis = cost_basis / asset_balance if asset_balance > 0 else Decimal(0)
 
             # ✅ Calculate Profit
-            current_value = balance * current_price
+            current_value = asset_balance * current_price
             profit = current_value - cost_basis
             profit_percentage = (profit / cost_basis) * 100 if cost_basis > 0 else Decimal(0)
 
@@ -111,7 +114,7 @@ class ProfitDataManager:
             # ✅ Construct Profit Data
             profit_data = {
                 'asset': asset,
-                '   balance': round(balance, base_deci),
+                '   balance': round(asset_balance, base_deci),
                 '   price': round(current_price, quote_deci),
                 '   value': current_value,
                 'cost_basis': round(cost_basis, quote_deci),
@@ -124,7 +127,7 @@ class ProfitDataManager:
             return profit_data
 
         except Exception as e:
-            self.log_manager.error(f"Error calculating profitability for {symbol}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error calculating profitability for {symbol}: {e}", exc_info=True)
             return None
 
     def consolidate_profit_data(self, profit_data_list):
@@ -150,10 +153,10 @@ class ProfitDataManager:
             return profit_df
 
         except Exception as e:
-            print(f"Error consolidating profit data: {e}")
+            print(f"❌ Error consolidating profit data: {e}")
             return None
 
-    async def calculate_tp_sl(self, order_price, base_deci, quote_deci):
+    async def calculate_tp_sl(self, order_data: OrderData):
         """
         Calculate Take Profit (TP) and Stop Loss (SL) prices with proper precision.
 
@@ -166,13 +169,31 @@ class ProfitDataManager:
             tuple: (take_profit, stop_loss) adjusted to correct precision.
         """
         try:
-            tp = order_price * (1 + self.take_profit)
-            sl = order_price * (1 + self.stop_loss)
+            fee_multiplier = Decimal("1.0") + self.take_profit + order_data.maker_fee
+            tp = order_data.adjusted_price * fee_multiplier
+            fee_multiplier = Decimal("1.0") + self.stop_loss - order_data.maker_fee
+            sl = order_data.adjusted_price * fee_multiplier
 
-            adjusted_tp = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, tp, convert='quote')
-            adjusted_sl = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, sl, convert='quote')
+            adjusted_tp = self.shared_utils_precision.adjust_precision(order_data.base_decimal, order_data.quote_decimal, tp, convert='quote')
+            adjusted_sl = self.shared_utils_precision.adjust_precision(order_data.base_decimal, order_data.quote_decimal, sl, convert='quote')
 
             return adjusted_tp, adjusted_sl
         except Exception as e:
-            self.log_manager.error(f"⚠️ Error in calculate_tp_sl: {e}", exc_info=True)
+            self.logger.error(f"❌️ Error in calculate_tp_sl: {e}", exc_info=True)
             return None, None
+
+    def should_place_sell_order(self, holding, current_price):
+        """ PART VI: Profitability Analysis and Order Generation used in Sighook operates directly on a holding object (an instance from
+        the Holdings table) and the current_market_price,
+        making decisions based on the latest available data.  unrealized profit and its percentage are calculated
+        dynamically within the function, ensuring decisions are based on real-time data."""
+        try:
+            if not holding or not current_price:
+                return False
+            unrealized_profit_pct = holding.get('unrealized_profit_pct', 0)
+
+            # Decide to sell based on the calculated unrealized profit percentage
+            return unrealized_profit_pct > self._take_profit or unrealized_profit_pct < self._stop_loss
+        except Exception as e:
+            self.logger.error(f"❌ Error in should_place_sell_order: {e}", exc_info=True)
+            return False

@@ -22,13 +22,14 @@ from webhook.listener import WebhookListener
 shutdown_event = asyncio.Event()
 
 
-async def setup_logger(logger_name='webhook_logger'):
+async def setup_logger(logger_name='webhook_logger') -> LoggerManager:
     log_config = {"log_level": logging.INFO}
     logger_mgr = LoggerManager(log_config)
-    loggr = logger_mgr.get_logger(logger_name)
-    if logger is None:
-        raise ValueError(f"Logger '{logger_name}' was not initialized. Check LoggerManager.setup_logging().")
-    return logger
+    _ = logger_mgr.get_logger(logger_name)  # Optionally trigger initialization
+    return logger_mgr  # ✅ Return only the manager
+
+
+
 
 
 async def load_config():
@@ -43,14 +44,15 @@ async def init_shared_data(log_manager):
     return shared_data_manager
 
 
-async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, log_manager, startup_event):
+async def run_sighook(shared_data_manager, rest_client, portfolio_uuid, log_manager, startup_event):
     await startup_event.wait()  # ⏳ Wait until webhook sets the flag
 
     trade_bot = TradeBot(
+
         shared_data_mgr=shared_data_manager,
         rest_client=rest_client,
         portfolio_uuid=portfolio_uuid,
-        log_mgr=log_manager
+        logger_manager=log_manager
     )
     await trade_bot.async_init()
 
@@ -79,8 +81,10 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
         listener.portfolio_uuid = config.portfolio_uuid
 
         if trade_bot is None:
-            trade_bot = TradeBot(shared_data_mgr=shared_data_manager, rest_client=listener.rest_client, portfolio_uuid=listener.portfolio_uuid,
-                                 log_mgr=log_manager)
+            trade_bot = TradeBot(shared_data_mgr=shared_data_manager,
+                                 rest_client=listener.rest_client,
+                                 portfolio_uuid=listener.portfolio_uuid,
+                                 logger_manager=log_manager)
             await trade_bot.load_bot_components()
 
         listener.market_manager = trade_bot.market_manager
@@ -98,7 +102,7 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
             websocket_manager=None,
             exchange=listener.exchange,
             ccxt_api=listener.ccxt_api,
-            log_manager=listener.log_manager,
+            logger_manager=listener.logger,
             coinbase_api=listener.coinbase_api,
             profit_data_manager=listener.profit_data_manager,
             order_type_manager=listener.order_type_manager,
@@ -130,7 +134,9 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', config.webhook_port)
         await site.start()
-        log_manager.info(f'Webhook {config.program_version} is Listening on port {config.webhook_port}...')
+        log_manager.get_logger("webhook_logger").info(
+            f'Webhook {config.program_version} is Listening on port {config.webhook_port}...'
+        )
 
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -164,39 +170,37 @@ async def graceful_shutdown(listener, runner):
 async def main():
     import argparse
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
-    parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both', help="Which components to run")
+    parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both')
     args = parser.parse_args()
 
     config = await load_config()
 
     if args.run == 'sighook':
-        log_manager = await setup_logger('sighook_logger')
-        shared_data_manager = await init_shared_data(log_manager)
-        await run_sighook(config, shared_data_manager, config.rest_client, config.portfolio_uuid, log_manager)
+        sighook_logger_mgr = await setup_logger('sighook_logger')
+
+        shared_data_manager = await init_shared_data(sighook_logger_mgr)
+        await run_sighook(shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger_mgr)
 
     elif args.run == 'webhook':
-        log_manager = await setup_logger('webhook_logger')
-        shared_data_manager = await init_shared_data(log_manager)
-        await run_webhook(config, shared_data_manager, log_manager)
+        webhook_logger_mgr, webhook_logger = await setup_logger('webhook_logger')
+        shared_data_manager = await init_shared_data(webhook_logger)
+        await run_webhook(config, shared_data_manager, webhook_logger_mgr)
 
     elif args.run == 'both':
-        # � New logic to launch both sighook and webhook concurrently
-        sighook_logger = await setup_logger('sighook_logger')
-        shared_data_manager = await init_shared_data(sighook_logger)
+        sighook_logger_mgr = await setup_logger('sighook_logger')
+        shared_data_manager = await init_shared_data(sighook_logger_mgr)
 
-        # Shared event to coordinate when sighook should begin
         startup_event = asyncio.Event()
 
-        # Launch sighook in the background
+        # Launch sighook in background
         sighook_task = asyncio.create_task(
-            run_sighook(config, shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger, startup_event)
+            run_sighook(shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger_mgr, startup_event)
         )
 
-        # Now launch webhook (this will call startup_event.set() when ready)
-        webhook_logger = await setup_logger('webhook_logger')
-        await run_webhook(config, shared_data_manager, webhook_logger, startup_event)
+        # Launch webhook
+        webhook_logger_mgr = await setup_logger('webhook_logger')
+        await run_webhook(config, shared_data_manager, webhook_logger_mgr, startup_event)
 
-        # Await sighook shutdown
         await sighook_task
 
 

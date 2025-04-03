@@ -1,6 +1,7 @@
 
-import aiosqlite
 import datetime
+
+import aiosqlite
 
 
 class DatabaseIntegrity:
@@ -34,7 +35,7 @@ class DatabaseIntegrity:
                     print(f"Database integrity check failed: {result[0]}")
                     return False
         except Exception as e:
-            print(f"Database error during integrity check: {e}")
+            print(f"❌ Database error during integrity check: {e}")
             return False
 
     async def conditional_database_check(self, db_path):

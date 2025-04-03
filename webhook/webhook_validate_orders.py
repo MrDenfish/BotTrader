@@ -121,22 +121,24 @@ class ValidateOrders:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager, order_book,shared_utils_precision):
+    def get_instance(cls, logger_manager, order_book, shared_utils_precision):
         """
         Singleton method to ensure only one instance of ValidateOrders exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logmanager, order_book,shared_utils_precision)
+            cls._instance = cls(logger_manager, order_book, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, logmanager, order_book, shared_utils_precision):
+    def __init__(self, logger_manager, order_book, shared_utils_precision):
         """
         Initializes the ValidateOrders instance.
         """
         self.config = Config()
         self.order_book = order_book
         self.shared_utils_precision = shared_utils_precision
-        self.log_manager = logmanager
+        self.logger = logger_manager.get_logger("webhook_logger")
+
+
 
         # Only store necessary attributes
         self._min_sell_value = self.config.min_sell_value
@@ -166,9 +168,6 @@ class ValidateOrders:
         return self._version
 
     def build_order_data_from_validation_result(self, validation_result: dict, order_book_details: dict, precision_data: tuple) -> OrderData:
-        """
-        Converts a validated dictionary response into a structured OrderData instance.
-        """
         details = validation_result.get("details", {})
         base_deci, quote_deci, *_ = precision_data
 
@@ -178,40 +177,40 @@ class ValidateOrders:
 
         return OrderData(
             source=details.get("source", "webhook"),
-            order_id=details.get("order_id", ""),  # Or None if you want
+            order_id=details.get("order_id", ""),
             trading_pair=trading_pair,
             side=details.get("side", "buy"),
             type=details.get("Order Type", "limit").lower(),
-            order_amount=Decimal(details.get("order_amount", 0)),
-            price=Decimal("0"),  # Price may be set later
-            cost_basis=Decimal("0"),  # Fill in if available
-            limit_price=Decimal(details.get("limit_price", 0)),
-            filled_price=Decimal(details.get("average_price", 0)),
+            order_amount=self.shared_utils_precision.safe_decimal(details.get("order_amount")),
+            price=Decimal("0"),
+            cost_basis=Decimal("0"),
+            limit_price=self.shared_utils_precision.safe_decimal(details.get("limit_price")),
+            filled_price=self.shared_utils_precision.safe_decimal(details.get("average_price")),
             base_currency=base_currency,
             quote_currency=quote_currency,
-            usd_avail_balance=Decimal(details.get("usd_avail_balance", 0)),
-            usd_balance=Decimal(details.get("usd_balance", 0)),
-            base_avail_balance=Decimal(details.get("base_balance", 0)),
-            total_balance_crypto=Decimal(details.get("available_to_trade_crypto", 0)),  # fallback
-            available_to_trade_crypto=Decimal(details.get("available_to_trade_crypto", 0)),
+            usd_avail_balance=self.shared_utils_precision.safe_decimal(details.get("usd_avail_balance")),
+            usd_balance=self.shared_utils_precision.safe_decimal(details.get("usd_balance")),
+            base_avail_balance=self.shared_utils_precision.safe_decimal(details.get("base_balance")),
+            total_balance_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
+            available_to_trade_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
             base_decimal=details.get("base_decimal", base_deci),
             quote_decimal=details.get("quote_decimal", quote_deci),
-            highest_bid=Decimal(order_book_details.get("highest_bid", 0)),
-            lowest_ask=Decimal(order_book_details.get("lowest_ask", 0)),
-            maker_fee=Decimal(details.get("maker_fee", "0")),
-            taker_fee=Decimal(details.get("taker_fee", "0")),
-            spread=Decimal(order_book_details.get("spread", 0)),
+            highest_bid=self.shared_utils_precision.safe_decimal(order_book_details.get("highest_bid")),
+            lowest_ask=self.shared_utils_precision.safe_decimal(order_book_details.get("lowest_ask")),
+            maker_fee=self.shared_utils_precision.safe_decimal(details.get("maker_fee")),
+            taker_fee=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
+            spread=self.shared_utils_precision.safe_decimal(order_book_details.get("spread")),
             open_orders=details.get("Open Orders", pd.DataFrame()),
             status=details.get("status", "UNKNOWN"),
-            average_price=Decimal(details.get("average_price", 0)) if details.get("average_price") else None,
-            adjusted_price=Decimal(details.get("adjusted_price", 0)) if details.get("adjusted_price") else None,
-            adjusted_size=Decimal(details.get("adjusted_size", 0)) if details.get("adjusted_size") else None,
-            stop_loss_price=Decimal(details.get("stop_loss_price", 0)) if details.get("stop_loss_price") else None,
-            take_profit_price=Decimal(details.get("take_profit_price", 0)) if details.get("take_profit_price") else None,
+            average_price=self.shared_utils_precision.safe_decimal(details.get("average_price")) if details.get("average_price") else None,
+            adjusted_price=self.shared_utils_precision.safe_decimal(details.get("adjusted_price")) if details.get("adjusted_price") else None,
+            adjusted_size=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) if details.get("adjusted_size") else None,
+            stop_loss_price=self.shared_utils_precision.safe_decimal(details.get("stop_loss_price")) if details.get("stop_loss_price") else None,
+            take_profit_price=self.shared_utils_precision.safe_decimal(details.get("take_profit_price")) if details.get(
+                "take_profit_price") else None,
         )
 
-    @staticmethod
-    def validate_order_conditions(order_details: OrderData, open_orders):
+    def validate_order_conditions(self, order_details: OrderData, open_orders):
         """
         Validates order conditions based on account balances and active open orders.
         called from:
@@ -275,7 +274,10 @@ class ValidateOrders:
                     response_msg["error"] = f"INSUFFICIENT_BASE balance to sell {symbol}."
                     response_msg["code"] = "414"
                     return response_msg
-
+                if side == 'sell' and order_details.symbol in self.hodl:
+                    response_msg["error"] = f"HODLing {symbol} sell order rejected."
+                    response_msg["code"] = "424"
+                    return response_msg
                 response_msg["is_valid"] = True
                 response_msg["message"] = "Order validated successfully."
                 response_msg["code"] = "200"
@@ -294,7 +296,7 @@ class ValidateOrders:
             return response_msg
 
         except KeyError as e:
-            response_msg["error"] = f"KEY_ERROR: Missing key in order_details or open_orders: {e}"
+            response_msg["error"] = f" ❌ KEY_ERROR: Missing key in order_details or open_orders: {e}"
             response_msg["code"] = "500"
             return response_msg
 
@@ -388,7 +390,7 @@ class ValidateOrders:
                     valid = True
                     condition = '✅ Buy order conditions met.'
                 elif adjusted_usd < order_amount and order_amount > self.min_order_amount:
-                    self.log_manager.info(
+                    self.logger.info(
                         f"⚠️ Order reduced: USD available ${adjusted_usd} < order amount ${order_amount} for {trading_pair}."
                     )
                     valid = True
@@ -401,12 +403,12 @@ class ValidateOrders:
                     condition = f'⚠️ {trading_pair} has insufficient balance to sell.'
 
             if not valid:
-                self.log_manager.info(f'❌ Order validation failed for {trading_pair}: {condition}')
+                self.logger.info(f'❌ Order validation failed for {trading_pair}: {condition}')
 
             return base_avail, base_bal_value, valid, condition
 
         except Exception as e:
-            self.log_manager.error(f'⚠️ validate_orders error: {e}', exc_info=True)
+            self.logger.error(f'❌️ validate_orders error: {e}', exc_info=True)
             return None, None, False, "Exception occurred during validation."
 
     def fetch_and_validate_rules(self, order_data: OrderData) -> dict:
@@ -444,6 +446,8 @@ class ValidateOrders:
                     "base_decimal": order_data.base_decimal,
                     "order_amount": order_data.order_amount,
                     "sell_amount": order_data.available_to_trade_crypto,
+                    "maker_fee": order_data.maker_fee,
+                    "taker_fee": order_data.taker_fee,
                     "Open Orders": open_orders,
                 }
             }
@@ -476,7 +480,7 @@ class ValidateOrders:
                     matching_order = open_orders[open_orders['product_id'] == order_data.trading_pair]
                     order_side = matching_order.iloc[0]['side'] if not matching_order.empty else 'Unknown'
 
-                    self.log_manager.info(
+                    self.logger.info(
                         f"⚠️ Order blocked: {order_data.side} order for {order_data.trading_pair} conflicts with existing {order_side} order."
                     )
                     response_msg.update(
@@ -489,7 +493,7 @@ class ValidateOrders:
                     )
                     return response_msg
 
-                self.log_manager.info(
+                self.logger.info(
                     f"⚠️ Insufficient balance for {order_data.trading_pair} {order_data.side} order. Balance: {base_balance}"
                 )
                 response_msg.update(
@@ -508,7 +512,7 @@ class ValidateOrders:
             return response_msg
 
         except Exception as e:
-            self.log_manager.error(f"⚠️ fetch_and_validate_rules() error: {e}", exc_info=True)
+            self.logger.error(f"❌ fetch_and_validate_rules() error: {e}", exc_info=True)
             return {
                 "is_valid": False,
                 "error": f"Unexpected error: {e}",
@@ -551,7 +555,7 @@ class ValidateOrders:
             ]
             missing_fields = [field for field in required_fields if order_data.get(field) is None]
             if missing_fields:
-                self.log_manager.error(f"⚠️ Missing required fields: {missing_fields}")
+                self.logger.error(f"⚠️ Missing required fields: {missing_fields}")
                 response_msg['details']['condition'] = f"Missing fields: {missing_fields}"
                 return order_data, response_msg
 
@@ -587,7 +591,7 @@ class ValidateOrders:
             if side == 'sell':
                 adjusted_amount = amount  # No need to reduce amount — fee comes from USD proceeds
                 if adjusted_amount > available_crypto:
-                    self.log_manager.info(
+                    self.logger.info(
                         f"⚠️ Insufficient {symbol} for SELL (after fee). Trying {adjusted_amount}, Available {available_crypto}"
                     )
                     response_msg['error'] = "Insufficient balance for SELL order"
@@ -598,7 +602,7 @@ class ValidateOrders:
                 # Increase required USD to account for maker fee
                 total_cost_with_fee = (amount * price) * (Decimal('1') + maker_fee_rate)
                 if total_cost_with_fee > usd_available:
-                    self.log_manager.info(f"⚠️ Insufficient USD for BUY (incl. fee): Required {total_cost_with_fee}, Available {usd_available}")
+                    self.logger.info(f"⚠️ Insufficient USD for BUY (incl. fee): Required {total_cost_with_fee}, Available {usd_available}")
                     response_msg['error'] = "Insufficient USD for BUY order (incl. fee)"
                     response_msg['details']['condition'] = f"Required {total_cost_with_fee}, Available {usd_available}"
                     return order_data, response_msg
@@ -635,355 +639,7 @@ class ValidateOrders:
             return order_data, response_msg
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in validate_and_adjust_order: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in validate_and_adjust_order: {e}", exc_info=True)
             response_msg['error'] = "Error in validate_and_adjust_order"
             response_msg['details']['condition'] = str(e)
             return order_data, response_msg
-
-    # def _initialize_validation_response(self, data, base_balance, base_value_usd, condition):
-    #     return {
-    #         "is_valid": False,
-    #         "error": None,
-    #         "code": "200",
-    #         "message": f"Order validation failed for {data.get('trading_pair')}",
-    #         "details": {
-    #             "Order Id": None,
-    #             "asset": data.get("base_currency"),
-    #             "trading_pair": data.get("trading_pair"),
-    #             "side": data.get("side"),
-    #             "base_balance": base_balance,
-    #             "base_bal_value": base_value_usd,
-    #             "base_avail_to_trade": data.get('available_to_trade_crypto', ''),
-    #             "available_to_trade_crypto": data.get('available_to_trade_crypto', ''),
-    #             "usd_avail_balance": data.get('usd_avail_balance', ''),
-    #             "condition": condition,
-    #             "quote_decimal": data.get('quote_decimal', ''),
-    #             "base_decimal": data.get('base_decimal', ''),
-    #             "order_amount": data.get('order_amount'),
-    #             "sell_amount": data.get('available_to_trade_crypto', ''),
-    #             "Open Orders": data.get('open_orders', pd.DataFrame()),
-    #         }
-    #     }
-
-    # def _handle_missing_base_balance(self, data, response):
-    #     open_orders = data.get('open_orders', pd.DataFrame())
-    #
-    #     if isinstance(open_orders, pd.DataFrame) and not open_orders.empty:
-    #         open_orders = open_orders.copy()
-    #         open_orders['product_id'] = open_orders['info'].apply(
-    #             lambda x: x.get('product_id', '').replace('-', '/') if isinstance(x, dict) else None
-    #         )
-    #         matching = open_orders[open_orders['product_id'] == data['trading_pair']]
-    #         side = matching.iloc[0]['side'] if not matching.empty else 'Unknown'
-    #
-    #         self.log_manager.info(
-    #             f"{data['side']} order blocked for {data['trading_pair']}, open order exists on side {side}."
-    #         )
-    #         response.update(
-    #             {
-    #                 "is_valid": False,
-    #                 "error": f"Open order exists for {data['trading_pair']} on side {side}.",
-    #                 "code": "416",
-    #             }
-    #         )
-    #         response["details"]["Open Orders"] = side
-    #     else:
-    #         side = data.get("side", "unknown")
-    #         self.log_manager.info(f"{side} order not valid. {data['trading_pair']} balance is {data.get('base_balance')}")
-    #         response.update(
-    #             {
-    #                 "is_valid": False,
-    #                 "error": f"Insufficient balance to place {side} order.",
-    #                 "code": "413" if side == "buy" else "414"
-    #             }
-    #         )
-    #
-    #     return response
-
-    # def fetch_and_validate_rules(self, validate_data: dict) -> dict:
-    #     """
-    #     Validates whether an order should be placed based on balance, trading rules, and existing open orders.
-    #
-    #     Args:
-    #         validate_data (dict): Contains normalized order information.
-    #
-    #     Returns:
-    #         dict: Structured response indicating if order is valid or rejected with reason.
-    #     """
-    #     try:
-    #
-    #         base_balance, base_value_usd, is_valid_order, condition = self.validate_orders(validate_data)
-    #
-    #         response = self._initialize_validation_response(validate_data, base_balance, base_value_usd, condition)
-    #
-    #         # ✅ Immediate return if validation passes
-    #         if is_valid_order:
-    #             response["is_valid"] = True
-    #             response["message"] = f"✅ Order validation successful for {validate_data.get('trading_pair')}."
-    #             return response
-    #
-    #         # ❌ If base balance exists but value is too high for a buy
-    #         if base_value_usd is not None and base_value_usd > Decimal("1.0"):
-    #             response.update(
-    #                 {
-    #                     "is_valid": False,
-    #                     "error": f"Base balance value {base_value_usd} exceeds limit.",
-    #                     "code": "415"
-    #                 }
-    #             )
-    #             return response
-    #
-    #         # ❌ If base balance is 0 or None
-    #         if base_balance is None or base_balance == 0.0:
-    #             return self._handle_missing_base_balance(validate_data, response)
-    #
-    #         # ❌ Catch-all fallback for unhandled invalid cases
-    #         response["is_valid"] = False
-    #         response["error"] = condition or "Unknown validation error"
-    #         response["code"] = "417" if not condition else "200"
-    #         response["details"]["condition"] = condition or "Unknown"
-    #         return response
-    #
-    #     except Exception as e:
-    #         self.log_manager.error(f'fetch_and_validate_rules: {e}', exc_info=True)
-    #         return {
-    #             "is_valid": False,
-    #             "error": f"Unexpected error: {e}",
-    #             "code": "500",
-    #             "message": "Internal error while validating order.",
-    #             "details": {}
-    #         }
-
-    #     - place_order()
-    #     - process_limit_and_tp_sl_orders()
-    #
-    #     Args:
-    #         validate_data (dict): Data containing order details and account balances.
-    #
-    #     Returns:
-    #         dict: Contains validation status, error messages, and relevant details.
-    #     """
-    #     try:
-    #         # Step 1: Normalize data
-    #         validate_data = self.normalize_validate_data(validate_data)
-    #         base_balance, base_balance_value, valid_order, condition = self.validate_orders(validate_data)
-    #
-    #         response_msg = {
-    #             "is_valid": valid_order,
-    #             "error": None,
-    #             "code": "200",
-    #             "message": f"Order validation failed for {validate_data.get('trading_pair')}",
-    #             "details": {
-    #                 "Order Id": None,  # order_details.get('order_id', ''),
-    #                 "asset": validate_data.get("base_currency"),
-    #                 "trading_pair": validate_data.get("trading_pair"),
-    #                 "side": validate_data.get("side"),
-    #                 "base_balance": base_balance,
-    #                 "base_bal_value": base_balance_value,
-    #                 "base_avail_to_trade":validate_data.get('available_to_trade_crypto', ''),
-    #                 "available_to_trade_crypto": validate_data.get('available_to_trade_crypto', ''),
-    #                 "usd_avail_balance": validate_data.get('usd_avail_balance', ''),
-    #                 "condition": condition,
-    #                 "quote_decimal": validate_data.get('quote_decimal', ''),
-    #                 "base_decimal": validate_data.get('base_decimal', ''),
-    #                 "order_amount": validate_data.get('order_amount'),
-    #                 "sell_amount": validate_data.get('available_to_trade_crypto', ''), # to data sell amount will always be the balance.
-    #                 "Open Orders": validate_data.get('open_orders', ''),  # Will be updated if open orders exist
-    #             }
-    #         }
-    #
-    #         # ✅ If order is valid, return immediately
-    #         if valid_order:
-    #             response_msg["is_valid"] = True
-    #             response_msg["message"] = f"✅ Order validation successful for {validate_data.get('trading_pair')}."
-    #             return response_msg
-    #
-    #         # ✅ Handle case where base balance value exceeds threshold. Do not buy is value is more then $1.00
-    #         if base_balance_value is not None and base_balance_value > Decimal("1.0"):
-    #             response_msg["is_valid"] = False
-    #             response_msg["error"] = f"Base balance value {base_balance_value} exceeds limit."
-    #             response_msg["code"] = "415"
-    #             response_msg['condition'] = condition
-    #             return response_msg
-    #
-    #         # ✅ Handle case where base balance is zero or missing
-    #         if base_balance is None or base_balance == 0.0:
-    #             open_orders = validate_data.get('open_orders', pd.DataFrame())
-    #
-    #             if isinstance(open_orders, pd.DataFrame) and not open_orders.empty:
-    #                 # Prevent modifying original DataFrame
-    #                 open_orders = open_orders.copy()
-    #
-    #                 # ✅ Extract `product_id` safely from `info`
-    #                 open_orders['product_id'] = open_orders['info'].apply(
-    #                     lambda x: x.get('product_id', '').replace('-', '/') if isinstance(x, dict) else None
-    #                 )
-    #
-    #                 # ✅ Find matching open orders for the trading pair
-    #                 matching_order = open_orders.loc[open_orders['product_id'] == validate_data['trading_pair']]
-    #
-    #                 # ✅ Extract the side of the open order (if any)
-    #                 order_side = matching_order.iloc[0]['side'] if not matching_order.empty else 'Unknown'
-    #
-    #                 self.log_manager.info(
-    #                     f'fetch_and_validate_rules: {validate_data["side"]} order will not be placed '
-    #                     f'for {validate_data["trading_pair"]} as there is an open order to {order_side}.'
-    #                 )
-    #
-    #                 response_msg["is_valid"] = False
-    #                 response_msg["error"] = f"Open order exists for {validate_data['trading_pair']} on side {order_side}."
-    #                 response_msg["code"] = "416"
-    #                 response_msg["details"]["Open Orders"] = order_side
-    #                 return response_msg  # ❌ Block duplicate orders
-    #
-    #             else:
-    #                 self.log_manager.info(
-    #                     f'fetch_and_validate_rules: {validate_data.get("details",{}).get("side")} order not valid. '
-    #                     f'{validate_data["trading_pair"]} balance is {base_balance}'
-    #                 )
-    #                 response_msg["is_valid"] = False
-    #                 side = validate_data.get("details",{}).get("side")
-    #                 response_msg["error"] = f'Insufficient balance to place {side} order.'
-    #                 if side == 'buy':
-    #                     response_msg["code"] = "413"
-    #                 elif side == 'sell':
-    #                     response_msg["code"] = "414"
-    #                 return response_msg
-    #
-    #         # ❌ Default return for invalid orders
-    #         response_msg["is_valid"] = False
-    #         condition = response_msg.get('details', {}).get('condition', None)
-    #         if condition is None:
-    #             response_msg["details"]["condition"] = "Unknown"
-    #             response_msg["code"] = "417"
-    #             self.log_manager.info(f'fetch_and_validate_rules: Order is not valid due to unknown conditions.')
-    #         else:
-    #             response_msg["error"] = condition
-    #             response_msg["code"] = "200"
-    #
-    #
-    #
-    #         return response_msg
-    #
-    #     except Exception as e:
-    #         self.log_manager.error(f'fetch_and_validate_rules: {e}', exc_info=True)
-    #         return {
-    #             "is_valid": False,
-    #             "error": f"Unexpected error: {e}",
-    #             "code": "500",
-    #             "message": "Internal error while validating order.",
-    #             "details": {}
-    #         }
-
-    # def validate_orders(self, validate_data):
-    #     """
-    #     Validate whether an order should be placed, considering open orders and balances.
-    #
-    #     Called from:
-    #     - fetch_and_validate_rules()
-    #
-    #     Args:
-    #         validate_data (dict): Contains trading pair, balances, order details, and open orders.
-    #
-    #     Returns:
-    #         tuple: (base_balance, base_balance_value, valid_order, condition)
-    #     """
-    #
-    #     def get_decimal_value(key, default='0'):
-    #         """ Safely fetch and convert a value from `validate_data` to Decimal. """
-    #         try:
-    #             value = validate_data.get(key, default)
-    #             return Decimal(value) if value is not None else Decimal(default)
-    #         except InvalidOperation:
-    #             return Decimal(default)
-    #
-    #     try:
-    #         # Extract key details from validate_data
-    #         trading_pair = validate_data.get('trading_pair', '')
-    #         if trading_pair == 'UMA/USD':
-    #             pass
-    #         quote_currency = validate_data.get('quote_currency', trading_pair.split('/')[1])
-    #         base_currency = validate_data.get('base_currency', trading_pair.split('/')[0])
-    #         side = validate_data.get('side', '')
-    #
-    #         # Extract numerical values
-    #         usd_avail_balance = get_decimal_value('usd_avail_balance')
-    #         base_balance = get_decimal_value('base_avail_balance')
-    #         base_available = get_decimal_value('available_to_trade_crypto')
-    #         highest_bid = get_decimal_value('highest_bid')
-    #         lowest_ask = get_decimal_value('lowest_ask')
-    #         quote_price = get_decimal_value('quote_price', (highest_bid + lowest_ask) / 2)
-    #         order_amount = get_decimal_value('order_amount')
-    #         base_balance_value = base_available * highest_bid
-    #         base_deci = validate_data.get('base_decimal', 0)  # Extract base decimal precision
-    #         quote_deci = validate_data.get('quote_decimal', 0)
-    #         open_orders = validate_data.get('open_orders', None)
-    #
-    #         condition = None
-    #         valid_order = False
-    #
-    #         # ✅ **Quantize base_balance to the correct decimal places**
-    #         base_balance = base_balance.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_HALF_UP)
-    #
-    #         # Adjust precision for quote balance
-    #         convert = 'usd' if quote_currency == 'USD' else 'quote'
-    #         adjusted_usd_balance = self.shared_utils_precision.adjust_precision(
-    #             base_deci, quote_deci, usd_avail_balance, convert=convert
-    #         )
-    #
-    #         # Compute base balance value in USD equivalent
-    #         base_balance_value = Decimal(0)
-    #         if base_currency != 'USD' and not base_balance.is_zero():
-    #             base_balance_value = base_balance * quote_price
-    #             base_balance_value = self.shared_utils_precision.adjust_precision(
-    #                 base_deci, quote_deci, base_balance_value, convert=convert
-    #             )
-    #
-    #         # ✅ **Check for open orders in DataFrame**
-    #         if isinstance(open_orders, pd.DataFrame) and not open_orders.empty:
-    #             # Ensure `product_id` is extracted from `info` column safely
-    #             open_orders['product_id'] = open_orders['info'].apply(
-    #                 lambda x: x.get('product_id').replace('-', '/') if isinstance(x, dict) else None
-    #             )
-    #
-    #             # ✅ **Filter open orders by `trading_pair`**
-    #             matching_orders = open_orders.loc[
-    #                 (open_orders['product_id'] == trading_pair) & (open_orders['remaining'] > 0)
-    #                 ]
-    #
-    #             if not matching_orders.empty:
-    #                 condition = f'⚠️ Open order exists for {trading_pair}. Blocking new order.'
-    #                 return base_balance, base_balance_value, valid_order, condition  # Block new order
-    #
-    #         # ✅ **Determine whether an order should be placed**
-    #         hodling = base_currency in self.hodl
-    #
-    #         if side == 'buy':
-    #             if adjusted_usd_balance < order_amount and order_amount > self.min_order_amount:
-    #                 order_amount = round(order_amount, 2)
-    #                 self.log_manager.info(
-    #                     f'⚠️ Order sized reduced: Available after order submitted ${adjusted_usd_balance}. Reduced order ${order_amount} to BUY'
-    #                     f' {trading_pair}.'
-    #                 )
-    #                 condition = f"Reduced order submitted {trading_pair}."
-    #                 valid_order = True
-    #             elif adjusted_usd_balance >= order_amount and (hodling or base_balance_value <= self.min_order_amount):
-    #                 condition = '✅ Buy order conditions met.'
-    #                 valid_order = True
-    #
-    #         elif side == 'sell' and not hodling:
-    #             if base_balance_value >= self.min_order_amount:
-    #                 condition = f'✅️ {trading_pair} has sufficient balance to sell.'
-    #                 valid_order = True
-    #             else:
-    #                 condition = f'⚠️ {trading_pair} has insufficient balance to sell.'
-    #                 valid_order = False
-    #
-    #         if not valid_order:
-    #             self.log_manager.info(f'❌ Order validation failed for {trading_pair}: {condition}')
-    #
-    #         return base_balance, base_balance_value, valid_order, condition
-    #
-    #     except Exception as e:
-    #         self.log_manager.error(f'⚠️ validate_orders: {e}', exc_info=True)
-    #         return None, None, False, None

@@ -16,22 +16,22 @@ class DatabaseSessionManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, profit_extras, log_manager):
+    def get_instance(cls, profit_extras, logger_manager):
         if cls._instance is None:
-            cls._instance = cls(profit_extras, log_manager)
+            cls._instance = cls(profit_extras, logger_manager)
         return cls._instance
 
-    def __init__(self, profit_extras, log_manager):
-        self.log_manager = log_manager
+    def __init__(self, profit_extras, logger_manager):
+
+        self.logger = logger_manager.get_logger('sighook_logger')
         self.config = CentralConfig()
         self.profit_extras = profit_extras
         self.start_time = self.ticker_cache = self.market_cache_vol = self.holdings_list = self.current_prices = None
         self.filtered_pairs = None
 
-
         # Ensure that database_url is correctly set
         if not self.config.database_url:
-            self.log_manager.error("Database URL is not configured properly.")
+            self.logger.error("Database URL is not configured properly.")
             raise ValueError("Database URL is not configured. Please check your configuration.")
 
         # Initialize the databases.Database instance
@@ -59,10 +59,10 @@ class DatabaseSessionManager:
             try:
                 if not self.database.is_connected:
                     await self.database.connect()
-                    self.log_manager.info("Database connected successfully.")
+                    self.logger.info("Database connected successfully.")
                     return
             except Exception as e:
-                self.log_manager.warning(f"Database connection attempt {attempt} failed: {e}")
+                self.logger.warning(f"❌ Database connection attempt {attempt} failed: {e}")
                 await asyncio.sleep(2)  # Wait before retrying
         raise ConnectionError("Failed to establish a database connection after retries.")
 
@@ -70,9 +70,9 @@ class DatabaseSessionManager:
         """Initialize the database connection."""
         try:
             await self.connect()  # Establish database connection
-            self.log_manager.info("DatabaseSessionManager initialized and connected to the database.")
+            self.logger.info("DatabaseSessionManager initialized and connected to the database.")
         except Exception as e:
-            self.log_manager.error(f"❌ Failed to initialize DatabaseSessionManager: {e}", exc_info=True)
+            self.logger.error(f"❌ Failed to initialize DatabaseSessionManager: {e}", exc_info=True)
             raise
 
     async def disconnect(self):
@@ -80,30 +80,30 @@ class DatabaseSessionManager:
         try:
             if self.database.is_connected:
                 await self.database.disconnect()
-                self.log_manager.info("Database disconnected successfully.")
+                self.logger.info("Database disconnected successfully.")
         except Exception as e:
-            self.log_manager.error(f"Error while disconnecting from the database: {e}", exc_info=True)
+            self.logger.error(f"❌ Error while disconnecting from the database: {e}", exc_info=True)
 
     def get_database_ops(self, *args, **kwargs):
         if self.database_ops is None:
             self.database_ops = DatabaseOpsManager.get_instance(
-                self.log_manager, self.profit_extras, self.config, self.database, *args, **kwargs
+                self.logger, self.profit_extras, self.config, self.database, *args, **kwargs
             )
         return self.database_ops
 
-    async def process_data(self, start_time):
+    async def process_data(self):
         """Delegates processing to DatabaseOpsManager within a transaction."""
         try:
             # Ensure database is connected
             if not self.database.is_connected:
                 await self.connect()
-                self.log_manager.info("Database reconnected within process_data.")
+                self.logger.info("Database reconnected within process_data.")
 
             # Execute within an explicit transaction
             async with self.database.transaction():
-                await self.database_ops.process_data(start_time)
+                await self.database_ops.process_data()
         except Exception as e:
-            self.log_manager.error(f"Failed to process data in session manager: {e}")
+            self.logger.error(f"❌ Failed to process data in session manager: {e}")
             raise
 
     async def check_ohlcv_initialized(self):
@@ -122,12 +122,12 @@ class DatabaseSessionManager:
             result = await self.database.fetch_one(query)
             print(f"DEBUG: Retrieved Market Data: {result}")
             if not result or "data" not in result:
-                self.log_manager.warning("No data found for market_data.")
+                self.logger.warning("No data found for market_data.")
                 return {}
 
             return result
         except Exception as e:
-            self.log_manager.error(f"Error fetching market data: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching market data: {e}", exc_info=True)
             return {}
 
     async def fetch_order_management(self):
@@ -138,10 +138,10 @@ class DatabaseSessionManager:
             query = "SELECT data FROM shared_data WHERE data_type = 'order_management'"
             result = await self.database.fetch_one(query)
             if not result or "data" not in result:
-                self.log_manager.warning("No data found for market_data.")
+                self.logger.warning("No data found for market_data.")
                 return {}
 
             return result
         except Exception as e:
-            self.log_manager.error(f"Error fetching order_management: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching order_management: {e}", exc_info=True)
             return {}

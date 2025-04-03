@@ -1,10 +1,11 @@
 import asyncio
 import time
-from inspect import stack
-from aiohttp import ClientConnectionError
 from contextlib import asynccontextmanager
-from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError, InvalidOrder
 from http.client import RemoteDisconnected
+from inspect import stack
+
+from aiohttp import ClientConnectionError
+from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError, InvalidOrder
 
 
 class ApiRateLimiter:
@@ -42,18 +43,18 @@ class ApiManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, exchange_client, log_manager, alert_system, burst=10, rate=1):
+    def get_instance(cls, exchange_client, logger_manager, alert_system, burst=10, rate=1):
         """Ensures only one instance exists."""
         if cls._instance is None:
-            cls._instance = cls(exchange_client, log_manager, alert_system, burst, rate)
+            cls._instance = cls(exchange_client, logger_manager, alert_system, burst, rate)
         return cls._instance
 
-    def __init__(self, exchange_client, log_manager, alert_system, burst=10, rate=1):
+    def __init__(self, exchange_client, logger_manager, alert_system, burst=10, rate=1):
         if ApiManager._instance is not None:
             raise Exception("ApiManager is a singleton and has already been initialized!")
 
         self.exchange = exchange_client
-        self.log_manager = log_manager
+        self.log_manager = logger_manager
         self.alert_system = alert_system
         self.rate_limiter = ApiRateLimiter(burst, rate)
         self.semaphores = {

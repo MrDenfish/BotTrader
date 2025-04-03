@@ -83,17 +83,18 @@ class SharedDataManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, log_manager, database_session_manager):
+    def get_instance(cls, logger_manager, database_session_manager):
         """Ensures only one instance of SharedDataManager is created."""
         if cls._instance is None:
-            cls._instance = cls(log_manager, database_session_manager)
+            cls._instance = cls(logger_manager, database_session_manager)
         return cls._instance
 
-    def __init__(self, log_manager, database_session_manager):
+    def __init__(self, logger_manager, database_session_manager):
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
-        self.log_manager = log_manager
+        self.logger = logger_manager.get_logger('webhook_logger')
+
         self.database_session_manager = database_session_manager
         self.market_data = {}
         self.order_management = {}
@@ -104,9 +105,9 @@ class SharedDataManager:
         try:
             # Ensure DatabaseSessionManager is connected
             await self.database_session_manager.initialize()
-            self.log_manager.info("SharedDataManager initialized successfully.")
+            self.logger.info("SharedDataManager initialized successfully.")
         except Exception as e:
-            self.log_manager.error(f"Failed to initialize SharedDataManager: {e}", exc_info=True)
+            self.logger.error(f"Failed to initialize SharedDataManager: {e}", exc_info=True)
             raise
 
     async def initialize_shared_data(self):
@@ -121,8 +122,8 @@ class SharedDataManager:
                 self.order_management = await self.fetch_order_management()
                 return self.market_data, self.order_management
             except Exception as e:
-                if self.log_manager:
-                    self.log_manager.error(f"Failed to initialize shared data: {e}", exc_info=True)
+                if self.logger:
+                    self.logger.error(f"Failed to initialize shared data: {e}", exc_info=True)
                 else:
                     print(f"Failed to initialize shared data: {e}")
                 self.market_data = {}
@@ -137,7 +138,7 @@ class SharedDataManager:
                 self.order_management = await self.database_session_manager.fetch_order_management()
                 print("Shared data refreshed successfully.")
             except Exception as e:
-                self.log_manager.error(f"Error refreshing shared data: {e}", exc_info=True)
+                self.logger.error(f"Error refreshing shared data: {e}", exc_info=True)
 
     @staticmethod
     def validate_market_data(market_data):
@@ -176,7 +177,7 @@ class SharedDataManager:
     #             rows = result.fetchall()
     #
     #             if len(rows) < 2:  # Ensure at least 2 candles exist
-    #                 self.log_manager.warning(f"⚠️ Insufficient OHLCV data for {symbol} (Only {len(rows)} rows)")
+    #                 self.logger.warning(f"⚠️ Insufficient OHLCV data for {symbol} (Only {len(rows)} rows)")
     #                 return None, None
     #
     #             # ✅ Extract oldest & latest close prices
@@ -186,7 +187,7 @@ class SharedDataManager:
     #             return oldest_close_price, latest_close_price
     #
     #     except Exception as e:
-    #         self.log_manager.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
+    #         self.logger.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
     #         return None, None
 
     async def fetch_market_data(self):
@@ -196,8 +197,8 @@ class SharedDataManager:
             market_data = json.loads(result["data"], cls=CustomJSONDecoder) if result else {}
             return self.validate_market_data(market_data)
         except Exception as e:
-            if self.log_manager:
-                self.log_manager.error(f"Error fetching market data: {e}", exc_info=True)
+            if self.logger:
+                self.logger.error(f"Error fetching market data: {e}", exc_info=True)
             else:
                 print(f"Error fetching market data: {e}")
             return {}
@@ -209,8 +210,8 @@ class SharedDataManager:
             # Delegate the call to DatabaseSessionManager
             return json.loads(result["data"], cls=CustomJSONDecoder) if result else {}
         except Exception as e:
-            if self.log_manager:
-                self.log_manager.error(f"Error fetching order management data: {e}", exc_info=True)
+            if self.logger:
+                self.logger.error(f"Error fetching order management data: {e}", exc_info=True)
             else:
                 print(f"Error fetching order management data: {e}")
             return {}
@@ -225,7 +226,7 @@ class SharedDataManager:
                 order_management = self.order_management.copy()
                 return market_data, order_management
             except Exception as e:
-                self.log_manager.error(f"Error fetching snapshots: {e}", exc_info=True)
+                self.logger.error(f"Error fetching snapshots: {e}", exc_info=True)
                 return {}, {}
 
 
@@ -253,12 +254,12 @@ class SharedDataManager:
                 {"data_type": data_type, "data": encoded_data},
             )
         except Exception as e:
-            self.log_manager.error(f"Error updating {data_type}: {e}", exc_info=True)
+            self.logger.error(f"Error updating {data_type}: {e}", exc_info=True)
 
     async def save_data(self):
         """Save shared data to the database using an active connection."""
         try:
-            self.log_manager.info("Starting to save shared data...")
+            self.logger.info("Starting to save shared data...")
             async with self.database_session_manager.engine.begin() as conn:
                 # Clear old data from snapshot tables
                 await self.clear_old_data(conn, "market_data_snapshots")
@@ -274,7 +275,7 @@ class SharedDataManager:
                 if self.order_management:
                     await self.update_data("order_management", saved_order_management, conn)
         except Exception as e:
-            self.log_manager.error(f"Error saving shared data: {e}", exc_info=True)
+            self.logger.error(f"Error saving shared data: {e}", exc_info=True)
 
     async def save_market_data_snapshot(self, conn, market_data):
         """Save a snapshot of market data."""
@@ -293,7 +294,7 @@ class SharedDataManager:
             print("Market data snapshot saved.")
             return processed_data
         except Exception as e:
-            self.log_manager.error(f"Error saving market data snapshot: {e}", exc_info=True)
+            self.logger.error(f"Error saving market data snapshot: {e}", exc_info=True)
 
     async def save_order_management_snapshot(self, conn, order_management):
         """Save a snapshot of dismantled order management data."""
@@ -313,10 +314,10 @@ class SharedDataManager:
                 {"data": encoded_data},
             )
 
-            self.log_manager.debug("Order management snapshot saved successfully.")
+            self.logger.debug("Order management snapshot saved successfully.")
             return dismantled
         except Exception as e:
-            self.log_manager.error(
+            self.logger.error(
                 f"Error saving order management snapshot: {e}",
                 exc_info=True
             )
@@ -371,9 +372,9 @@ class SharedDataManager:
             await conn.execute(
                 text(f"DELETE FROM {table_name}")
             )
-            self.log_manager.debug(f"Cleared old data from {table_name}.")
+            self.logger.debug(f"Cleared old data from {table_name}.")
         except Exception as e:
-            self.log_manager.error(
+            self.logger.error(
                 f"Error clearing old data from {table_name}: {e}",
                 exc_info=True
             )

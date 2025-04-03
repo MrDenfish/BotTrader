@@ -19,18 +19,19 @@ class TickerManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
+    async def get_instance(cls, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
         """Ensures only one instance of TickerManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
-                    cls._instance = cls(shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api)
+                    cls._instance = cls(config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange,
+                                        ccxt_api)
         return cls._instance
 
-    def __init__(self, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
+    def __init__(self, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
         if TickerManager._instance is not None:
             raise Exception("TickerManager is a singleton and has already been initialized!")
-
+        self.bot_config = config
         self.exchange = exchange
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
@@ -38,6 +39,7 @@ class TickerManager:
         self.market_cache = None
         self.min_volume = None
         self.last_ticker_update = None
+        self.shill_coins = self.bot_config._shill_coins
         self.log_manager = log_manager
         self.ccxt_api = ccxt_api
         self.shared_utils_print = shared_utils_print
@@ -102,7 +104,7 @@ class TickerManager:
             }, {"non_zero_balances": non_zero_balances, 'order_tracker': {}}
 
         except Exception as e:
-            self.log_manager.error(f"Error in update_ticker_cache: {e}", exc_info=True)
+            self.log_manager.error(f"❌ Error in update_ticker_cache: {e}", exc_info=True)
             return {}, {}
 
 
@@ -130,7 +132,7 @@ class TickerManager:
             }
             return non_zero_balances
         except Exception as e:
-            self.log_manager.error(f"Error in fetch_and_filter_balances: {e}", exc_info=True)
+            self.log_manager.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
             return {}
 
     def process_spot_positions(self, non_zero_balances: dict, tickers_cache: pd.DataFrame) -> dict:
@@ -176,7 +178,7 @@ class TickerManager:
             return processed_positions
 
         except Exception as e:
-            self.log_manager.error(f"Error in process_spot_positions: {e}", exc_info=True)
+            self.log_manager.error(f"❌ Error in process_spot_positions: {e}", exc_info=True)
             return {}
 
 
@@ -290,12 +292,13 @@ class TickerManager:
 
             return filtered_data, usd_pairs, average_quote_volume
         except Exception as e:
-            self.log_manager.error(f"Error in filter_market_data: {e}")
+            self.log_manager.error(f"❌ Error in filter_market_data: {e}")
             return [], [], 0
 
     async def filter_markets_by_criteria(self, minimum_volume_market_data, usd_pairs):
         """
         Filter markets based on 24-hour quote volume and USD quote only.
+        Filter out undesirable coins
 
         Args:
             minimum_volume_market_data (list): Markets filtered by volume.
@@ -316,10 +319,13 @@ class TickerManager:
             supported_markets_usd = [
                 market for market in usd_pairs if market.get('quote') == 'USD'
             ]
-
+            # filter out sketchy coins
+            supported_markets_usd = [
+                market for market in supported_markets_usd if market.get('asset') not in self.shill_coins
+            ]
             return supported_markets_vol, supported_markets_usd
         except Exception as e:
-            self.log_manager.error(f"Error filtering markets: {e}", exc_info=True)
+            self.log_manager.error(f"❌ Error filtering markets: {e}", exc_info=True)
             return [], []
 
     def prepare_dataframe(self, tickers_dict, balances):
@@ -367,7 +373,7 @@ class TickerManager:
 
             return df
         except Exception as e:
-            self.log_manager.error(f"Error in prepare_dataframe: {e}", exc_info=True)
+            self.log_manager.error(f"❌ Error in prepare_dataframe: {e}", exc_info=True)
             return pd.DataFrame()
 
     async def parallel_fetch_and_update(self, usd_pairs, df, update_type='current_price'):
@@ -405,14 +411,14 @@ class TickerManager:
                         self.log_manager.info(f"No ticker data for symbol: {symbol}")
 
                 except BadSymbol as bs:
-                    self.log_manager.error(f"Bad symbol: {bs}")
+                    self.log_manager.error(f"❌ Bad symbol: {bs}")
                     continue
                 except Exception as e:
-                    self.log_manager.error(f"Error processing symbol {symbol}: {e}", exc_info=True)
+                    self.log_manager.error(f"❌ Error processing symbol {symbol}: {e}", exc_info=True)
                     continue
             return df, current_prices
         except Exception as e:
-            self.log_manager.error(f'Error in parallel_fetch_and_update: {e}', exc_info=True)
+            self.log_manager.error(f'❌ Error in parallel_fetch_and_update: {e}', exc_info=True)
             return df, current_prices
 
     async def get_portfolio_breakdown(self, portfolio_uuid: str, currency: str = "USD") -> object:
@@ -437,7 +443,7 @@ class TickerManager:
 
                 return response  # Return valid response
             except Exception as e:
-                self.log_manager.error(f"Attempt {attempt + 1} failed: {e}",exc_info=True)
+                self.log_manager.error(f"❌ Attempt {attempt + 1} failed: {e}", exc_info=True)
                 if attempt == max_retries - 1:
                     self.log_manager.error("Max retries reached for get_portfolio_breakdown.")
                     return None
@@ -458,6 +464,6 @@ class TickerManager:
 
             return tickers
         except Exception as e:
-            self.log_manager.error(f"Error fetching bids and asks: {e}", exc_info=True)
+            self.log_manager.error(f"❌ Error fetching bids and asks: {e}", exc_info=True)
             return {}
 

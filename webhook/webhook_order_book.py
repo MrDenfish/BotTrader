@@ -7,21 +7,23 @@ class OrderBookManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange_client, shared_utils_precision, logmanager, ccxt_api):
+    def get_instance(cls, exchange_client, shared_utils_precision, logger_manager, ccxt_api):
         """
         Singleton method to ensure only one instance of OrderBookManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(exchange_client, shared_utils_precision, logmanager, ccxt_api)
+            cls._instance = cls(exchange_client, shared_utils_precision, logger_manager, ccxt_api)
         return cls._instance
 
-    def __init__(self, exchange_client, shared_utils_precision, logmanager, ccxt_api):
+    def __init__(self, exchange_client, shared_utils_precision, logger_manager, ccxt_api):
         """
         Initializes the OrderBookManager instance.
         """
         self.exchange = exchange_client
         self.shared_utils_precision = shared_utils_precision
-        self.log_manager = logmanager
+        self.logger = logger_manager.get_logger("webhook_logger")
+
+
         self.ccxt_api = ccxt_api  # ✅ Renamed for clarity
 
     async def get_order_book(self, order_data: OrderData, symbol=None):
@@ -54,14 +56,14 @@ class OrderBookManager:
             lowest_ask = self.shared_utils_precision.float_to_decimal(lowest_ask_float, quote_deci).quantize(quantize_format,
                                                                                                      rounding=ROUND_DOWN)
             spread = lowest_ask - highest_bid if highest_bid and lowest_ask else None
-            self.log_manager.debug(f'analyze_spread:High bid: {highest_bid} Low ask: {lowest_ask} Spread: '
+            self.logger.debug(f'analyze_spread:High bid: {highest_bid} Low ask: {lowest_ask} Spread: '
                                                   f'{spread}')
-            self.log_manager.debug(
+            self.logger.debug(
                 f'OrderBookManager: analyze_spread: High bid: {highest_bid} Low ask: {lowest_ask} Spread: {spread}')
             # return highest_bid, lowest_ask, spread , additional_bids, additional_asks
 
             return highest_bid, lowest_ask, spread
         except Exception as e:
-            self.log_manager.error(f'analyze_spread: An error occurred: {e}', exc_info=True)
+            self.logger.error(f'analyze_spread: An error occurred: {e}', exc_info=True)
             return None, None, None
 

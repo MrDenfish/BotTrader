@@ -1,21 +1,25 @@
 
-from decimal import Decimal
-import pandas as pd
 import asyncio
+import datetime
 import socket
+from decimal import Decimal
+
+import pandas as pd
+from aiohttp import web
+
 
 class SharedUtility:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logmanager):
+    def get_instance(cls, logger_manager):
         """ Ensures only one instance of SharedUtility is created. """
         if cls._instance is None:
-            cls._instance = cls(logmanager)
+            cls._instance = cls(logger_manager)
         return cls._instance
 
-    def __init__(self, logmanager):
-        self.log_manager = logmanager
+    def __init__(self, logger_manager):
+        self.logger = logger_manager.get_logger('webhook_logger')
 
 
     @staticmethod
@@ -42,7 +46,7 @@ class SharedUtility:
     def log_event_loop(self, name):
         """Logs the current event loop ID."""
         loop_id = id(asyncio.get_running_loop())
-        self.log_manager.info(f"� {name} is running in event loop: {loop_id}")
+        self.logger.debug(f"� {name} is running in event loop: {loop_id}")
 
     def refresh_authentication(self):
         try:
@@ -59,16 +63,16 @@ class SharedUtility:
                 self.exchange.secret = new_api_secret
 
                 # Log the refresh action
-                if self.log_manager and hasattr(self.log_manager, 'webhook_logger'):
-                    self.log_manager.info("Authentication refreshed.")
+                if self.logger and hasattr(self.logger, 'webhook_logger'):
+                    self.logger.info("Authentication refreshed.")
                 else:
                     print("Authentication refreshed.")  # Fallback logging
             else:
                 raise ValueError("API key or secret is missing.")
         except Exception as e:
-            error_message = f"Failed to refresh authentication: {e}"
-            if self.log_manager and hasattr(self.log_manager, 'webhook_logger'):
-                self.log_manager.error(error_message)
+            error_message = f"❌ Failed to refresh authentication: {e}"
+            if self.logger and hasattr(self.logger, 'webhook_logger'):
+                self.logger.error(error_message)
             else:
                 print(error_message)  # Fallback logging
 
@@ -100,4 +104,40 @@ class SharedUtility:
 
         return False, f"order_tracker is of invalid type: {type(order_tracker)}"
 
+    def convert_json_safe(self, obj):
+        """Recursively convert complex types (Decimal, datetime, DataFrame) to JSON-safe formats."""
+        if isinstance(obj, dict):
+            return {k: self.convert_json_safe(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self.convert_json_safe(i) for i in obj]
+        elif isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, (datetime.datetime, datetime.date)):
+            return obj.isoformat()
+        elif isinstance(obj, pd.DataFrame):
+            return obj.to_dict(orient='records')  # or 'split', 'index', etc.
+        return obj
 
+    def safe_json_response(self, data: dict, status: int = 200) -> web.Response:
+        """Wrapper for web.json_response that safely handles Decimal values."""
+        safe_data = self.convert_json_safe(data)
+        return web.json_response(safe_data, status=status)
+
+    def pretty_summary(self, source) -> str:
+        """
+        Return a concise and user-friendly order summary.
+        """
+        lines = [
+            f"� Order Summary [{source.__class__.__name__}]",
+            f"Pair:         {source.trading_pair}",
+            f"Side:         {source.side.upper()}  | Type: {source.type.upper()}",
+            f"Amount:       {source.order_amount} {source.base_currency}",
+            f"USD Balance:  ${source.usd_avail_balance} available",
+            f"Price:        ${source.adjusted_price} | Size: {source.adjusted_size} {source.base_currency}",
+            f"Stop-Loss:    ${source.stop_loss_price} | Take-Profit: ${source.take_profit_price}",
+            f"Fees:         Maker: {source.maker_fee} | Taker: {source.taker_fee}",
+            f"Spread:       {source.spread}",
+            f"Open Orders:  {len(source.open_orders) if isinstance(source.open_orders, pd.DataFrame) else 'N/A'}",
+            f"Status:       {source.status}"
+        ]
+        return "\n".join(lines)

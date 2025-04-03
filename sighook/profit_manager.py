@@ -1,20 +1,22 @@
 
 from decimal import Decimal
+
 from Config.config_manager import CentralConfig as Config
+
 
 class ProfitabilityManager:
     _instance = None
 
     @classmethod
     def get_instance(cls, exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
-                        order_manager, trading_strategy, profit_helper, profit_extras, logmanager):
+                     order_manager, trading_strategy, profit_data_manager, logger_manager):
         if cls._instance is None:
             cls._instance = cls(exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
-                                order_manager, trading_strategy, profit_helper, profit_extras, logmanager)
+                                order_manager, trading_strategy, profit_data_manager, logger_manager)
         return cls._instance
 
     def __init__(self, exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
-                 order_manager, trading_strategy, profit_helper, profit_extras, logmanager):
+                 order_manager, trading_strategy, profit_data_manager, logger_manager):
         self.config = Config()
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
@@ -27,9 +29,8 @@ class ProfitabilityManager:
         self.order_manager = order_manager
         self.portfolio_manager = portfolio_manager
         self.trading_strategy = trading_strategy
-        self.profit_helper = profit_helper
-        self.profit_extras = profit_extras
-        self.log_manager = logmanager
+        self.profit_data_manager = profit_data_manager
+        self.logger = logger_manager
         self.ticker_cache = self.session = self.market_cache = self.start_time = None
         self.market_cache_usd = self.market_data = self.web_url = self.holdings = None
         self.market_cache_vol = self.current_prices =None
@@ -58,7 +59,7 @@ class ProfitabilityManager:
 
     async def update_and_process_holdings(self, start_time, open_orders, holdings_list):
         """PART VI:
-        Analyze profitability and place sell orders using _calculate_profitability."""
+        Analyze profitability and place sell orders using calculate_profitability."""
         try:
             # Process holdings and calculate profitability
             aggregated_df = await self.holdings_processor.process_holdings(open_orders, holdings_list)
@@ -67,7 +68,7 @@ class ProfitabilityManager:
 
             return aggregated_df #updated_holdings_df
         except Exception as e:
-            self.log_manager.error(f"update_and_process_holdings: {e}", exc_info=True)
+            self.logger.error(f"❌ update_and_process_holdings: {e}", exc_info=True)
             raise
 
     async def check_and_execute_sell_orders(self, start_time, updated_holdings_df, open_orders):
@@ -89,7 +90,7 @@ class ProfitabilityManager:
                 current_market_price = Decimal(self.current_prices.get(holding['symbol'], 0))
 
                 # Determine if a sell order should be placed
-                if self.profit_helper.should_place_sell_order(holding, current_market_price):
+                if self.profit_data_manager.should_place_sell_order(holding, current_market_price):
                     sell_order = self.create_sell_order(holding, current_market_price)
                     sell_orders.append(sell_order)
 
@@ -98,7 +99,7 @@ class ProfitabilityManager:
                 await self.order_manager.execute_actions(sell_orders, updated_holdings_list)
 
         except Exception as e:
-            self.log_manager.error(f'check_and_execute_sell_orders: {e}', exc_info=True)
+            self.logger.error(f'❌ check_and_execute_sell_orders: {e}', exc_info=True)
             raise
 
     @staticmethod

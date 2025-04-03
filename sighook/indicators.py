@@ -11,29 +11,32 @@ from Config.config_manager import CentralConfig
 class Indicators:
     """PART III: Trading Strategies"""
     """ This class contains the functions to calculate various technical indicators and trading signals."""
-    def __init__(self, logmanager):
+
+    def __init__(self, logger_manager):
         self.config = CentralConfig()
-        self.log_manager = logmanager
-        self.bb_window = int(self.config._bb_window)
-        self.bb_std = int(self.config._bb_std)
-        self.bb_lower_band = Decimal(self.config._bb_lower_band)
-        self.bb_upper_band = Decimal(self.config._bb_upper_band)
-        self.atr_window = int(self.config._atr_window)
-        self.macd_fast = int(self.config._macd_fast)
-        self.macd_slow = int(self.config._macd_slow)
-        self.macd_signal = int(self.config._macd_signal)
-        self.rsi_window = int(self.config._rsi_window)
-        self.roc_window = int(self.config._roc_window)  # # default is 4
-        self.roc_buy_24h = int(self.config._roc_buy_24h)  # default is 5
-        self.roc_sell_24h = int(self.config._roc_sell_24h)  # default is 2
-        self.rsi_buy = int(self.config._rsi_buy)
-        self.rsi_sell = int(self.config._rsi_sell)
-        self.buy_ratio = Decimal(self.config._buy_ratio)
-        self.sell_ratio = Decimal(self.config._sell_ratio)
-        self.sma_fast = int(self.config._sma_fast)
-        self.sma_slow = int(self.config._sma_slow)
-        self.sma = int(self.config._sma)
-        self.sma_volatility = int(self.config._sma_volatility)
+        self.logger = logger_manager
+        self.bb_window = int(self.config.bb_window)
+        self.bb_std = int(self.config.bb_std)
+        self.bb_lower_band = Decimal(self.config.bb_lower_band)
+        self.bb_upper_band = Decimal(self.config.bb_upper_band)
+        self.atr_window = int(self.config.atr_window)
+        self.macd_fast = int(self.config.macd_fast)
+        self.macd_slow = int(self.config.macd_slow)
+        self.macd_signal = int(self.config.macd_signal)
+        self.rsi_window = int(self.config.rsi_window)
+        self.roc_window = int(self.config.roc_window)  # # default is 4
+        self.roc_buy_24h = int(self.config.roc_buy_24h)  # default is 5
+        self.roc_sell_24h = int(self.config.roc_sell_24h)  # default is 2
+        self.rsi_buy = int(self.config.rsi_buy)
+        self.rsi_sell = int(self.config.rsi_sell)
+        self.buy_ratio = Decimal(self.config.buy_ratio)
+        self.sell_ratio = Decimal(self.config.sell_ratio)
+        self.sma_fast = int(self.config.sma_fast)
+        self.sma_slow = int(self.config.sma_slow)
+        self.sma = int(self.config.sma)
+        self.sma_volatility = int(self.config.sma_volatility)
+        self.strategy_weights = None
+        # self.buy_roc_threshold = self.sell_roc_threshold
 
     def calculate_indicators(self, df, quote_deci, indicators_config=None):
         """Calculate all required indicators for buy/sell decisions with weighted scoring."""
@@ -44,7 +47,7 @@ class Indicators:
                 raise ValueError("Input DataFrame is empty")
 
             if len(df) < 50:
-                self.log_manager.warning(f"Insufficient OHLCV data. Rows fetched: {len(df)}")
+                self.logger.warning(f"Insufficient OHLCV data. Rows fetched: {len(df)}")
                 return df
 
             if indicators_config is None:
@@ -79,19 +82,19 @@ class Indicators:
 
                 def compute_buy_touch(row):
                     close = round(row['close'], quote_deci)
-                    upper = round(row['upper'], quote_deci) if pd.notna(row['upper']) else 0.0
-                    if pd.notna(row['prev_close']) and pd.notna(row['prev_upper']):
-                        if row['prev_close'] < row['prev_upper'] and row['close'] >= row['upper']:
-                            return (1, close, upper)
-                    return (0, close, upper)
+                    lower = round(row['lower'], quote_deci) if pd.notna(row['lower']) else 0.0
+                    if pd.notna(row['prev_close']) and pd.notna(row['prev_lower']):
+                        if row['prev_close'] > row['prev_lower'] and row['close'] <= row['lower']:
+                            return 1, close, lower
+                    return 0, close, lower
 
                 def compute_sell_touch(row):
                     close = round(row['close'], quote_deci)
-                    lower = round(row['lower'], quote_deci) if pd.notna(row['lower']) else 0.0
-                    if pd.notna(row['prev_close']) and pd.notna(row['prev_lower']):
-                        if row['prev_close'] >= row['prev_lower'] and row['close'] < row['lower']:
-                            return (1, close, lower)
-                    return (0, close, lower)
+                    upper = round(row['upper'], quote_deci) if pd.notna(row['upper']) else 0.0
+                    if pd.notna(row['prev_close']) and pd.notna(row['prev_upper']):
+                        if row['prev_close'] < row['prev_upper'] and row['close'] >= row['upper']:
+                            return 1, close, upper
+                    return 0, close, upper
 
                 df['Buy Touch'] = df.apply(compute_buy_touch, axis=1)
                 df['Sell Touch'] = df.apply(compute_sell_touch, axis=1)
@@ -121,8 +124,12 @@ class Indicators:
                 df['Signal_Line'] = df['MACD'].ewm(span=self.macd_signal, adjust=False).mean()
                 df['MACD_Histogram'] = df['MACD'] - df['Signal_Line']
 
-                df['Buy MACD'] = df['MACD_Histogram'].apply(lambda v: (1, round(v, 4), 0) if v > 0 else (0, round(v, 4), 0))
-                df['Sell MACD'] = df['MACD_Histogram'].apply(lambda v: (1, round(v, 4), 0) if v < 0 else (0, round(v, 4), 0))
+            if 'MACD_Histogram' not in df.columns:
+                self.logger.warning("MACD columns missing — skipping signal computation")
+                return df
+
+            df = self.compute_macd_signals(df)
+
 
             # RSI
             delta = df['close'].diff()
@@ -197,8 +204,8 @@ class Indicators:
                     ):
                         if debug:
                             print(f"Buy Swing ✅ at {row.name}: close={row['close']}, high={row['rolling_high']}")
-                        return (1, round(row['close'], quote_deci), None)
-                    return (0, round(row['close'], quote_deci), None)
+                        return 1, round(row['close'], quote_deci), None
+                    return 0, round(row['close'], quote_deci), None
 
                 def sell_swing_logic(row):
                     if (
@@ -211,17 +218,62 @@ class Indicators:
                     ):
                         if debug:
                             print(f"Sell Swing ✅ at {row.name}: close={row['close']}, low={row['rolling_low']}")
-                        return (1, round(row['close'], quote_deci), None)
-                    return (0, round(row['close'], quote_deci), None)
+                        return 1, round(row['close'], quote_deci), None
+                    return 0, round(row['close'], quote_deci), None
 
                 df['Buy Swing'] = df.apply(buy_swing_logic, axis=1)
                 df['Sell Swing'] = df.apply(sell_swing_logic, axis=1)
 
+            # print("\n=== Last Row Signal Check ===") # debug print past row results
+            # for col in df.columns:
+            #     if isinstance(df[col].iloc[-1], tuple):
+            #         print(f"{col}: {df[col].iloc[-1]}")
+
             return df
 
         except Exception as e:
-            self.log_manager.error(f"Error in calculate_indicators(): {e}", exc_info=True)
+            self.logger.error(f"❌ Error in calculate_indicators(): {e}", exc_info=True)
             return None
+
+    def compute_macd_signals(self, df):
+        """
+        Enhances MACD logic by checking for crossover and optional zero-line confirmation.
+        """
+        df['Buy MACD'] = [(0, 0.0, 0.0)] * len(df)
+        df['Sell MACD'] = [(0, 0.0, 0.0)] * len(df)
+
+        for i in range(1, len(df)):
+            prev = df.iloc[i - 1]
+            curr = df.iloc[i]
+
+            macd = curr['MACD']
+            signal = curr['Signal_Line']
+            hist = curr['MACD_Histogram']
+            prev_macd = prev['MACD']
+            prev_signal = prev['Signal_Line']
+
+            buy_signal = (
+                    prev_macd < prev_signal and macd > signal and macd > 0  # optional MACD > 0
+            )
+
+            sell_signal = (
+                    prev_macd > prev_signal and macd < signal and macd < 0  # optional MACD < 0
+            )
+
+            df.at[df.index[i], 'Buy MACD'] = (
+                1 if buy_signal else 0,
+                round(hist, 4),
+                0.0
+            )
+
+            df.at[df.index[i], 'Sell MACD'] = (
+                1 if sell_signal else 0,
+                round(hist, 4),
+                0.0
+            )
+
+        return df
+
 
     def swing_trading_signals(self, df, quote_deci):
         """
@@ -244,9 +296,10 @@ class Indicators:
                     round(volatility_mean * 0.8, quote_deci)
                 ) if (
                         row['close'] > row['50_sma'] and
-                        row['RSI'] > 50 and
+                        row['RSI'] > 55 and
                         row['MACD'] > row['Signal_Line'] and
-                        row['volatility'] > volatility_mean * 0.8
+                        row['volatility'] > volatility_mean * 0.8 and
+                        row['volume'] > row['volume'].rolling(10).mean()
                 ) else (
                     0,
                     round(row['close'], quote_deci),
@@ -263,9 +316,10 @@ class Indicators:
                     round(volatility_mean * 1.2, quote_deci)
                 ) if (
                         row['close'] < row['50_sma'] and
-                        row['RSI'] < 50 and
+                        row['RSI'] < 45 and
                         row['MACD'] < row['Signal_Line'] and
-                        row['volatility'] < volatility_mean * 1.2
+                        row['volatility'] < volatility_mean * 1.2 and
+                        row['volume'] > row['volume'].rolling(10).mean()
                 ) else (
                     0,
                     round(row['close'], quote_deci),
@@ -277,33 +331,31 @@ class Indicators:
             return df
 
         except Exception as e:
-            self.log_manager.error(f"Error in swing_trading_signals(): {e}", exc_info=True)
+            self.logger.error(f"❌ Error in swing_trading_signals(): {e}", exc_info=True)
             return df
 
     def identify_w_bottoms_m_tops(self, df, quote_deci):
         """
         Identify W-Bottom and M-Top patterns using dynamically determined parameters.
         """
-        #  debug flags
-        debug = False
+        debug = False  # Set to True to print signal details
+        signal_persistence = 3  # Number of bars the signal should persist
 
         try:
-            # ✅ Initialize W-Bottom & M-Top lists
-            w_bottoms = [(0, 0.0, 0.0)] * len(df)  # Changed from None → 0.0
-            m_tops = [(0, 0.0, 0.0)] * len(df)  # Changed from None → 0.0
+            # Initialize signal storage
+            w_bottoms = [(0, 0.0, 0.0)] * len(df)
+            m_tops = [(0, 0.0, 0.0)] * len(df)
 
-            # ✅ Dynamic `min_time_between_signals`
-            min_time_between_signals = max(3, int(len(df) * 0.005))  # 0.5% of dataset size
-
-            # ✅ Dynamic `min_price_change` using ATR
+            # Dynamic timing and thresholds
+            min_time_between_signals = max(3, int(len(df) * 0.005))
             df['atr'] = df['high'].rolling(self.atr_window).max() - df['low'].rolling(self.atr_window).min()
-            df['atr'] = df['atr'].bfill().fillna(0.0)  # Ensure no NaN values
-            min_price_change = df['atr'].median() * 0.065  # 6.5% of median ATR
+            df['atr'] = df['atr'].bfill().fillna(0.0)
+            min_price_change = df['atr'].median() * 0.065
 
-            # ✅ Dynamic rolling window for volume confirmation
+            # Volatility-based rolling window for volume filter
             volatility = df['close'].pct_change().rolling(self.atr_window + 7).std()
             rolling_window = int(10 + (volatility.mean() * 100))
-            rolling_window = max(5, min(self.atr_window + 7, rolling_window))  # Keep reasonable range
+            rolling_window = max(5, min(self.atr_window + 7, rolling_window))
             df['volume_mean'] = df['volume'].rolling(rolling_window, min_periods=1).mean().fillna(0.0)
 
             last_w_bottom, last_m_top = None, None
@@ -311,64 +363,58 @@ class Indicators:
             for i in range(1, len(df) - 1):
                 prev, curr, next_row = df.iloc[i - 1], df.iloc[i], df.iloc[i + 1]
 
-                # ✅ W-Bottom Detection
+                # ✅ W-Bottom pattern
                 if (
                         prev['low'] < prev['lower'] and
                         curr['lower'] < curr['low'] < next_row['low'] and
                         next_row['close'] > next_row['basis'] and
-                        # next_row['volume'] > next_row['volume_mean'] #default
-                        next_row['volume'] > (1.025 * next_row['volume_mean'])  # debug
+                        next_row['volume'] > (1.01 * next_row['volume_mean'])  # More forgiving
                 ):
-
-                    if debug:
-                        print(f"W-Bottom candidate at {df.index[i]}:")
-                        print(f"  prev.low={prev['low']}, prev.lower={prev['lower']}")
-                        print(f"  curr.low={curr['low']}, curr.lower={curr['lower']}")
-                        print(f"  next.close={next_row['close']}, next.basis={next_row['basis']}")
-                        print(f"  next.volume={next_row['volume']}, mean={next_row['volume_mean']}")
-
                     if last_w_bottom is None or (i - last_w_bottom) >= min_time_between_signals:
                         if last_w_bottom is None or abs(curr['low'] - df.iloc[last_w_bottom]['low']) / df.iloc[last_w_bottom][
                             'low'] > min_price_change:
-                            df.at[df.index[i], 'W-Bottom'] = (
-                                1,
-                                round(curr['low'], quote_deci),
-                                round(min_price_change, quote_deci)
-                            )
+                            for j in range(i, min(i + signal_persistence, len(df))):
+                                w_bottoms[j] = (
+                                    1,
+                                    round(curr['low'], quote_deci),
+                                    round(min_price_change, quote_deci)
+                                )
                             last_w_bottom = i
 
-                # ✅ M-Top Detection
+                            if debug:
+                                print(f"✅ W-Bottom at {df.index[i]} - Low: {curr['low']}, Basis: {next_row['basis']}")
+
+                # ✅ M-Top pattern
                 if (
                         prev['high'] > prev['upper'] and
                         curr['upper'] > curr['high'] > next_row['high'] and
                         next_row['close'] < next_row['basis'] and
-                        next_row['volume'] > next_row['volume_mean']
+                        next_row['volume'] > (1.01 * next_row['volume_mean'])
                 ):
-                    if debug:
-                        print(f"M-Top candidate at {df.index[i]}:")
-                        print(f"  prev.high={prev['high']}, prev.upper={prev['upper']}")
-                        print(f"  curr.high={curr['high']}, curr.upper={curr['upper']}")
-                        print(f"  next.close={next_row['close']}, next.basis={next_row['basis']}")
-                        print(f"  next.volume={next_row['volume']}, mean={next_row['volume_mean']}")
-
                     if last_m_top is None or (i - last_m_top) >= min_time_between_signals:
-                        if last_m_top is None or abs(curr['high'] - df.iloc[last_m_top]['high']) / df.iloc[last_m_top][
-                            'high'] > min_price_change:
-                            df.at[df.index[i], 'M-Top'] = (
-                                1,
-                                round(curr['high'], quote_deci),
-                                round(min_price_change, quote_deci)
-                            )
+                        if last_m_top is None or abs(curr['high'] - df.iloc[last_m_top]['high']) / df.iloc[last_m_top]['high'] > min_price_change:
+                            for j in range(i, min(i + signal_persistence, len(df))):
+                                m_tops[j] = (
+                                    1,
+                                    round(curr['high'], quote_deci),
+                                    round(min_price_change, quote_deci)
+                                )
                             last_m_top = i
 
-            print("Valid Bollinger Bands entries:", df[['upper', 'lower', 'basis']].dropna().shape[0])
+                            if debug:
+                                print(f"❌ M-Top at {df.index[i]} - High: {curr['high']}, Basis: {next_row['basis']}")
 
-            return df['W-Bottom'].tolist(), df['M-Top'].tolist()
+            if debug:
+                w_count = sum(1 for val in w_bottoms if val[0] == 1)
+                m_count = sum(1 for val in m_tops if val[0] == 1)
+                print(f"Total W-Bottoms: {w_count}, Total M-Tops: {m_count}")
 
+            return w_bottoms, m_tops
 
         except Exception as e:
-            self.log_manager.error(f"Error in identify_w_bottoms_m_tops(): {e}", exc_info=True)
-            return [(0, 0.0, 0.0)] * len(df), [(0, 0.0, 0.0)] * len(df)  # ✅ Changed from None → 0.0
+            self.logger.error(f"❌ Error in identify_w_bottoms_m_tops(): {e}", exc_info=True)
+            fallback = [(0, 0.0, 0.0)] * len(df)
+            return fallback, fallback
 
     def plot_w_bottoms_m_tops(self, df, detected_w_bottoms, detected_m_tops):  # debugging to get a visual of the data
         """
@@ -404,14 +450,4 @@ class Indicators:
 
             plt.show()
         except Exception as e:
-            self.log_manager.error(f"Error in plot_w_bottoms_m_tops(): {e}", exc_info=True)
-
-
-
-
-
-
-
-
-
-
+            self.logger.error(f"❌ Error in plot_w_bottoms_m_tops(): {e}", exc_info=True)

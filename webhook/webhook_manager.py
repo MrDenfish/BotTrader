@@ -16,15 +16,15 @@ class WebHookManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager, shared_utils_precision, trade_order_manager, alerts, session):
+    def get_instance(cls, logger_manager, shared_utils_precision, trade_order_manager, alerts, session):
         """
         Singleton method to ensure only one instance of WebHookManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logmanager, shared_utils_precision, trade_order_manager, alerts, session)
+            cls._instance = cls(logger_manager, shared_utils_precision, trade_order_manager, alerts, session)
         return cls._instance
 
-    def __init__(self, logmanager, shared_utils_precision, trade_order_manager, alerts, session):
+    def __init__(self, logger_manager, shared_utils_precision, trade_order_manager, alerts, session):
         """
         Initializes the WebHookManager.
         """
@@ -32,21 +32,13 @@ class WebHookManager:
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.trade_order_manager = trade_order_manager
-        self.log_manager = logmanager
+        self.logger = logger_manager.get_logger("webhook_logger")
+
+
         self.session = session
 
         # Trading parameters
         self._order_size = Decimal(self.config.order_size)
-        self._taker_fee = Decimal(self.config.taker_fee)
-        self._maker_fee = Decimal(self.config.maker_fee)
-
-    @property
-    def taker_fee(self):
-        return self._taker_fee
-
-    @property
-    def maker_fee(self):
-        return self._maker_fee
 
     @property
     def order_size(self):
@@ -63,7 +55,7 @@ class WebHookManager:
             success, response = await self.trade_order_manager.place_order(order_details, precision_data)
             return response  # Already structured by attempt_order_placement
         except InsufficientFundsException:
-            self.log_manager.warning("Insufficient funds error raised in handle_action.")
+            self.logger.warning("Insufficient funds error raised in handle_action.")
             return {
                 "success": False,
                 "code": "413",
@@ -71,7 +63,7 @@ class WebHookManager:
                 "error_response": {"error": "INSUFFICIENT_FUND"},
             }
         except ProductIDException:
-            self.log_manager.warning("Invalid product ID in handle_action.")
+            self.logger.warning("Invalid product ID in handle_action.")
             return {
                 "success": False,
                 "code": "412",
@@ -93,7 +85,7 @@ class WebHookManager:
                 "error_response": {"error": "EXCHANGE_MAINTENANCE"},
             }
         except Exception as e:
-            self.log_manager.error(f"Unhandled error in handle_action: {e}", exc_info=True)
+            self.logger.error(f"Unhandled error in handle_action: {e}", exc_info=True)
             return {
                 "success": False,
                 "code": "500",
@@ -101,7 +93,7 @@ class WebHookManager:
                 "error_response": {"error": str(e)},
             }
 
-    def calculate_order_size(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci):
+    def calculate_order_size(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci, fee_info):
         """
         Calculates order size and converts base amount to its USD equivalent (base_value).
 
@@ -120,8 +112,8 @@ class WebHookManager:
         """
         try:
 
-            taker_fee = float(self.taker_fee)
-            maker_fee = float(self.maker_fee)
+            taker_fee = float(fee_info.get('taker_fee', 0.0))
+            maker_fee = float(fee_info.get('maker_fee', 0.0))
 
             base_order_size = None
             base_value = Decimal(0)  # Default to zero to avoid NoneType errors
@@ -147,7 +139,7 @@ class WebHookManager:
                 base_value = base_value.quantize(formatted_quote_decimal, rounding=ROUND_HALF_UP)
 
             # Debugging logs to confirm values
-            self.log_manager.debug(
+            self.logger.debug(
                 f"Calculated order size: side={side}, base_order_size={base_order_size}, order_amount={order_amount}, base_value={base_value}"
             )
 
@@ -156,7 +148,7 @@ class WebHookManager:
         except Exception as e:
             caller_function_name = stack()[1].function  # Debugging
             print(f'{caller_function_name} - base_amount: {base_amount}, base_price: {base_price}')
-            self.log_manager.error(f'calculate_order_size: An unexpected error occurred: {e}', exc_info=True)
+            self.logger.error(f'calculate_order_size: An unexpected error occurred: {e}', exc_info=True)
             return None, None, None  # Return safe defaults on error
 
     def parse_webhook_request(self, request_json):
@@ -200,7 +192,7 @@ class WebHookManager:
             }
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error parsing webhook request: {e}")
+            self.logger.error(f"❌ Error parsing webhook request: {e}")
             return None
 
 
@@ -228,14 +220,14 @@ class WebHookManager:
                 f"An error occurred with status code: {getattr(e, 'status_code', 'unknown')}, error: {e}",
                 extra_error_details)
         except RateLimitException:
-            self.log_manager.error(f'warning', 'handle_webhook_error: Rate limit hit. '
+            self.logger.error(f'warning', 'handle_webhook_error: Rate limit hit. '
                                                   'Retrying in 60 seconds...')
             time.sleep(60)
             await self.handle_action(order_details, precision_data)
 
         except (BadRequestException, NotFoundException, InternalServerErrorException, UnknownException) as ex:
-            self.log_manager.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
+            self.logger.error(f'handle_webhook_error: {ex}. Additional info: {ex.errors}')
 
         except Exception as ex:
-            self.log_manager.error(f'handle_webhook_error: An unhandled exception occurred: {ex}. '
+            self.logger.error(f'handle_webhook_error: An unhandled exception occurred: {ex}. '
                                                   f'Additional info: {getattr(ex, "errors", "N/A")}')

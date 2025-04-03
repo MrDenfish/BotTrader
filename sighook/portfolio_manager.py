@@ -14,15 +14,15 @@ class PortfolioManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logmanager, ccxt_api, exchange, max_concurrent_tasks,
+    def get_instance(cls, logger_manager, ccxt_api, exchange, max_concurrent_tasks,
                      shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility):
         """ Ensures only one instance of PortfolioManager is created. """
         if cls._instance is None:
-            cls._instance = cls(logmanager, ccxt_api, exchange, max_concurrent_tasks,
+            cls._instance = cls(logger_manager, ccxt_api, exchange, max_concurrent_tasks,
                                 shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility)
         return cls._instance
 
-    def __init__(self, logmanager, ccxt_api, exchange, max_concurrent_tasks,
+    def __init__(self, logger_manager, ccxt_api, exchange, max_concurrent_tasks,
                  shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility):
         """ Initializes the PortfolioManager instance. """
 
@@ -33,27 +33,25 @@ class PortfolioManager:
         self.app_config = CentralConfig()
 
         # Config-based trading parameters
-        self._buy_rsi = self.app_config._rsi_buy
-        self._sell_rsi = self.app_config._rsi_sell
-        self._buy_ratio = self.app_config._buy_ratio
-        self._sell_ratio = self.app_config._sell_ratio
+        self._buy_rsi = self.app_config.rsi_buy
+        self._sell_rsi = self.app_config.rsi_sell
+        self._buy_ratio = self.app_config.buy_ratio
+        self._sell_ratio = self.app_config.sell_ratio
         self._min_volume = Decimal(self.app_config.min_volume)
         self._roc_buy_24h = Decimal(self.app_config.roc_buy_24h)
         self._roc_sell_24h = Decimal(self.app_config.roc_sell_24h)
-
+        self.shill_coins = self.app_config.shill_coins
         # External dependencies
         self.exchange = exchange
         self.ccxt_api = ccxt_api
-        self.log_manager = logmanager
+        self.logger = logger_manager
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_datas_and_times = shared_utils_datas_and_times
         self.shared_utils_utility = shared_utils_utility
 
         # Internal state
-        self.ticker_cache = None
-        self.market_cache_usd = None
-        self.market_cache_vol = None
-        self.start_time = None
+        self.ticker_cache = self.market_cache_usd = self.market_cache_vol = self.start_time = None
+        self.non_zero_balances = self.min_volume = None
         self.rate_limit = 0.15  # Initial rate limit in seconds (150 ms)
 
         # Concurrency control
@@ -97,17 +95,27 @@ class PortfolioManager:
         return int(self._roc_sell_24h)
 
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
-        """PART II: Trade Database Updates and Portfolio Management
-        Filter ticker cache by volume > 1 million and price change > roc_sell_24h %. """
+        """
+        PART II: Trade Database Updates and Portfolio Management
+        Filter ticker cache by volume > 1 million and price change > roc_sell_24h %.
+        Excludes coins listed in self.shill_coins (e.g., 'UNFI,TRUMP')
+        """
         filtered_ticker_cache = pd.DataFrame()
-        #  Extract list of unique cryptocurrencies from buy_sell_matrix
+
+        # ✅ Convert shill string to set
+        shill_coins = set([coin.strip().upper() for coin in self.shill_coins.split(',')])
+
+        # Extract list of unique cryptocurrencies from buy_sell_matrix
         if not buy_sell_matrix.empty:
             unique_coins = buy_sell_matrix['asset'].unique()
-            # Filter rows where base_currency is in the list of unique_coins
             df = self.ticker_cache[self.ticker_cache['asset'].isin(unique_coins)]
         else:
             df = self.ticker_cache
-            df = df[df['asset'] != 'USD'] # remove USD/USD pair
+            df = df[df['asset'] != 'USD']  # remove USD/USD pair
+
+        # ✅ Filter out shill coins
+        df = df[~df['asset'].str.upper().isin(shill_coins)]
+
         return df
 
     def get_portfolio_data(self, start_time, threshold=0.01):
@@ -142,7 +150,7 @@ class PortfolioManager:
             return holdings, usd_pairs, buy_sell_matrix, rows_to_add
 
         except Exception as e:
-            self.log_manager.error(f"Error in get_portfolio_data: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in get_portfolio_data: {e}", exc_info=True)
             return [], [], 0, pd.DataFrame(), pd.DataFrame()
 
     # Supporting Methods
@@ -199,7 +207,7 @@ class PortfolioManager:
             return pd.DataFrame()  # Return empty DataFrame if required columns are missing
 
         except Exception as e:
-            self.log_manager.error(f"_create_buy_sell_matrix: {e}", exc_info=True)
+            self.logger.error(f"❌ _create_buy_sell_matrix: {e}", exc_info=True)
             return pd.DataFrame()
 
     def _process_portfolio(self, threshold=0.01):
@@ -213,7 +221,7 @@ class PortfolioManager:
 
             # Ensure the relevant columns exist
             if 'free' not in self.market_cache_usd or 'price' not in self.market_cache_usd:
-                self.log_manager.error("Missing required columns in market_cache_usd: 'free' or 'price'")
+                self.logger.error("Missing required columns in market_cache_usd: 'free' or 'price'")
                 return pd.DataFrame()
 
             # Populate the 'free' column from non_zero_balances
@@ -233,7 +241,7 @@ class PortfolioManager:
             return self.market_cache_usd[self.market_cache_usd['balance'] > threshold]
 
         except Exception as e:
-            self.log_manager.error(f"_process_portfolio: {e}", exc_info=True)
+            self.logger.error(f"❌ _process_portfolio: {e}", exc_info=True)
             return pd.DataFrame()
 
     def _format_portfolio(self, portfolio_df):
@@ -267,7 +275,7 @@ class PortfolioManager:
                 for balance_data in non_zero_balances.values()
             }
         except Exception as e:
-            self.log_manager.error(f"Error creating tradeable crypto mapping: {e}", exc_info=True)
+            self.logger.error(f"❌Error creating tradeable crypto mapping: {e}", exc_info=True)
             return {}
 
 

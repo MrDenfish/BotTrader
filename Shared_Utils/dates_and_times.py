@@ -9,13 +9,13 @@ class DatesAndTimes:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager):
+    def get_instance(cls, logger_manager):
         if cls._instance is None:
-            cls._instance = cls(logmanager)
+            cls._instance = cls(logger_manager)
         return cls._instance
 
-    def __init__(self, logmanager):
-        self.log_manager = logmanager
+    def __init__(self, logger_manager):
+        self.logger = logger_manager
 
     @staticmethod
     def _prepare_datetime(trade):
@@ -45,7 +45,7 @@ class DatesAndTimes:
         """Ensure the given timestamp is not in the future. If it is, roll it back by 6 minutes."""
         now_ms = int(datetime.utcnow().timestamp() * 1000)
         if safe_since_ms >= now_ms:
-            self.log_manager.warning("Adjusted `since` timestamp is in the future. Using fallback.")
+            self.logger.warning("Adjusted `since` timestamp is in the future. Using fallback.")
             return now_ms - 6 * 60 * 1000  # Roll back 6 minutes
         return safe_since_ms
 
@@ -57,7 +57,7 @@ class DatesAndTimes:
             dt = parser.parse(timestamp)
             return dt.astimezone(pytz.UTC)
         except Exception as e:
-            print(f"Error standardizing timestamp: {e}")
+            print(f"❌ Error standardizing timestamp: {e}")
             return None
 
     def calculate_time_difference(self, time_string):
@@ -70,7 +70,7 @@ class DatesAndTimes:
             difference_in_minutes = difference.total_seconds() / 60
             return f"{int(difference_in_minutes)} minutes"
         except Exception as e:
-            self.log_manager.error(f"Error calculating time difference: {e}", exc_info=True)
+            self.logger.error(f"❌ Error calculating time difference: {e}", exc_info=True)
             return None
 
     @staticmethod
@@ -99,9 +99,9 @@ class DatesAndTimes:
             return int(parsed_timestamp.timestamp() * 1000)
         except ValueError as e:
             # Log error if parsing fails
-            self.log_manager.error(f"Error parsing timestamp: {e}")
+            self.logger.error(f"Error parsing timestamp: {e}")
             return None
         except Exception as e:
             # Log unexpected errors
-            self.log_manager.error(f"Error converting timestamp to unix: {e}", exc_info=True)
+            self.logger.error(f"❌ Error converting timestamp to unix: {e}", exc_info=True)
             return None

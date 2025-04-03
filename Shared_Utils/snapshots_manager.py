@@ -5,17 +5,16 @@ class SnapshotsManager:
     _instance = None # Singleton instance
 
     @classmethod
-    def get_instance(cls, shared_data_manager, logmanager):
+    def get_instance(cls, shared_data_manager, logger_manager):
         """
         Singleton method to ensure only one instance of SnapshotsManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(shared_data_manager, logmanager)
+            cls._instance = cls(shared_data_manager, logger_manager)
         return cls._instance # Always return the existing instance
 
-
-    def __init__(self, shared_data_manager, logmanager):
-        self.log_manager = logmanager
+    def __init__(self, shared_data_manager, logger_manager):
+        self.logger = logger_manager
         self.shared_data_manager = shared_data_manager
         print(f"SharedDataManager initialized successfully.")
 
@@ -29,7 +28,7 @@ class SnapshotsManager:
                 "order_management": snapshot[1]  # Extract order_management
             }
         except Exception as e:
-            self.log_manager.error(f"Error fetching market data snapshot: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching market data snapshot: {e}", exc_info=True)
             return {
                 "market_data": {},
                 "order_management": {}
@@ -44,8 +43,8 @@ class SnapshotsManager:
 
             return market_data, order_management
         except asyncio.TimeoutError:
-            self.log_manager.error("Timeout while waiting for market_data_lock in get_snapshots", exc_info=True)
+            self.logger.error("❌ Timeout while waiting for market_data_lock in get_snapshots", exc_info=True)
             return {}, {}
         except Exception as e:
-            self.log_manager.error(f"Error fetching snapshots: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
             return {}, {}

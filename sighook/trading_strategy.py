@@ -15,27 +15,27 @@ class TradingStrategy:
 
     @classmethod
     def get_instance(
-            cls, webhook, ticker_manager, exchange, alerts, logmanager, ccxt_api, metrics,
+            cls, webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
             max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision
     ):
         if cls._instance is None:
             cls._instance = cls(
-                webhook, ticker_manager, exchange, alerts, logmanager, ccxt_api, metrics,
+                webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
                                 max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision)
         return cls._instance
 
     def __init__(
-            self, webhook, ticker_manager, exchange, alerts, logmanager, ccxt_api, metrics,
+            self, webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
                  max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision):
         self.config = config()
         self._version = self.config.program_version
         self.exchange = exchange
         self.alerts = alerts
         self.ccxt_exceptions = ccxt_api
-        self.log_manager = logmanager
+        self.logger = logger_manager
 
         self.ticker_manager = ticker_manager
-        self.indicators = Indicators(logmanager)
+        self.indicators = Indicators(logger_manager)
         self._buy_rsi = self.config._rsi_buy
         self._sell_rsi = self.config._rsi_sell
         self._buy_ratio = self.config._buy_ratio
@@ -178,17 +178,37 @@ class TradingStrategy:
                             else None
                         )
 
-                        # ✅ Only fallback to 0.0 if the indicator is NOT dynamic
-                        if existing_threshold is None:
-                            threshold = 0.0 if col not in dynamic_threshold_indicators else None
-                        else:
-                            threshold = existing_threshold
+                        # Extract indicator tuple (decision, value, threshold)
+                        raw_tuple = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty else (0, 0.0, None)
+
+                        # Default to (0, 0.0, None) if malformed
+                        if not isinstance(raw_tuple, tuple) or len(raw_tuple) < 2:
+                            raw_tuple = (0, 0.0, None)
+
+                        # Unpack the values safely
+                        value = float(raw_tuple[1]) if raw_tuple[1] is not None else 0.0
+                        threshold = float(raw_tuple[2]) if len(raw_tuple) > 2 and raw_tuple[2] is not None else None
+
+                        # Optionally override threshold if not present and indicator is not dynamic
+                        if threshold is None and col not in dynamic_threshold_indicators:
+                            threshold = 0.0
 
                         # Avoid comparison if threshold is None
-                        decision = 0
-                        if threshold is not None:
-                            decision = 1 if value > threshold else 0
+                        def should_trigger(decision_col, value, threshold):
+                            if threshold is None:
+                                return 0
+                            if decision_col == "Buy RSI":
+                                return 1 if value < threshold else 0
+                            if decision_col == "Sell RSI":
+                                return 1 if value > threshold else 0
+                            if decision_col in {"Buy Touch", "W-Bottom", "Buy Swing"}:
+                                return 1 if value < threshold else 0
+                            if decision_col in {"Sell Touch", "M-Top", "Sell Swing"}:
+                                return 1 if value > threshold else 0
+                            return 1 if value > threshold else 0
 
+                        # Use the original decision from raw_tuple, if present
+                        decision = raw_tuple[0] if raw_tuple[0] in {0, 1} else 0
                         buy_sell_matrix.at[asset, col] = (decision, value, threshold)
 
                 # Compute target levels and signals
@@ -202,7 +222,7 @@ class TradingStrategy:
             return strategy_results, buy_sell_matrix
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in process_all_rows: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in process_all_rows: {e}", exc_info=True)
             return strategy_results, buy_sell_matrix
 
     def update_dynamic_targets(self, asset: str, buy_sell_matrix: pd.DataFrame):
@@ -225,12 +245,12 @@ class TradingStrategy:
             self.buy_target = total_buy_weight * 0.7  # Adjusted threshold
             self.sell_target = total_sell_weight * 0.7  # Adjusted threshold
 
-            self.log_manager.debug(f"Dynamic Buy Target for {asset}: {self.buy_target}")
-            self.log_manager.debug(f"Dynamic Sell Target for {asset}: {self.sell_target}")
+            self.logger.debug(f"Dynamic Buy Target for {asset}: {self.buy_target}")
+            self.logger.debug(f"Dynamic Sell Target for {asset}: {self.sell_target}")
 
 
         except Exception as e:
-            self.log_manager.error(f"Error updating dynamic targets: {e}", exc_info=True)
+            self.logger.error(f"❌ Error updating dynamic targets: {e}", exc_info=True)
 
     def compute_weighted_scores(self, asset, buy_sell_matrix):
         """Compute weighted buy and sell scores based on strategy decisions and weights."""
@@ -260,15 +280,15 @@ class TradingStrategy:
 
             return buy_score, sell_score
         except Exception as e:
-            self.log_manager.error(f"Error computing weighted scores: {e}", exc_info=True)
+            self.logger.error(f"❌ Error computing weighted scores: {e}", exc_info=True)
             return 0, 0
 
     def compute_signals(self, buy_score, sell_score):
         """Determine final buy/sell signals based on weighted scores."""
         try:
             # Debugging logs
-            self.log_manager.debug(f"Buy Score: {buy_score}, Buy Target: {self.buy_target}")
-            self.log_manager.debug(f"Sell Score: {sell_score}, Sell Target: {self.sell_target}")
+            self.logger.debug(f"Buy Score: {buy_score}, Buy Target: {self.buy_target}")
+            self.logger.debug(f"Sell Score: {sell_score}, Sell Target: {self.sell_target}")
 
             buy_signal = (1, buy_score, self.buy_target) if buy_score >= self.buy_target else (0, buy_score, self.buy_target)
             sell_signal = (1, sell_score, self.sell_target) if sell_score >= self.sell_target else (0, sell_score, self.sell_target)
@@ -285,7 +305,7 @@ class TradingStrategy:
             return buy_signal, sell_signal
 
         except Exception as e:
-            self.log_manager.error(f"Error computing final buy/sell signals: {e}", exc_info=True)
+            self.logger.error(f"❌ Error computing final buy/sell signals: {e}", exc_info=True)
             return (0, 0.0, 0.0), (0, 0.0, 0.0)
 
     @staticmethod
@@ -332,15 +352,15 @@ class TradingStrategy:
                 ohlcv_df = ohlcv_df.sort_values(by='time', ascending=True).reset_index(drop=True)
 
                 if ohlcv_df.isnull().values.any():
-                    self.log_manager.error(f"NaN values detected in OHLCV data for {asset}")
+                    self.logger.error(f"NaN values detected in OHLCV data for {asset}")
                     return None
                 if len(ohlcv_df) < 720:
-                    self.log_manager.warning(f"Insufficient OHLCV data for {asset}. Rows fetched: {len(ohlcv_df)}")
+                    self.logger.warning(f"Insufficient OHLCV data for {asset}. Rows fetched: {len(ohlcv_df)}")
 
                 return ohlcv_df
             return None
         except Exception as e:
-            self.log_manager.error(f"Error fetching OHLCV data for {asset}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching OHLCV data for {asset}: {e}", exc_info=True)
             return None
 
     @staticmethod
@@ -398,7 +418,7 @@ class TradingStrategy:
             }
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in decide_action for {symbol}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in decide_action for {symbol}: {e}", exc_info=True)
             return {}
 
     def buy_sell_scoring(self, ohlcv_df, symbol):
@@ -439,7 +459,7 @@ class TradingStrategy:
             return {'action': action, 'Buy Signal': buy_signal, 'Sell Signal': sell_signal}, action
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in buy_sell_scoring() for {symbol}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in buy_sell_scoring() for {symbol}: {e}", exc_info=True)
             return {'action': None, 'Buy Signal': (0, None, None), 'Sell Signal': (0, None, None)}, None
 
 
@@ -459,12 +479,12 @@ class TradingStrategy:
                 sell_action = 'close_at_limit'
                 sell_pair = symbol
                 sell_limit = price
-                self.log_manager.sell(f'Sell signal created for {symbol}, order triggered by {trigger} @ '
+                self.logger.sell(f'Sell signal created for {symbol}, order triggered by {trigger} @ '
                                                      f'{price}.')
                 return sell_action, sell_pair, sell_limit, sell_order
 
             return None, None, None, None
         except Exception as e:
-            self.log_manager.error(f'Error in handle_action(): {e}\nTraceback:,', exc_info=True)
+            self.logger.error(f'❌ Error in handle_action(): {e}\nTraceback:,', exc_info=True)
             return None, None, None, None
 

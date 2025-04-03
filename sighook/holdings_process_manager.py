@@ -11,20 +11,20 @@ class HoldingsProcessor:
     _instance = None
 
     @classmethod
-    def get_instance(cls, log_manager, profit_data_manager, *args, **kwargs):
+    def get_instance(cls, logger_manager, profit_data_manager, *args, **kwargs):
         """ Ensures only one instance of HoldingsProcessor is created. """
         if cls._instance is None:
-            cls._instance = cls(log_manager, profit_data_manager, *args, **kwargs)
+            cls._instance = cls(logger_manager, profit_data_manager, *args, **kwargs)
         return cls._instance
 
-    def __init__(self, log_manager, profit_data_manager, *args, **kwargs):
+    def __init__(self, logger_manager, profit_data_manager, *args, **kwargs):
         """ Initialize HoldingsProcessor. """
         if HoldingsProcessor._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
-        self.log_manager = log_manager
+        self.logger = logger_manager
         self.profit_data_manager = profit_data_manager
-        self.shared_utils_precision = PrecisionUtils.get_instance(log_manager)
+        self.shared_utils_precision = PrecisionUtils.get_instance(logger_manager)
 
         self.start_time = self.market_data = self.ticker_cache = self.current_prices = None
         self.usd_pairs = self.market_cache_vol = self.filtered_balances = self.holdings_list = None
@@ -51,7 +51,7 @@ class HoldingsProcessor:
             try:
                 value = Decimal(value)
             except ValueError:
-                raise ValueError(f"Invalid numeric value: {value}")
+                raise ValueError(f" Invalid numeric value: {value}")
 
         if not isinstance(value, Decimal):
             value = Decimal(value)
@@ -59,9 +59,9 @@ class HoldingsProcessor:
         return value.quantize(Decimal(f'1.{"0" * decimal_places}'), rounding=ROUND_DOWN)
 
     async def _calculate_derived_metrics(self, holding, processed_pairs, trailing_stop_orders):
-        """Calculate derived metrics for a single holding using _calculate_profitability()."""
+        """Calculate derived metrics for a single holding using calculate_profitability()."""
         asset = holding['asset']
-        balance = self._truncate_decimal(holding['total'])
+        asset_balance = self._truncate_decimal(holding['total'])
         price = self._truncate_decimal(holding['price'])
 
         pair_data = processed_pairs.get(asset, {})
@@ -71,15 +71,15 @@ class HoldingsProcessor:
         required_prices = {
             'avg_price': self._truncate_decimal(pair_data.get('average_price', 0)),
             'cost_basis': cost_basis,
-            'balance': balance,
+            'balance': asset_balance,
             'current_price': price,
             'profit': None,
             'profit_percentage': None,
         }
 
         # Calculate profitability
-        profitability = await self.profit_data_manager._calculate_profitability(asset, required_prices,
-                                                                                self.current_prices, self.usd_pairs)
+        profitability = await self.profit_data_manager.calculate_profitability(asset, required_prices,
+                                                                               self.current_prices, self.usd_pairs)
 
         trailing_stop = (
             trailing_stop_orders[trailing_stop_orders['product_id'] == holding['symbol']]
@@ -97,13 +97,13 @@ class HoldingsProcessor:
             'unrealized_profit_loss': self._truncate_decimal(profitability.get('profit', 0)),#✅
             'unrealized_profit_pct': self._truncate_decimal(profitability.get('   profit percent', 0))/100,#✅
             'trailing_stop': trailing_stop,
-            'current_value': self._truncate_decimal(balance * price),
+            'current_value': self._truncate_decimal(asset_balance * price),
         }
 
     async def process_holdings(self, open_orders, holdings_list):
         """Processes holdings data and returns an aggregated DataFrame."""
         try:
-            self.log_manager.info("Processing holdings data...")
+            self.logger.info("Processing holdings data...")
 
             # Prepare trailing stop orders
             trailing_stop_orders = (
@@ -139,6 +139,6 @@ class HoldingsProcessor:
             return aggregated_df
 
         except Exception as e:
-            self.log_manager.error(f"Failed to process holdings data: {e}", exc_info=True)
+            self.logger.error(f"❌Failed to process holdings data: {e}", exc_info=True)
             raise
 

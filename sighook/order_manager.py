@@ -13,15 +13,15 @@ class OrderManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logmanager, ccxt_api,
-                        profit_helper, shared_utils_precision, max_concurrent_tasks=10):
+    def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
+                     shared_utils_precision, max_concurrent_tasks=10):
         if cls._instance is None:
-            cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts, logmanager, ccxt_api,
-                                profit_helper, shared_utils_precision, max_concurrent_tasks)
+            cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
+                                shared_utils_precision, max_concurrent_tasks)
         return cls._instance
 
-    def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logmanager, ccxt_api,
-                 profit_helper, shared_utils_precision, max_concurrent_tasks=10):
+    def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
+                 shared_utils_precision, max_concurrent_tasks=10):
         self.config = CentralConfig()
         self.trading_strategy = trading_strategy
         self.exchange = exchange
@@ -29,12 +29,11 @@ class OrderManager:
         self.ticker_manager = ticker_manager
         self.shared_utils_precision = shared_utils_precision
         self.alerts = alerts
-        self.log_manager = logmanager
+        self.logger = logger_manager
         self.ccxt_api = ccxt_api
-        self.profit_helper = profit_helper
         self._version = self.config.program_version
         self._min_sell_value = Decimal(self.config.min_sell_value)
-        self._order_size = Decimal(self.config._order_size)
+        self._order_size = Decimal(self.config.order_size)
         self._trailing_percentage = Decimal(self.config.trailing_percentage)  # Default trailing stop at 0.5%
         self._hodl = self.config.hodl
         self._take_profit = Decimal(self.config.take_profit)
@@ -45,6 +44,7 @@ class OrderManager:
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self.market_cache_vol, self.ticker_cache, self.filtered_balances, self.min_volume = None, None, None, None
         self.http_session, self.start_time, self.web_url  = None, None, None
+        self.usd_pairs = self.current_prices = self.open_orders = None
 
     def set_trade_parameters(self, start_time, market_data,  order_management, web_url):
         self.start_time = start_time
@@ -116,7 +116,7 @@ class OrderManager:
                 response = await self.webhook.send_webhook(self.http_session, webhook_payload)
                 return response
             except Exception as e:
-                self.log_manager.error(f"Error in throttled_send: {e}", exc_info=True)
+                self.logger.error(f"❌ Error in throttled_send: {e}", exc_info=True)
                 return None
 
 
@@ -132,7 +132,7 @@ class OrderManager:
             else:
                 return None
         except Exception as gooe:
-            self.log_manager.error(f'get_open_orders: {gooe}', exc_info=True)
+            self.logger.error(f'❌ get_open_orders: {gooe}', exc_info=True)
             return None
 
     async def cancel_stale_orders(self, open_orders):
@@ -189,7 +189,7 @@ class OrderManager:
             return non_stale_orders
 
         except Exception as e:
-            self.log_manager.error(f'Error cancelling stale orders: {e}', exc_info=True)
+            self.logger.error(f'❌ Error cancelling stale orders: {e}', exc_info=True)
             return None
 
     async def cancel_order(self, order_id, product_id):
@@ -205,7 +205,7 @@ class OrderManager:
             print(f'‼️ Order {product_id}:{order_id}  was not cancelled')
             return
         except Exception as e:
-            self.log_manager.error(f'Error cancelling order {product_id}:{order_id}: {e}', exc_info=True)
+            self.logger.error(f'❌Error cancelling order {product_id}:{order_id}: {e}', exc_info=True)
 
     async def adjust_merged_orders_prices(self, merged_orders):
         """
@@ -226,7 +226,7 @@ class OrderManager:
             return merged_orders
 
         except Exception as e:
-            self.log_manager.error(f"Error adjusting prices in merged_orders: {e}", exc_info=True)
+            self.logger.error(f"❌Error adjusting prices in merged_orders: {e}", exc_info=True)
             return merged_orders
 
     async def format_open_orders_from_dict(self, open_orders_dict: dict) -> pd.DataFrame:
@@ -284,7 +284,7 @@ class OrderManager:
                     )
 
                 else:
-                    self.log_manager.warning(f"⚠️ Skipping unsupported order type: {order_type}")
+                    self.logger.warning(f"⚠️ Skipping unsupported order type: {order_type}")
                     continue
 
                 data_to_load.append(common_fields)
@@ -304,7 +304,7 @@ class OrderManager:
             return df
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in format_open_orders_from_dict: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in format_open_orders_from_dict: {e}", exc_info=True)
             return pd.DataFrame()
 
     async def execute_actions(self, strategy_results, holdings):
@@ -337,7 +337,7 @@ class OrderManager:
             return pd.DataFrame(processed_orders, columns=['symbol', 'action', 'trigger'])
 
         except Exception as e:
-            self.log_manager.error(f"Error executing actions: {e}", exc_info=True)
+            self.logger.error(f"❌ Error executing actions: {e}", exc_info=True)
             return None
 
     async def handle_actions(self, order, holdings):
@@ -351,7 +351,6 @@ class OrderManager:
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
 
             price = self.shared_utils_precision.float_to_decimal(order['price'], quote_deci)
-            volume = order.get('volume', 0)
             base_avail_to_trade = Decimal(self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', 0))
             base_avail_to_trade = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,base_avail_to_trade,convert='base')
             quote_avail_balance = Decimal(self.filtered_balances.get('USD', {}).get('available_to_trade_fiat', 0))
@@ -366,11 +365,11 @@ class OrderManager:
             if action_type in action_methods:
                 return await action_methods[action_type](holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order)
             else:
-                self.log_manager.warning(f"Unknown action type: {action_type}")
+                self.logger.warning(f"Unknown action type: {action_type}")
                 return None
 
         except Exception as e:
-            self.log_manager.error(f"Error handling action {order}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error handling action {order}: {e}", exc_info=True)
             return None
 
     async def handle_buy_action(self, holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order):
@@ -391,18 +390,19 @@ class OrderManager:
                         await self.close_http_session()
                         return []
 
-                    self.log_manager.buy(f'✅ {symbol} buy signal triggered @ {buy_order} price {price}, USD balance: ${usd_balance}')
+                    self.logger.buy(f'✅ {symbol} buy signal triggered @ {buy_order} price {price}, USD balance: ${usd_balance}')
                     return {'buy_action': 'open_at_limit', 'buy_pair': symbol, 'buy_limit': price, 'curr_band_ratio': order.get('band_ratio'),
                             'trigger': order.get('trigger')}
                 return[]
 
-            self.log_manager.info(
-                f'Insufficient funds ${usd_balance} to buy {symbol}' if usd_balance <= 100 else f'Currently holding {symbol}. Buy signal will not be processed.'
+            self.logger.info(
+                f'Insufficient funds ${usd_balance} to buy {symbol}' if usd_balance <= 100 else
+                f'Currently holding {symbol}. Buy signal will not be processed.'
                 )
             return None
 
         except Exception as e:
-            self.log_manager.error(f'handle_buy_action: Error processing order {symbol}: {e}', exc_info=True)
+            self.logger.error(f'❌ handle_buy_action: Error processing order {symbol}: {e}', exc_info=True)
             return None
 
     async def handle_sell_action(self, holdings, symbol, base_avail_to_trade, quote_amount,price, order):
@@ -421,7 +421,7 @@ class OrderManager:
                     webhook_payload = self.build_webhook_payload(symbol, 'sell', sell_order, price, base_avail_to_trade, quote_amount)
                     if webhook_payload.get('verified') == 'valid':
                         await self.throttled_send(webhook_payload)
-                        self.log_manager.sell(f'{symbol} sell signal triggered from {trigger} @ {sell_action} price {sell_limit}')
+                        self.logger.sell(f'{symbol} sell signal triggered from {trigger} @ {sell_action} price {sell_limit}')
                         return {'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit, 'sell_cond': sell_cond,
                                 'trigger': trigger}
                     return[]
@@ -432,7 +432,7 @@ class OrderManager:
             return None
 
         except Exception as e:
-            self.log_manager.error(f'handle_sell_action: Error processing order for {symbol}: {e}', exc_info=True)
+            self.logger.error(f'❌ handle_sell_action: Error processing order for {symbol}: {e}', exc_info=True)
             return None
 
     async def handle_trailing_stop(self, holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order):
@@ -440,14 +440,14 @@ class OrderManager:
         return await self.handle_sell_action(holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order)
 
     async def execute_tp_sl_order(self, symbol, price, base_avail_to_trade, quote_avail_balance, trigger, coin):
-        """Executes a bracket order (take profit/loss) when applicable."""
+        """Submits a tp_sl order (take profit/loss) when applicable."""
         webhook_payload = self.build_webhook_payload(symbol, 'sell', 'tp_sl', price, base_avail_to_trade, quote_avail_balance)
         if webhook_payload.get('verified') == 'valid':
             await self.throttled_send(webhook_payload)
             if trigger == 'profit' and coin not in self.hodl:
-                self.log_manager.take_profit(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
+                self.logger.take_profit(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
             elif trigger == 'loss' and coin not in self.hodl:
-                self.log_manager.take_loss(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
+                self.logger.take_loss(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
 
     def build_webhook_payload(self, symbol, side, order_type, price, base_avail_to_trade=0, quote_avail_balance=0):
         """Constructs the webhook payload for sending orders."""
@@ -456,17 +456,14 @@ class OrderManager:
         price = float(price) if isinstance(price, Decimal) else price
         base_avail_to_trade = float(base_avail_to_trade) if isinstance(base_avail_to_trade, Decimal) else base_avail_to_trade
         quote_avail_balance = float(quote_avail_balance) if isinstance(quote_avail_balance, Decimal) else quote_avail_balance
-
+        valid_order = 'valid'
         if base_avail_to_trade * price < self.min_sell_value and side == 'sell':
             valid_order = 'invalid'
-        elif base_avail_to_trade * price > self.min_sell_value and side == 'sell':
-            valid_order = 'valid'
         elif quote_avail_balance < self._order_size and side == 'buy':
             valid_order = 'invalid'
         else:
-            if quote_avail_balance > self._order_size and side == 'buy':
-                valid_order = 'valid'
-
+            if quote_avail_balance < self._order_size and side == 'buy':
+                valid_order = 'invalid'
 
         # Construct payload
         payload = {

@@ -1,27 +1,34 @@
-from inspect import stack # debugging
+
 import math
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
+from inspect import stack  # debugging
+
 import pandas as pd
-from decimal import Decimal, ROUND_DOWN
+
 
 class PrecisionUtils:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logmanager, market_data=None):
+    def get_instance(cls, logger_manager, market_data=None):
         """ Ensures only one instance of PrecisionUtils is created. """
         if cls._instance is None:
-            cls._instance = cls(logmanager, market_data)
+            cls._instance = cls(logger_manager, market_data)
         return cls._instance
 
-    def __init__(self, logmanager,  market_data):
+    def __init__(self, logger_manager, market_data):
         """ Initialize PrecisionUtils. """
         if PrecisionUtils._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
         self.market_data = market_data
-        self.log_manager = logmanager
+        self.logger = logger_manager.get_logger("webhook_logger")
 
-
+    def safe_decimal(self, value, default="0"):
+        try:
+            return Decimal(value)
+        except (TypeError, ValueError, InvalidOperation):
+            return Decimal(default)
 
     def fetch_precision(self, symbol: str, usd_pairs) -> tuple:
         """
@@ -38,7 +45,7 @@ class PrecisionUtils:
 
             if isinstance(symbol, pd.Series):
                 caller_function_name = stack()[1].function  # debugging
-                self.log_manager.debug(f" {caller_function_name}")  # debugging
+                self.logger.debug(f" {caller_function_name}")  # debugging
                 symbol = symbol.iloc[1]
 
             # Normalize symbol format to 'BTC/USD' for consistent comparison
@@ -76,23 +83,23 @@ class PrecisionUtils:
 
                 return base_decimal_places, quote_decimal_places, base_increment, quote_increment
             else:
-                return 4, 2, 1e-08, 1e-08
+                return 0, 2, 1e-08, 1e-08
 
         except ValueError as e:
-            self.log_manager.error(f"fetch_precision: {e}", exc_info=True)
+            self.logger.error(f"❌ fetch_precision: {e}", exc_info=True)
             return None, None, None, None
         except Exception as e:
             if "No market found" in str(e):
-                self.log_manager.info(f"No market found in market cache for symbol {symbol}.")
+                self.logger.info(f"No market found in market cache for symbol {symbol}.")
             else:
-                self.log_manager.error(f'fetch_precision: Error processing order for {symbol}: {e}',
-                                       exc_info=True)
+                self.logger.error(f'fetch_precision: Error processing order for {symbol}: {e}', exc_info=True)
 
         raise ValueError(f"Symbol {symbol} not found in market_cache.")
 
     def adjust_price_and_size(self, order_data, order_book) -> tuple[Decimal, Decimal]:
+
         """
-        Adjusts price and size based on order book data, ensuring proper precision.
+        Adjusts price and size based on order book data, ensuring proper precision. Fees are added tp give a more accurate price.
 
         Args:
             order_data (dict): Order details containing side, order size, quote amount, etc.
@@ -102,9 +109,12 @@ class PrecisionUtils:
             tuple[Decimal, Decimal]: Adjusted price and size.
         """
         try:
+            caller_function = stack()[1].function
+
             side = order_data['side'].upper()
             highest_bid = Decimal(str(order_book.get('highest_bid', 0)))
             lowest_ask = Decimal(str(order_book.get('lowest_ask', 0)))
+            adjusted_size = Decimal(str(order_data.get('order_size', 0)))
 
             if highest_bid == 0 or lowest_ask == 0:
                 raise ValueError("Invalid order book data: highest_bid or lowest_ask is zero.")
@@ -116,16 +126,6 @@ class PrecisionUtils:
                 adjusted_price = lowest_ask  # Buying uses lowest ask
             else:
                 raise ValueError(f"Unsupported order side: {side}")
-
-            # Determine adjusted size
-            if side == 'SELL':
-                adjusted_size = Decimal(str(max(order_data.get('sell_amount', 0) , order_data.get('base_avail_to_trade', 0) )))
-            else:  # BUY case
-                quote_amount = Decimal(str(order_data.get('order_amount', 0)))
-                if adjusted_price == 0:
-                    raise ValueError("Adjusted price cannot be zero for BUY order.")
-                adjusted_size = quote_amount / adjusted_price
-
 
             # Calculate spread and adjustment factor
             spread = lowest_ask - highest_bid
@@ -141,23 +141,29 @@ class PrecisionUtils:
             # Adjust both bid and ask
             adjusted_bid = highest_bid + adjustment_factor  # Increase bid slightly
             adjusted_ask = lowest_ask - adjustment_factor  # Decrease ask slightly
-
+            if order_data.get('type'):
+                fee_rate = Decimal(order_data.get('maker_fee') if order_data['type'] == 'limit' else order_data.get('taker_fee'))
+            else:
+                fee_rate = Decimal(0.0)
             # Apply adjusted price for both sides
             if side == 'BUY':
-                adjusted_price = adjusted_ask
+                net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
+                adjusted_price = net_proceeds.quantize(precision_quote, rounding=ROUND_DOWN)
+                quote_amount = Decimal(str(order_data.get('order_amount', 0)))
+                if adjusted_price == 0:
+                    raise ValueError("Adjusted price cannot be zero for BUY order.")
+                adjusted_size = quote_amount / adjusted_price
+                adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
             elif side == 'SELL':
-                adjusted_price = adjusted_bid
-
-            # Ensure adjusted price and size respects precision
-            adjusted_price = adjusted_price.quantize(precision_quote, rounding=ROUND_DOWN)
-            adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
-
-
+                gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
+                adjusted_price = gross_cost.quantize(precision_quote, rounding=ROUND_DOWN)
+                adjusted_size = Decimal(str(max(order_data.get('sell_amount', 0), order_data.get('base_avail_to_trade', 0))))
+                adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
 
             return adjusted_price, adjusted_size
 
         except Exception as e:
-            self.log_manager.error(f"adjust_price_and_size: Error - {e}", exc_info=True)
+            self.logger.error(f"❌ adjust_price_and_size: Error - {e}", exc_info=True)
             return None, None
 
     def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
@@ -194,7 +200,7 @@ class PrecisionUtils:
                 raise TypeError(f"Unsupported input type for num_to_adjust: {type(num_to_adjust)}")
 
         except Exception as e:
-            self.log_manager.error(f'adjust_precision: An error occurred: {e}', exc_info=True)
+            self.logger.error(f'❌ adjust_precision: An error occurred: {e}', exc_info=True)
             return None
 
     def float_to_decimal(self, value, decimal_places):
@@ -219,7 +225,7 @@ class PrecisionUtils:
                 raise TypeError(f"Unsupported input type for float_to_decimal: {type(value)}")
 
         except Exception as e:
-            self.log_manager.error(f'float_to_decimal: An error occurred: {e}. Value: {value},'
+            self.logger.error(f'❌ float_to_decimal: An error occurred: {e}. Value: {value},'
                                    f'Decimal places: {decimal_places}', exc_info=True)
             raise
 
@@ -238,5 +244,5 @@ class PrecisionUtils:
             decimal_format = '0.' + ('0' * (base_decimal - 1)) + '1'
             return Decimal(decimal_format)  # example 0.00000001
         except Exception as e:
-            self.log_manager.error(f'An error was detected {e}',exc_info=True)
+            self.logger.error(f'❌ An error was detected {e}', exc_info=True)
             return Decimal(0)

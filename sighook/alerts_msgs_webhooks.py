@@ -12,15 +12,15 @@ class AlertSystem:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logmanager):
+    def get_instance(cls, logger_manager):
         """
         Singleton method to ensure only one instance of AlertSystem exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logmanager)
+            cls._instance = cls(logger_manager)
         return cls._instance
 
-    def __init__(self, logmanager):
+    def __init__(self, logger_manager):
         """
         Initializes the AlertSystem.
         """
@@ -36,7 +36,7 @@ class AlertSystem:
         self._order_size = self.config.order_size
         self._smtp_host = 'smtp.gmail.com'
         self._smtp_port = 465
-        self.log_manager = logmanager
+        self.logger = logger_manager
 
         self.semaphore = asyncio.Semaphore(10)
 
@@ -49,12 +49,12 @@ class SenderWebhook:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange, alerts, logmanager, shared_utils_utility):
+    def get_instance(cls, exchange, alerts, logger_manager, shared_utils_utility):
         if cls._instance is None:
-            cls._instance = cls(exchange, alerts, logmanager, shared_utils_utility)
+            cls._instance = cls(exchange, alerts, logger_manager, shared_utils_utility)
         return cls._instance
 
-    def __init__(self, exchange, alerts, logmanager, shared_utils_utility):
+    def __init__(self, exchange, alerts, logger_manager, shared_utils_utility):
         self.config = CentralConfig()
         self._smtp_server = SMTP_SSL('smtp.gmail.com', 465)
         self._phone = self.config.phone
@@ -64,7 +64,7 @@ class SenderWebhook:
         self._order_size = self.config.order_size
         self._version = self.config.program_version
         self.shared_utils_utility = shared_utils_utility
-        self.log_manager = logmanager
+        self.logger = logger_manager
         self.exchange = exchange
         self.base_delay = 5  # Start with a 5-second delay
         self.max_delay = 320  # Don't wait more than this
@@ -108,7 +108,7 @@ class SenderWebhook:
         # Prevent duplicate webhooks
         async with self.lock:
             if uuid in self.processed_uuids:
-                self.log_manager.info(f"� Duplicate webhook ignored: {uuid}")
+                self.logger.info(f"� Duplicate webhook ignored: {uuid}")
                 return None
             self.processed_uuids.add(uuid)
 
@@ -120,7 +120,7 @@ class SenderWebhook:
         for attempt in range(1, retries + 1):
             try:
                 # Attempt webhook send
-                self.log_manager.debug(f"� Attempting webhook ({attempt}/{retries}): {webhook_payload}")
+                self.logger.debug(f"� Attempting webhook ({attempt}/{retries}): {webhook_payload}")
                 response = await http_session.post(
                     self.web_url,
                     data=json.dumps(webhook_payload, default=self.shared_utils_utility.string_default),
@@ -128,62 +128,62 @@ class SenderWebhook:
                     timeout=45
                 )
                 response_text = await response.text()
-                self.log_manager.debug(f" ✅ Sending webhook: {json.dumps(webhook_payload, indent=2)}",exc_info=True)
+                self.logger.debug(f" ✅ Sending webhook: {json.dumps(webhook_payload, indent=2)}", exc_info=True)
 
                 # ✅ Successful request
                 if response.status == 200:
                     if webhook_payload['side'] == 'buy':
-                        self.log_manager.order_sent(f"✅ Alert webhook sent successfully: {uuid}")
+                        self.logger.order_sent(f"✅ Alert webhook sent successfully: {uuid}")
 
                     return response
 
                 # ❌ Handle non-recoverable errors
                 if response.status in [403, 404]:
-                    self.log_manager.error(f"‼️ Non-recoverable error {response.status}: {response_text}")
+                    self.logger.error(f"‼️ Non-recoverable error {response.status}: {response_text}")
                     return response
                 if response.status in [413, 414]:
-                    self.log_manager.error(f" ⚠️ Insufficient balance to complete order {response.status}: {response_text}")
+                    self.logger.error(f" ⚠️ Insufficient balance to complete order {response.status}: {response_text}")
                     return response
                 if response.status in [411]:
-                    self.log_manager.error(f" ⚠️ Open order, unable to complete order {response.status}: {response_text}")
+                    self.logger.error(f" ⚠️ Open order, unable to complete order {response.status}: {response_text}")
                     return response
                 if response.status in [412]:
-                    self.log_manager.error(f" ⚠️ Unable to adjust price, order was not placed {response.status}: {response_text}")
+                    self.logger.error(f" ⚠️ Unable to adjust price, order was not placed {response.status}: {response_text}")
                     return response
                 if response.status in [415]:
-                    self.log_manager.error(
+                    self.logger.error(
                         f" ⚠️ Crypto balance value is greater than $1.00, order was not placed {response.status}:"
                         f" {response_text}"
                     )
                     return response
                 if response.status in [416, 417]:
-                    self.log_manager.error(f" ‼️ Order may be incomplete, order was not placed {response.status}: {response_text}")
+                    self.logger.error(f" ‼️ Order may be incomplete, order was not placed {response.status}: {response_text}")
                     return response
                 # ⚠️ Handle recoverable errors with clean logging
                 if response.status in [429, 500, 503]:
                     error_summary = (response_text[:300] + "...") if len(response_text) > 300 else response_text
-                    self.log_manager.warning(f"⚠️ Recoverable {response.status} error: {error_summary} (Retrying...)")
+                    self.logger.warning(f"⚠️ Recoverable {response.status} error: {error_summary} (Retrying...)")
 
                 elif response.status == 400 and 'Insufficient balance to sell' in response_text:
-                    self.log_manager.info(f"� Insufficient balance for {webhook_payload['pair']} {uuid} response text:{response_text}")
+                    self.logger.info(f"� Insufficient balance for {webhook_payload['pair']} {uuid} response text:{response_text}")
                     return response
 
                 else:
                     raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
 
             except asyncio.TimeoutError:
-                self.log_manager.error(f"‼️ Request timeout (attempt {attempt}/{retries}): {webhook_payload}")
+                self.logger.error(f"‼️ Request timeout (attempt {attempt}/{retries}): {webhook_payload}")
 
             except aiohttp.ClientError as e:
-                self.log_manager.error(f"‼️ Client error (attempt {attempt}/{retries}): {e}")
+                self.logger.error(f"‼️ Client error (attempt {attempt}/{retries}): {e}")
 
             # ⏳ Retry logic with exponential backoff
             if attempt < retries:
                 sleep_time = delay + random.uniform(0, delay * 0.3)  # Add jitter
-                self.log_manager.debug(f"� Retrying in {sleep_time:.2f} seconds...")
+                self.logger.debug(f"� Retrying in {sleep_time:.2f} seconds...")
                 await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)  # Exponential backoff
 
         # ❌ Max retries reached
-        self.log_manager.error(f"❌ Max retries reached for webhook: {uuid}")
+        self.logger.error(f"❌ Max retries reached for webhook: {uuid}")
         return None

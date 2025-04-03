@@ -14,14 +14,14 @@ class MarketManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logmanager, ccxt_api, ticker_manager,
+    def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
                         portfolio_manager, max_concurrent_tasks, database, db_tables):
         if cls._instance is None:
-            cls._instance = cls(tradebot, exchange, order_manager, trading_strategy, logmanager, ccxt_api, ticker_manager,
+            cls._instance = cls(tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
                                 portfolio_manager, max_concurrent_tasks, database, db_tables)
         return cls._instance
 
-    def __init__(self, tradebot, exchange, order_manager, trading_strategy, logmanager, ccxt_api, ticker_manager,
+    def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
                  portfolio_manager, max_concurrent_tasks, database: Database, db_tables):
         self.app_config = CentralConfig()
         self.exchange = exchange
@@ -33,7 +33,7 @@ class MarketManager:
         self.order_manager = order_manager
         self.ticker_manager = ticker_manager
         self.portfolio_manager = portfolio_manager
-        self.log_manager = logmanager
+        self.logger = logger_manager
         self.ticker_cache = None
         self.market_cache_vol, self.non_zero_balances = None, None
         self.start_time = None
@@ -101,7 +101,7 @@ class MarketManager:
                     print(f"No new data fetched for {symbol}")
 
             except Exception as e_process:
-                self.log_manager.error(f"Error processing OHLCV data for {symbol}: {e_process}", exc_info=True)
+                self.logger.error(f"❌ Error processing OHLCV data for {symbol}: {e_process}", exc_info=True)
 
         try:
             # Dynamically adjust batch size based on the number of symbols
@@ -129,7 +129,7 @@ class MarketManager:
                 await asyncio.sleep(0.5)  # Slight delay between batches to respect rate limits
 
         except Exception as e:
-            self.log_manager.error(f"Error in fetch_and_store_ohlcv_data(): {e}", exc_info=True)
+            self.logger.error(f"❌ Error in fetch_and_store_ohlcv_data(): {e}", exc_info=True)
 
     async def fetch_ohlcv(self, endpoint, symbol, timeframe, since, params):
         """PART III:
@@ -170,7 +170,7 @@ class MarketManager:
                 return {'symbol': symbol, 'data': df}
 
         except Exception as e:
-            self.log_manager.error(f"Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
 
         return None
 
@@ -222,7 +222,7 @@ class MarketManager:
             await self.cap_ohlcv_data(symbol, max_rows=self.max_ohlcv_rows)
 
         except Exception as e:
-            self.log_manager.error(f"Error storing OHLCV data for {ohlcv_data['symbol']}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error storing OHLCV data for {ohlcv_data['symbol']}: {e}", exc_info=True)
 
     async def cap_ohlcv_data(self, symbol, max_rows):
         """PART III
@@ -263,9 +263,9 @@ class MarketManager:
                 )
                 await self.database.execute(delete_query)
 
-                self.log_manager.debug(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.")
+                self.logger.debug(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.")
         except Exception as e:
-            self.log_manager.error(f"Error capping OHLCV data for {symbol}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error capping OHLCV data for {symbol}: {e}", exc_info=True)
 
     async def get_last_timestamp(self, symbol):
         """

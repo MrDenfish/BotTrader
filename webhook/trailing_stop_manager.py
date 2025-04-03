@@ -8,22 +8,24 @@ class TrailingStopManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, log_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api):
+    def get_instance(cls, logger_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api):
         """
         Singleton method to ensure only one instance of TrailingStopManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(log_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api)
+            cls._instance = cls(logger_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api)
         return cls._instance
 
-    def __init__(self, log_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api):
+    def __init__(self, logger_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api):
         """
         Initializes the TrailingStopManager.
         """
         if TrailingStopManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance().")
 
-        self.log_manager = log_manager
+        self.logger = logger_manager.get_logger("webhook_logger")
+
+
         self.coinbase_api = coinbase_api
         self.config = Bot_config()
         self._trailing_percentage = Decimal(self.config.trailing_percentage)
@@ -51,27 +53,6 @@ class TrailingStopManager:
         Returns:
             tuple: (order_id, trailing_stop_price)
         """
-        # try:
-        #     adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book)
-        #     trailing_stop_price = adjusted_price * (1 - self.trailing_percentage / 100)
-        #     #await self.order_type_manager.process_limit_and_tp_sl_orders("WebSocket", btc_order_data)
-        #     response = await self.order_type_manager.place_trailing_stop_order(order_book, order_data, adjusted_price)
-        #
-        #     if response:
-        #         response_data, limit_price, stop_price = response  # Unpack tuple
-        #
-        #         if response_data.get("success"):  # Now it's correctly accessing the dictionary
-        #             order_id = response_data["order_id"]
-        #             self.log_manager.info(f"Trailing stop order placed: {order_id}")
-        #             return order_id, trailing_stop_price
-        #         else:
-        #             self.log_manager.error(f"Failed to place trailing stop order: {response_data.get('failure_reason')}")
-        #             return None, None
-        #     else:
-        #         return None, None
-        # except Exception as e:
-        #     self.log_manager.error(f"Error placing trailing stop: {e}", exc_info=True)
-        #     return None, None
 
     async def update_trailing_stop(self, order_id, symbol, highest_price, order_tracker, required_prices, order_data):
         """
@@ -95,7 +76,7 @@ class TrailingStopManager:
             limit_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, limit_price, convert='quote')
 
             asset = symbol.split('/')[0]
-            amount = required_prices.get('balance',0.0)
+            amount = required_prices.get('asset_balance', 0.0)
 
             payload = await self.order_type_manager.update_order_payload(order_id, symbol, trailing_stop_price, limit_price, amount)
             response = await self.coinbase_api.update_order(payload)

@@ -25,22 +25,24 @@ class OrderTypeManager:
 
     @classmethod
     def get_instance(cls, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,validate,
-                     logmanager, alerts, ccxt_api, order_book_manager, websocket_helper, session):
+                     logger_manager, alerts, ccxt_api, order_book_manager, websocket_helper, session):
         """
         Singleton method to ensure only one instance of OrderTypeManager exists.
         """
         if cls._instance is None:
             cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,validate,
-                                logmanager, alerts, ccxt_api, order_book_manager, websocket_helper, session)
+                                logger_manager, alerts, ccxt_api, order_book_manager, websocket_helper, session)
         return cls._instance
 
-    def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, validate, logmanager,
+    def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, validate, logger_manager,
                  alerts, ccxt_api, order_book_manager, websocket_helper, session):
         self.config = Config()
         self.exchange = exchange_client
         self.coinbase_api = coinbase_api
         # self.base_url = self.config._api_url
-        self.log_manager = logmanager
+        self.logger = logger_manager.get_logger("webhook_logger")
+
+
         self.validate = validate
         self.order_book_manager = order_book_manager
         self.websocket_helper = websocket_helper
@@ -57,8 +59,6 @@ class OrderTypeManager:
         # trade parameters
         self._take_profit = Decimal(self.config.take_profit)
         self._stop_loss = Decimal(self.config.stop_loss)
-        self._taker_fee = Decimal(self.config.taker_fee)
-        self._maker_fee = Decimal(self.config.maker_fee)
         self._sell_ratio = Decimal(self.config.sell_ratio)
         self._buy_ratio = Decimal(self.config.buy_ratio)
         self._trailing_percentage = Decimal(self.config.trailing_percentage)
@@ -100,14 +100,6 @@ class OrderTypeManager:
         return self._trailing_limit
 
     @property
-    def taker_fee(self):
-        return self._taker_fee
-
-    @property
-    def maker_fee(self):
-        return self._maker_fee
-
-    @property
     def min_sell_value(self):
         return self._min_sell_value
 
@@ -133,8 +125,8 @@ class OrderTypeManager:
 
             asset = order_data.base_currency
             trading_pair = order_data.trading_pair
-
-            print(f"✅ Processing TP SL Order from {source}: {order_data}")
+            print_order_data = self.shared_utils_utility.pretty_summary(order_data)
+            print(f"✅ Processing TP SL Order from {source}: {print_order_data}")
 
             # ✅ Step 1: Check for existing open orders
             all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=trading_pair)
@@ -169,7 +161,8 @@ class OrderTypeManager:
 
             # ✅ Step 4: Ensure sufficient balances
             side = order_data.side.upper()
-            usd_required = adjusted_size * Decimal(order_data.adjusted_price)
+            usd_required = adjusted_size * order_data.adjusted_price * (1 + order_data.maker_fee)
+
 
             if side == 'BUY' and usd_required > Decimal(order_data.usd_balance):
                 return {
@@ -177,6 +170,13 @@ class OrderTypeManager:
                     'code': validation_result.get('code'),
                     'message': f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_balance}) for {asset} BUY. Required: ${usd_required}"
                 }
+            elif side == 'BUY' and adjusted_size == 0.0:
+                return {
+                    'error': 'Zero_Size',
+                    'code': validation_result.get('code'),
+                    'message': f"⚠️ Order Blocked - Zero Size for {asset} BUY."
+                }
+
 
             if side == 'SELL' and adjusted_size > Decimal(order_data.available_to_trade_crypto):
                 return {
@@ -205,20 +205,20 @@ class OrderTypeManager:
                 }
             }
 
-            self.log_manager.info(f"� Submitting Order: {order_payload}")
+            self.logger.info(f"� Submitting Order: {order_payload}")
             print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}')  # Debug
             # ✅ Step 6: Execute Order
             response_data = await self.coinbase_api.create_order(order_payload)
 
             if response_data.get('success'):
                 order_id = response_data.get('success_response', {}).get('order_id')
-                self.log_manager.info(f"✅ Order Placed Successfully with TP/SL: {order_id}")
+                self.logger.info(f"✅ Order Placed Successfully with TP/SL: {order_id}")
                 return response_data
 
             return response_data
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)
             return None
 
     async def place_limit_order(self, source, order_data: OrderData):
@@ -228,24 +228,44 @@ class OrderTypeManager:
         """
         try:
 
-            self.log_manager.debug(f"Placing limit order from {source} with data: {order_data}")
+            self.logger.debug(f"Placing limit order from {source} with data: {order_data}")
             caller_function_name = stack()[1].function
 
             # ✅ Required fields check
             required_fields = ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask', 'available_to_trade_crypto']
             missing_fields = [field for field in required_fields if order_data is None]
             if missing_fields:
-                self.log_manager.error(f"Missing required fields: {missing_fields} called by: {caller_function_name}")
+                self.logger.error(f"Missing required fields: {missing_fields} called by: {caller_function_name}")
                 return None
 
-            # ✅ Extracting values
+            # ✅  Step 1: Extracting values
             symbol = order_data.trading_pair.replace('/', '-')
+            asset = symbol.split('-')[0]
             side = order_data.side.upper()
             amount = Decimal(str(order_data.adjusted_size))
             price = Decimal(str(order_data.highest_bid) if side == 'sell' else order_data.lowest_ask)
             available_crypto = Decimal(str(order_data.available_to_trade_crypto))
+
+            # ✅ Step 2: Revalidate
+            validation_result = self.validate.fetch_and_validate_rules(order_data)
+
+            if not validation_result.get('is_valid'):
+                condition = validation_result.details.get("condition", validation_result.get('error'))
+                return {
+                    'error': 'order_not_valid',
+                    'code': validation_result.get('code'),
+                    'message': f"⚠️ Order Blocked {asset} - Trading Rules Violation: {condition}"
+                }
+
             if order_data.side == 'buy':
                 usd_available = Decimal(str(order_data.usd_avail_balance))
+                usd_required = amount * price * (1 + order_data.maker_fee)
+                if usd_required > Decimal(order_data.usd_balance):
+                    return {
+                        'error': 'Insufficient_USD',
+                        'code': validation_result.get('code'),
+                        'message': f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_balance}) for {asset} BUY. Required: ${usd_required}"
+                    }
             else:
                 usd_available = Decimal(str(order_data.usd_balance))
 
@@ -253,15 +273,15 @@ class OrderTypeManager:
 
             # ✅ Ensure valid price
             if price <= 0:
-                self.log_manager.error(f"Invalid price ({price}) for {side} order on {symbol}. Order data: {order_data}")
+                self.logger.error(f"Invalid price ({price}) for {side} order on {symbol}. Order data: {order_data}")
                 return None
 
             # ✅ Ensure sufficient balance
             if side == 'BUY' and (amount * price) > usd_available:
-                self.log_manager.info(f"Insufficient USD for BUY order on {symbol}. Required: {amount * price}, Available: {usd_available}")
+                self.logger.info(f"Insufficient USD for BUY order on {symbol}. Required: {amount * price}, Available: {usd_available}")
                 return None
             if side == 'SELL' and amount > available_crypto:
-                self.log_manager.info(f"Insufficient {symbol} balance for SELL order. Trying to sell: {amount}, Available: {available_crypto}")
+                self.logger.info(f"Insufficient {symbol} balance for SELL order. Trying to sell: {amount}, Available: {available_crypto}")
                 return None
 
             # ✅ Refresh order book to get latest bid/ask
@@ -278,28 +298,29 @@ class OrderTypeManager:
             # ✅ Adjust price dynamically to avoid post-only rejection
             if side == 'BUY' and price >= latest_lowest_ask:
                 price = max(latest_lowest_ask * (Decimal('1') - price_buffer_pct), latest_lowest_ask - min_buffer)
+
             elif side == 'SELL' and price <= latest_highest_bid:
                 price = min(latest_highest_bid * (Decimal('1') + price_buffer_pct), latest_highest_bid + min_buffer)
 
-            self.log_manager.info(f"✅ Adjusted {side} limit order price: {price} for {symbol}")
+            self.logger.info(f"✅ Adjusted {side} limit order price: {price} for {symbol}")
 
             # ✅ Place the order
             self.exchange.verbose = False
-            self.log_manager.info(f"Placing {side} limit order: {symbol}, Amount: {amount}, Price: {price}, Params: {params}")
+            self.logger.info(f"Placing {side} limit order: {symbol}, Amount: {amount}, Price: {price}, Params: {params}")
 
             response = await self.ccxt_api.ccxt_api_call(
                 self.exchange.create_order, 'private', symbol, 'limit', side, amount, price, params=params
             )
 
             if response:
-                self.log_manager.info(f"✅ Order placed successfully: {response}")
+                self.logger.info(f"✅ Order placed successfully: {response}")
                 return response
             else:
-                self.log_manager.error(f"⚠️ Received None from create_order for {symbol}. Order data: {order_data}")
+                self.logger.error(f"⚠️ Received None from create_order for {symbol}. Order data: {order_data}")
                 return None
 
         except Exception as ex:
-            self.log_manager.error(f"❌ Error in place_limit_order: {ex}", exc_info=True)
+            self.logger.error(f"❌ Error in place_limit_order: {ex}", exc_info=True)
             return None
 
     async def place_trailing_stop_order(self, order_book, order_data, market_price):
@@ -320,10 +341,10 @@ class OrderTypeManager:
 
             # ✅ Ensure order size is valid and remove bad orders
             if order_value < Decimal(1.0) and order_data.get('side').lower() == 'buy':
-                self.log_manager.bad_order(f"There is a balance of {available_balance} for {symbol}and the buy order will not be placed")
+                self.logger.bad_order(f"There is a balance of {available_balance} for {symbol}and the buy order will not be placed")
                 return None
             elif order_value < Decimal(1.0) and order_data.get('side').lower() == 'sell':
-                self.log_manager.bad_order(f"The min value of  this order is less than the $1.00 threshold and will not be placed"
+                self.logger.bad_order(f"The min value of  this order is less than the $1.00 threshold and will not be placed"
                                       f" {symbol}: {available_balance} ~${order_value}")
                 return None
             # ✅ Adjust for Fee Deduction
@@ -407,18 +428,18 @@ class OrderTypeManager:
             response = await self.coinbase_api.create_order(payload)
 
             if response is None:
-                self.log_manager.error(f"Received None as the response from create_order.")
+                self.logger.error(f"Received None as the response from create_order.")
                 return None
             elif 'Insufficient balance in source account' in response:
                 print(f"� Debugging: Available balance {available_balance}, base_size {base_size}")
-                self.log_manager.info(f"Insufficient funds for trailing stop order: {order_data['trading_pair']}")
+                self.logger.info(f"Insufficient funds for trailing stop order: {order_data['trading_pair']}")
                 return None
 
             print(f'Trailing stop order placed for {order_data["trading_pair"]}, response: {response}')  # Debugging
             return response, market_price, trailing_stop_price
 
         except Exception as ex:
-            self.log_manager.error(f"Error in place_trailing_stop_order: {str(ex)}", exc_info=True)
+            self.logger.error(f" ❌ Error in place_trailing_stop_order: {str(ex)}", exc_info=True)
             return None
 
     @staticmethod
@@ -428,112 +449,3 @@ class OrderTypeManager:
             "price":str(limit_price),
             "size":str(amount)
         }
-
-    # async def _handle_bracket_order(self, order_data, order_book_details):
-    #     """Not Currently in USE"""
-    #     try:
-    #         currencies = [order_data['trading_pair'].split('/')[0], order_data['trading_pair'].split('/')[1]]
-    #         accounts = await self.shared_utils_precision.get_account_balance(currencies, get_staked=False)
-    #         _, has_open_order = await self.websocket_helper.refresh_open_orders(trading_pair=order_data['trading_pair'])
-    #         if not has_open_order:
-    #             response = await self.place_bracket_order(order_data, order_book_details)
-    #             self.log_manager.info(order_data['trading_pair'], order_data['adjusted_price'], order_data[
-    #                 'side'])
-    #             return response
-    #         else:
-    #             self.log_manager.info(f'Order already exists for {order_data["trading_pair"]}')
-    #             return {'success': False, 'message': 'Order already exists'}
-    #     except Exception as ex_bracket:
-    #         self.log_manager.error(f"Error in _handle_bracket_order: {str(ex_bracket)}", exc_info=True)
-    #         return None
-
-    # async def place_bracket_order(self, order_data, order_book):
-    print(f"‼️ NOT IMPLEMENTED: place_bracket_order")
-    #     """
-    #     Attempts to place a sell bracket order and returns the response.
-    #     If the order fails, it logs the error and returns None. Bracket orders are market orders and will incur larger fees.
-    #     """
-    #     try:
-    #         client_order_id = str(uuid.uuid4())
-    #         end_time = (datetime.now(timezone.utc) + timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    #
-    #         # Adjust price and size
-    #         adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data, order_book)
-    #
-    #         if adjusted_price is None or adjusted_size is None:
-    #             self.log_manager.error("Failed to adjust price or size.")
-    #             return None
-    #         symbol = order_data['trading_pair'].replace('/', '-')
-    #
-    #         # Adjust limit and stop prices to the correct precision
-    #         limit_price = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'],
-    #                                                   adjusted_price, 'quote')
-    #         stop_trigger_price = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data['quote_decimal'],
-    #                                                          order_data['stop_loss_price'], 'quote')
-    #         # Ensure limit price is within bounds
-    #         market_price = Decimal(order_data['adjusted_price'])
-    #         min_price = market_price * self.sell_ratio
-    #         max_price = market_price * self.buy_ratio
-    #
-    #         if limit_price < min_price or limit_price > max_price:
-    #             self.log_manager.error(
-    #                 f"Limit price {limit_price} is out of bounds (min: {min_price}, max: {max_price}).")
-    #             return None
-    #         adjust_precision_take_profit = self.shared_utils_precision.adjust_precision(order_data['base_decimal'], order_data[
-    #             'quote_decimal'], order_data['take_profit_price'], convert='quote')
-    #         payload = {
-    #             "client_order_id": client_order_id,
-    #             "product_id": symbol,
-    #             "side": "sell" if order_data['side'].upper() == 'sell' else "buy",
-    #             "order_configuration": {
-    #                 "trigger_bracket_gtd": {
-    #                     "base_size": str(adjusted_size),
-    #                     "limit_price": str(adjust_precision_take_profit),
-    #                     "stop_trigger_price": str(stop_trigger_price),
-    #                     "end_time": end_time
-    #                 }
-    #             }
-    #         }
-    #         response = await self.coinbase_api.create_order(payload)
-    #         return response
-    #     except Exception as e:
-    #         self.log_manager.error(f"Error placing bracket order: {str(e)}", exc_info=True)
-    #         return None
-
-    # async def handle_order_errors(self, order_payload, response_data):
-    #     """
-    #     Handles specific order errors and attempts corrections where possible.
-    #
-    #     Args:
-    #         order_payload (dict): The original order request payload.
-    #         response_data (dict): The API response containing error details.
-    #
-    #     Returns:
-    #         tuple: (response_data, None, None) or (updated_response, new_tp, new_sl)
-    #     """
-    #     error_response = response_data.get('error_response', {})
-    #     preview_failure_reason = error_response.get('preview_failure_reason', '')
-    #
-    #     # if "PREVIEW_INVALID_ATTACHED_TAKE_PROFIT_PRICE_OUT_OF_BOUNDS" in preview_failure_reason:
-    #     #     self.log_manager.warning(f"⚠️ Take Profit price out of bounds. Adjusting TP for {order_payload['product_id']}")
-    #     #
-    #     #     # Adjust TP price by a small percentage
-    #     #     new_tp = Decimal(order_payload['attached_order_configuration']['trigger_bracket_gtc']['limit_price']) * Decimal('0.99')
-    #     #
-    #     #     # Update order payload
-    #     #     order_payload['attached_order_configuration']['trigger_bracket_gtc']['limit_price'] = str(new_tp)
-    #     #
-    #     #     self.log_manager.info(f"� Retrying Order with Adjusted TP: {new_tp}")
-    #     #
-    #     #     # Retry order placement
-    #     #     updated_response = await self.coinbase_api.create_order(order_payload)
-    #     #
-    #     #     if updated_response.get('success'):
-    #     #         return updated_response, new_tp, order_payload['attached_order_configuration']['trigger_bracket_gtc']['stop_trigger_price']
-    #     #
-    #     #     self.log_manager.error(f"❌ Order retry failed after TP adjustment: {updated_response}")
-    #     #
-    #     # else:
-    #     #     self.log_manager.error(f"❌ Order failed with unknown error: {error_response}")
-    #
-    #     return response_data, None, None
