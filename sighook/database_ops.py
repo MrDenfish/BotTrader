@@ -132,6 +132,7 @@ class DatabaseOpsManager:
                 # Calculate current value and profitability
                 avg_entry_price = Decimal(self.holdings_list.get(asset, {}).get('average_entry_price', {}).get('value', 0))
                 cost_basis = Decimal(self.holdings_list.get(asset, {}).get('cost_basis', {}).get('value', 0))
+
                 required_prices = {
                     'avg_price': avg_entry_price,
                     'cost_basis': cost_basis,
@@ -139,6 +140,7 @@ class DatabaseOpsManager:
                     'current_price': Decimal(current_price),
                     'profit': None,
                     'profit_percentage':None,
+                    'status_of_order': None
 
 
                 }

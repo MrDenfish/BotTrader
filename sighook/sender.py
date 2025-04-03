@@ -79,22 +79,10 @@ class TradeBot:
         self.database_ops = None
         self.db_initializer = None
 
-
-    # self.initialize_components()
+    # self.initialize_listener_components()
     @property
     def csv_dir(self):
         return self._csv_dir
-
-    # def setup_exchange(self):
-    #     self.exchange = getattr(ccxt, 'coinbase')
-    #     TradeBot._exchange_instance_count += 1
-    #     print(f"TradeBot Exchange instance created. Total instances: {TradeBot._exchange_instance_count}")  # debug
-    #     return self.exchange({
-    #         'apiKey': self.cb_api.get('name'),
-    #         'secret': self.cb_api.get('privateKey'),
-    #         'enableRateLimit': True,
-    #         'verbose': False
-    #     })
 
     async def async_init(self):
         """ Initialize bot components asynchronously, ensuring the database connection is ready first. """
@@ -183,7 +171,9 @@ class TradeBot:
         except Exception as e:
             self.logger.error(f'❌ Failed to initialize data on startup {e}', exc_info=True)
         finally:
-            await self.exchange.close()
+            if hasattr(self.exchange, 'close') and callable(getattr(self.exchange, 'close')):
+                await self.exchange.close()
+
             TradeBot._exchange_instance_count -= 1
             print(f"Exchange instance closed. Total instances: {TradeBot._exchange_instance_count}")
 
@@ -291,7 +281,6 @@ class TradeBot:
     async def run_bot(self):  # async
 
         # Fetch snapshots using the shared instance
-       #self.market_data, self.order_management = await self.shared_data_manager.get_snapshots()
         profit_data = pd.DataFrame(columns=['Symbol', 'Unrealized PCT', 'Profit/Loss', 'Total Cost', 'Current Value',
                                             'Balance'])
         # ledger = pd.DataFrame()  # Holds all trades and shows profitability of all trades
@@ -327,10 +316,6 @@ class TradeBot:
 
                     if open_orders is None or open_orders.empty:  # debug
                         print("No open orders found.")
-                        test_token = 1
-                    else:
-                        test_tocken = 0
-                    # self.market_manager.utility.print_elapsed_time(self.market_manager.start_time, 'open_orders')
 
                     # Step 2: Initialize or update OHLCV data
                     if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
@@ -372,13 +357,12 @@ class TradeBot:
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:
-                    await self.exchange.close()
+                    if hasattr(self.exchange, 'close') and callable(getattr(self.exchange, 'close')):
+                        await self.exchange.close()
 
                 if open_orders is None or open_orders.empty:  # debug
                     print("No open orders found.")
-                    test_token = 1
-                else:
-                    test_tocken = 0
+
                 self.shared_utils_print.print_data(self.min_volume, open_orders, buy_sell_matrix, submitted_orders,
                                                    aggregated_df)
 
@@ -392,26 +376,10 @@ class TradeBot:
                 self.start_time = time.time()  # rest start time for next iteration.
                 print('Part I: Data Gathering and Database Loading - Start Time:', self.start_time)
 
-                # print(f'{self.market_data.get("ticker_cache").to_string(index=False)}')
-                # open_orders = await self.order_manager.get_open_orders()
-                await self.shared_data_manager.refresh_shared_data()
-
-                market_data, order_management = await self.shared_data_manager.initialize_shared_data()
-
-                self.market_data = market_data  # Store explicitly in TradeBot if needed
-                # print(f'{self.market_data.get("ticker_cache").to_string(index=False)}')
-
-                self.order_management = order_management
-
-
-                # Check and update trailing stop orders and prepare webhook signal
-                # this function is now performed with webhook using websockets
-                # await self.order_manager.check_prepare_trailing_stop_orders(open_orders, current_prices)
+                self.market_data, self.order_management = await self.shared_data_manager.refresh_shared_data()
 
                 (holdings_list, _, _, _) = self.portfolio_manager.get_portfolio_data(self.start_time)
 
-
-                #await self.database_session_mngr.process_data(self.start_time)
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part I: Data Gathering and Database Loading is complete, '
                                                                  'session closed')
 

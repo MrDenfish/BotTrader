@@ -563,7 +563,7 @@ class WebSocketHelper:
                         "jwt": jwt_token  # ✅ Include JWT for authentication
                     }
                     await self.user_ws.send(json.dumps(subscription_message))
-                    self.logger.info(f"Subscribed to user channel: {channel} with products: {product_ids}")
+                    self.logger.debug(f"Subscribed to user channel: {channel} with products: {product_ids}")
 
                 self.subscribed_channels.update(new_channels)
 
@@ -727,13 +727,18 @@ class WebSocketHelper:
                         'avg_price': avg_price,
                         'cost_basis': cost_basis,
                         'asset_balance': asset_balance,
+                        'current_price': None,
+                        'profit': None,
+                        'profit_percentage': None,
                         'status_of_order': status_of_order
                     }
+
                     base_deci,quote_deci,_,_ = self.shared_utils_precision.fetch_precision(symbol,usd_pairs)
 
                     profit = await self.profit_data_manager.calculate_profitability(asset, required_prices, current_prices, usd_pairs)
-                    profit_value = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, profit.get('profit'),'quote')
-                    print(f"� Order {status} profit: {profit_value:.2f}")
+                    profit_value = self.shared_utils_precision.adjust_precision(base_deci, quote_deci,
+                                                                                profit.get('profit'), 'quote')
+                    print(f"� Order {status} {symbol} profit: {profit_value:.2f}")
                     # ✅ Buy BTC when profit is between $1.00 and $2.00
                     if status == "FILLED" and asset not in self.hodl:
                         if Decimal(1.0) < profit_value < Decimal(2.0):
@@ -905,6 +910,9 @@ class WebSocketHelper:
                     'avg_price': avg_price,
                     'cost_basis': cost_basis,
                     'asset_balance': asset_balance,
+                    'current_price': None,
+                    'profit': None,
+                    'profit_percentage': None,
                     'status_of_order': status_of_order
                 }
                 profit = await self.profit_data_manager.calculate_profitability(asset, required_prices, current_prices,
@@ -1003,11 +1011,13 @@ class WebSocketHelper:
 
             # Extracting status_of_order
             status_of_order = f"{order.get('order_type', 'UNKNOWN')}/{side}/{status}"
-
             required_prices = {
                 'avg_price': avg_price,
                 'cost_basis': cost_basis,
                 'asset_balance': asset_balance,
+                'current_price': None,
+                'profit': None,
+                'profit_percentage': None,
                 'status_of_order': status_of_order
             }
 
@@ -1167,8 +1177,11 @@ class WebSocketHelper:
                             'avg_price': avg_price,
                             'cost_basis': cost_basis,
                             'asset_balance': asset_balance,
+                            'current_price': None,
+                            'profit': None,
+                            'profit_percentage': None,
                             'usd_avail': usd_avail,
-                            'status': order_data.status
+                            'status_of_order': order_data.status
                         }
 
                         if order_data.type == 'limit' and order_data.side == 'sell':
@@ -1266,11 +1279,16 @@ class WebSocketHelper:
                                           f"{order_info.get('status', 'UNKNOWN')}"
                         break  # Stop after finding the first matching order
 
+
                 # Add `status_of_order` to required_prices
                 required_prices = {
                     'avg_price': avg_price,
                     'cost_basis': cost_basis,
                     'asset_balance': asset_balance,
+                    'current_price': None,
+                    'profit': None,
+                    'profit_percentage': None,
+                    'usd_avail': None,
                     'status_of_order': status_of_order  # ✅ Added status_of_order
                 }
 
@@ -1556,7 +1574,7 @@ class WebhookListener:
                                                                self.ccxt_api
         )
 
-    def initialize_components(self, market_data_master, order_mgmnt_master, shared_data_manager):
+    def initialize_listener_components(self, market_data_master, order_mgmnt_master, shared_data_manager):
         self.shared_data_manager = shared_data_manager
         self.market_data = market_data_master  # Store updated market data
         self.order_management = order_mgmnt_master  # Store updated order management data
@@ -1584,6 +1602,8 @@ class WebhookListener:
         self.shared_utils_precision.order_management = order_mgmnt_master
         self.shared_data_manager.market_data = market_data_master
         self.shared_data_manager.order_management = order_mgmnt_master
+
+        print("✅ WebhookListener:load_bot_components() completed successfully.")
 
 
     async def refresh_market_data(self):
@@ -1883,6 +1903,9 @@ class WebhookListener:
 
             # Build order and place it
             order_details = await self.trade_order_manager.build_order_data("Webhook", asset, product_id, fee_info)
+            if order_details is None:
+                return web.json_response({"success": False, "message": "Failed to build order data"}, status=422)
+
             print(f' ⚠️ process_webhook - Order Data: {order_details.debug_summary(verbose=True)}')
 
             response = await self.webhook_manager.handle_action(order_details, precision_data)
@@ -1987,7 +2010,7 @@ async def initialize_market_data(listener, market_data_manager, shared_data_mana
     """Fetch and initialize market data safely after the event loop starts."""
     await asyncio.sleep(1)  # Prevents race conditions
     market_data_master, order_mgmnt_master = await market_data_manager.update_market_data(time.time())
-    listener.initialize_components(market_data_master, order_mgmnt_master, shared_data_manager)
+    listener.initialize_listener_components(market_data_master, order_mgmnt_master, shared_data_manager)
 
 async def supervised_task(task_coro, name):
     """Handles and logs errors in background tasks."""

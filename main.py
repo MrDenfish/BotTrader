@@ -85,7 +85,8 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
                                  rest_client=listener.rest_client,
                                  portfolio_uuid=listener.portfolio_uuid,
                                  logger_manager=log_manager)
-            await trade_bot.load_bot_components()
+            await trade_bot.async_init()
+            # await trade_bot.load_bot_components()
 
         listener.market_manager = trade_bot.market_manager
         await listener.async_init()
@@ -122,7 +123,7 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
         listener.websocket_helper = websocket_helper
 
         market_data_master, order_mgmnt_master = await listener.market_data_manager.update_market_data(time.time())
-        listener.initialize_components(market_data_master, order_mgmnt_master, shared_data_manager)
+        listener.initialize_listener_components(market_data_master, order_mgmnt_master, shared_data_manager)
 
         if startup_event:
             startup_event.set()  # ✅ Signal to sighook that data is ready
@@ -186,22 +187,26 @@ async def main():
         shared_data_manager = await init_shared_data(webhook_logger)
         await run_webhook(config, shared_data_manager, webhook_logger_mgr)
 
+
     elif args.run == 'both':
         sighook_logger_mgr = await setup_logger('sighook_logger')
         shared_data_manager = await init_shared_data(sighook_logger_mgr)
-
         startup_event = asyncio.Event()
 
         # Launch sighook in background
-        sighook_task = asyncio.create_task(
-            run_sighook(shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger_mgr, startup_event)
+        sighook_task = asyncio.create_task(run_sighook(
+            shared_data_manager, config.rest_client, config.portfolio_uuid,
+            sighook_logger_mgr, startup_event)
         )
 
-        # Launch webhook
+        # Launch webhook in background
         webhook_logger_mgr = await setup_logger('webhook_logger')
-        await run_webhook(config, shared_data_manager, webhook_logger_mgr, startup_event)
+        webhook_task = asyncio.create_task(
+            run_webhook(config, shared_data_manager, webhook_logger_mgr, startup_event)
+        )
 
-        await sighook_task
+        # Wait for both to finish
+        await asyncio.gather(sighook_task, webhook_task)
 
 
 if __name__ == "__main__":

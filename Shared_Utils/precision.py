@@ -160,6 +160,9 @@ class PrecisionUtils:
                 adjusted_size = Decimal(str(max(order_data.get('sell_amount', 0), order_data.get('base_avail_to_trade', 0))))
                 adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
 
+            if adjusted_price is None or adjusted_size is None:
+                raise ValueError("Adjusted price or size cannot be None.")
+
             return adjusted_price, adjusted_size
 
         except Exception as e:

@@ -71,10 +71,11 @@ class HoldingsProcessor:
         required_prices = {
             'avg_price': self._truncate_decimal(pair_data.get('average_price', 0)),
             'cost_basis': cost_basis,
-            'balance': asset_balance,
+            'asset_balance': asset_balance,
             'current_price': price,
             'profit': None,
             'profit_percentage': None,
+            'status_of_order': None
         }
 
         # Calculate profitability

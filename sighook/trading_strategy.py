@@ -1,6 +1,7 @@
 
 import asyncio
 from decimal import Decimal
+from typing import Tuple, Dict, Any
 
 import pandas as pd
 from sqlalchemy import select
@@ -42,6 +43,7 @@ class TradingStrategy:
         self._sell_ratio = self.config._sell_ratio
         self._roc_buy_24h = self.config._roc_buy_24h
         self._hodl = self.config._hodl
+        self.shill_coins = self.config._shill_coins
         self.market_metrics = metrics
         self.webhook = webhook
         self.ohlcv_data = {}  # A dictionary to store OHLCV data for each symbol
@@ -147,7 +149,8 @@ class TradingStrategy:
                 temp_symbol = symbol.replace("/", "-")
                 _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
 
-                if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.hodl:
+                # if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.shill_coins:
+                if asset in self.shill_coins:
                     skipped_symbols.append(temp_symbol)
                     continue
 
@@ -421,47 +424,76 @@ class TradingStrategy:
             self.logger.error(f"❌ Error in decide_action for {symbol}: {e}", exc_info=True)
             return {}
 
-    def buy_sell_scoring(self, ohlcv_df, symbol):
-        """Determine buy or sell signals using weighted scores and ROC-based priority."""
+    def buy_sell_scoring(self, ohlcv_df: pd.DataFrame, symbol: str) -> Tuple[Dict[str, Any], str]:
+        """
+        Determine buy/sell action using ROC priority and weighted scores.
+        """
         try:
+            last_ohlcv = ohlcv_df.iloc[-1]
             _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
 
-            last_ohlcv = ohlcv_df.iloc[-1]  # Get the most recent row
-
-            # ✅ Prioritize ROC-Based Buy/Sell Conditions
+            # Extract critical indicators
             roc_value = last_ohlcv.get('ROC', None)
             roc_diff_value = last_ohlcv.get('ROC_Diff', 0.0)
             rsi_value = last_ohlcv.get('RSI', None)
 
+            # ✅ ROC-based priority (overrides scoring logic)
             if roc_value is not None:
                 buy_signal_roc = roc_value > 5 and abs(roc_diff_value) > 0.3 and rsi_value is not None and rsi_value < 30
                 sell_signal_roc = roc_value < -2.5 and abs(roc_diff_value) > 0.3 and rsi_value is not None and rsi_value > 70
 
                 if buy_signal_roc:
-                    return {'action': 'buy', 'Buy Signal': (1, roc_value, 5),
-                            'Sell Signal': (0, None, None)}, 'roc_buy'
-                elif sell_signal_roc:
-                    return {'action': 'sell', 'Sell Signal': (1, roc_value, -2.5),
-                            'Buy Signal': (0, None, None)}, 'roc_sell'
+                    return {
+                        'action': 'buy',
+                        'Buy Signal': (1, float(roc_value), 5),
+                        'Sell Signal': (0, None, None)
+                    }, 'roc_buy'
 
-            # ✅ Weighted Buy/Sell Scores
-            buy_conditions = ['Buy RSI', 'Buy MACD', 'Buy Touch', 'Buy Ratio', 'W-Bottom', 'Buy Swing']
-            sell_conditions = ['Sell RSI', 'Sell MACD', 'Sell Touch', 'Sell Ratio', 'M-Top', 'Sell Swing']
+                if sell_signal_roc:
+                    return {
+                        'action': 'sell',
+                        'Sell Signal': (1, float(roc_value), -2.5),
+                        'Buy Signal': (0, None, None)
+                    }, 'roc_sell'
 
-            buy_score = sum(last_ohlcv[col][1] for col in buy_conditions if col in last_ohlcv and last_ohlcv[col][1] is not None)
-            sell_score = sum(last_ohlcv[col][1] for col in sell_conditions if col in last_ohlcv and last_ohlcv[col][1] is not None)
+            # ✅ Score-based evaluation
+            weights = self.STRATEGY_WEIGHTS
+            buy_score = 0.0
+            sell_score = 0.0
 
-            buy_signal = (1, buy_score, self.buy_target) if buy_score >= self.buy_target else (0, buy_score, self.buy_target)
-            sell_signal = (1, sell_score, self.sell_target) if sell_score >= self.sell_target else (0, sell_score, self.sell_target)
+            for indicator, weight in weights.items():
+                value = last_ohlcv.get(indicator)
+                if isinstance(value, tuple) and len(value) == 3:
+                    decision = value[0]
+                    buy_score += decision * weight if indicator.startswith("Buy") else 0.0
+                    sell_score += decision * weight if indicator.startswith("Sell") else 0.0
 
-            action = 'buy' if buy_signal[0] == 1 else 'sell' if sell_signal[0] == 1 else 'hold'
+            # Update targets dynamically if needed
+            self.buy_target = sum(w for k, w in weights.items() if k.startswith("Buy")) * 0.7
+            self.sell_target = sum(w for k, w in weights.items() if k.startswith("Sell")) * 0.7
 
-            return {'action': action, 'Buy Signal': buy_signal, 'Sell Signal': sell_signal}, action
+            buy_signal = (1, round(buy_score, 3), self.buy_target) if buy_score >= self.buy_target else (0, round(buy_score, 3), self.buy_target)
+            sell_signal = (1, round(sell_score, 3), self.sell_target) if sell_score >= self.sell_target else (
+                0, round(sell_score, 3), self.sell_target)
+
+            # Resolve conflicts
+            action = 'hold'
+            if buy_signal[0] == 1 and sell_signal[0] == 0:
+                action = 'buy'
+            elif sell_signal[0] == 1 and buy_signal[0] == 0:
+                action = 'sell'
+            elif buy_signal[0] == 1 and sell_signal[0] == 1:
+                action = 'buy' if buy_score > sell_score else 'sell'
+
+            return {
+                'action': action,
+                'Buy Signal': buy_signal,
+                'Sell Signal': sell_signal
+            }, action
 
         except Exception as e:
             self.logger.error(f"❌ Error in buy_sell_scoring() for {symbol}: {e}", exc_info=True)
             return {'action': None, 'Buy Signal': (0, None, None), 'Sell Signal': (0, None, None)}, None
-
 
     def sell_signal_from_indicators(self, symbol, price, trigger, holdings):
         """PART V: Order Execution
