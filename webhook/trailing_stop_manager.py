@@ -8,15 +8,15 @@ class TrailingStopManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logger_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api):
+    def get_instance(cls, logger_manager, shared_utils_precision, coinbase_api, shared_data_manager):
         """
         Singleton method to ensure only one instance of TrailingStopManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api)
+            cls._instance = cls(logger_manager, shared_utils_precision, coinbase_api, shared_data_manager)
         return cls._instance
 
-    def __init__(self, logger_manager, order_type_manager, shared_utils_precision, market_data, coinbase_api):
+    def __init__(self, logger_manager, shared_utils_precision, coinbase_api, shared_data_manager):
         """
         Initializes the TrailingStopManager.
         """
@@ -24,18 +24,52 @@ class TrailingStopManager:
             raise Exception("This class is a singleton! Use get_instance().")
 
         self.logger = logger_manager.get_logger("webhook_logger")
-
+        self.shared_data_manager = shared_data_manager
 
         self.coinbase_api = coinbase_api
         self.config = Bot_config()
         self._trailing_percentage = Decimal(self.config.trailing_percentage)
-        self.order_type_manager = order_type_manager
-        self.market_data = market_data
+
         self.shared_utils_precision = shared_utils_precision
 
         # Set the instance
         TrailingStopManager._instance = self
 
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def non_zero_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def market_cache_usd(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
+
+    @property
+    def open_orders(self):
+        return self.order_management.get('order_tracker')
+
+    @property
+    def avg_quote_volume(self):
+        return Decimal(self.market_data['avg_quote_volume'])
 
     @property
     def trailing_percentage(self):

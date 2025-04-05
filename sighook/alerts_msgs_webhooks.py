@@ -49,12 +49,12 @@ class SenderWebhook:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange, alerts, logger_manager, shared_utils_utility):
+    def get_instance(cls, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager):
         if cls._instance is None:
-            cls._instance = cls(exchange, alerts, logger_manager, shared_utils_utility)
+            cls._instance = cls(exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager)
         return cls._instance
 
-    def __init__(self, exchange, alerts, logger_manager, shared_utils_utility):
+    def __init__(self, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager):
         self.config = CentralConfig()
         self._smtp_server = SMTP_SSL('smtp.gmail.com', 465)
         self._phone = self.config.phone
@@ -65,6 +65,7 @@ class SenderWebhook:
         self._version = self.config.program_version
         self.shared_utils_utility = shared_utils_utility
         self.logger = logger_manager
+        self.shared_data_manager = shared_data_manager
         self.exchange = exchange
         self.base_delay = 5  # Start with a 5-second delay
         self.max_delay = 320  # Don't wait more than this
@@ -74,17 +75,26 @@ class SenderWebhook:
         self.processed_uuids = set()
         self.cleanup_delay = 60 * 5  # Time in seconds after which UUIDs are removed
         self.http_session = None
-        self.ticker_cache = None
-        self.market_cache_vol= None
         self.start_time = None
         self.web_url = None
         self.holdings = None
-
-    def set_trade_parameters(self, start_time, market_data, web_url):
-        self.start_time = start_time
-        self.ticker_cache = market_data['ticker_cache']
-        self.market_cache_vol = market_data['filtered_vol']
         self.web_url = web_url
+
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
 
     @property
     def order_size(self):

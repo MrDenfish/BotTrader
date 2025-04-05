@@ -15,40 +15,51 @@ class MarketManager:
 
     @classmethod
     def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
-                        portfolio_manager, max_concurrent_tasks, database, db_tables):
+                     portfolio_manager, max_concurrent_tasks, database, db_tables, shared_data_manager):
         if cls._instance is None:
             cls._instance = cls(tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
-                                portfolio_manager, max_concurrent_tasks, database, db_tables)
+                                portfolio_manager, max_concurrent_tasks, database, db_tables, shared_data_manager)
         return cls._instance
 
     def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
-                 portfolio_manager, max_concurrent_tasks, database: Database, db_tables):
+                 portfolio_manager, max_concurrent_tasks, database: Database, db_tables, shared_data_manager):
         self.app_config = CentralConfig()
         self.exchange = exchange
         self.ccxt_api = ccxt_api
         self._max_ohlcv_rows = int(self.app_config.max_ohlcv_rows)
         self.max_concurrent_tasks = max_concurrent_tasks
+        self.shared_data_manager = shared_data_manager
         self.trading_strategy = trading_strategy
         self.tradebot = tradebot
         self.order_manager = order_manager
         self.ticker_manager = ticker_manager
         self.portfolio_manager = portfolio_manager
         self.logger = logger_manager
-        self.ticker_cache = None
-        self.market_cache_vol, self.non_zero_balances = None, None
         self.start_time = None
         self.database = database  # Use `database` directly
         self.db_tables = db_tables
         self.request_semaphore = asyncio.Semaphore(2)
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
-    def set_trade_parameters(self, start_time, market_data, order_management):
-        self.start_time = start_time
-        self.ticker_cache = market_data['ticker_cache']
-        self.non_zero_balances = order_management['non_zero_balances']
-        self.market_cache_usd = market_data['usd_pairs_cache']
-        self.market_cache_vol = market_data['filtered_vol']
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
 
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def non_zero_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
 
     @property
     def max_ohlcv_rows(self):

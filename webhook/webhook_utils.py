@@ -6,38 +6,63 @@ class TradeBotUtils:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logger_manager, coinbase_api, exchange_client, ccxt_api, alerts):
+    def get_instance(cls, logger_manager, coinbase_api, exchange_client, ccxt_api, alerts, shared_data_manager):
         """
         Singleton method to ensure only one instance of TradeBotUtils exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, coinbase_api, exchange_client, ccxt_api, alerts)
+            cls._instance = cls(logger_manager, coinbase_api, exchange_client, ccxt_api, alerts, shared_data_manager)
         return cls._instance
 
-    def __init__(self, logger_manager, coinbase_api, exchange_client, ccxt_api, alerts):
+    def __init__(self, logger_manager, coinbase_api, exchange_client, ccxt_api, alerts, shared_data_manager):
         """
         Initializes the TradeBotUtils.
         """
         self.exchange = exchange_client
         self.coinbase_api = coinbase_api
         self.logger = logger_manager.get_logger("webhook_logger")
+        self.shared_data_manager = shared_data_manager
 
 
         self.ccxt_api = ccxt_api
         self.alerts = alerts
-        self.start_time = self.ticker_cache = self.non_zero_balances = None
-        self.order_tracker = self.current_prices = self.market_cache_vol = None
+        self.start_time = None
 
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
 
-    def set_trade_parameters(self, market_data, order_management, start_time=None):
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
 
-        self.start_time = start_time
-        # Safely access keys in market_data
-        self.ticker_cache = market_data.get('ticker_cache', None)
-        self.non_zero_balances = order_management.get('non_zero_balances', {})
-        self.order_tracker = order_management.get('order_tracker', {})
-        self.current_prices = market_data.get('current_prices', {})
-        self.market_cache_vol = market_data.get('market_cache_filtered_vol', None)
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def non_zero_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def market_cache_usd(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
+
+    @property
+    def order_tracker(self):
+        return self.order_management.get('order_tracker')
+
+    @property
+    def avg_quote_volume(self):
+        return Decimal(self.market_data['avg_quote_volume'])
 
     @staticmethod
     async def format_open_orders(open_orders: list) -> pd.DataFrame:

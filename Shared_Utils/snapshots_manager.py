@@ -1,21 +1,17 @@
 class SnapshotsManager:
-    _instance = None # Singleton instance
-
-    @classmethod
-    def get_instance(cls, shared_data_manager, logger_manager):
-        """
-        Singleton method to ensure only one instance of SnapshotsManager exists.
-        """
-        if cls._instance is None:
-            cls._instance = cls(shared_data_manager, logger_manager)
-        return cls._instance # Always return the existing instance
+    _instance = None  # Singleton instance
 
     def __init__(self, shared_data_manager, logger_manager):
         self.logger = logger_manager
         self.shared_data_manager = shared_data_manager
         print(f"✅ SnapshotsManager initialized successfully.")
 
-    #
+    @classmethod
+    def get_instance(cls, shared_data_manager, logger=None):
+        if cls._instance is None:
+            cls._instance = cls(shared_data_manager, logger)
+        return cls._instance
+
     async def get_market_data_snapshot(self):
         snapshot = await self.shared_data_manager.get_snapshots()
         return {
@@ -24,8 +20,12 @@ class SnapshotsManager:
         }
 
     async def get_snapshots(self):
-        snapshot = await self.get_market_data_snapshot()
-        return snapshot["market_data"], snapshot["order_management"]
+        if not self.shared_data_manager.market_data or not self.shared_data_manager.order_management:
+            if self.logger:
+                self.logger.warning("⚠️ Market or order data not initialized.")
+            return {}, {}
+
+        return self.shared_data_manager.market_data, self.shared_data_manager.order_management
 
     # async def get_market_data_snapshot(self) -> dict:
 #     """Fetch a combined snapshot of market data and order management from SharedDataManager."""

@@ -28,19 +28,31 @@ async def setup_logger(logger_name='webhook_logger') -> LoggerManager:
     _ = logger_mgr.get_logger(logger_name)  # Optionally trigger initialization
     return logger_mgr  # ✅ Return only the manager
 
-
-
-
-
 async def load_config():
     return Config()
 
-
 async def init_shared_data(log_manager):
-    database_session_manager = DatabaseSessionManager(None, log_manager)
-    shared_data_manager = SharedDataManager.get_instance(log_manager, database_session_manager)
+    logger = log_manager.get_logger("sighook_logger")
+
+    # Step 1: Create empty shared_data_manager without database_session_manager
+    shared_data_manager = SharedDataManager.__new__(SharedDataManager)  # bypass __init__
+
+    # Step 2: Now create the database_session_manager and inject shared_data_manager
+    database_session_manager = DatabaseSessionManager(
+        profit_extras=None,
+        logger_manager=log_manager,
+        shared_data_manager=shared_data_manager
+    )
+
+    # Step 3: Now call __init__ manually with required params
+    shared_data_manager.__init__(log_manager, database_session_manager)
+
+    # Step 4: Optionally initialize snapshots manager
     snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, logger)
+
+    # Step 5: Initialize shared data contents
     await shared_data_manager.initialize()
+
     return shared_data_manager
 
 
@@ -115,7 +127,8 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
             order_book_manager=listener.order_book_manager,
             snapshot_manager=listener.snapshot_manager,
             trade_order_manager=listener.trade_order_manager,
-            ohlcv_manager=listener.ohlcv_manager
+            ohlcv_manager=listener.ohlcv_manager,
+            shared_data_manager=shared_data_manager
         )
         websocket_manager = WebSocketManager(config, listener.coinbase_api, log_manager, websocket_helper)
 
@@ -123,7 +136,10 @@ async def run_webhook(config, shared_data_manager, log_manager, startup_event=No
         listener.websocket_helper = websocket_helper
 
         market_data_master, order_mgmnt_master = await listener.market_data_manager.update_market_data(time.time())
-        listener.initialize_listener_components(market_data_master, order_mgmnt_master, shared_data_manager)
+        log_manager.get_logger("webhook_logger").debug(
+            f"� Market Data Keys: {list(shared_data_manager.market_data.keys())}"
+        )
+        # listener.initialize_listener_components(shared_data_manager)
 
         if startup_event:
             startup_event.set()  # ✅ Signal to sighook that data is ready
@@ -183,8 +199,8 @@ async def main():
         await run_sighook(shared_data_manager, config.rest_client, config.portfolio_uuid, sighook_logger_mgr)
 
     elif args.run == 'webhook':
-        webhook_logger_mgr, webhook_logger = await setup_logger('webhook_logger')
-        shared_data_manager = await init_shared_data(webhook_logger)
+        webhook_logger_mgr = await setup_logger('webhook_logger')
+        shared_data_manager = await init_shared_data(webhook_logger_mgr)
         await run_webhook(config, shared_data_manager, webhook_logger_mgr)
 
 

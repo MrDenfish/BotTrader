@@ -17,17 +17,18 @@ class TradingStrategy:
     @classmethod
     def get_instance(
             cls, webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
-            max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision
+            max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision, shared_data_manager
     ):
         if cls._instance is None:
             cls._instance = cls(
                 webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
-                                max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision)
+                max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision,
+                shared_data_manager)
         return cls._instance
 
     def __init__(
             self, webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
-                 max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision):
+            max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision, shared_data_manager):
         self.config = config()
         self._version = self.config.program_version
         self.exchange = exchange
@@ -35,6 +36,7 @@ class TradingStrategy:
         self.ccxt_exceptions = ccxt_api
         self.logger = logger_manager
 
+        self.shared_data_manager = shared_data_manager
         self.ticker_manager = ticker_manager
         self.indicators = Indicators(logger_manager)
         self._buy_rsi = self.config._rsi_buy
@@ -49,8 +51,6 @@ class TradingStrategy:
         self.ohlcv_data = {}  # A dictionary to store OHLCV data for each symbol
         self._max_ohlcv_rows = self.config.max_ohlcv_rows
         self.results = None
-        self.ticker_cache = None
-        self.market_cache = None
         self.start_time = None
         self.db_manager = database_session_mngr
         self.db_tables = db_tables
@@ -60,13 +60,35 @@ class TradingStrategy:
         # ✅ Ensure buy/sell targets are not None
         self._buy_target = self.config._buy_target if self.config._buy_target is not None else 7
         self._sell_target = self.config._sell_target if self.config._sell_target is not None else 7
+        self.dynamic_indicators = {
+            'Buy Touch', 'Sell Touch', 'W-Bottom', 'M-Top',
+            'Buy Swing', 'Sell Swing', 'Buy MACD', 'Sell MACD'
+        }
 
-    def set_trade_parameters(self, start_time, market_data):
-        self.start_time = start_time
-        self.ticker_cache = market_data['ticker_cache']
-        self.market_cache_vol = market_data['filtered_vol']
-        self.holdings_list = market_data['spot_positions']
-        self.usd_pairs = market_data['usd_pairs_cache']
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def holdings_list(self):
+        return self.market_data.get('spot_positions')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def usd_pairs(self):
+        return self.market_data.get('usd_pairs_cache')
+
 
     @property
     def buy_target(self):
@@ -119,6 +141,99 @@ class TradingStrategy:
         'Sell MACD': 1.8, 'Sell Swing': 2.2
     }
 
+    # process all rows helper methods
+    async def fetch_valid_ohlcv_batches(self, filtered_ticker_cache: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """Fetch and validate OHLCV data for all symbols."""
+        tasks = {
+            row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
+            for _, row in filtered_ticker_cache.iterrows()
+        }
+        raw_data = await asyncio.gather(*tasks.values(), return_exceptions=False)
+        return {
+            symbol: df for symbol, df in zip(tasks.keys(), raw_data)
+            if isinstance(df, pd.DataFrame) and not df.empty
+        }
+
+    def update_indicator_matrix(self, asset: str, ohlcv_df: pd.DataFrame, buy_sell_matrix: pd.DataFrame):
+        """Update buy_sell_matrix for a given asset using the latest OHLCV data."""
+
+        last_row = ohlcv_df.iloc[-1]
+
+        for col in buy_sell_matrix.columns:
+            if col in ohlcv_df.columns:
+                raw_tuple = last_row[col] if isinstance(last_row[col], tuple) else (0, 0.0, None)
+
+                # Validate and normalize the tuple
+                if not isinstance(raw_tuple, tuple) or len(raw_tuple) < 2:
+                    raw_tuple = (0, 0.0, None)
+
+                decision = int(raw_tuple[0]) if raw_tuple[0] in {0, 1} else 0
+                value = float(raw_tuple[1]) if raw_tuple[1] is not None else 0.0
+                threshold = float(raw_tuple[2]) if len(raw_tuple) > 2 and raw_tuple[2] is not None else None
+
+                # Use 0.0 for static indicators if threshold is missing
+                if threshold is None and col not in self.dynamic_indicators:
+                    threshold = 0.0
+
+                buy_sell_matrix.at[asset, col] = (decision, value, threshold)
+
+    def evaluate_signals(self, asset: str, matrix: pd.DataFrame) -> Tuple[Tuple[int, float, float], Tuple[int, float, float]]:
+        """
+        Update dynamic thresholds, compute weighted scores, and return buy/sell signals for a given asset.
+        """
+        try:
+            self.update_dynamic_targets(asset, matrix)
+            buy_score, sell_score = self.compute_weighted_scores(asset, matrix)
+            buy_signal, sell_signal = self.compute_signals(buy_score, sell_score)
+            return buy_signal, sell_signal
+        except Exception as e:
+            self.logger.error(f"❌ Error in evaluate_signals for {asset}: {e}", exc_info=True)
+            return (0, 0.0, 0.0), (0, 0.0, 0.0)
+
+    def build_strategy_result(self, symbol, asset, ohlcv_df, buy_sell_data, trigger):
+        """Build and optionally log the result of strategy evaluation."""
+        latest_price = float(ohlcv_df['close'].iloc[-1])
+        band_ratio = float(ohlcv_df['band_ratio'].iloc[-1]) if 'band_ratio' in ohlcv_df.columns else 0.0
+
+        buy_sig = buy_sell_data.get('Buy Signal', (0, 0.0, None))
+        sell_sig = buy_sell_data.get('Sell Signal', (0, 0.0, None))
+        action = buy_sell_data.get('action', 'hold')
+
+        log_string = (
+            f"� {symbol} | Action: {action.upper()} | "
+            f"Buy Score: {buy_sig[1]} / {buy_sig[2]} | "
+            f"Sell Score: {sell_sig[1]} / {sell_sig[2]} | "
+            f"Band Ratio: {round(band_ratio, 4)} | Trigger: {trigger}"
+        )
+        self.logger.info(log_string)
+
+        return {
+            'action': action,
+            'symbol': symbol,
+            'asset': asset,
+            'price': Decimal(str(latest_price)),
+            'band_ratio': band_ratio,
+            'trigger': trigger,
+            'buy_sell_data': buy_sell_data
+        }
+
+    def decide_action(self, ohlcv_df, symbol):
+        try:
+            buy_sell_data, trigger = self.buy_sell_scoring(ohlcv_df, symbol)
+            asset = symbol.split('/')[0]
+
+            return self.build_strategy_result(
+                symbol=symbol,
+                asset=asset,
+                ohlcv_df=ohlcv_df,
+                buy_sell_data=buy_sell_data,
+                trigger=trigger
+            )
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in decide_action for {symbol}: {e}", exc_info=True)
+            return {}
+
     async def process_all_rows(self, filtered_ticker_cache, buy_sell_matrix, open_orders):
         """Process all rows, updating buy_sell_matrix with the latest indicator values."""
         skipped_symbols = []
@@ -135,19 +250,13 @@ class TradingStrategy:
                 buy_sell_matrix.set_index("asset", inplace=True)
 
             # Fetch OHLCV data
-            tasks = {
-                row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
-                for _, row in filtered_ticker_cache.iterrows()
-            }
-            ohlcv_data = await asyncio.gather(*tasks.values(), return_exceptions=False)
-            ohlcv_data_dict = {symbol: data for symbol, data in zip(tasks.keys(), ohlcv_data)}
-
-            valid_symbols = [symbol for symbol, data in ohlcv_data_dict.items() if isinstance(data, pd.DataFrame)]
+            ohlcv_data_dict = await self.fetch_valid_ohlcv_batches(filtered_ticker_cache)
+            valid_symbols = list(ohlcv_data_dict.keys())
 
             for symbol in valid_symbols:
                 asset = symbol.split('/')[0]
                 temp_symbol = symbol.replace("/", "-")
-                _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
+                _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
 
                 # if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.shill_coins:
                 if asset in self.shill_coins:
@@ -162,6 +271,7 @@ class TradingStrategy:
                     continue
 
                 action_data = self.decide_action(ohlcv_df, symbol)
+
                 strategy_results.append({'asset': asset, 'symbol': symbol, **action_data})
 
                 if asset not in buy_sell_matrix.index:
@@ -169,56 +279,55 @@ class TradingStrategy:
                     continue
 
                 # ✅ Update indicators in buy_sell_matrix
-                for col in buy_sell_matrix.columns:
-                    if col in ohlcv_df.columns:
-                        value = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty and not ohlcv_df[col].isna().all() else 0
-                        value = value[1] if isinstance(value, tuple) and len(value) > 1 else value
-                        value = float(value) if value is not None else 0.0
+                self.update_indicator_matrix(asset, ohlcv_df, buy_sell_matrix)
 
-                        current = buy_sell_matrix.at[asset, col]
-                        existing_threshold = (
-                            float(current[2]) if isinstance(current, tuple) and len(current) == 3 and current[2] is not None
-                            else None
-                        )
-
-                        # Extract indicator tuple (decision, value, threshold)
-                        raw_tuple = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty else (0, 0.0, None)
-
-                        # Default to (0, 0.0, None) if malformed
-                        if not isinstance(raw_tuple, tuple) or len(raw_tuple) < 2:
-                            raw_tuple = (0, 0.0, None)
-
-                        # Unpack the values safely
-                        value = float(raw_tuple[1]) if raw_tuple[1] is not None else 0.0
-                        threshold = float(raw_tuple[2]) if len(raw_tuple) > 2 and raw_tuple[2] is not None else None
-
-                        # Optionally override threshold if not present and indicator is not dynamic
-                        if threshold is None and col not in dynamic_threshold_indicators:
-                            threshold = 0.0
-
-                        # Avoid comparison if threshold is None
-                        def should_trigger(decision_col, value, threshold):
-                            if threshold is None:
-                                return 0
-                            if decision_col == "Buy RSI":
-                                return 1 if value < threshold else 0
-                            if decision_col == "Sell RSI":
-                                return 1 if value > threshold else 0
-                            if decision_col in {"Buy Touch", "W-Bottom", "Buy Swing"}:
-                                return 1 if value < threshold else 0
-                            if decision_col in {"Sell Touch", "M-Top", "Sell Swing"}:
-                                return 1 if value > threshold else 0
-                            return 1 if value > threshold else 0
-
-                        # Use the original decision from raw_tuple, if present
-                        decision = raw_tuple[0] if raw_tuple[0] in {0, 1} else 0
-                        buy_sell_matrix.at[asset, col] = (decision, value, threshold)
+                # for col in buy_sell_matrix.columns:
+                #     if col in ohlcv_df.columns:
+                #         value = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty and not ohlcv_df[col].isna().all() else 0
+                #         value = value[1] if isinstance(value, tuple) and len(value) > 1 else value
+                #         value = float(value) if value is not None else 0.0
+                #
+                #         current = buy_sell_matrix.at[asset, col]
+                #         existing_threshold = (
+                #             float(current[2]) if isinstance(current, tuple) and len(current) == 3 and current[2] is not None
+                #             else None
+                #         )
+                #
+                #         # Extract indicator tuple (decision, value, threshold)
+                #         raw_tuple = ohlcv_df[col].iloc[-1] if not ohlcv_df.empty else (0, 0.0, None)
+                #
+                #         # Default to (0, 0.0, None) if malformed
+                #         if not isinstance(raw_tuple, tuple) or len(raw_tuple) < 2:
+                #             raw_tuple = (0, 0.0, None)
+                #
+                #         # Unpack the values safely
+                #         value = float(raw_tuple[1]) if raw_tuple[1] is not None else 0.0
+                #         threshold = float(raw_tuple[2]) if len(raw_tuple) > 2 and raw_tuple[2] is not None else None
+                #
+                #         # Optionally override threshold if not present and indicator is not dynamic
+                #         if threshold is None and col not in dynamic_threshold_indicators:
+                #             threshold = 0.0
+                #
+                #         # Avoid comparison if threshold is None
+                #         def should_trigger(decision_col, value, threshold):
+                #             if threshold is None:
+                #                 return 0
+                #             if decision_col == "Buy RSI":
+                #                 return 1 if value < threshold else 0
+                #             if decision_col == "Sell RSI":
+                #                 return 1 if value > threshold else 0
+                #             if decision_col in {"Buy Touch", "W-Bottom", "Buy Swing"}:
+                #                 return 1 if value < threshold else 0
+                #             if decision_col in {"Sell Touch", "M-Top", "Sell Swing"}:
+                #                 return 1 if value > threshold else 0
+                #             return 1 if value > threshold else 0
+                #
+                #         # Use the original decision from raw_tuple, if present
+                #         decision = raw_tuple[0] if raw_tuple[0] in {0, 1} else 0
+                #         buy_sell_matrix.at[asset, col] = (decision, value, threshold)
 
                 # Compute target levels and signals
-                self.update_dynamic_targets(asset, buy_sell_matrix)
-                buy_score, sell_score = self.compute_weighted_scores(asset, buy_sell_matrix)
-
-                buy_signal, sell_signal = self.compute_signals(buy_score, sell_score)
+                buy_signal, sell_signal = self.evaluate_signals(asset, buy_sell_matrix)
                 buy_sell_matrix.at[asset, 'Buy Signal'] = buy_signal
                 buy_sell_matrix.at[asset, 'Sell Signal'] = sell_signal
 
@@ -392,37 +501,51 @@ class TradingStrategy:
         except Exception as e:
             return False
 
-    def decide_action(self, ohlcv_df, symbol):
-        """
-        Determine buy or sell action based on computed indicators.
-        """
-        try:
-            # ✅ Compute buy/sell signals directly from ohlcv_df
-            buy_sell_data, trigger = self.buy_sell_scoring(ohlcv_df, symbol)
-
-            # ✅ Retrieve latest price
-            latest_price = Decimal(ohlcv_df['close'].iloc[-1])
-
-            # ✅ Find volume_24h for the symbol in market data
-            volume_24h = next(
-                (market.get('info', {}).get('volume_24h') for market in self.market_cache_vol if market.get('symbol') == symbol),
-                None
-            )
-
-            # ✅ Construct action dictionary
-            return {
-                'action': buy_sell_data.get('action', None),
-                'price': latest_price,
-                'band_ratio': buy_sell_data.get('band_ratio', None),
-                'trigger': trigger,
-                'sell_cond': buy_sell_data['Sell Signal'][1] if buy_sell_data.get('Sell Signal') else None,
-                'buy_sell_data': buy_sell_data,
-                'volume_24h': volume_24h
-            }
-
-        except Exception as e:
-            self.logger.error(f"❌ Error in decide_action for {symbol}: {e}", exc_info=True)
-            return {}
+    # def decide_action(self, asset: str, symbol: str, ohlcv_df: pd.DataFrame, buy_sell_matrix: pd.DataFrame) -> Dict[str, Any]:
+    #     """
+    #     Determine buy/sell action using precomputed values from buy_sell_matrix.
+    #     """
+    #     try:
+    #         if asset not in buy_sell_matrix.index:
+    #             self.logger.warning(f"⚠️ Asset {asset} not found in matrix.")
+    #             return {}
+    #
+    #         buy_signal = buy_sell_matrix.at[asset, 'Buy Signal']
+    #         sell_signal = buy_sell_matrix.at[asset, 'Sell Signal']
+    #
+    #         # Determine action from signal flags
+    #         action = 'hold'
+    #         if buy_signal[0] == 1 and sell_signal[0] == 0:
+    #             action = 'buy'
+    #         elif sell_signal[0] == 1 and buy_signal[0] == 0:
+    #             action = 'sell'
+    #         elif buy_signal[0] == 1 and sell_signal[0] == 1:
+    #             action = 'buy' if buy_signal[1] > sell_signal[1] else 'sell'
+    #
+    #         latest_price = buy_sell_matrix.at[asset, 'close'] if 'close' in buy_sell_matrix.columns else None
+    #
+    #         volume_24h = next(
+    #             (m.get('info', {}).get('volume_24h') for m in self.market_cache_vol if m.get('symbol') == symbol),
+    #             None
+    #         )
+    #
+    #         return {
+    #             'action': action,
+    #             'price': Decimal(latest_price) if latest_price else None,
+    #             'band_ratio': ohlcv_df.iloc[-1].get('band_ratio', None),
+    #             'trigger': 'matrix_signal',
+    #             'sell_cond': sell_signal[1],
+    #             'buy_sell_data': {
+    #                 'action': action,
+    #                 'Buy Signal': buy_signal,
+    #                 'Sell Signal': sell_signal
+    #             },
+    #             'volume_24h': volume_24h
+    #         }
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error in decide_action for {symbol}: {e}", exc_info=True)
+    #         return {}
 
     def buy_sell_scoring(self, ohlcv_df: pd.DataFrame, symbol: str) -> Tuple[Dict[str, Any], str]:
         """
@@ -430,7 +553,9 @@ class TradingStrategy:
         """
         try:
             last_ohlcv = ohlcv_df.iloc[-1]
-            _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
+            _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+
+
 
             # Extract critical indicators
             roc_value = last_ohlcv.get('ROC', None)

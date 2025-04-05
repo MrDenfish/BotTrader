@@ -19,33 +19,45 @@ class TickerManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
+    async def get_instance(cls, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
+                           shared_data_manager):
         """Ensures only one instance of TickerManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
                     cls._instance = cls(config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange,
-                                        ccxt_api)
+                                        ccxt_api, shared_data_manager)
         return cls._instance
 
-    def __init__(self, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api):
+    def __init__(self, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
+                 shared_data_manager):
         if TickerManager._instance is not None:
             raise Exception("TickerManager is a singleton and has already been initialized!")
         self.bot_config = config
         self.exchange = exchange
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
-        self.ticker_cache = None
-        self.market_cache = None
         self.min_volume = None
         self.last_ticker_update = None
         self.shill_coins = self.bot_config._shill_coins
         self.log_manager = log_manager
         self.ccxt_api = ccxt_api
+        self.shared_data_manager = shared_data_manager
         self.shared_utils_print = shared_utils_print
         self.shared_utils_debugger = shared_utils_debugger
         self.shared_utils_precision = None
         self.start_time = None
+
+    # Potentially for future use
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get("ticker_cache", {})
+
+    # <><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
 
     async def update_ticker_cache(self, open_orders=None, start_time=None) -> tuple:
         """

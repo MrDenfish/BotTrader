@@ -4,42 +4,61 @@ from decimal import ROUND_DOWN
 
 import pandas as pd
 
-from Shared_Utils.precision import PrecisionUtils
-
 
 class HoldingsProcessor:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logger_manager, profit_data_manager, *args, **kwargs):
+    def get_instance(cls, logger_manager, profit_data_manager, shared_utils_precision, shared_data_manager, *args, **kwargs):
         """ Ensures only one instance of HoldingsProcessor is created. """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, profit_data_manager, *args, **kwargs)
+            cls._instance = cls(logger_manager, profit_data_manager, shared_utils_precision, shared_data_manager, *args, **kwargs)
         return cls._instance
 
-    def __init__(self, logger_manager, profit_data_manager, *args, **kwargs):
+    def __init__(self, logger_manager, profit_data_manager, shared_utils_precision, shared_data_manager, *args, **kwargs):
         """ Initialize HoldingsProcessor. """
         if HoldingsProcessor._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
         self.logger = logger_manager
         self.profit_data_manager = profit_data_manager
-        self.shared_utils_precision = PrecisionUtils.get_instance(logger_manager)
+        self.shared_utils_precision = shared_utils_precision
+        self.shared_data_manager = shared_data_manager
+        self.start_time = None
 
-        self.start_time = self.market_data = self.ticker_cache = self.current_prices = None
-        self.usd_pairs = self.market_cache_vol = self.filtered_balances = self.holdings_list = None
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
+
+    @property
+    def usd_pairs(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def filtered_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def holdings_list(self):
+        return self.market_data.get('spot_positions')
 
 
-
-    def set_trade_parameters(self, start_time, market_data, order_management):
-        self.start_time = start_time
-        self.market_data = market_data
-        self.ticker_cache = market_data['ticker_cache']
-        self.current_prices = market_data['current_prices']
-        self.usd_pairs = market_data.get('usd_pairs_cache', {})  # usd pairs
-        self.market_cache_vol = market_data['filtered_vol']  # usd pairs with min volume
-        self.filtered_balances = order_management['non_zero_balances']
-        self.holdings_list = market_data['spot_positions']
 
 
     def _truncate_decimal(self, value, decimal_places=8):

@@ -151,18 +151,19 @@ class OrderTypeManager:
                 }
 
             # ✅ Step 3: Adjust size to precision
-            base_decimal = Decimal(f"1e-{order_data.base_decimal}")
-            adjusted_size = Decimal(order_data.adjusted_size).quantize(base_decimal, rounding=ROUND_DOWN)
+            base_quant = Decimal(f"1e-{order_data.base_decimal}")
+            quote_quant = Decimal(f"1e-{order_data.quote_decimal}")
+            adjusted_size = Decimal(order_data.adjusted_size).quantize(base_quant, rounding=ROUND_DOWN)
 
             if take_profit:
-                take_profit = Decimal(take_profit).quantize(base_decimal, rounding=ROUND_DOWN)
+                take_profit = Decimal(take_profit).quantize(base_quant, rounding=ROUND_DOWN)
             if stop_loss:
-                stop_loss = Decimal(stop_loss).quantize(base_decimal, rounding=ROUND_DOWN)
+                stop_loss = Decimal(stop_loss).quantize(base_quant, rounding=ROUND_DOWN)
 
             # ✅ Step 4: Ensure sufficient balances
             side = order_data.side.upper()
             usd_required = adjusted_size * order_data.adjusted_price * (1 + order_data.maker_fee)
-
+            usd_required = Decimal(usd_required).quantize(quote_quant, rounding=ROUND_DOWN)
 
             if side == 'BUY' and usd_required > Decimal(order_data.usd_balance):
                 return {

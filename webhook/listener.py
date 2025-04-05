@@ -301,7 +301,8 @@ class WebSocketHelper:
     def __init__(
             self, listener, websocket_manager, exchange, ccxt_api, logger_manager, coinbase_api,
                  profit_data_manager, order_type_manager, shared_utils_print, shared_utils_precision, shared_utils_utility,
-                 shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager
+            shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager,
+            shared_data_manager
                  ):
         """
         WebSocketHelper is responsible for managing WebSocket connections and API integrations.
@@ -309,6 +310,7 @@ class WebSocketHelper:
         # Core configurations
         self.config = Config()
         self.listener = listener
+        self.shared_data_manager = shared_data_manager
         self.websocket_manager = websocket_manager
         self.exchange = exchange
         self.ccxt_api = ccxt_api
@@ -388,6 +390,18 @@ class WebSocketHelper:
 
         # Data managers
         self.ohlcv_manager = ohlcv_manager
+
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get("ticker_cache", {})
+
+    @property
+    def current_prices(self):
+        return self.market_data.get("current_prices", {})
 
     @property
     def currency_pairs_ignored(self):
@@ -733,7 +747,9 @@ class WebSocketHelper:
                         'status_of_order': status_of_order
                     }
 
-                    base_deci,quote_deci,_,_ = self.shared_utils_precision.fetch_precision(symbol,usd_pairs)
+                    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+
+
 
                     profit = await self.profit_data_manager.calculate_profitability(asset, required_prices, current_prices, usd_pairs)
                     profit_value = self.shared_utils_precision.adjust_precision(base_deci, quote_deci,
@@ -886,7 +902,9 @@ class WebSocketHelper:
                 return
 
             # ✅ Fetch precision and balance details
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, usd_pairs)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
+
             asset_balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
             initial_price = Decimal(order.get('initial_price', 0)) if order.get('initial_price') else None
             avg_price = Decimal(order.get('avg_price', 0)) if order.get('avg_price') else None
@@ -993,7 +1011,9 @@ class WebSocketHelper:
             side = order.get('order_side')
             status = order.get('status')
 
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, usd_pairs)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
+
             initial_price = Decimal(order.get('initial_price')) if order.get('initial_price') else None
             if not initial_price:
                 initial_price = Decimal(spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
@@ -1157,7 +1177,9 @@ class WebSocketHelper:
                         symbol = order_data.trading_pair
                         asset = symbol.split('/')[0]
                         # ✅ Fetch precision values for the asset
-                        precision_data = self.shared_utils_precision.fetch_precision(symbol, usd_pairs)
+                        precision_data = self.shared_utils_precision.fetch_precision(symbol)
+
+
                         base_deci, quote_deci, _, _ = precision_data
 
                         # ✅ Add precision values to order_data
@@ -1252,7 +1274,9 @@ class WebSocketHelper:
                 if (symbol in [order_data['symbol'] for order_data in order_tracker.values()]) or asset_value < Decimal(0.03):
                     continue
 
-                precision_data = self.shared_utils_precision.fetch_precision(symbol, usd_pairs)
+                precision_data = self.shared_utils_precision.fetch_precision(symbol)
+
+
                 base_deci, quote_deci, _, _ = precision_data
                 asset_data = non_zero_balances.get(asset)
                 min_trade_amount = precision_data[2]
@@ -1426,7 +1450,7 @@ class WebhookListener:
         self.session = session  # ✅ Store session passed from run_app
         self.cb_api = self.bot_config.load_webhook_api_key()
 
-        self.order_management = {'order_tracker': {}}
+        # self.order_management = {'order_tracker': {}}
         self.shared_data_manager = shared_data_manager
         self.market_manager = market_manager
         self.market_data_manager = market_data_manager
@@ -1438,7 +1462,7 @@ class WebhookListener:
 
         # Core Utilities
         self.shared_utils_exchange = ExchangeManager.get_instance(self.cb_api)
-        self.shared_utils_precision = PrecisionUtils.get_instance(logger_manager, None)
+        self.shared_utils_precision = PrecisionUtils.get_instance(logger_manager, self.shared_data_manager)
         self.shared_utils_print = PrintData.get_instance(logger_manager)
         self.shared_utiles_data_time = DatesAndTimes.get_instance(logger_manager)
         self.shared_utils_utility = SharedUtility.get_instance(logger_manager)
@@ -1476,7 +1500,8 @@ class WebhookListener:
             order_book_manager=None,  # Placeholder
             snapshot_manager=None,  # Placeholder
             trade_order_manager=None,
-            ohlcv_manager=None
+            ohlcv_manager=None,
+            shared_data_manager=self.shared_data_manager
 
         )
 
@@ -1487,17 +1512,17 @@ class WebhookListener:
 
         self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, logger_manager)
 
-        self.snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, logger_manager)
+        self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, logger_manager)
 
         # Instantiation of ....
         self.utility = TradeBotUtils.get_instance(logger_manager, self.coinbase_api, self.exchange,
-                                                  self.ccxt_api, self.alerts)
+                                                  self.ccxt_api, self.alerts, self.shared_data_manager)
 
 
         self.ticker_manager = None
 
         self.profit_data_manager = ProfitDataManager.get_instance(self.shared_utils_precision, self.shared_utils_print,
-                                                                  logger_manager)
+                                                                  self.shared_data_manager, logger_manager)
 
         self.order_book_manager = OrderBookManager.get_instance(self.exchange, self.shared_utils_precision,
                                                                 logger_manager, self.ccxt_api)
@@ -1519,13 +1544,10 @@ class WebhookListener:
             session=self.session
         )
 
-        # place holder websocket_helper
-        self.market_data = {}
-        self.market_data_lock = asyncio.Lock()
+        # self.market_data_lock = asyncio.Lock()
 
-        self.trailing_stop_manager = TrailingStopManager.get_instance(logger_manager, self.order_type_manager,
-                                                                      self.shared_utils_precision, self.market_data,
-                                                                      self.coinbase_api)
+        self.trailing_stop_manager = TrailingStopManager.get_instance(logger_manager, self.shared_utils_precision,
+                                                                      self.coinbase_api, self.shared_data_manager)
 
         self.trade_order_manager = TradeOrderManager.get_instance(
             coinbase_api=self.coinbase_api,
@@ -1539,8 +1561,8 @@ class WebhookListener:
             order_book_manager=self.order_book_manager,
             order_types=self.order_type_manager,
             websocket_helper=self.websocket_helper,
+            shared_data_manager=self.shared_data_manager,
             session=self.coinbase_api.session,
-            market_data=self.market_data,
             profit_manager=self.profit_data_manager
         )
 
@@ -1561,7 +1583,7 @@ class WebhookListener:
             self.coinbase_api, self.profit_data_manager, self.order_type_manager,
             self.shared_utils_print, self.shared_utils_precision, self.shared_utils_utility,
             self.shared_utils_debugger, self.trailing_stop_manager, self.order_book_manager,
-            self.snapshot_manager, self.trade_order_manager, None
+            self.snapshot_manager, self.trade_order_manager, None, self.shared_data_manager
         )
 
     async def async_init(self):
@@ -1571,39 +1593,28 @@ class WebhookListener:
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.shared_utils_debugger,
                                                                self.shared_utils_print, self.logger_manager,
                                                                self.rest_client, self.portfolio_uuid, self.exchange,
-                                                               self.ccxt_api
+                                                               self.ccxt_api, self.shared_data_manager
         )
 
-    def initialize_listener_components(self, market_data_master, order_mgmnt_master, shared_data_manager):
-        self.shared_data_manager = shared_data_manager
-        self.market_data = market_data_master  # Store updated market data
-        self.order_management = order_mgmnt_master  # Store updated order management data
-        self.shared_data_manager.market_data = market_data_master
-        self.shared_data_manager.order_management = order_mgmnt_master
-        self.websocket_helper.market_data = market_data_master
-        self.websocket_helper.order_management = order_mgmnt_master
-        self.ticker_manager.market_data = market_data_master
-        self.ticker_manager.order_management = order_mgmnt_master
-        self.profit_data_manager.market_data = market_data_master
-        self.profit_data_manager.order_management = order_mgmnt_master
-        self.utility.market_data = market_data_master
-        self.utility.order_management = order_mgmnt_master
-        self.webhook_manager.market_data = market_data_master
-        self.webhook_manager.order_management = order_mgmnt_master
-        self.trade_order_manager.market_data = market_data_master
-        self.trade_order_manager.order_management = order_mgmnt_master
-        self.order_type_manager.market_data = market_data_master
-        self.order_type_manager.order_management = order_mgmnt_master
-        self.order_book_manager.market_data = market_data_master
-        self.order_book_manager.order_management = order_mgmnt_master
-        self.validate.market_data = market_data_master
-        self.validate.order_management = order_mgmnt_master
-        self.shared_utils_precision.market_data = market_data_master
-        self.shared_utils_precision.order_management = order_mgmnt_master
-        self.shared_data_manager.market_data = market_data_master
-        self.shared_data_manager.order_management = order_mgmnt_master
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
 
-        print("✅ WebhookListener:load_bot_components() completed successfully.")
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache', {})
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices', {})
+
+    @property
+    def filtered_balances(self):
+        return self.order_management.get('non_zero_balances', {})
 
 
     async def refresh_market_data(self):
@@ -1625,7 +1636,12 @@ class WebhookListener:
                     continue
 
                 # Update shared state via SharedDataManager
+
+                old_price = self.shared_data_manager.market_data.get("spot_positions", {}).get("USD", {}).get("available_to_trade_fiat", "N/A")
                 await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
+                new_price = self.shared_data_manager.market_data.get("spot_positions", {}).get("USD", {}).get("available_to_trade_fiat", "N/A")
+                print(f"� BTC/USD price updated from {old_price} to {new_price}")
+                print("⚠️ Market data and order management updated successfully. ⚠️")
 
                 # Refresh open orders and get the updated order_tracker
                 _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
@@ -1634,6 +1650,7 @@ class WebhookListener:
                 if updated_order_tracker:
                     new_order_management['order_tracker'] = updated_order_tracker
                     await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
+
 
                 # Monitor and update active orders
                 await self.websocket_helper.monitor_and_update_active_orders(new_market_data, new_order_management)
@@ -1692,7 +1709,9 @@ class WebhookListener:
             else:
                 pass
             asset = symbol.split('/')[0]
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol, self.usd_pairs)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+
+
             if websocket_order_data.price:
                 websocket_order_data.price = self.shared_utils_precision.adjust_precision(
                     base_deci, quote_deci, websocket_order_data.price, 'quote'
@@ -1881,7 +1900,9 @@ class WebhookListener:
             order_management_snapshot = combined_snapshot["order_management"]
             usd_pairs = market_data_snapshot.get("usd_pairs_cache", {})
 
-            precision_data = self.shared_utils_precision.fetch_precision(trade_data["trading_pair"], usd_pairs)
+            precision_data = self.shared_utils_precision.fetch_precision(trade_data["trading_pair"])
+
+
             if not self.is_valid_precision(precision_data):
                 return web.json_response({"success": False, "message": "Failed to fetch precision data"}, status=422)
 
@@ -1924,7 +1945,9 @@ class WebhookListener:
             trading_pair = trade_data['trading_pair']
             asset = trade_data['base_currency']
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, usd_pairs)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
+
             current_prices = market_data_snapshot.get('current_prices', {})
             base_price = self.shared_utils_precision.float_to_decimal(current_prices.get(trading_pair, 0), quote_deci)
 
@@ -2006,11 +2029,11 @@ def handle_global_exception(loop, context):
 #     print("\n� Shutting down gracefully...")
 #     shutdown_event.set()  # ✅ Notify the event loop to stop
 
-async def initialize_market_data(listener, market_data_manager, shared_data_manager):
-    """Fetch and initialize market data safely after the event loop starts."""
-    await asyncio.sleep(1)  # Prevents race conditions
-    market_data_master, order_mgmnt_master = await market_data_manager.update_market_data(time.time())
-    listener.initialize_listener_components(market_data_master, order_mgmnt_master, shared_data_manager)
+# async def initialize_market_data(listener, market_data_manager, shared_data_manager):
+#     """Fetch and initialize market data safely after the event loop starts."""
+#     await asyncio.sleep(1)  # Prevents race conditions
+#     market_data_master, order_mgmnt_master = await market_data_manager.update_market_data(time.time())
+#     listener.initialize_listener_components(market_data_master, order_mgmnt_master, shared_data_manager)
 
 async def supervised_task(task_coro, name):
     """Handles and logs errors in background tasks."""

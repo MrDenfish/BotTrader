@@ -1,3 +1,4 @@
+
 import asyncio
 import time
 import uuid
@@ -14,15 +15,16 @@ class OrderManager:
 
     @classmethod
     def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
-                     shared_utils_precision, max_concurrent_tasks=10):
+                     shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks=10):
         if cls._instance is None:
             cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
-                                shared_utils_precision, max_concurrent_tasks)
+                                shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks)
         return cls._instance
 
     def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
-                 shared_utils_precision, max_concurrent_tasks=10):
+                 shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks=10):
         self.config = CentralConfig()
+        self.shared_data_manager = shared_data_manager
         self.trading_strategy = trading_strategy
         self.exchange = exchange
         self.webhook = webhook
@@ -42,20 +44,45 @@ class OrderManager:
         self._currency_pairs_ignored = self.config.currency_pairs_ignored
         self._assets_ignored = self.config.assets_ignored
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
-        self.market_cache_vol, self.ticker_cache, self.filtered_balances, self.min_volume = None, None, None, None
         self.http_session, self.start_time, self.web_url  = None, None, None
-        self.usd_pairs = self.current_prices = self.open_orders = None
-
-    def set_trade_parameters(self, start_time, market_data,  order_management, web_url):
-        self.start_time = start_time
-        self.ticker_cache = market_data['ticker_cache']
-        self.usd_pairs = market_data['usd_pairs_cache']
-        self.market_cache_vol = market_data['filtered_vol']
-        self.current_prices = market_data['current_prices']
-        self.filtered_balances = order_management['non_zero_balances']
-        self.open_orders = order_management['order_tracker']
-        self.min_volume = Decimal(market_data['avg_quote_volume'])
         self.web_url = web_url
+
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def filtered_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def usd_pairs(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
+
+    @property
+    def open_orders(self):
+        return self.order_management.get('order_tracker')
+
+    @property
+    def min_volume(self):
+        return Decimal(self.market_data['avg_quote_volume'])
+
 
     @property
     def hodl(self):
@@ -153,7 +180,9 @@ class OrderManager:
                                      right_on='symbol', how='left')
 
             merged_orders = await self.adjust_merged_orders_prices(merged_orders)
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
+
 
             merged_orders['price'] = merged_orders['price'].apply(Decimal)
             merged_orders['ask'] = merged_orders['ask'].apply(Decimal)
@@ -215,7 +244,9 @@ class OrderManager:
             for index, row in merged_orders.iterrows():
                 # Fetch the precision for the symbol (product_id)
                 product_id = row['product_id']
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(product_id, self.usd_pairs)
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(product_id)
+
+
 
                 # Adjust the price using the quote precision
                 adjusted_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, row['price'], 'quote')
@@ -348,12 +379,14 @@ class OrderManager:
             symbol = order['symbol']
             action_type = order.get('action')
 
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, self.usd_pairs)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
+
 
             price = self.shared_utils_precision.float_to_decimal(order['price'], quote_deci)
-            base_avail_to_trade = Decimal(self.filtered_balances.get(asset, {}).get('available_to_trade_crypto', 0))
+            base_avail_to_trade = Decimal(self.filtered_balances.get(asset, {})['available_to_trade_crypto'])
             base_avail_to_trade = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,base_avail_to_trade,convert='base')
-            quote_avail_balance = Decimal(self.filtered_balances.get('USD', {}).get('available_to_trade_fiat', 0))
+            quote_avail_balance = Decimal(self.filtered_balances.get('USD', {})['available_to_trade_fiat'])
             quote_avail_balance = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,quote_avail_balance,convert='quote')
 
             action_methods = {

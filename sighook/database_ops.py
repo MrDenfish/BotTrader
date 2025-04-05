@@ -6,22 +6,21 @@ import pandas as pd
 from databases import Database
 
 from Config.config_manager import CentralConfig
-from Shared_Utils.precision import PrecisionUtils
 
 
 class DatabaseOpsManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager,
-                     holdings_manager, database: Database, db_tables, profit_data_manager, snapshots_manager):
+    def get_instance(cls, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager, database: Database, db_tables,
+                     profit_data_manager, snapshots_manager, shared_utils_precision, shared_data_manager):
         if cls._instance is None:
-            cls._instance = cls(exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager,
-                                holdings_manager, database, db_tables, profit_data_manager, snapshots_manager)
+            cls._instance = cls(exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager, database, db_tables,
+                                profit_data_manager, snapshots_manager, shared_utils_precision, shared_data_manager)
         return cls._instance
 
-    def __init__(self, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager,
-                 holdings_manager, database: Database, db_tables, profit_data_manager, snapshots_manager):
+    def __init__(self, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager, database: Database, db_tables,
+                 profit_data_manager, snapshots_manager, shared_utils_precision, shared_data_manager):
 
         self.exchange = exchange
         self.ccxt_api = ccxt_api
@@ -29,7 +28,8 @@ class DatabaseOpsManager:
         self.profit_extras = profit_extras
         self.app_config = CentralConfig()
         self.shill_coins = self.app_config.shill_coins
-        self.shared_utils_precision = PrecisionUtils.get_instance(logger_manager, market_data=None)
+        self.shared_utils_precision = shared_utils_precision
+        self.shared_data_manager = shared_data_manager
         self.portfolio_manager = portfolio_manager
         self.holdings_manager = holdings_manager
         self.snapshot_manager = snapshots_manager
@@ -42,18 +42,40 @@ class DatabaseOpsManager:
             'exchange_withdrawal', 'fiat_deposit', 'pro_deposit', 'pro_withdrawal',
             'sell', 'send', 'staking_transfer', 'trade', 'tx', 'wrap_asset'
         }
-        self.start_time = self.market_data = self.ticker_cache = self.current_prices = None
-        self.usd_pairs = self.market_cache_vol = self.filtered_balances = self.holdings_list = None
+        self.start_time = None
 
-    def set_trade_parameters(self, start_time, market_data, order_management):
-        self.start_time = start_time
-        self.market_data = market_data
-        self.ticker_cache = market_data['ticker_cache']
-        self.current_prices = market_data['current_prices']
-        self.usd_pairs = market_data.get('usd_pairs_cache', {})  # usd pairs
-        self.market_cache_vol = market_data['filtered_vol']  # usd pairs with min volume
-        self.filtered_balances = order_management['non_zero_balances']
-        self.holdings_list = market_data['spot_positions']
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
+
+    @property
+    def usd_pairs(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def filtered_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def holdings_list(self):
+        return self.market_data.get('spot_positions')
+
 
 
     @staticmethod
@@ -120,7 +142,9 @@ class DatabaseOpsManager:
 
             current_price = self.market_data['current_prices'].get(f"{asset}/USD")
             if current_price:
-                base_deci, quote_deci,_,_ = self.shared_utils_precision.fetch_precision(asset,self.usd_pairs)
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
+
                 current_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, current_price, 'base')
                 if current_price is None:
                     raise ValueError(f"Current price for {asset} not available.")

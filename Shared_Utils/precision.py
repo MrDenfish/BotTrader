@@ -10,19 +10,24 @@ class PrecisionUtils:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager, market_data=None):
+    def get_instance(cls, logger_manager, shared_data_manager):
         """ Ensures only one instance of PrecisionUtils is created. """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, market_data)
+            cls._instance = cls(logger_manager, shared_data_manager)
         return cls._instance
 
-    def __init__(self, logger_manager, market_data):
+    def __init__(self, logger_manager, shared_data_manager):
         """ Initialize PrecisionUtils. """
         if PrecisionUtils._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
-        self.market_data = market_data
+
         self.logger = logger_manager.get_logger("webhook_logger")
+        self.shared_data_manager = shared_data_manager
+
+    @property
+    def usd_pairs(self):
+        return self.shared_data_manager.market_data.get('usd_pairs_cache', pd.DataFrame())
 
     def safe_decimal(self, value, default="0"):
         try:
@@ -30,7 +35,7 @@ class PrecisionUtils:
         except (TypeError, ValueError, InvalidOperation):
             return Decimal(default)
 
-    def fetch_precision(self, symbol: str, usd_pairs) -> tuple:
+    def fetch_precision(self, symbol: str) -> tuple:
         """
         Fetch the precision for base and quote currencies of a given symbol.
 
@@ -38,10 +43,9 @@ class PrecisionUtils:
         :return: A tuple containing base and quote decimal places.
         """
         try:
-            if usd_pairs is None:
-                usd_pairs = self.market_data['usd_pairs_cache']
-            if len(usd_pairs) ==0:
-                return 4, 2, 1e-08, 1e-08 #default values for empty usd_pairs
+            if self.usd_pairs is None or self.usd_pairs.empty:
+                self.logger.warning(f"⚠️ fetch_precision: usd_pairs is empty. Default values (4, 2, 1e-08, 1e-08) for empty usd_pairs will be set")
+                return 4, 2, 1e-08, 1e-08  # default values for empty usd_pairs
 
             if isinstance(symbol, pd.Series):
                 caller_function_name = stack()[1].function  # debugging
@@ -62,8 +66,7 @@ class PrecisionUtils:
             if ticker_value == 'USD/USD' or ticker_value == 'USD':
                 return 2, 2, 1e-08, 1e-08
 
-
-            market = usd_pairs.set_index('asset').to_dict(orient='index')  # dataframe to dictionary
+            market = self.usd_pairs.set_index('asset').to_dict(orient='index')  # dataframe to dictionary
             if market.get(asset):
                 base_precision = market.get(asset,{}).get('precision',{}).get('amount', 1e-08)  # Expected to be a float
                 quote_precision = market.get(asset,{}).get('precision',{}).get('price', 1e-08)  # Expected to be a float
@@ -148,7 +151,7 @@ class PrecisionUtils:
             # Apply adjusted price for both sides
             if side == 'BUY':
                 net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
-                adjusted_price = net_proceeds.quantize(precision_quote, rounding=ROUND_DOWN)
+                adjusted_price = net_proceeds.quantize(precision, rounding=ROUND_DOWN)
                 quote_amount = Decimal(str(order_data.get('order_amount', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")

@@ -1,3 +1,4 @@
+
 import asyncio
 import json
 from decimal import Decimal
@@ -214,15 +215,14 @@ class SharedDataManager:
     #             self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
     #             return {}, {}
 
-
-
     async def update_market_data(self, new_market_data, new_order_management):
-        """Update the shared market data and order management."""
         async with self.lock:
             if new_market_data:
-                self.market_data = new_market_data  # Replace instead of update
+                self.logger.debug(f"� Updating market_data: Keys = {list(new_market_data.keys())}")
+                self.market_data = new_market_data  # Overwrite instead of update
             if new_order_management:
-                self.order_management = new_order_management  # Replace instead of update
+                self.logger.debug(f"� Updating order_management: Keys = {list(new_order_management.keys())}")
+                self.order_management = new_order_management
 
     async def update_data(self, data_type, data, conn):
         """Update shared data in the database."""

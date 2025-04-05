@@ -9,14 +9,14 @@ class ProfitabilityManager:
 
     @classmethod
     def get_instance(cls, exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
-                     order_manager, trading_strategy, profit_data_manager, logger_manager):
+                     order_manager, trading_strategy, profit_data_manager, shared_data_manager, web_url, logger_manager):
         if cls._instance is None:
             cls._instance = cls(exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
-                                order_manager, trading_strategy, profit_data_manager, logger_manager)
+                                order_manager, trading_strategy, profit_data_manager, shared_data_manager, web_url, logger_manager)
         return cls._instance
 
     def __init__(self, exchange, ccxt_api, portfolio_manager, holdings_processor, database_ops_mngr,
-                 order_manager, trading_strategy, profit_data_manager, logger_manager):
+                 order_manager, trading_strategy, profit_data_manager, shared_data_manager, web_url, logger_manager):
         self.config = Config()
         self.exchange = exchange
         self.ccxt_exceptions = ccxt_api
@@ -28,22 +28,32 @@ class ProfitabilityManager:
         self.database_ops = database_ops_mngr
         self.order_manager = order_manager
         self.portfolio_manager = portfolio_manager
+        self.shared_data_manager = shared_data_manager
         self.trading_strategy = trading_strategy
         self.profit_data_manager = profit_data_manager
         self.logger = logger_manager
-        self.ticker_cache = self.session = self.market_cache = self.start_time = None
-        self.market_cache_usd = self.market_data = self.web_url = self.holdings = None
-        self.market_cache_vol = self.current_prices =None
-
-    def set_trade_parameters(self, start_time, market_data, web_url):
-        self.start_time = start_time
-        self.market_data = market_data
-        self.ticker_cache = market_data['ticker_cache']
-        self.market_cache_usd = self.market_data['usd_pairs_cache']  # usd pairs
-        self.market_cache_vol = self.market_data['filtered_vol']
-        self.current_prices = self.market_data['current_prices']
 
         self.web_url = web_url
+
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
 
     @property
     def stop_loss(self):

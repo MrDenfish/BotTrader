@@ -15,15 +15,15 @@ class PortfolioManager:
 
     @classmethod
     def get_instance(cls, logger_manager, ccxt_api, exchange, max_concurrent_tasks,
-                     shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility):
+                     shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility, shared_data_manager):
         """ Ensures only one instance of PortfolioManager is created. """
         if cls._instance is None:
             cls._instance = cls(logger_manager, ccxt_api, exchange, max_concurrent_tasks,
-                                shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility)
+                                shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility, shared_data_manager)
         return cls._instance
 
     def __init__(self, logger_manager, ccxt_api, exchange, max_concurrent_tasks,
-                 shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility):
+                 shared_utils_precision, shared_utils_datas_and_times, shared_utils_utility, shared_data_manager):
         """ Initializes the PortfolioManager instance. """
 
         # Ensure singleton enforcement
@@ -45,13 +45,12 @@ class PortfolioManager:
         self.exchange = exchange
         self.ccxt_api = ccxt_api
         self.logger = logger_manager
+        self.shared_data_manager = shared_data_manager
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_datas_and_times = shared_utils_datas_and_times
         self.shared_utils_utility = shared_utils_utility
 
         # Internal state
-        self.ticker_cache = self.market_cache_usd = self.market_cache_vol = self.start_time = None
-        self.non_zero_balances = self.min_volume = None
         self.rate_limit = 0.15  # Initial rate limit in seconds (150 ms)
 
         # Concurrency control
@@ -61,22 +60,13 @@ class PortfolioManager:
         """ Returns a string representation of the PortfolioManager instance. """
         return f"<PortfolioManager(exchange={self.exchange}, rate_limit={self.rate_limit})>"
 
-
-    def set_trade_parameters(self, start_time, market_data, order_management):
-        self.start_time = start_time
-        self.ticker_cache = market_data['ticker_cache'] # based on vol and usd pairs
-        self.non_zero_balances = order_management['non_zero_balances']
-        self.market_cache_vol = market_data['filtered_vol']
-        self.market_cache_usd = market_data['usd_pairs_cache']
-        self.min_volume = Decimal(market_data['avg_quote_volume'])
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
 
     @property
-    def buy_rsi(self):
-        return self._buy_rsi
-
-    @property
-    def sell_rsi(self):
-        return self._sell_rsi
+    def order_management(self):
+        return self.shared_data_manager.order_management
 
     @property
     def buy_ratio(self):
@@ -94,14 +84,40 @@ class PortfolioManager:
     def roc_sell_24h(self):
         return int(self._roc_sell_24h)
 
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def non_zero_balances(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def market_cache_usd(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def min_volume(self):
+        return Decimal(self.market_data.get('avg_quote_volume', 0))
+
+    @property
+    def buy_rsi(self):
+        return self._buy_rsi
+
+    @property
+    def sell_rsi(self):
+        return self._sell_rsi
+
     def filter_ticker_cache_matrix(self, buy_sell_matrix):
         """
         PART II: Trade Database Updates and Portfolio Management
         Filter ticker cache by volume > 1 million and price change > roc_sell_24h %.
         Excludes coins listed in self.shill_coins (e.g., 'UNFI,TRUMP')
         """
-        filtered_ticker_cache = pd.DataFrame()
-
         # ✅ Convert shill string to set
         shill_coins = set([coin.strip().upper() for coin in self.shill_coins.split(',')])
 

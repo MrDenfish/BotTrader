@@ -16,18 +16,17 @@ class DatabaseSessionManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, profit_extras, logger_manager):
+    def get_instance(cls, profit_extras, logger_manager, shared_data_manager):
         if cls._instance is None:
-            cls._instance = cls(profit_extras, logger_manager)
+            cls._instance = cls(profit_extras, logger_manager, shared_data_manager)
         return cls._instance
 
-    def __init__(self, profit_extras, logger_manager):
+    def __init__(self, profit_extras, logger_manager, shared_data_manager):
 
         self.logger = logger_manager.get_logger('sighook_logger')
         self.config = CentralConfig()
         self.profit_extras = profit_extras
-        self.start_time = self.ticker_cache = self.market_cache_vol = self.holdings_list = self.current_prices = None
-        self.filtered_pairs = None
+        self.shared_data_manager = shared_data_manager
 
         # Ensure that database_url is correctly set
         if not self.config.database_url:
@@ -45,13 +44,37 @@ class DatabaseSessionManager:
         #self.database = Database(self.config.database_url)
         self.database_ops = None  # Will be set later after components are initialized
 
-    def set_trade_parameters(self, start_time, market_data, order_management):
-        self.start_time = start_time
-        self.ticker_cache = market_data['ticker_cache']
-        self.market_cache_vol = market_data['filtered_vol']
-        self.holdings_list = market_data['spot_positions']
-        self.current_prices = market_data['current_prices']
-        self.filtered_pairs = order_management['non_zero_balances']
+    @property
+    def market_data(self):
+        return self.shared_data_manager.market_data
+
+    @property
+    def order_management(self):
+        return self.shared_data_manager.order_management
+
+    @property
+    def ticker_cache(self):
+        return self.market_data.get('ticker_cache')
+
+    @property
+    def filtered_pairs(self):
+        return self.order_management.get('non_zero_balances')
+
+    @property
+    def market_cache_vol(self):
+        return self.market_data.get('filtered_vol')
+
+    @property
+    def market_cache_usd(self):
+        return self.market_data.get('usd_pairs_cache')
+
+    @property
+    def holdings_list(self):
+        return self.market_data.get('spot_positions')
+
+    @property
+    def current_prices(self):
+        return self.market_data.get('current_prices')
 
     async def connect(self, retries=3):
         """Establish the database connection."""
@@ -120,7 +143,6 @@ class DatabaseSessionManager:
                 await self.connect()
             query = "SELECT data FROM shared_data WHERE data_type = 'market_data'"
             result = await self.database.fetch_one(query)
-            print(f"DEBUG: Retrieved Market Data: {result}")
             if not result or "data" not in result:
                 self.logger.warning("No data found for market_data.")
                 return {}
