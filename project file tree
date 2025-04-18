@@ -1,0 +1,105 @@
+BotTraderv3.0/
+├── Api_manager                               
+│    ├── __init__.py
+│    ├── __pycache__
+│    ├── api_exceptions.py
+│    ├── api_manager.py
+│         └── api_manager.py
+├── Config
+│    ├── __int__.py
+│    ├── __pycache__
+│    ├── config.json
+│    ├── config_manager.py
+│    ├── sighook_api_key.json
+│    ├── sighook_config.json
+│    ├── webhook_api_key.json
+│    ├── webhook_config.json
+│    ├── webhook_tb_api_key.json
+│           └── websocket_api_info.json
+├── Discription
+├── MarketDataManager
+│    ├── ___int___.py
+│    ├── __pycache__
+│    ├── market_data_manager.py
+│    ├── market_manager.py
+│    ├── ohlcv_manager.py
+│    └── ticker_manager.py
+├── ProfitDataManager
+│    ├── __int__.py
+│    ├── __pycache__
+│    └── profit_data_manager.py
+├── SharedDataManager
+│    ├── __pycache__
+│    └── shared_data_manager.py
+├── Shared_Utils
+│    ├── __init__.py
+│    ├── __pycache__
+│    ├── database_checker.py
+│    ├── dates_and_times.py
+│    ├── debugger.py
+│    ├── exchange_manager.py
+│    ├── logging_manager.py
+│    ├── precision.py
+│    ├── print_data.py
+│    ├── snapshots_manager.py
+│    └── utility.py
+├── project file tree
+├── certbot-dns.log
+├── database queries
+│    ├── Clear Entire Database.sql
+│    ├── Clear table.sql
+│    ├── Delete table.sql
+│    ├── Query by time.sql
+│    ├── add column.sql
+│    ├── confirm index exists.sql
+│    ├── delete column.sql
+│    └── unique items.sql
+├── discription.py
+├── docker-compose.digital_ocean.yml
+├── docker-compose.mac.old.yaml
+├── docker-compose.network.digital_ocean.old.yaml
+├── docker-compose.override.yml
+├── docker-compose.yml
+├── environment.yml
+├── logs
+│    ├── listener_logs
+│    ├── logs
+│    └── signal_logs
+├── main.py                                         # ✅ New entry point for the project
+├── profile_output.prof
+├── requirements.in
+├── requirements.txt
+├── sighook
+│    ├── Dockerfile
+│    ├── __init__.py
+│    ├── __pycache__
+│    ├── alerts_msgs_webhooks.py
+│    ├── async_functions.py
+│    ├── database_ops.py
+│    ├── database_session_manager.py
+│    ├── database_table_models.py
+│    ├── holdings_process_manager.py
+│    ├── indicators.py
+│    ├── order_manager.py
+│    ├── portfolio_manager.py
+│    ├── profit_manager.py
+│    ├── requirements.txt
+│    ├── sender.py
+│    ├── test_trading_strategy.py
+│    └── trading_strategy.py
+└── webhook
+    ├── Dockerfile
+    ├── __init__.py
+    ├── __pycache__
+    ├── alert_system.py
+    ├── listener.py
+    ├── requirements.txt
+    ├── trailing_stop_manager.py
+    ├── webhook_manager.py
+    ├── webhook_order_book.py
+    ├── webhook_order_manager.py
+    ├── webhook_order_types.py
+    ├── webhook_utils.py
+    ├── webhook_validate_orders.py
+    ├── websocket_helper.py
+    └── websocket_test.py

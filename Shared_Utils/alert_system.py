@@ -20,7 +20,7 @@ class AlertSystem:
         self._email = os.getenv('EMAIL')
         self._e_mailpass = os.getenv('E_MAILPASS')
         self._my_email = os.getenv('MY_EMAIL')
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
 
 
 

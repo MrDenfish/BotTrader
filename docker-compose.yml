@@ -1,0 +1,40 @@
+services:
+  bottrader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tradebot
+    restart: unless-stopped
+    env_file:
+      - .env_tradebot
+    environment:
+      - DOCKER_ENV=true
+    volumes:
+      - .:/app
+    ports:
+      - "5000:5000"  # public-facing webhook port
+    depends_on:
+      - db
+    command: ["python", "main.py", "--run", "both"]
+
+  db:
+    image: postgres:15
+    container_name: bottrader_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bot_trader_db
+      POSTGRES_USER: bot_trader_user
+      POSTGRES_PASSWORD: yourpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+
+
+
+
+
+
