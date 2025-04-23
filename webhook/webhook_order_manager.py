@@ -237,6 +237,7 @@ class TradeOrderManager:
             if side == 'buy':
                 size = (fiat_avail_for_order / price).quantize(Decimal(f'1e-{base_deci}')) if price > 0 else Decimal(0)
                 if (price * size) < self.min_order_amount:
+                    print(f'‼️ Insufficient fiat balance to place buy order: {trading_pair}')
                     return None
 
             else:

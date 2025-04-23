@@ -215,7 +215,7 @@ class WebSocketMarketManager:
             base_volume = Decimal(ticker.get("volume_24_h", "0"))
             usd_volume = base_volume * current_price
 
-            if self.passive_order_manager and usd_volume < Decimal(600000):
+            if self.passive_order_manager and usd_volume < Decimal(600000) and usd_volume > Decimal(100000):
                 await self.passive_order_manager.place_passive_orders(asset=symbol, product_id=product_id)
 
             # Fetch historical data
