@@ -54,7 +54,9 @@ class ApiManager:
             raise Exception("ApiManager is a singleton and has already been initialized!")
 
         self.exchange = exchange_client
-        self.log_manager = logger_manager
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.alert_system = alert_system
         self.rate_limiter = ApiRateLimiter(burst, rate)
         self.semaphores = {
@@ -77,9 +79,9 @@ class ApiManager:
         if self.circuit_breaker_open and time.time() > self.circuit_breaker_reset_time:
             self.circuit_breaker_open = False
             self.consecutive_failures = 0
-            self.log_manager.info("Circuit breaker reset; API calls resumed.")
+            self.logger.info("Circuit breaker reset; API calls resumed.")
         elif self.circuit_breaker_open:
-            self.log_manager.error("Circuit breaker open, pausing API calls.")
+            self.logger.error("Circuit breaker open, pausing API calls.")
             await asyncio.sleep(300)
 
     async def ccxt_api_call(self, func, endpoint_type, *args, currency=None,  **kwargs):
@@ -99,7 +101,7 @@ class ApiManager:
                     caller_function_name = stack()[1].function
                     if caller_function_name == 'fetch_bids_asks':
                         caller_function_name = stack()[2].function
-                    self.log_manager.debug(f"Attempt {attempt} for {func.__name__} from {caller_function_name}")
+                    self.logger.debug(f"Attempt {attempt} for {func.__name__} from {caller_function_name}")
                     # Add delay for public endpoints
                     if endpoint_type == 'public':
                         await asyncio.sleep(0.1)  # Enforce 10 requests/second
@@ -107,7 +109,7 @@ class ApiManager:
                     response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
                     self.consecutive_failures = 0 # reset consecutive failures
                     if response is None:
-                        self.log_manager.error(
+                        self.logger.error(
                             f"� CCXT API returned None for {func.__name__} | Args: {args} | Kwargs: {kwargs}")
 
                     return response
@@ -115,20 +117,20 @@ class ApiManager:
                 except (ClientConnectionError, RemoteDisconnected) as e:
                     print(f'{caller_function_name}')
                     wait_time = min(delay * (2 ** attempt), max_delay)
-                    self.log_manager.error(f"Network error on attempt {attempt}: {e}, retrying in {wait_time}s")
+                    self.logger.error(f"Network error on attempt {attempt}: {e}, retrying in {wait_time}s")
                     await asyncio.sleep(wait_time)
 
                 except (RequestTimeout, RateLimitExceeded, BadSymbol) as e:
-                    self.log_manager.error(f"{func.__name__} raised an API call error {type(e).__name__} on attempt"
+                    self.logger.error(f"{func.__name__} raised an API call error {type(e).__name__} on attempt"
                                            f" {attempt}: {e}", exc_info=True)
                     if isinstance(e, RateLimitExceeded):
                         await self._handle_rate_limit_exceeded(func.__name__,e)
 
                 except IndexError as e:
-                    self.log_manager.error(f"{func.__name__}: IndexError - {e}", exc_info=True)
+                    self.logger.error(f"{func.__name__}: IndexError - {e}", exc_info=True)
                     return None
                 except InvalidOrder as e:
-                    self.log_manager.error(f"{func.__name__}: Invalid order - {e}", exc_info=True)
+                    self.logger.error(f"{func.__name__}: Invalid order - {e}", exc_info=True)
                     return None
                 except ExchangeError as e:
                     error_message = str(e)
@@ -149,7 +151,7 @@ class ApiManager:
                         continue  # Retry after delay
                     elif 'Insufficient balance in source account' in error_message:
                         # **Gracefully handle insufficient balance**
-                        self.log_manager.info(f"Insufficient balance for {func.__name__}. Cannot place order.",
+                        self.logger.info(f"Insufficient balance for {func.__name__}. Cannot place order.",
                                               exc_info=False)
 
                         # Optional: Send an alert if necessary
@@ -158,25 +160,25 @@ class ApiManager:
                         # Return a meaningful response
                         return {'status': 'failed', 'reason': 'insufficient_balance'}
                     elif 'coinbase cancelOrders() has failed' in error_message:
-                        self.log_manager.error(f"Coinbase cancelOrders() has failed: {e}", exc_info=True)
+                        self.logger.error(f"Coinbase cancelOrders() has failed: {e}", exc_info=True)
                         return None
                     else:
-                        self.log_manager.error(f"⚠️ Post-only limit buys must be priced below the lowest sell price"
+                        self.logger.error(f"⚠️ Post-only limit buys must be priced below the lowest sell price"
                                                    f"{args}")
-                        self.log_manager.error(f"Exchange error {func.__name__} : {e}", exc_info=True)
+                        self.logger.error(f"Exchange error {func.__name__} : {e}", exc_info=True)
                         break
                 except asyncio.TimeoutError:
                     print(f'{caller_function_name}')
                     if attempt == retries:
-                        self.log_manager.error("TimeoutError after max retries")
+                        self.logger.error("TimeoutError after max retries")
                         break
                     await asyncio.sleep(delay * (2 ** attempt))
                 except Exception as e:
                     if attempt == retries:
                         print(f'an exception was raised when the api was called from {caller_function_name}')
-                        self.log_manager.error(f"Unexpected error: {e}", exc_info=True)
+                        self.logger.error(f"Unexpected error: {e}", exc_info=True)
                         raise
-            self.log_manager.info(f"API call failed after all retries. {func.__name__}", exc_info=True)
+            self.logger.info(f"API call failed after all retries. {func.__name__}", exc_info=True)
             return None
 
     def _is_rate_limit_exceeded(self, error):
@@ -185,7 +187,7 @@ class ApiManager:
     async def _handle_rate_limit_exceeded(self, calling_func, error, attempt=1, delay=1, max_delay=60):
         self.consecutive_failures += 1
         wait_time = min((2 ** attempt) * delay, max_delay)
-        self.log_manager.info(f"Rate-limit error in {calling_func}. Backing off for {wait_time}s.")
+        self.logger.info(f"Rate-limit error in {calling_func}. Backing off for {wait_time}s.")
         if self.consecutive_failures >= self.max_failures_before_tripping:
             self.alert_system.send_alert(
                 f"Repeated rate-limit errors in {calling_func}. Circuit breaker engaged. {error}"
@@ -198,5 +200,4 @@ class ApiManager:
     def _trigger_circuit_breaker(self):
         self.circuit_breaker_open = True
         self.circuit_breaker_reset_time = time.time() + 300
-        self.log_manager.warning(f"Circuit breaker triggered.", exc_info=True)
-
+        self.logger.warning(f"Circuit breaker triggered.", exc_info=True)

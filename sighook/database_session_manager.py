@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from Config.config_manager import CentralConfig
 from sighook.database_ops import DatabaseOpsManager
+from sighook.database_table_models import Base  # already imported implicitly
 from sighook.database_table_models import OHLCVData
 
 
@@ -23,12 +24,16 @@ class DatabaseSessionManager:
 
     def __init__(self, profit_extras, logger_manager, shared_data_manager):
 
-        self.logger = logger_manager.get_logger('sighook_logger')
+        if logger_manager.name == 'shared_logger':
+            self.logger = logger_manager  # 🙂
+        else:
+            pass
         self.config = CentralConfig()
         self.profit_extras = profit_extras
         self.shared_data_manager = shared_data_manager
 
         # Ensure that database_url is correctly set
+        # print(f'❌ DatabaseSessionManager: database_url {self.config.database_url}')
         if not self.config.database_url:
             self.logger.error("Database URL is not configured properly.")
             raise ValueError("Database URL is not configured. Please check your configuration.")
@@ -43,6 +48,14 @@ class DatabaseSessionManager:
         # Use the new database_url method
         #self.database = Database(self.config.database_url)
         self.database_ops = None  # Will be set later after components are initialized
+
+    async def initialize_schema(self):
+        try:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            self.logger.info("✅ Database schema initialized (tables created if they didn't exist).")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize database schema: {e}", exc_info=True)
 
     @property
     def market_data(self):
@@ -90,13 +103,29 @@ class DatabaseSessionManager:
         raise ConnectionError("Failed to establish a database connection after retries.")
 
     async def initialize(self):
-        """Initialize the database connection."""
         try:
-            await self.connect()  # Establish database connection
+            await self.connect()
             self.logger.info("DatabaseSessionManager initialized and connected to the database.")
+            await self.initialize_schema()
+            await self.populate_initial_data()
         except Exception as e:
             self.logger.error(f"❌ Failed to initialize DatabaseSessionManager: {e}", exc_info=True)
             raise
+
+    async def populate_initial_data(self):
+        """seed some default rows if needed"""
+        try:
+            query = "SELECT 1 FROM shared_data WHERE data_type = 'market_data'"
+            result = await self.database.fetch_one(query)
+            if result is None:
+                await self.database.execute("""
+                    INSERT INTO shared_data (data_type, data)
+                    VALUES ('market_data', '{}'::jsonb)
+                """)
+                self.logger.info("✅ Inserted initial market_data row.")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to populate initial shared_data: {e}")
+
 
     async def disconnect(self):
         """Close the database connection."""
@@ -123,8 +152,8 @@ class DatabaseSessionManager:
                 self.logger.info("Database reconnected within process_data.")
 
             # Execute within an explicit transaction
-            async with self.database.transaction():
-                await self.database_ops.process_data()
+            # async with self.database.transaction():
+            #     await self.database_ops.process_data()
         except Exception as e:
             self.logger.error(f"❌ Failed to process data in session manager: {e}")
             raise

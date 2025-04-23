@@ -26,7 +26,9 @@ class ProfitDataManager:
         self._take_profit = Decimal(self.config.take_profit)
         self.market_cache = None
         self.last_ticker_update = None
-        self.logger = logger_manager.get_logger('webhook_logger')
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.shared_data_manager = shared_data_manager
         self.shared_utils_print_data = shared_utils_print_data
         self.shared_utils_precision = shared_utils_precision
@@ -125,13 +127,13 @@ class ProfitDataManager:
             # ✅ Construct Profit Data
             profit_data = {
                 'asset': asset,
-                '   balance': round(asset_balance, base_deci),
-                '   price': round(current_price, quote_deci),
-                '   value': current_value,
+                'balance': round(asset_balance, base_deci),
+                'price': round(current_price, quote_deci),
+                'value': current_value,
                 'cost_basis': round(cost_basis, quote_deci),
                 'avg_price': round(avg_price, quote_deci),
                 'profit': profit,
-                '   profit percent': f'{profit_percentage}%',
+                'profit percent': f'{profit_percentage}%',
                 'status': required_prices.get('status', 'HDLG')
             }
 
@@ -154,7 +156,7 @@ class ProfitDataManager:
             profit_df = pd.DataFrame(profit_data_list)
 
             # Sort by profit percentage
-            profit_df = profit_df.sort_values(by=['   profit percent'], ascending=False)
+            profit_df = profit_df.sort_values(by=['profit percent'], ascending=False)
             # Set Asset as index for cleaner display
             profit_df.set_index('asset')
             caller_function_name = stack()[0].function  # debugging
@@ -171,24 +173,46 @@ class ProfitDataManager:
         """
         Calculate Take Profit (TP) and Stop Loss (SL) prices with proper precision.
 
+        Uses Option A strategy: applies fee after calculating price target,
+        avoiding over-tight stop losses.
+
         Args:
-            order_price (Decimal): The base price of the order.
-            base_deci (int): Base currency precision.
-            quote_deci (int): Quote currency precision.
+            order_data (OrderData): Contains order parameters like adjusted_price, fee, and precision info.
 
         Returns:
-            tuple: (take_profit, stop_loss) adjusted to correct precision.
+            tuple: (adjusted_take_profit, adjusted_stop_loss)
         """
         try:
-            fee_multiplier = Decimal("1.0") + self.take_profit + order_data.maker_fee
-            tp = order_data.adjusted_price * fee_multiplier
-            fee_multiplier = Decimal("1.0") + self.stop_loss - order_data.maker_fee
-            sl = order_data.adjusted_price * fee_multiplier
+            # Base price to start from
+            entry_price = order_data.adjusted_price
+            fee = order_data.taker_fee
 
-            adjusted_tp = self.shared_utils_precision.adjust_precision(order_data.base_decimal, order_data.quote_decimal, tp, convert='quote')
-            adjusted_sl = self.shared_utils_precision.adjust_precision(order_data.base_decimal, order_data.quote_decimal, sl, convert='quote')
+            # --- Take Profit ---
+            # Target a % above entry price, then account for fee
+            tp = entry_price * (Decimal("1.0") + self.take_profit)
+            tp += tp * fee  # Add fee on top
+
+            # --- Stop Loss ---
+            # Target a % below entry price, then account for fee
+            sl = entry_price * (Decimal("1.0") + self.stop_loss)
+            sl -= sl * fee  # Deduct fee (optionally leave as sl = sl if you want to avoid extra tightening)
+
+            # Round to appropriate precision
+            adjusted_tp = self.shared_utils_precision.adjust_precision(
+                order_data.base_decimal,
+                order_data.quote_decimal,
+                tp,
+                convert='quote'
+            )
+            adjusted_sl = self.shared_utils_precision.adjust_precision(
+                order_data.base_decimal,
+                order_data.quote_decimal,
+                sl,
+                convert='quote'
+            )
 
             return adjusted_tp, adjusted_sl
+
         except Exception as e:
             self.logger.error(f"❌️ Error in calculate_tp_sl: {e}", exc_info=True)
             return None, None

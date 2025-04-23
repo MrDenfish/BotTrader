@@ -7,51 +7,55 @@ import smtplib
 
 class AlertSystem:
     _instance = None
-    _is_loaded = False
 
-    def __new__(cls, logger_manager):
+    @classmethod
+    def get_instance(cls, logger_manager):
+        """
+        Singleton method to ensure only one instance of AlertSystem exists.
+        """
         if cls._instance is None:
-            cls._instance = super(AlertSystem, cls).__new__(cls)
+            cls._instance = cls(logger_manager)
         return cls._instance
-
     def __init__(self, logger_manager):
-        self._smtp_server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-        self._phone = os.getenv('PHONE')
-        self._email = os.getenv('EMAIL')
-        self._e_mailpass = os.getenv('E_MAILPASS')
-        self._my_email = os.getenv('MY_EMAIL')
-        self.logger = logger_manager  # 🙂
+        self.logger = logger_manager.loggers['shared_logger']
+        self.phone = os.getenv('PHONE')
+        self.email = os.getenv('EMAIL')
+        self.email_pass = os.getenv('E_MAILPASS')
+        self.my_email = os.getenv('MY_EMAIL')
+        self.email_alert_on = os.getenv('EMAIL_ALERTS', 'true').lower() == 'true'
 
+        if self.email_alert_on:
+            self.validate_env()
+            self.logger.info("🔹 Email alerts are enabled.")
+        else:
+            self.logger.info("🔸Email alerts are DISABLED via EMAIL_ALERTS=False.")
 
+    def validate_env(self):
+        if self.email_alert_on:
+            missing = [k for k, v in {
+                'PHONE': self.phone,
+                'EMAIL': self.email,
+                'E_MAILPASS': self.email_pass,
+                'MY_EMAIL': self.my_email
+            }.items() if not v]
 
-    @property
-    def smtp_server(self):
-        return self._smtp_server
+            if missing:
+                raise ValueError(f"Missing environment variables: {', '.join(missing)}")
 
-    @property
-    def phone(self):
-        return self._phone
-
-    @property
-    def email(self):
-        return self._email
-
-    @property
-    def e_mailpass(self):
-        return self._e_mailpass
-
-    @property
-    def my_email(self):
-        return self._my_email
-
-    def callhome(self, subject, message):
+    def callhome(self, subject, message, mode='sms'):
         try:
-            #  logger.info('Sending SMS alert')
-            to = f'{self.phone}@txt.att.net'  # Format the phone number as an Email-to-SMS gateway address
+            if not self.email_alert_on:
+                print(f"🔸 callhome() skipped — email alerts are disabled.")
+                return
+
+            to = self.phone + '@txt.att.net' if mode == 'sms' else self.my_email
             email_text = f'Subject: {subject}\n\n{message}'
-            self.smtp_server.login(self.email, self.e_mailpass)
-            self.smtp_server.sendmail(self.my_email, to, email_text)
-            self.smtp_server.quit()
+
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(self.email, self.email_pass)
+                server.sendmail(self.email, to, email_text)
+
+            self.logger(f"� Alert sent to {'SMS' if mode == 'sms' else 'Email'}: {to}")
+
         except Exception as e:
-            print(f'Error sending SMS alert: {e}')
-            self.log_manager.error(f'Error sending SMS alert: {e}')
+            self.logger(f"❌ Error sending alert: {e}", exc_info=True)

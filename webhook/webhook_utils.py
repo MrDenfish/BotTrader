@@ -1,3 +1,4 @@
+from decimal import Decimal
 
 import pandas as pd
 
@@ -20,7 +21,9 @@ class TradeBotUtils:
         """
         self.exchange = exchange_client
         self.coinbase_api = coinbase_api
-        self.logger = logger_manager.get_logger("webhook_logger")
+        self.logger = logger_manager  # 🙂
+
+
         self.shared_data_manager = shared_data_manager
 
 

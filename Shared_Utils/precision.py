@@ -21,8 +21,10 @@ class PrecisionUtils:
         if PrecisionUtils._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
+        self.logger = logger_manager  # 🙂
+        # self.logger = logger_manager
 
-        self.logger = logger_manager.get_logger("webhook_logger")
+
         self.shared_data_manager = shared_data_manager
 
     @property
@@ -145,9 +147,14 @@ class PrecisionUtils:
             adjusted_bid = highest_bid + adjustment_factor  # Increase bid slightly
             adjusted_ask = lowest_ask - adjustment_factor  # Decrease ask slightly
             if order_data.get('type'):
-                fee_rate = Decimal(order_data.get('maker_fee') if order_data['type'] == 'limit' else order_data.get('taker_fee'))
+                fee_rate = Decimal(order_data.get('maker_fee') if order_data.get('type') == 'limit' else order_data.get('taker_fee'))
+            elif side.upper() == ' SELL':
+                fee_rate = Decimal(order_data.get('taker_fee') if not order_data.get('type') else order_data.get('maker_fee'))
+            elif side.upper() == 'BUY':
+                fee_rate = Decimal(order_data.get('maker_fee') if not order_data.get('type') else order_data.get('taker_fee'))
             else:
-                fee_rate = Decimal(0.0)
+                fee_rate = order_data.get('taker_fee')
+
             # Apply adjusted price for both sides
             if side == 'BUY':
                 net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
@@ -160,8 +167,15 @@ class PrecisionUtils:
             elif side == 'SELL':
                 gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
                 adjusted_price = gross_cost.quantize(precision_quote, rounding=ROUND_DOWN)
-                adjusted_size = Decimal(str(max(order_data.get('sell_amount', 0), order_data.get('base_avail_to_trade', 0))))
-                adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
+
+                raw_size = Decimal(str(max(
+                    order_data.get('sell_amount', 0),
+                    order_data.get('base_avail_to_trade', 0)
+                )))
+
+                # � Apply a safety margin based on precision
+                safety_margin = precision_base * Decimal('2')  # 2 ticks worth of precision
+                adjusted_size = (raw_size - safety_margin).quantize(precision_base, rounding=ROUND_DOWN)
 
             if adjusted_price is None or adjusted_size is None:
                 raise ValueError("Adjusted price or size cannot be None.")

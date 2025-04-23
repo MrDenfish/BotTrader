@@ -3,6 +3,7 @@ aiohttp                 #ccxt
 aiosignal               #aiohttp
 aiosqlite
 async-timeout           #aiohttp
+asyncpg==0.29.0         #databases
 attrs                   #aiohttp
 Bottleneck
 ccxt
@@ -12,6 +13,9 @@ charset-normalizer      #ccxt
 coinbase-advanced-py    #requests>=2.31.0, cryptography>=42.0.4, PyJWT>=2.8.0, websockets>=12.0,<14.0, backoff>=2.2.1
 coinbase                #equests>=2.5, six>=1.9, pycryptodome>=3.4.11
 cryptography            #ccxt
+databases               #aiosqlite, asyncpg, databases
+dnspython               #requests
+frozen-inference
 frozenlist              #aiohttp, aiosignal
 greenlet                #sqlalchemy
 idna                    #requests, yarl

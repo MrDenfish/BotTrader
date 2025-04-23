@@ -19,7 +19,10 @@ class SharedUtility:
         return cls._instance
 
     def __init__(self, logger_manager):
-        self.logger = logger_manager.get_logger('webhook_logger')
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
+
 
 
     @staticmethod
@@ -48,33 +51,33 @@ class SharedUtility:
         loop_id = id(asyncio.get_running_loop())
         self.logger.debug(f"� {name} is running in event loop: {loop_id}")
 
-    def refresh_authentication(self):
-        try:
-            # Reload the configuration
-            self.bot_config.reload_config()
-
-            # Fetch new API key and secret from BotConfig
-            new_api_key = self.bot_config.api_key
-            new_api_secret = self.bot_config.api_secret
-
-            # Update the exchange client with new credentials
-            if new_api_key and new_api_secret:
-                self.exchange.apiKey = new_api_key
-                self.exchange.secret = new_api_secret
-
-                # Log the refresh action
-                if self.logger and hasattr(self.logger, 'webhook_logger'):
-                    self.logger.info("Authentication refreshed.")
-                else:
-                    print("Authentication refreshed.")  # Fallback logging
-            else:
-                raise ValueError("API key or secret is missing.")
-        except Exception as e:
-            error_message = f"❌ Failed to refresh authentication: {e}"
-            if self.logger and hasattr(self.logger, 'webhook_logger'):
-                self.logger.error(error_message)
-            else:
-                print(error_message)  # Fallback logging
+    # def refresh_authentication(self):
+    #     try:
+    #         # Reload the configuration
+    #         self.bot_config.reload_config()
+    #
+    #         # Fetch new API key and secret from BotConfig
+    #         new_api_key = self.bot_config.api_key
+    #         new_api_secret = self.bot_config.api_secret
+    #
+    #         # Update the exchange client with new credentials
+    #         if new_api_key and new_api_secret:
+    #             self.exchange.apiKey = new_api_key
+    #             self.exchange.secret = new_api_secret
+    #
+    #             # Log the refresh action
+    #             if self.logger and hasattr(self.logger, 'webhook_logger'):
+    #                 self.logger.info("Authentication refreshed.")
+    #             else:
+    #                 print("Authentication refreshed.")  # Fallback logging
+    #         else:
+    #             raise ValueError("API key or secret is missing.")
+    #     except Exception as e:
+    #         error_message = f"❌ Failed to refresh authentication: {e}"
+    #         if self.logger and hasattr(self.logger, 'webhook_logger'):
+    #             self.logger.error(error_message)
+    #         else:
+    #             print(error_message)  # Fallback logging
 
 
     def validate_order_tracker(self, order_tracker):

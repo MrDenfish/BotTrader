@@ -32,8 +32,7 @@ class WebHookManager:
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.trade_order_manager = trade_order_manager
-        self.logger = logger_manager.get_logger("webhook_logger")
-
+        self.logger = logger_manager  # 🙂
 
         self.session = session
 

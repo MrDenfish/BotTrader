@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime, timedelta
 from datetime import timezone
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from inspect import stack
 from typing import Optional, Union
 
@@ -40,8 +40,7 @@ class OrderTypeManager:
         self.exchange = exchange_client
         self.coinbase_api = coinbase_api
         # self.base_url = self.config._api_url
-        self.logger = logger_manager.get_logger("webhook_logger")
-
+        self.logger = logger_manager  # 🙂
 
         self.validate = validate
         self.order_book_manager = order_book_manager
@@ -156,9 +155,9 @@ class OrderTypeManager:
             adjusted_size = Decimal(order_data.adjusted_size).quantize(base_quant, rounding=ROUND_DOWN)
 
             if take_profit:
-                take_profit = Decimal(take_profit).quantize(base_quant, rounding=ROUND_DOWN)
+                take_profit = Decimal(take_profit).quantize(quote_quant, rounding=ROUND_DOWN)
             if stop_loss:
-                stop_loss = Decimal(stop_loss).quantize(base_quant, rounding=ROUND_DOWN)
+                stop_loss = Decimal(stop_loss).quantize(quote_quant, rounding=ROUND_DOWN)
 
             # ✅ Step 4: Ensure sufficient balances
             side = order_data.side.upper()
@@ -206,15 +205,20 @@ class OrderTypeManager:
                 }
             }
 
-            self.logger.info(f"� Submitting Order: {order_payload}")
-            print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}')  # Debug
+            self.logger.debug(f"� Submitting Order: {order_payload}")
+            order_data.time_order_placed = datetime.now()
+            print(f'')
+            print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}   ⚠️')  # Debug
+            print(f'')
             # ✅ Step 6: Execute Order
             response_data = await self.coinbase_api.create_order(order_payload)
 
             if response_data.get('success'):
                 order_id = response_data.get('success_response', {}).get('order_id')
-                self.logger.info(f"✅ Order Placed Successfully with TP/SL: {order_id}")
+                print(f"✅ Order Placed Successfully with TP/SL: {order_id} ✅")
                 return response_data
+            else:
+                print(f"❗️ Order Rejected TP/SL: {response_data.get('error_response', {}).get('message')} ❗️")
 
             return response_data
 
@@ -298,10 +302,18 @@ class OrderTypeManager:
 
             # ✅ Adjust price dynamically to avoid post-only rejection
             if side == 'BUY' and price >= latest_lowest_ask:
-                price = max(latest_lowest_ask * (Decimal('1') - price_buffer_pct), latest_lowest_ask - min_buffer)
+                # lower than the ask to ensure no match
+                adjusted = latest_lowest_ask * (Decimal('1') - price_buffer_pct)
+                price = (max(adjusted, latest_lowest_ask - min_buffer)).quantize(
+                    Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_DOWN
+                )
 
             elif side == 'SELL' and price <= latest_highest_bid:
-                price = min(latest_highest_bid * (Decimal('1') + price_buffer_pct), latest_highest_bid + min_buffer)
+                # higher than the bid to ensure no match
+                adjusted = latest_highest_bid * (Decimal('1') + price_buffer_pct)
+                price = (min(adjusted, latest_highest_bid + min_buffer)).quantize(
+                    Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_UP
+                )
 
             self.logger.info(f"✅ Adjusted {side} limit order price: {price} for {symbol}")
 
@@ -309,12 +321,18 @@ class OrderTypeManager:
             self.exchange.verbose = False
             self.logger.info(f"Placing {side} limit order: {symbol}, Amount: {amount}, Price: {price}, Params: {params}")
 
+            print(
+                f" Post-only check — side: {side}, adjusted price: {price}, "
+                f"lowest_ask: {latest_lowest_ask}, highest_bid: {latest_highest_bid}"
+            )
+            formatted_price = f"{price:.{order_data.quote_decimal}f}"
+            formatted_amount = f"{amount:.{order_data.base_decimal}f}"
             response = await self.ccxt_api.ccxt_api_call(
-                self.exchange.create_order, 'private', symbol, 'limit', side, amount, price, params=params
+                self.exchange.create_order, 'private', symbol, 'limit', side, formatted_amount, formatted_price, params=params
             )
 
             if response:
-                self.logger.info(f"✅ Order placed successfully: {response}")
+                print(f"✅ Order placed successfully: {response.get('side')} {response.get('symbol')} ✅")
                 return response
             else:
                 self.logger.error(f"⚠️ Received None from create_order for {symbol}. Order data: {order_data}")

@@ -1,48 +1,46 @@
 import asyncio
 import json
 import random
-from smtplib import SMTP_SSL
 
 import aiohttp
 
 from Config.config_manager import CentralConfig
 
 
-class AlertSystem:
-    _instance = None
-
-    @classmethod
-    def get_instance(cls, logger_manager):
-        """
-        Singleton method to ensure only one instance of AlertSystem exists.
-        """
-        if cls._instance is None:
-            cls._instance = cls(logger_manager)
-        return cls._instance
-
-    def __init__(self, logger_manager):
-        """
-        Initializes the AlertSystem.
-        """
-        if AlertSystem._instance is not None:
-            raise Exception("This class is a singleton! Use get_instance().")
-
-        self.config = CentralConfig()
-        self._smtp_server = SMTP_SSL('smtp.gmail.com', 465)
-        self._phone = self.config.phone
-        self._email = self.config.email
-        self._e_mailpass = self.config.e_mailpass
-        self._my_email = self.config.my_email
-        self._order_size = self.config.order_size
-        self._smtp_host = 'smtp.gmail.com'
-        self._smtp_port = 465
-        self.logger = logger_manager
-
-        self.semaphore = asyncio.Semaphore(10)
-
-        # Set the instance
-        AlertSystem._instance = self
-
+# class AlertSystem:
+#     _instance = None
+#
+#     @classmethod
+#     def get_instance(cls, logger_manager):
+#         """
+#         Singleton method to ensure only one instance of AlertSystem exists.
+#         """
+#         if cls._instance is None:
+#             cls._instance = cls(logger_manager)
+#         return cls._instance
+#
+#     def __init__(self, logger_manager):
+#         """
+#         Initializes the AlertSystem.
+#         """
+#         if AlertSystem._instance is not None:
+#             raise Exception("This class is a singleton! Use get_instance().")
+#
+#         self.config = CentralConfig()
+#         self._phone = self.config.phone
+#         self._email = self.config.email
+#         self._e_mailpass = self.config.e_mailpass
+#         self._my_email = self.config.my_email
+#         self._email_alerts_on =self.config.email_alerts
+#         self._order_size = self.config.order_size
+#         self._smtp_host = 'smtp.gmail.com'
+#         self._smtp_port = 465
+#         self.logger = logger_manager
+#
+#         self.semaphore = asyncio.Semaphore(10)
+#
+#         # Set the instance
+#         AlertSystem._instance = self
 
 
 class SenderWebhook:
@@ -56,15 +54,16 @@ class SenderWebhook:
 
     def __init__(self, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager):
         self.config = CentralConfig()
-        self._smtp_server = SMTP_SSL('smtp.gmail.com', 465)
+
         self._phone = self.config.phone
         self._email = self.config.email
         self._e_mailpass = self.config.e_mailpass
         self._my_email = self.config.my_email
+        self._email_alerts_on = self.config.email_alerts
         self._order_size = self.config.order_size
         self._version = self.config.program_version
         self.shared_utils_utility = shared_utils_utility
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
         self.shared_data_manager = shared_data_manager
         self.exchange = exchange
         self.base_delay = 5  # Start with a 5-second delay
@@ -100,6 +99,10 @@ class SenderWebhook:
     def order_size(self):
         return self._order_size
 
+    @property
+    def email_alerts_on(self):
+        return self._email_alerts_on
+
     async def send_webhook(self, http_session, webhook_payload, retries=3, initial_delay=1, max_delay=60):
         """
         Sends a webhook with retry logic, exponential backoff, and cleaner error handling.
@@ -125,7 +128,7 @@ class SenderWebhook:
         # Schedule UUID cleanup after delay
         # asyncio.get_event_loop().call_later(self.cleanup_delay, lambda: self.remove_uuid(webhook_payload['uuid']))
 
-        print(f"� Sending webhook: {webhook_payload}")
+        print(f"🔹 Sending webhook: {webhook_payload}")
 
         for attempt in range(1, retries + 1):
             try:

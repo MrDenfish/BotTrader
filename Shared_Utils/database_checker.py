@@ -8,14 +8,16 @@ class DatabaseIntegrity:
     _instance = None
 
     @classmethod
-    def get_instance(cls, app_config, db_tables, log_manager):
+    def get_instance(cls, app_config, db_tables, logger_manager):
         if cls._instance is None:
-            cls._instance = cls(app_config, db_tables, log_manager)
+            cls._instance = cls(app_config, db_tables, logger_manager)
         return cls._instance
 
-    def __init__(self, app_config, db_tables, log_manager):
+    def __init__(self, app_config, db_tables, logger_manager):
 
-        self.log_manager = log_manager
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.db_tables = db_tables
         self.app_config = app_config
 
@@ -46,7 +48,7 @@ class DatabaseIntegrity:
         if not last_check_time or (current_time - last_check_time).days >= 1:
             self.app_config.last_check_time = current_time  # Update last check time
             if not await self.check_database_integrity(db_path):
-                self.log_manager.error(f"Database integrity check failed for {db_path}")
+                self.logger_manager.error(f"Database integrity check failed for {db_path}")
                 return False
         return True
 

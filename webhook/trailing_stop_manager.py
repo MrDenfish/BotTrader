@@ -8,24 +8,25 @@ class TrailingStopManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logger_manager, shared_utils_precision, coinbase_api, shared_data_manager):
+    def get_instance(cls, logger_manager, shared_utils_precision, coinbase_api, shared_data_manager, order_type_manager):
         """
         Singleton method to ensure only one instance of TrailingStopManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, shared_utils_precision, coinbase_api, shared_data_manager)
+            cls._instance = cls(logger_manager, shared_utils_precision, coinbase_api, shared_data_manager, order_type_manager)
         return cls._instance
 
-    def __init__(self, logger_manager, shared_utils_precision, coinbase_api, shared_data_manager):
+    def __init__(self, logger_manager, shared_utils_precision, coinbase_api, shared_data_manager, order_type_manager):
         """
         Initializes the TrailingStopManager.
         """
         if TrailingStopManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance().")
 
-        self.logger = logger_manager.get_logger("webhook_logger")
-        self.shared_data_manager = shared_data_manager
+        self.logger = logger_manager  # 🙂
 
+        self.shared_data_manager = shared_data_manager
+        self.order_type_manager = order_type_manager
         self.coinbase_api = coinbase_api
         self.config = Bot_config()
         self._trailing_percentage = Decimal(self.config.trailing_percentage)
@@ -102,8 +103,9 @@ class TrailingStopManager:
             None
         """
         try:
-            base_deci = order_data.get('base_decimal')
-            quote_deci = order_data.get('quote_decimal')
+
+            base_deci = order_data.base_decimal
+            quote_deci = order_data.quote_decimal
             trailing_stop_price = highest_price * (1 - self.trailing_percentage / 100)
             trailing_stop_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, trailing_stop_price, convert='quote')
             limit_price = trailing_stop_price * Decimal("1.002")
@@ -119,11 +121,8 @@ class TrailingStopManager:
                     "trailing_stop_price": trailing_stop_price,
                     "limit_price": limit_price
                 })
-                self.log_manager.info(f"Trailing stop updated for order {order_id}")
+                self.logger.info(f"Trailing stop updated for order {order_id}")
             else:
-                self.log_manager.error(f"Failed to update trailing stop for {order_id}: {response.get('failure_reason')}", exc_info=True)
+                self.logger.error(f"Failed to update trailing stop for {order_id}: {response.get('failure_reason')}", exc_info=True)
         except Exception as e:
-            self.log_manager.error(f"Error updating trailing stop for order {order_id}: {e}", exc_info=True)
-
-
-
+            self.logger.error(f"Error updating trailing stop for order {order_id}: {e}", exc_info=True)

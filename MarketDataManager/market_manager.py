@@ -34,7 +34,9 @@ class MarketManager:
         self.order_manager = order_manager
         self.ticker_manager = ticker_manager
         self.portfolio_manager = portfolio_manager
-        self.logger = logger_manager
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.start_time = None
         self.database = database  # Use `database` directly
         self.db_tables = db_tables

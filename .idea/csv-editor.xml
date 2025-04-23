@@ -24,6 +24,20 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="$USER_HOME$/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/numpy/core/tests/data/umath-validation-set-arctan.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
+        <entry key="$USER_HOME$/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/numpy/core/tests/data/umath-validation-set-arctanh.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="$USER_HOME$/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/tornado/test/csv_translations/fr_FR.csv">
           <value>
             <Attribute>

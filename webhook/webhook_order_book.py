@@ -21,9 +21,7 @@ class OrderBookManager:
         """
         self.exchange = exchange_client
         self.shared_utils_precision = shared_utils_precision
-        self.logger = logger_manager.get_logger("webhook_logger")
-
-
+        self.logger = logger_manager  # 🙂
         self.ccxt_api = ccxt_api  # ✅ Renamed for clarity
 
     async def get_order_book(self, order_data: OrderData, symbol=None):

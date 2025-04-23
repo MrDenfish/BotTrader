@@ -44,7 +44,7 @@ class PortfolioManager:
         # External dependencies
         self.exchange = exchange
         self.ccxt_api = ccxt_api
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
         self.shared_data_manager = shared_data_manager
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_datas_and_times = shared_utils_datas_and_times
@@ -268,12 +268,10 @@ class PortfolioManager:
         portfolio_df = portfolio_df.sort_values(by='symbol', ascending=True) if not portfolio_df.empty else pd.DataFrame()
         return portfolio_df.to_dict('records')
 
-
-
-    @staticmethod
-    def _create_row(row):
+    def _create_row(self, row):
         """Part II: Generate a row for the buy/sell matrix."""
-        price_decimal = Decimal(row['price']).quantize(Decimal('0.00000001'), rounding=ROUND_DOWN)
+        _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(row['asset'])
+        price_decimal = Decimal(row['price']).quantize(Decimal(f'1e-{quote_deci}'), rounding=ROUND_DOWN)
         return {
             'asset': row['asset'],
             'price': price_decimal,

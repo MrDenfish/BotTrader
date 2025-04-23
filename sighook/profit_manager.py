@@ -89,6 +89,8 @@ class ProfitabilityManager:
         try:
             sell_orders = []
             updated_holdings_list = updated_holdings_df.to_dict('records')  # Convert DataFrame to list of dictionaries
+            trigger = None
+
 
             for holding in updated_holdings_list:
                 # Skip assets marked as "hodl"
@@ -101,7 +103,8 @@ class ProfitabilityManager:
 
                 # Determine if a sell order should be placed
                 if self.profit_data_manager.should_place_sell_order(holding, current_market_price):
-                    sell_order = self.create_sell_order(holding, current_market_price)
+                    trigger = 'profit'
+                    sell_order = self.create_sell_order(holding, trigger, current_market_price)
                     sell_orders.append(sell_order)
 
             # Execute sell orders using OrderManager's handle_actions()
@@ -113,19 +116,22 @@ class ProfitabilityManager:
             raise
 
     @staticmethod
-    def create_sell_order(holding, current_market_price):
+    def create_sell_order(holding, trigger, current_market_price):
         """
         Create a standardized sell order dictionary for a given holding.
+        Compatible with webhook payload structure.
         """
         unrealized_profit = holding['unrealized_profit_loss']
-        trigger = 'tp_sl' if unrealized_profit > 0 else 'limit'
+        type = 'tp_sl' if unrealized_profit > 0 else 'limit'
 
         return {
             'asset': holding['asset'],
             'symbol': holding['symbol'],
             'action': 'sell',
+            'type': type,
             'price': current_market_price,
             'trigger': trigger,
+            'score': None,  # strategy orders may provide this
             'volume': holding['amount'],  # Selling the entire balance
             'sell_cond': trigger,
             'value': Decimal(holding['current_value'])

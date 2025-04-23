@@ -1,7 +1,6 @@
 
 from decimal import Decimal
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -14,7 +13,7 @@ class Indicators:
 
     def __init__(self, logger_manager):
         self.config = CentralConfig()
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
         self.bb_window = int(self.config.bb_window)
         self.bb_std = int(self.config.bb_std)
         self.bb_lower_band = Decimal(self.config.bb_lower_band)
@@ -416,38 +415,38 @@ class Indicators:
             fallback = [(0, 0.0, 0.0)] * len(df)
             return fallback, fallback
 
-    def plot_w_bottoms_m_tops(self, df, detected_w_bottoms, detected_m_tops):  # debugging to get a visual of the data
-        """
-        Plot Bollinger Bands with detected W-Bottoms and M-Tops.
-        """
-        try:
-            plt.figure(figsize=(14, 6))
-
-            # Plot Closing Price
-            plt.plot(df.index, df['close'], label='Close Price', color='blue', alpha=0.6)
-
-            # Plot Bollinger Bands
-            plt.plot(df.index, df['upper'], linestyle='dashed', color='red', label='Upper Band')
-            plt.plot(df.index, df['lower'], linestyle='dashed', color='green', label='Lower Band')
-            plt.plot(df.index, df['basis'], linestyle='dashed', color='black', label='Basis (SMA)')
-
-            # Plot W-Bottoms (Green Triangles Up)
-            if detected_w_bottoms:
-                plt.scatter(df.index[detected_w_bottoms], df['low'][detected_w_bottoms], color='lime', marker='^', s=100,
-                            label='W-Bottom')
-
-            # Plot M-Tops (Red Triangles Down)
-            if detected_m_tops:
-                plt.scatter(df.index[detected_m_tops], df['high'][detected_m_tops], color='red', marker='v', s=100,
-                            label='M-Top')
-
-            # Labels & Legends
-            plt.title("Bollinger Bands with Detected W-Bottoms and M-Tops")
-            plt.xlabel("Time")
-            plt.ylabel("Price")
-            plt.legend()
-            plt.grid()
-
-            plt.show()
-        except Exception as e:
-            self.logger.error(f"❌ Error in plot_w_bottoms_m_tops(): {e}", exc_info=True)
+    # def plot_w_bottoms_m_tops(self, df, detected_w_bottoms, detected_m_tops):  # debugging to get a visual of the data
+    #     """
+    #     Plot Bollinger Bands with detected W-Bottoms and M-Tops.
+    #     """
+    #     try:
+    #         plt.figure(figsize=(14, 6))
+    #
+    #         # Plot Closing Price
+    #         plt.plot(df.index, df['close'], label='Close Price', color='blue', alpha=0.6)
+    #
+    #         # Plot Bollinger Bands
+    #         plt.plot(df.index, df['upper'], linestyle='dashed', color='red', label='Upper Band')
+    #         plt.plot(df.index, df['lower'], linestyle='dashed', color='green', label='Lower Band')
+    #         plt.plot(df.index, df['basis'], linestyle='dashed', color='black', label='Basis (SMA)')
+    #
+    #         # Plot W-Bottoms (Green Triangles Up)
+    #         if detected_w_bottoms:
+    #             plt.scatter(df.index[detected_w_bottoms], df['low'][detected_w_bottoms], color='lime', marker='^', s=100,
+    #                         label='W-Bottom')
+    #
+    #         # Plot M-Tops (Red Triangles Down)
+    #         if detected_m_tops:
+    #             plt.scatter(df.index[detected_m_tops], df['high'][detected_m_tops], color='red', marker='v', s=100,
+    #                         label='M-Top')
+    #
+    #         # Labels & Legends
+    #         plt.title("Bollinger Bands with Detected W-Bottoms and M-Tops")
+    #         plt.xlabel("Time")
+    #         plt.ylabel("Price")
+    #         plt.legend()
+    #         plt.grid()
+    #
+    #         plt.show()
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error in plot_w_bottoms_m_tops(): {e}", exc_info=True)

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/BotTraderv3.0.iml" filepath="$PROJECT_DIR$/.idea/BotTraderv3.0.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/BotTrader.iml" filepath="$PROJECT_DIR$/.idea/BotTrader.iml" />
     </modules>
   </component>
 </project>

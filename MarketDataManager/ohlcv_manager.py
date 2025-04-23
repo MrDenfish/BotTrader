@@ -2,6 +2,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 
 
@@ -24,7 +25,9 @@ class OHLCVManager:
 
         self.exchange = exchange
         self.ccxt_api = ccxt_api
-        self.logger = logger_manager.get_logger('webhook_logger')
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.market_manager = market_manager
         self.shared_utiles_data_time = shared_utiles_data_time
         self.ohlcv_cache = {}  # Temporary storage for OHLCV data
@@ -88,7 +91,7 @@ class OHLCVManager:
 
     async def fetch_volatility_5min(self, symbol, timeframe='1m', limit=5, threshold_multiplier=1.1):
         """
-        Computes short-term volatility and returns both the current and dynamic threshold.
+        Computes short-term volatility using standard deviation of log returns and returns both the current and dynamic threshold.
 
         Args:
             symbol (str): Trading pair (e.g., 'BTC-USD')
@@ -111,16 +114,15 @@ class OHLCVManager:
                 return None, None
 
             df = df.tail(limit).copy()
-            df['volatility'] = df['high'] - df['low']
+            df['log_return'] = np.log(df['close'] / df['close'].shift(1))
+            volatility_5m = df['log_return'].std()
 
-            volatility_5m = df['volatility'].mean()
-
-            volatility_mean = df['volatility'].rolling(window=limit).mean().iloc[-1]  # Optional
-            adaptive_threshold = round(volatility_mean * threshold_multiplier, 6)
+            adaptive_threshold = round(volatility_5m * threshold_multiplier, 6)
             return round(volatility_5m, 6), adaptive_threshold
 
         except Exception as e:
             self.logger.error(f"❌ Error in fetch_volatility_5min for {symbol}: {e}", exc_info=True)
             return None, None
+
 
 

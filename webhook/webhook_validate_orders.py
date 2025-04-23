@@ -1,6 +1,7 @@
 
 from dataclasses import asdict
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from decimal import InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from typing import Optional, Union
@@ -13,6 +14,7 @@ from Config.config_manager import CentralConfig as Config
 @dataclass
 class OrderData:
     trading_pair: str
+    time_order_placed: Union[datetime, None]
     side: str
     type: str
     order_id: str
@@ -43,9 +45,16 @@ class OrderData:
     adjusted_size: Optional[Decimal] = None
     stop_loss_price: Optional[Decimal] = None
     take_profit_price: Optional[Decimal] = None
+    trigger: str = 'UNKNOWN'
+    volume_24h: Optional[Decimal] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> 'OrderData':
+        """Used when rebuilding an OrderData object from raw data
+        -snapshot from order_tracker
+        -WebSocket or REST API payload
+        -Data loaded from a .json file or DB"""
+
         def get_decimal(key, default='0'):
             val = data.get(key, default)
             try:
@@ -61,11 +70,17 @@ class OrderData:
             return (split_pair[0], split_pair[1]) if len(split_pair) == 2 else ('', '')
 
         # Pull a product or trading pair string from possible keys
-        product_id = data.get('trading_pair') or data.get('symbol') or data.get('product_id', '')
-        base_currency, quote_currency = extract_base_quote(product_id)
-
+        if isinstance(data, dict):
+            product_id = data.get('trading_pair') or data.get('symbol') or data.get('product_id', '')
+            base_currency, quote_currency = extract_base_quote(product_id)
+        else:
+            product_id = data.trading_pair or data.symbol or data.product_id
+            base_currency, quote_currency = extract_base_quote(product_id)
         return cls(
             source=data.get('source', 'UNKNOWN'),
+            time_order_placed=None,
+            volume_24h=None,
+            trigger='None',
             order_id=data.get('id') or data.get('info', {}).get('order_id'),
             trading_pair=product_id.replace('-', '/'),
             side=data.get('side', '').lower(),
@@ -137,9 +152,7 @@ class ValidateOrders:
         self.config = Config()
         self.order_book = order_book
         self.shared_utils_precision = shared_utils_precision
-        self.logger = logger_manager.get_logger("webhook_logger")
-
-
+        self.logger = logger_manager  # 🙂
 
         # Only store necessary attributes
         self._min_sell_value = self.config.min_sell_value
@@ -171,18 +184,23 @@ class ValidateOrders:
     def build_order_data_from_validation_result(self, validation_result: dict, order_book_details: dict, precision_data: tuple) -> OrderData:
         details = validation_result.get("details", {})
         base_deci, quote_deci, *_ = precision_data
-
+        side = details.get("side", "buy")
+        buy_amount = self.shared_utils_precision.safe_decimal(details.get("order_amount"))
+        sell_amount = self.shared_utils_precision.safe_decimal(details.get("base_balance"))
         trading_pair = details.get("trading_pair", "")
         base_currency = details.get("asset", trading_pair.split('/')[0])
         quote_currency = trading_pair.split('/')[1] if '/' in trading_pair else 'USD'
-
+        order_amount = buy_amount if side == "buy" else sell_amount
         return OrderData(
             source=details.get("source", "webhook"),
+            time_order_placed=None,
+            volume_24h=None,
+            trigger=details.get("trigger", ""),
             order_id=details.get("order_id", ""),
             trading_pair=trading_pair,
             side=details.get("side", "buy"),
             type=details.get("Order Type", "limit").lower(),
-            order_amount=self.shared_utils_precision.safe_decimal(details.get("order_amount")),
+            order_amount=order_amount,
             price=Decimal("0"),
             cost_basis=Decimal("0"),
             limit_price=self.shared_utils_precision.safe_decimal(details.get("limit_price")),
@@ -202,7 +220,7 @@ class ValidateOrders:
             taker_fee=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
             spread=self.shared_utils_precision.safe_decimal(order_book_details.get("spread")),
             open_orders=details.get("Open Orders", pd.DataFrame()),
-            status=details.get("status", "UNKNOWN"),
+            status=details.get("status", "VALID"),
             average_price=self.shared_utils_precision.safe_decimal(details.get("average_price")) if details.get("average_price") else None,
             adjusted_price=self.shared_utils_precision.safe_decimal(details.get("adjusted_price")) if details.get("adjusted_price") else None,
             adjusted_size=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) if details.get("adjusted_size") else None,
@@ -251,6 +269,7 @@ class ValidateOrders:
                 "base_avail_to_trade": order_details.available_to_trade_crypto,
                 "base_balance": base_balance,
                 "Order Size": order_size,
+                "trigger": order_details.trigger,
                 "condition": None
             }
         }
@@ -275,7 +294,7 @@ class ValidateOrders:
                     response_msg["error"] = f"INSUFFICIENT_BASE balance to sell {symbol}."
                     response_msg["code"] = "414"
                     return response_msg
-                if side == 'sell' and order_details.symbol in self.hodl:
+                if side == 'sell' and asset in self.hodl:
                     response_msg["error"] = f"HODLing {symbol} sell order rejected."
                     response_msg["code"] = "424"
                     return response_msg
@@ -397,7 +416,7 @@ class ValidateOrders:
                     valid = True
                     condition = 'Reduced buy order submitted.'
             elif side == 'sell' and not hodling:
-                if base_bal_value >= self.min_order_amount:
+                if base_bal_value >= self.min_sell_value:
                     valid = True
                     condition = f'✅️ {trading_pair} has sufficient balance to sell.'
                 else:
@@ -434,6 +453,7 @@ class ValidateOrders:
                 "details": {
                     "Order Id": None,
                     "asset": order_data.base_currency,
+                    "trigger": order_data.trigger,
                     "trading_pair": order_data.trading_pair,
                     "side": order_data.side,
                     "base_balance": base_balance,
@@ -450,6 +470,7 @@ class ValidateOrders:
                     "maker_fee": order_data.maker_fee,
                     "taker_fee": order_data.taker_fee,
                     "Open Orders": open_orders,
+                    "24h Quote Volume": order_data.volume_24h
                 }
             }
 
@@ -459,7 +480,7 @@ class ValidateOrders:
                 return response_msg
 
             # ✅ Crypto balance value too high to buy more
-            if base_balance_value is not None and base_balance_value > Decimal("1.0"):
+            if base_balance_value is not None and base_balance_value > Decimal("1.0") and order_data.side.lower() == 'buy':
                 response_msg.update(
                     {
                         "is_valid": False,

@@ -2,7 +2,7 @@ class SnapshotsManager:
     _instance = None  # Singleton instance
 
     def __init__(self, shared_data_manager, logger_manager):
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
         self.shared_data_manager = shared_data_manager
         print(f"✅ SnapshotsManager initialized successfully.")
 

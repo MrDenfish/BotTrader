@@ -1,6 +1,4 @@
-
-from decimal import Decimal
-from decimal import ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, getcontext, InvalidOperation
 
 import pandas as pd
 
@@ -20,7 +18,7 @@ class HoldingsProcessor:
         if HoldingsProcessor._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
         self.profit_data_manager = profit_data_manager
         self.shared_utils_precision = shared_utils_precision
         self.shared_data_manager = shared_data_manager
@@ -58,24 +56,36 @@ class HoldingsProcessor:
     def holdings_list(self):
         return self.market_data.get('spot_positions')
 
-
-
-
     def _truncate_decimal(self, value, decimal_places=8):
-        """Truncates a Decimal value to a maximum number of decimal places.
+        """
+        Truncates a Decimal value to a maximum number of decimal places.
         Handles string values that may include a percentage sign '%'.
         """
-        if isinstance(value, str):
-            value = value.strip().replace('%', '')  # Remove '%' if present
-            try:
+        try:
+            # Set decimal context precision
+            getcontext().prec = 28  # set precision to default value 28
+            getcontext().traps[InvalidOperation] = False
+
+            # Handle string inputs
+            if isinstance(value, str):
+                value = value.strip().replace('%', '')
                 value = Decimal(value)
-            except ValueError:
-                raise ValueError(f" Invalid numeric value: {value}")
 
-        if not isinstance(value, Decimal):
-            value = Decimal(value)
+            # Convert float to Decimal via string to preserve precision
+            if isinstance(value, float):
+                value = Decimal(str(value))
 
-        return value.quantize(Decimal(f'1.{"0" * decimal_places}'), rounding=ROUND_DOWN)
+            # Ensure value is a Decimal
+            if not isinstance(value, Decimal):
+                value = Decimal(value)
+
+            # Quantize to the specified number of decimal places
+            quantize_str = '1.' + '0' * decimal_places
+            return value.quantize(Decimal(quantize_str), rounding=ROUND_DOWN)
+
+        except Exception as e:
+            self.logger.error(f"Error truncating decimal value {value}: {e}", exc_info=True)
+            return Decimal('0')
 
     async def _calculate_derived_metrics(self, holding, processed_pairs, trailing_stop_orders):
         """Calculate derived metrics for a single holding using calculate_profitability()."""
@@ -115,7 +125,7 @@ class HoldingsProcessor:
             'weighted_average_price': required_prices['avg_price'],
             'initial_investment': cost_basis,
             'unrealized_profit_loss': self._truncate_decimal(profitability.get('profit', 0)),#✅
-            'unrealized_profit_pct': self._truncate_decimal(profitability.get('   profit percent', 0))/100,#✅
+            'unrealized_profit_pct': self._truncate_decimal(profitability.get('profit percent', 0)) / 100,  # ✅
             'trailing_stop': trailing_stop,
             'current_value': self._truncate_decimal(asset_balance * price),
         }

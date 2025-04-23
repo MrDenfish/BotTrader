@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import logging
 import time
 from decimal import Decimal
 
@@ -13,15 +12,15 @@ from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.market_manager import MarketManager
 from MarketDataManager.ticker_manager import TickerManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
+from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.database_checker import DatabaseIntegrity
 from Shared_Utils.dates_and_times import DatesAndTimes
 from Shared_Utils.debugger import Debugging
-from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
-from sighook.alerts_msgs_webhooks import AlertSystem, SenderWebhook
+from sighook.alerts_msgs_webhooks import SenderWebhook
 from sighook.async_functions import AsyncFunctions
 from sighook.database_ops import DatabaseOpsManager
 from sighook.database_table_models import DatabaseTables
@@ -41,19 +40,21 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, logger_manager=None):
+    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, exchange, logger_manager=None, shared_utils_debugger=None,
+                 shared_utils_print=None):
         self.shared_data_manager = shared_data_mgr
         self.app_config = bot_config()
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
         # Logger injection
-        self.logger_manager = logger_manager
-        self.logger = logger_manager.get_logger('sighook_logger') if logger_manager else logging.getLogger('default')
+        self.logger_manager = logger_manager  # 🙂
+        self.logger = logger_manager.loggers['sighook_logger']  # 🙂
 
         self.database_session_mngr = shared_data_mgr.database_session_manager
         if not self.app_config._is_loaded:
             self.app_config._load_configuration()  # Ensure config is fully loaded
-        self.cb_api = self.app_config.load_sighook_api_key()
+        # self.cb_api = self.app_config.load_sighook_api_key() # moved to main.py
+        self.exchange = exchange
         self._csv_dir = self.app_config.csv_dir
         self.tradebot = self.order_management = self.market_data = self.precision_utils = None
         self.max_concurrent_tasks = 10
@@ -73,7 +74,6 @@ class TradeBot:
 
     def initialize_components(self):
         """Initialize all components to None to ensure proper cleanup."""
-        self.exchange = None
         self.database_ops = None
         self.db_initializer = None
 
@@ -93,23 +93,49 @@ class TradeBot:
     def min_volume_new(self):
         return round(Decimal(self.shared_data_manager.market_data.get('avg_quote_volume', 0)), 0)
 
-    async def async_init(self):
-        """ Initialize bot components asynchronously, ensuring the database connection is ready first.
-        This is the first entry point for setting up the bot:
-            Calls shared_data_manager.initialize_shared_data() to populate global/shared market_data and order_management.
-            Calls load_bot_components() — this initializes all managers that rely on that data.
-            Finally calls load_initial_data() — this is where TradeBot reads, organizes, and sets internal references for runtime use."""
+    async def async_init(self, validate_startup_data: bool = False, shared_utils_debugger=None, shared_utils_print=None):
+        """Initialize bot components asynchronously.
+
+        Args:
+            validate_startup_data (bool): If True, validate and attempt to recover startup snapshot data.
+            shared_utils_debugger: Debugging utility instance.
+            shared_utils_print: Print utility instance.
+        """
 
         # ✅ Ensure SnapshotsManager is correctly retrieved as a singleton
         self.snapshots_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger_manager)
 
-        # ✅ Load required shared data first
-        market_data, order_management = await self.shared_data_manager.initialize_shared_data()
-        self.market_data = market_data
-        self.order_management = order_management
+        # ✅ Assign shared_utils if provided
+        self.shared_utils_debugger = shared_utils_debugger or getattr(self, 'shared_utils_debugger', None)
+        self.shared_utils_print = shared_utils_print or getattr(self, 'shared_utils_print', None)
+
+        # ✅ Ensure shared_utils are defined before using them
+        if not self.shared_utils_debugger or not self.shared_utils_print:
+            raise AttributeError("TradeBot is missing shared_utils_debugger or shared_utils_print. Please provide them during initialization.")
 
         # ✅ Then load components that might use this data
         await self.load_bot_components()
+        # ✅ Load core components required for validation or data refresh
+        self.ticker_manager = await TickerManager.get_instance(
+            self.app_config,
+            self.shared_utils_debugger,
+            self.shared_utils_print,
+            self.logger_manager,
+            self.rest_client,
+            self.portfolio_uuid,
+            self.exchange,
+            self.ccxt_api,
+            self.shared_data_manager,
+            self.shared_utils_precision
+        )
+
+        # ✅ Validate and load shared data
+        if validate_startup_data:
+            await self.shared_data_manager.validate_startup_state(self.ticker_manager)
+
+        market_data, order_management = await self.shared_data_manager.initialize_shared_data()
+        # self.market_data = market_data
+        # self.order_management = order_management
 
         # ✅ Final data prep
         await self.load_initial_data()
@@ -161,7 +187,7 @@ class TradeBot:
             print(f"Using preloaded market_data and order_management.")
 
             # Set ticker_cache, market_cache, and other relevant data
-            await self.database_session_mngr.process_data()
+            # await self.database_session_mngr.process_data()
 
             self.shared_utils_print.print_elapsed_time(self.start_time, 'Part Ie: Database Loading is complete, session closed')
 
@@ -179,17 +205,16 @@ class TradeBot:
         """Initialize all components required by the TradeBot."""
 
         # Core Utilities
-        self.exchange_mgr = ExchangeManager.get_instance(self.cb_api)
-        self.exchange = self.exchange_mgr.get_exchange()
-        self.sharded_utils = PrintData.get_instance(self.logger)
-        self.shared_utils_print = PrintData.get_instance(self.logger)
+        self.alerts = AlertSystem.get_instance(self.logger_manager)
+        self.ccxt_api = ApiManager.get_instance(self.exchange, self.logger_manager, self.alerts)
         self.shared_utils_debugger = Debugging()
-        self.shared_utils_precision = PrecisionUtils.get_instance(self.logger, self.shared_data_manager)
-        self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.logger)
-        self.shared_utils_utility = SharedUtility.get_instance(self.logger)
+        self.shared_utils_precision = PrecisionUtils.get_instance(self.logger_manager, self.shared_data_manager)
+        self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.logger_manager)
+        self.shared_utils_utility = SharedUtility.get_instance(self.logger_manager)
+        # self.sharded_utils = PrintData.get_instance(self.logger)
+        self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
 
-        self.alerts = AlertSystem.get_instance(self.logger)
-        self.ccxt_api = ApiManager.get_instance(self.exchange, self.logger, self.alerts)
+
         self.async_func = AsyncFunctions()
 
         self.db_tables = DatabaseTables()
@@ -197,7 +222,7 @@ class TradeBot:
         self.database_session_mngr = self.shared_data_manager.database_session_manager
 
         self.indicators = Indicators(self.logger)
-        self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger)
+        self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger_manager)
 
         self.portfolio_manager = PortfolioManager.get_instance(
             self.logger, self.ccxt_api, self.exchange,
@@ -207,15 +232,15 @@ class TradeBot:
 
         self.ticker_manager = await TickerManager.get_instance(
             self.app_config, self.shared_utils_debugger, self.shared_utils_print,
-            self.logger, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api,
-            self.shared_data_manager
+            self.logger_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api,
+            self.shared_data_manager, self.shared_utils_precision
         )
 
-        self.database_utility = DatabaseIntegrity.get_instance(self.app_config, self.db_tables, self.logger)
+        self.database_utility = DatabaseIntegrity.get_instance(self.app_config, self.db_tables, self.logger_manager)
 
         self.profit_data_manager = ProfitDataManager.get_instance(
             self.shared_utils_precision, self.shared_utils_print,
-            self.shared_data_manager, self.logger
+            self.shared_data_manager, self.logger_manager
         )
 
         self.holdings_processor = HoldingsProcessor.get_instance(self.logger, self.profit_data_manager,
@@ -251,14 +276,14 @@ class TradeBot:
 
         self.market_manager = MarketManager.get_instance(
             self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
-            self.logger, self.ccxt_api, self.ticker_manager, self.portfolio_manager,
+            self.logger_manager, self.ccxt_api, self.ticker_manager, self.portfolio_manager,
             self.max_concurrent_tasks, self.database_session_mngr.database, self.db_tables,
             self.shared_data_manager
         )
 
         self.market_data_manager = await MarketDataUpdater.get_instance(
             ticker_manager=self.ticker_manager,
-            logger_manager=self.logger
+            logger_manager=self.logger_manager
         )
 
         self.profit_manager = ProfitabilityManager.get_instance(
@@ -311,7 +336,7 @@ class TradeBot:
 
                 # PART III:
                 #   Order cancellation and Data Collection
-                print(f"Exchange instance. Total instances: {TradeBot._exchange_instance_count}")
+                # print(f"Exchange instance. Total instances: {TradeBot._exchange_instance_count}")# debug
                 print(f'Part III: Order cancellation and OHLCV Data Collection - Start Time:', datetime.datetime.now())
                 if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
                     # Step 1: Get open orders (if needed for Part III logic)
@@ -355,8 +380,7 @@ class TradeBot:
                 # Profitability Analysis and Order Generation update holdings db
 
                 print(f'Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
-                aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders,
-                                                                                                   holdings_list)
+                aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders, holdings_list)
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:

@@ -1,7 +1,5 @@
 import logging
 import os
-import platform
-from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
 
@@ -24,7 +22,6 @@ class CustomLogger(logging.Logger):
     logging.addLevelName(STOP_LOSS_LEVEL_NUM, "STOP_LOSS")
     logging.addLevelName(BAD_ORDER_NUM, "BAD_ORDER")
     logging.addLevelName(INSUFFICIENT_FUNDS, "INSUFFICIENT_FUNDS")
-
 
     def sell(self, message, *args, **kwargs):
         if self.isEnabledFor(self.SELL_LEVEL_NUM):
@@ -53,11 +50,14 @@ class CustomLogger(logging.Logger):
     def buy(self, message, *args, **kwargs):
         if self.isEnabledFor(self.BUY_LEVEL_NUM):
             self._log(self.BUY_LEVEL_NUM, f"BUY: {message}", args, **kwargs)
+
     def order_sent(self, message, *args, **kwargs):
         if self.isEnabledFor(self.ORDER_SENT_NUM):
             self._log(self.ORDER_SENT_NUM, f"ORDER_SENT: {message}", args, **kwargs)
 
+
 logging.setLoggerClass(CustomLogger)
+
 
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
@@ -88,26 +88,21 @@ class CustomFormatter(logging.Formatter):
         formatter = logging.Formatter(log_fmt, "%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
 
-class LoggerManager:
-    """ Shared logging manager that supports multiple log directories. """
 
+class LoggerManager:
     _instance = None
     _is_initialized = False
 
-    # singleton pattern
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
             print("Creating Logging instance")
             cls._instance = super(LoggerManager, cls).__new__(cls)
-        else:
-            pass
-            # print("Reusing Logging  instance") #debug
         return cls._instance
 
     def __init__(self, config, log_dir=None):
         if not self._is_initialized:
             self._log_level = config.get('log_level', logging.INFO)
-            self.log_dir = log_dir if log_dir else "logs"
+            self.log_dir = log_dir or "logs"
             self.loggers = {}
             self.setup_logging()
             self._is_initialized = True
@@ -117,102 +112,45 @@ class LoggerManager:
         return self._log_level
 
     def setup_logging(self):
-        """Setup logging for both 'webhook_logger' and 'sighook_logger'."""
-        self.setup_logger('webhook_logger', 'logs/listener_logs')
-        self.setup_logger('sighook_logger', 'logs/signal_logs')
+        self.setup_logger('webhook_logger', 'webhook')
+        self.setup_logger('sighook_logger', 'sighook')
+        self.setup_logger('shared_logger', 'shared')
 
-    # def setup_logger(self, logger_name, log_subdir):
-    #     """Setup individual logger with TimedRotatingFileHandler."""
-    #     current_date = datetime.now().strftime('%Y-%m-%d')
-    #     current_platform = platform.system()
-    #
-    #     # Construct log directory
-    #     log_path = os.path.join(self.log_dir, log_subdir)
-    #     if not os.path.exists(log_path):
-    #         os.makedirs(log_path)
-    #
-    #     # File paths for rotating logs
-    #     log_file_path = os.path.join(log_path, f"{logger_name}_{current_platform}_{current_date}.log")
-    #     constant_log_file_path = os.path.join(log_path, f"{logger_name}.log")
-    #
-    #     logger = logging.getLogger(logger_name)
-    #     logger.setLevel(self._log_level)
-    #
-    #     if logger.hasHandlers():
-    #         logger.handlers.clear()
-    #
-    #     if not logger.handlers:
-    #         # Console handler
-    #         console_handler = logging.StreamHandler()
-    #         console_handler.setFormatter(CustomFormatter())
-    #         logger.addHandler(console_handler)
-    #
-    #         # File handler (rotates logs every midnight and keeps 2 days of logs)
-    #         timed_file_handler = TimedRotatingFileHandler(
-    #             log_file_path, when="midnight", interval=1, backupCount=2  # Keeps logs for 2 days
-    #         )
-    #         file_formatter = logging.Formatter(
-    #             "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)")
-    #         timed_file_handler.setFormatter(file_formatter)
-    #         logger.addHandler(timed_file_handler)
-    #
-    #     self.loggers[logger_name] = logger
-    #     # Set up SQLAlchemy logging (if needed)
-    #     self.setup_sqlalchemy_logging(logging.WARNING)
-
-    def setup_logger(self, logger_name, log_subdir):
-        """Setup individual logger with TimedRotatingFileHandler."""
-        current_date = datetime.now().strftime('%Y-%m-%d')
-        current_platform = platform.system()
-
-        # Create log directory if it doesn't exist
-        log_path = os.path.join(self.log_dir, log_subdir)
+    def setup_logger(self, logger_name, subfolder):
+        log_path = os.path.join(self.log_dir, subfolder)
         os.makedirs(log_path, exist_ok=True)
 
-        # Define log file paths
-        log_file_path = os.path.join(log_path, f"{logger_name}_{current_platform}_{current_date}.log")
-        constant_log_file_path = os.path.join(log_path, f"{logger_name}.log")
-
-        # Create or retrieve the custom logger
+        log_file = os.path.join(log_path, f"{logger_name}.log")
         logger = CustomLogger(logger_name)
         logger.setLevel(self._log_level)
 
-        # Clear existing handlers if any (avoid duplicates)
         if logger.hasHandlers():
             logger.handlers.clear()
 
-        # ✅ Console handler
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(CustomFormatter())
         logger.addHandler(console_handler)
 
-        # ✅ File handler (rotating)
-        timed_file_handler = TimedRotatingFileHandler(
-            log_file_path, when="midnight", interval=1, backupCount=2
+        file_handler = TimedRotatingFileHandler(
+            log_file, when="midnight", interval=1, backupCount=2
         )
         file_formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
         )
-        timed_file_handler.setFormatter(file_formatter)
-        logger.addHandler(timed_file_handler)
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
 
-        # Save logger reference
         self.loggers[logger_name] = logger
-
-        # Optionally set SQLAlchemy logging
         self.setup_sqlalchemy_logging(logging.WARNING)
 
     def get_logger(self, logger_name):
-        """Return the requested logger instance."""
-        return self.loggers.get(logger_name, None)
+        return self.loggers.get(logger_name)
 
     @staticmethod
     def setup_sqlalchemy_logging(level=logging.WARNING):
-        """ Configure SQLAlchemy logging. """
         sqlalchemy_logger = logging.getLogger('sqlalchemy.engine')
         sqlalchemy_logger.setLevel(level)
 
-        # � REMOVE DUPLICATE HANDLERS
         if sqlalchemy_logger.hasHandlers():
             sqlalchemy_logger.handlers.clear()
 
@@ -229,5 +167,4 @@ class LoggerManager:
             result = await func(*args, **kwargs)
             logger.debug(f"{func.__name__} returned {result}")
             return result
-
         return wrapper

@@ -1,6 +1,7 @@
-
 import asyncio
+import copy
 import json
+import time
 from decimal import Decimal
 from inspect import stack  # debugging
 
@@ -94,12 +95,37 @@ class SharedDataManager:
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
-        self.logger = logger_manager.get_logger('webhook_logger')
+        self.logger = logger_manager  # 🙂
 
         self.database_session_manager = database_session_manager
         self.market_data = {}
         self.order_management = {}
         self.lock = asyncio.Lock()
+
+    async def validate_startup_state(self, ticker_manager):
+        """Ensure required shared data exists, or initialize it if missing."""
+        market_data = await self.database_session_manager.fetch_market_data()
+        order_mgmt = await self.database_session_manager.fetch_order_management()
+
+        if not market_data or not order_mgmt:
+            self.logger.warning("⚠️ No startup snapshot found. Attempting fresh data fetch...")
+
+            # Load fresh data using the existing live update method
+            start_time = time.time()
+            new_market_data, new_order_mgmt = await ticker_manager.update_ticker_cache(start_time=start_time)
+
+            # Apply the new data to internal state
+            await self.update_market_data(
+                new_market_data=new_market_data,
+                new_order_management=new_order_mgmt
+            )
+
+            # Save immediately to ensure database is populated
+            await self.save_data()
+
+            self.logger.info("✅ Startup data initialized and saved.")
+        else:
+            self.logger.info("✅ Startup snapshot loaded from database.")
 
     async def initialize(self):
         """Initialize SharedDataManager."""
@@ -166,6 +192,11 @@ class SharedDataManager:
             raise TypeError("order_tracker is not a Dictionary.")
         return order_management_data
 
+    async def set_order_management(self, updated_order_management: dict):
+        async with self.lock:
+            self.order_management = updated_order_management
+
+
     async def fetch_market_data(self):
         """Fetch market_data from the database via DatabaseSessionManager."""
         try:
@@ -195,34 +226,25 @@ class SharedDataManager:
     async def get_snapshots(self):
         async with self.lock:
             try:
-                market_data = self.market_data.copy()
-                order_management = self.order_management.copy()
+                market_data = copy.deepcopy(self.market_data)
+                order_management = copy.deepcopy(self.order_management)
                 return market_data, order_management
             except Exception as e:
                 self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
                 return {}, {}
 
-    # async def get_snapshots(self):
-    #     """Take a snapshot of market data and order management."""
-    #     async with self.lock:
-    #         # Return a copy of the data
-    #         try:
-    #
-    #             market_data = self.market_data.copy()
-    #             order_management = self.order_management.copy()
-    #             return market_data, order_management
-    #         except Exception as e:
-    #             self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
-    #             return {}, {}
-
     async def update_market_data(self, new_market_data, new_order_management):
-        async with self.lock:
-            if new_market_data:
-                self.logger.debug(f"� Updating market_data: Keys = {list(new_market_data.keys())}")
-                self.market_data = new_market_data  # Overwrite instead of update
-            if new_order_management:
-                self.logger.debug(f"� Updating order_management: Keys = {list(new_order_management.keys())}")
-                self.order_management = new_order_management
+        try:
+            async with self.lock:
+                if new_market_data:
+                    self.logger.debug(f"� Updating market_data: Keys = {list(new_market_data.keys())}")
+                    self.market_data = new_market_data  # Overwrite instead of update
+                if new_order_management:
+                    self.logger.debug(f"� Updating order_management: Keys = {list(new_order_management.keys())}")
+                    self.order_management = new_order_management
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in update_market_data : {e}", exc_info=True)
 
     async def update_data(self, data_type, data, conn):
         """Update shared data in the database."""
@@ -363,13 +385,52 @@ class SharedDataManager:
                 f"❌ Error clearing old data from {table_name}: {e}", exc_info=True
             )
 
+    def normalize_raw_order(self, order: dict) -> dict:
+        """
+        Normalize a raw order dict (possibly from WebSocket, REST, or snapshot) into a consistent structure.
+        This allows the order tracker to use a uniform schema.
 
+        Args:
+            order (dict): Raw order object from exchange
 
+        Returns:
+            dict: Normalized order
+        """
+        try:
+            info = order.get("info", {})
+            order_config = info.get("order_configuration", {})
 
+            # Prefer high-level fields first, fall back to nested structure
+            normalized = {
+                "order_id": order.get("id") or order.get("order_id"),
+                "symbol": order.get("symbol") or
+                          info.get("product_id", "").replace("-", "/") or
+                          order.get("product_id", "").replace("-", "/"),
+                "side": order.get("side") or info.get("order_side") or order.get("order_side"),
+                "type": order.get("type") or info.get("order_type") or order.get("order_type"),
+                "status": order.get("status") or info.get("status"),
+                "filled": order.get("filled") or Decimal(info.get("filled_size", 0)),
+                "remaining": order.get("remaining") or Decimal(info.get("leaves_quantity", 0)) or Decimal(order.get("leaves_quantity", 0)),
+                "stopPrice": order.get("stopPrice") or Decimal(info.get("stop_price") or 0),
+                "price": order.get("price") or Decimal(info.get("limit_price") or 0) or Decimal(order.get("limit_price") or 0),
+                "datetime": order.get("datetime") or info.get("created_time") or order.get("creation_time"),
+                "trigger_status": info.get("trigger_status", "Not Active"),
+                "clientOrderId": order.get("clientOrderId") or info.get("client_order_id"),
+            }
 
+            # Handle TAKE_PROFIT_STOP_LOSS bracket orders
+            trigger_bracket = order_config.get("trigger_bracket_gtc")
+            if trigger_bracket:
+                normalized["amount"] = Decimal(trigger_bracket.get("base_size", 0))
+                normalized["limit_price"] = Decimal(trigger_bracket.get("limit_price", 0))
+                normalized["stop_trigger_price"] = Decimal(trigger_bracket.get("stop_trigger_price", 0))
+            else:
+                # fallback to top-level values if available
+                normalized["amount"] = order.get("amount") or Decimal(info.get("leaves_quantity", 0))
+                normalized["limit_price"] = order.get("limit_price") or Decimal(info.get("limit_price", 0))
 
+            return normalized
 
-
-
-
-
+        except Exception as e:
+            self.logger.error(f"Error normalizing raw order: {e}", exc_info=True)
+            return {}

@@ -5,9 +5,14 @@ class ExchangeManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, config):
+    def get_instance(cls, config=None):
         if cls._instance is None:
+            if config is None:
+                raise ValueError("ExchangeManager requires config on first call")
+            print("� ExchangeManager: Creating singleton instance")
             cls._instance = cls(config)
+        else:
+            print("✅ ExchangeManager: Returning existing singleton instance")
         return cls._instance
 
     def __init__(self, config):

@@ -19,18 +19,18 @@ class TickerManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
-                           shared_data_manager):
+    async def get_instance(cls, config, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
+                           shared_data_manager, shared_utils_precision):
         """Ensures only one instance of TickerManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
-                    cls._instance = cls(config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange,
-                                        ccxt_api, shared_data_manager)
+                    cls._instance = cls(config, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange,
+                                        ccxt_api, shared_data_manager, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, config, shared_utils_debugger, shared_utils_print, log_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
-                 shared_data_manager):
+    def __init__(self, config, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
+                 shared_data_manager, shared_utils_precision):
         if TickerManager._instance is not None:
             raise Exception("TickerManager is a singleton and has already been initialized!")
         self.bot_config = config
@@ -40,12 +40,14 @@ class TickerManager:
         self.min_volume = None
         self.last_ticker_update = None
         self.shill_coins = self.bot_config._shill_coins
-        self.log_manager = log_manager
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.ccxt_api = ccxt_api
         self.shared_data_manager = shared_data_manager
         self.shared_utils_print = shared_utils_print
         self.shared_utils_debugger = shared_utils_debugger
-        self.shared_utils_precision = None
+        self.shared_utils_precision = shared_utils_precision
         self.start_time = None
 
     # Potentially for future use
@@ -80,11 +82,11 @@ class TickerManager:
             balances_task = self.fetch_and_filter_balances(self.portfolio_uuid)
             market_data, non_zero_balances = await asyncio.gather(market_data_task, balances_task)
             if not market_data:
-                self.log_manager.error("Market data retrieval failed, returning empty dataset.")
+                self.logger.error("Market data retrieval failed, returning empty dataset.")
                 return {}, {}
 
             if not non_zero_balances:
-                self.log_manager.warning("No non-zero balances found, returning empty dataset.")
+                self.logger.warning("No non-zero balances found, returning empty dataset.")
 
             # Process market data
             filtered_vol_data, usd_pairs, avg_volume = self.filter_volume_for_market_data(market_data)
@@ -97,7 +99,7 @@ class TickerManager:
             usd_pairs_cache = self.prepare_dataframe(supported_usd_markets, non_zero_balances)
 
             if tickers_cache.empty:
-                self.log_manager.error("Ticker cache is empty.")
+                self.logger.error("Ticker cache is empty.")
                 return {}, {}
 
             # Fetch current prices and update ticker cache
@@ -116,7 +118,7 @@ class TickerManager:
             }, {"non_zero_balances": non_zero_balances, 'order_tracker': {}}
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in update_ticker_cache: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in update_ticker_cache: {e}", exc_info=True)
             return {}, {}
 
 
@@ -144,7 +146,7 @@ class TickerManager:
             }
             return non_zero_balances
         except Exception as e:
-            self.log_manager.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
             return {}
 
     def process_spot_positions(self, non_zero_balances: dict, tickers_cache: pd.DataFrame) -> dict:
@@ -164,12 +166,15 @@ class TickerManager:
 
             # Define precision for rounding
             rounding_precision = Decimal('0.00000001')
+            usd_precision = Decimal('0.01')
 
             processed_positions = {}
 
             for asset, data in non_zero_balances.items():
                 # Retrieve precision from tickers_cache
-                precision = ticker_precision_map.get(asset, {'amount': None, 'price': None})
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+                precision = {'amount': base_deci, 'price': quote_deci}
+                # ticker_precision_map.get(asset, {'amount': None, 'price': None}))
 
                 # Use vars() to get attributes of the custom object as a dictionary
                 data_dict = vars(data) if hasattr(data, '__dict__') else data
@@ -178,8 +183,13 @@ class TickerManager:
                 processed_position = {"precision": precision}
 
                 for key, value in data_dict.items():
-                    if isinstance(value, (float, int, Decimal)):  # Process numeric values
-                        processed_position[key] = Decimal(value).quantize(rounding_precision)
+
+                    if isinstance(value, (float, int, Decimal)) and not isinstance(value, bool):  # Process numeric values
+                        value = str(value)
+                        if key == 'total_balance_crypto':
+                            processed_position[key] = Decimal(value).quantize(Decimal(f'1e-{base_deci}'))
+                        else:
+                            processed_position[key] = Decimal(value).quantize(Decimal(f'1e-{quote_deci}'))
                     else:
                         # Retain non-numeric values as-is
                         processed_position[key] = value
@@ -190,121 +200,84 @@ class TickerManager:
             return processed_positions
 
         except Exception as e:
-            self.log_manager.error(f"❌ Error in process_spot_positions: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in process_spot_positions: {e}", exc_info=True)
             return {}
 
+    def safe_float(self, val, default=0.0):
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
 
     def filter_volume_for_market_data(self, market_data):
         """
-        PART I: Data Gathering and Database Loading.
-        Purpose: Filters market data based on volume criteria.
-
+        Filters market data based on volume criteria.
+        - First pass: calculate average quote volume
+        - Second pass: filter data based on that average
         """
         try:
             filtered_data = []
-            usd_pairs = []  # List without the volume filter
-            total_volume = 0
+            usd_pairs = []
             valid_volumes = []
 
-            # First pass: Calculate total quote volume for averaging
+            # First pass: Gather valid volumes for averaging
             for item in market_data:
-                try:
-                    info = item.get('info', {})
-                    approximate_quote_volume = info.get('approximate_quote_24h_volume', "0")
-                    is_new = info.get('new', False)
-                    if is_new and info.get('quote') == 'USD':
-                        print(f'')
-                        print(f"< -------- --------  New market found: {item['symbol']} -------- -------- >")
-                        print(f'')
-                        pass
-                        # save to the database table 'new_markets
-                    #elif item['symbol'] is in the new_markets table:
-                        #pass
-                        # remove from the table, no longer new
+                info = item.get('info', {})
+                if info.get('new') and info.get('quote') == 'USD':
+                    print(f"\n< -------- New market found: {item.get('symbol')} -------- >\n")
+                    # TODO: Insert/remove from 'new_markets' DB table as needed
 
-                    # Check if `approximate_quote_24h_volume` is numeric
-                    if not approximate_quote_volume.replace('.', '', 1).isdigit():
-                        continue
-
-                    quote_volume = float(approximate_quote_volume)
+                quote_volume = self.safe_float(info.get('approximate_quote_24h_volume'))
+                if quote_volume > 0:
                     valid_volumes.append(quote_volume)
 
-                except (KeyError, ValueError):
-                    continue
+            if not valid_volumes:
+                self.logger.debug("No valid quote volumes found for averaging.")
+                return [], [], None
 
-            # Calculate average quote volume
-            if valid_volumes:
-                average_quote_volume = sum(valid_volumes) / len(valid_volumes)
-            else:
-                self.log_manager.debug("No valid quote volumes found for averaging.")
-                return filtered_data, usd_pairs , None # Return empty lists if no valid volumes
+            average_quote_volume = sum(valid_volumes) / len(valid_volumes)
 
-            # Second pass: Filter based on average quote volume
+            # Second pass: Build filtered datasets
             for item in market_data:
                 try:
-                    # Ensure required keys exist
                     info = item.get('info', {})
-                    id = item.get('id')
-                    product_id = info.get('product_id')
-                    price = float(info.get('price', 0))
-                    volume_24h = float(info.get('volume_24h', 0))
-                    price_change = float(info.get('price_percentage_change_24h', 0))
-                    approximate_quote_volume = info.get('approximate_quote_24h_volume', "0")
+                    quote_volume = self.safe_float(info.get('approximate_quote_24h_volume'))
+                    volume_24h = self.safe_float(info.get('volume_24h'))
+                    price = self.safe_float(info.get('price'))
+                    price_change = self.safe_float(info.get('price_percentage_change_24h'))
 
-                    # Check if `approximate_quote_24h_volume` is numeric
-                    if not approximate_quote_volume.replace('.', '', 1).isdigit():
+                    if item.get('quote') != 'USD' or not item.get('active') or item.get('type') != 'spot':
                         continue
 
-                    quote_volume = float(approximate_quote_volume)
-                    total_volume += quote_volume
+                    common_entry = {
+                        'asset': item.get('base'),
+                        'quote': item.get('quote'),
+                        'symbol': item.get('symbol'),
+                        'precision': item.get('precision'),
+                        'info': {
+                            'product_id': info.get('product_id'),
+                            'type': item.get('type'),
+                            'price': price,
+                            'volume_24h': volume_24h,
+                            '24h_quote_volume': quote_volume,
+                            'price_percentage_change_24h': price_change,
+                            'average_min_vol': average_quote_volume  # ✅ Added here
+                        }
+                    }
 
-                    # Add to the list without volume filtering
-                    if item.get('quote') == 'USD' and item.get('active', False) and item.get('type') == 'spot':
-                        usd_pairs.append({
-                            'asset': item.get('base'),
-                            'quote': item.get('quote'),
-                            'symbol': item.get('symbol'),
-                            'precision': item.get('precision'),
-                            'info': {
-                                'product_id': product_id,
-                                'type': item.get('type'),
-                                'price': price,
-                                'volume_24h': volume_24h,
-                                '24h_quote_volume': approximate_quote_volume,
-                                'price_percentage_change_24h': price_change
-                            }
-                        })
+                    usd_pairs.append(common_entry)
 
-                    # Add to the list with volume filtering
-                    if (
-                            item.get('quote') == 'USD' and  # Filter for USD quote
-                            item.get('active', False) and  # Ensure market is active
-                            item.get('type') == 'spot' and  # Filter for spot markets
-                            quote_volume >= average_quote_volume  # Compare to average volume
-                    ):
-                        filtered_data.append({
-                            'asset': item.get('base'),
-                            'quote': item.get('quote'),
-                            'symbol': item.get('symbol'),
-                            'precision': item.get('precision'),
-                            'info': {
-                                'product_id': product_id,
-                                'type': item.get('type'),
-                                'price': price,
-                                'volume_24h': volume_24h,
-                                '24h_quote_volume': approximate_quote_volume,
-                                'price_percentage_change_24h': price_change
-                            }
-                        })
-                except (KeyError, ValueError) as e:
-                    # Log any issues with specific market entries
-                    self.log_manager.debug(f"Skipping market due to error: {e}, item: {item}")
+                    if quote_volume >= average_quote_volume:
+                        filtered_data.append(common_entry)
+
+                except Exception as e:
+                    self.logger.debug(f"Skipping market due to error: {e}, item: {item}")
                     continue
 
-
             return filtered_data, usd_pairs, average_quote_volume
+
         except Exception as e:
-            self.log_manager.error(f"❌ Error in filter_market_data: {e}")
+            self.logger.error(f"❌ Error in filter_market_data: {e}")
             return [], [], 0
 
     async def filter_markets_by_criteria(self, minimum_volume_market_data, usd_pairs):
@@ -337,7 +310,7 @@ class TickerManager:
             ]
             return supported_markets_vol, supported_markets_usd
         except Exception as e:
-            self.log_manager.error(f"❌ Error filtering markets: {e}", exc_info=True)
+            self.logger.error(f"❌ Error filtering markets: {e}", exc_info=True)
             return [], []
 
     def prepare_dataframe(self, tickers_dict, balances):
@@ -385,7 +358,7 @@ class TickerManager:
 
             return df
         except Exception as e:
-            self.log_manager.error(f"❌ Error in prepare_dataframe: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in prepare_dataframe: {e}", exc_info=True)
             return pd.DataFrame()
 
     async def parallel_fetch_and_update(self, usd_pairs, df, update_type='current_price'):
@@ -395,10 +368,10 @@ class TickerManager:
         try:
             tickers = await self.fetch_bids_asks()
             if not tickers:
-                self.log_manager.error("Failed to fetch bids and asks.")
+                self.logger.error("Failed to fetch bids and asks.")
                 return df, current_prices
-            if not callable(self.log_manager.info):
-                self.log_manager.error("log_manager.info is not callable, check for possible overwriting.")
+            if not callable(self.logger.info):
+                self.logger.error("log_manager.info is not callable, check for possible overwriting.")
             #for symbol in df['symbol'].tolist():
             for symbol in usd_pairs['symbol'].tolist():
                 try:
@@ -407,7 +380,7 @@ class TickerManager:
                         bid = ticker.get('bid')
                         ask = ticker.get('ask')
                         if bid is None or ask is None:
-                            self.log_manager.debug(f"Missing data for symbol {symbol}, skipping")
+                            self.logger.debug(f"Missing data for symbol {symbol}, skipping")
                             continue
 
                         if symbol in df['symbol'].values:
@@ -420,17 +393,17 @@ class TickerManager:
                     elif symbol in ['USD/USD', 'USD']:
                         continue
                     else:
-                        self.log_manager.info(f"No ticker data for symbol: {symbol}")
+                        self.logger.info(f"No ticker data for symbol: {symbol}")
 
                 except BadSymbol as bs:
-                    self.log_manager.error(f"❌ Bad symbol: {bs}")
+                    self.logger.error(f"❌ Bad symbol: {bs}")
                     continue
                 except Exception as e:
-                    self.log_manager.error(f"❌ Error processing symbol {symbol}: {e}", exc_info=True)
+                    self.logger.error(f"❌ Error processing symbol {symbol}: {e}", exc_info=True)
                     continue
             return df, current_prices
         except Exception as e:
-            self.log_manager.error(f'❌ Error in parallel_fetch_and_update: {e}', exc_info=True)
+            self.logger.error(f'❌ Error in parallel_fetch_and_update: {e}', exc_info=True)
             return df, current_prices
 
     async def get_portfolio_breakdown(self, portfolio_uuid: str, currency: str = "USD") -> object:
@@ -455,9 +428,9 @@ class TickerManager:
 
                 return response  # Return valid response
             except Exception as e:
-                self.log_manager.error(f"❌ Attempt {attempt + 1} failed: {e}", exc_info=True)
+                self.logger.error(f"❌ Attempt {attempt + 1} failed: {e}", exc_info=True)
                 if attempt == max_retries - 1:
-                    self.log_manager.error("Max retries reached for get_portfolio_breakdown.")
+                    self.logger.error("Max retries reached for get_portfolio_breakdown.")
                     return None
                 await asyncio.sleep(retry_delay * (2 ** attempt))
 
@@ -471,11 +444,11 @@ class TickerManager:
             }
             tickers = await self.ccxt_api.ccxt_api_call(self.exchange.fetchBidsAsks, endpoint, params=params)
             if not tickers:
-                self.log_manager.info("fetch_bids_asks: Received empty tickers list.")
+                self.logger.info("fetch_bids_asks: Received empty tickers list.")
                 return None
 
             return tickers
         except Exception as e:
-            self.log_manager.error(f"❌ Error fetching bids and asks: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching bids and asks: {e}", exc_info=True)
             return {}
 

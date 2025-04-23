@@ -19,10 +19,12 @@ class MarketDataUpdater:
 
         Args:
             ticker_manager (object): Instance of the TickerManager.
-            log_manager (object): Logger instance for logging operations.
+            logger_manager (object): Logger instance for logging operations.
         """
         self.ticker_manager = ticker_manager
-        self.logger = logger_manager
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
         self.start_time = None
 
     async def update_market_data(self, start_time, open_orders=None):

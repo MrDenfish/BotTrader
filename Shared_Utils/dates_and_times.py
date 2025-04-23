@@ -15,7 +15,7 @@ class DatesAndTimes:
         return cls._instance
 
     def __init__(self, logger_manager):
-        self.logger = logger_manager
+        self.logger = logger_manager  # 🙂
 
     @staticmethod
     def _prepare_datetime(trade):

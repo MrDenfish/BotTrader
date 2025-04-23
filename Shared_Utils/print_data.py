@@ -10,14 +10,17 @@ class PrintData:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, log_manager):
+    def get_instance(cls, logger_manager, shared_utils_utility):
         """ Ensures only one instance of PrintData is created. """
         if cls._instance is None:
-            cls._instance = cls(log_manager)
+            cls._instance = cls(logger_manager, shared_utils_utility)
         return cls._instance
 
-    def __init__(self, log_manager):
-        self.log_manager = log_manager
+    def __init__(self, logger_manager, shared_utils_utility):
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+            self.logger = logger_manager.loggers['shared_logger']
+        self.shared_utils_utility = shared_utils_utility
 
     @staticmethod
     def print_elapsed_time(start_time=None, func_name=None):
@@ -184,7 +187,7 @@ class PrintData:
                     'current_value': 'Value $'
                 }
                 aggregated_df = aggregated_df.rename(columns=column_mapping)
-                print(f"� Holdings with Changes:\n{aggregated_df.to_string(index=False)}")
+                print(f"� Holdings with Changes - sighook output:\n{aggregated_df.to_string(index=False)}")
             else:
                 print("❌ No changes to holdings.")
 
@@ -193,6 +196,54 @@ class PrintData:
         except Exception as e:
             self.log_manager.error(f"⚠️ Error printing data: {e}", exc_info=True)
 
+    def print_order_tracker(self, order_tracker, func_name):
+        """
+        -------->  possibly replace with debug summary in webhook_validate_orders.py   <----------
 
 
+        Prints the order_tracker in a tabular format for debugging purposes.
 
+        Args:
+            order_tracker: The order tracker to validate and print.
+            func_name (str): Name of the function for context.
+        """
+        try:
+            is_valid, message = self.shared_utils_utility.validate_order_tracker(order_tracker)
+
+            if is_valid:
+                # Extract relevant fields and print
+                if isinstance(order_tracker, dict):
+                    table_data = [
+                        {
+                            'Order ID': order_id,
+                            'Symbol': order.get('symbol'),
+                            'side': order.get('side'),
+                            'type': order.get('type'),
+                            'Status': order.get('status'),
+                            'Amount': order.get("info", {}).get("order_configuration", {}).get("trigger_bracket_gtc", {}).get("base_size"),
+                            'Filled': order.get('filled'),
+                            'Remaining': order.get('remaining'),
+                            'Stop Price': order.get('stopPrice'),
+                            'Limit Price': order.get("info", {}).get("order_configuration", {}).get("trigger_bracket_gtc", {}).get("limit_price"),
+                            'Created Time': order.get('datetime'),
+                            'Order Duration': order.get("order_duration"),
+                            'Trigger Status': order.get('info', {}).get('trigger_status') if order.get('trigger_price') is not None else 'Not Active'
+                        }
+                        for order_id, order in order_tracker.items()
+                    ]
+
+                    df = pd.DataFrame(table_data)
+                    print(f"Order Tracker for {func_name}:")
+                    print(tabulate(df, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
+                                   numalign='center'))
+                    print("")
+                    # print(df.to_string(index=False))
+                elif isinstance(order_tracker, pd.DataFrame):
+                    print(f"Order Tracker DataFrame for {func_name}:")
+                    print(order_tracker.to_string(index=False))
+            else:
+                print(f"Validation failed in  : {func_name}: {message}")
+
+        except Exception as e:
+            print(f"Error printing order_tracker in {func_name}. Exception: {e}")
+            self.logger_manager.error({e}, exc_info=True)

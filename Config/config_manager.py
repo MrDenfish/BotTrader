@@ -8,26 +8,32 @@ from dotenv import load_dotenv
 
 class CentralConfig:
     """Centralized configuration manager shared across all modules."""
-    _instance = None # Singleton instance
+    _instance = None  # Singleton instance
     _is_loaded = False
 
-    def __new__(cls):
+    def __new__(cls, is_docker=True):
         if cls._instance is None:
             print("Creating Config Manager instance")
             cls._instance = super(CentralConfig, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
-        if  not self._is_loaded:
+    def __init__(self, is_docker=None):
+        if not self._is_loaded:
+            if is_docker is None:
+                machine_type, webhook_port = self.determine_machine_type()
+                is_docker = (machine_type == "docker")
+
+            self.is_docker = is_docker
             self._initialize_default_values()
             self._load_configuration()
             self.initialize_rest_client()
+            self._is_loaded = True  # ✅ Mark it done here
 
     def _initialize_default_values(self):
         """Set default values for all configuration attributes."""
         self.db_url = self.db_user = self.db_password = self.db_host = None
-        self.db_port = self._api_url = self._json_config = None
-        self._phone = self._email = self._e_mailpass = self._my_email = self._min_order_amount = None
+        self.db_port = self.db_name = self._api_url = self._json_config = None
+        self._phone = self._email = self._e_mailpass = self._my_email = self._email_alerts = None
         self._order_size = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
@@ -35,9 +41,9 @@ class CentralConfig:
         self._rsi_sell = self._sma_fast = self._sma_slow = self._sma = None
         self._buy_ratio = self._sell_ratio = self._sma_volatility = self._hodl = None
         self._cxl_buy = self._cxl_sell = self._take_profit = self._shill_coins = None
-        self._stop_loss = self._csv_dir = self._web_url = self._sleep_time = None
+        self._stop_loss = self._csv_dir = self._pc_url = self._docker_url = self._sleep_time = None
         self._docker_staticip = self._tv_whitelist = self._coin_whitelist = None
-        self._trailing_stop = self._min_sell_value = None
+        self._trailing_stop = self._min_sell_value = self._min_buy_value = None
         self._trailing_limit = self._db_pool_size = self._db_max_overflow = None
         self._sighook_api_key_path = self._websocket_api_key_path = None
         self._webhook_api_key_path = self._api_key = self._api_secret = None
@@ -45,7 +51,7 @@ class CentralConfig:
         self._assets_ignored = self._buy_target = self._sell_target = None
         self._quote_currency = self._trailing_percentage = self._min_volume = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
-
+        self._maker_fee = self._taker_fee = self._min_order_amount = None
 
         # Default values
         self._json_config = {}
@@ -55,19 +61,20 @@ class CentralConfig:
 
     def _load_configuration(self):
         """Load configuration from environment variables and JSON files."""
-        self._initialize_default_values()
         self.load_dotenv_settings()
-        self.machine_type, self.webhook_port, self.sighook_port = self.determine_machine_type()
+        self.machine_type, self.webhook_port = self.determine_machine_type()  # self.sighook_port
         self._load_environment_variables()
         self._load_json_config()  # Ensure paths like _sighook_api_key_path are set
+
         self._generate_database_url()
         self._is_loaded = True  # Mark the configuration as loaded
 
     @staticmethod
     def load_dotenv_settings():
-        env_path = ".env" if os.getenv('RUNNING_IN_DOCKER') else os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                                                              '.env_tradebot')
-        load_dotenv(env_path)
+        from pathlib import Path
+        env_path = Path(__file__).resolve().parent.parent / '.env_tradebot'
+        print(f"� Loading local .env from {env_path}")
+        load_dotenv(dotenv_path=env_path)
 
     def _load_environment_variables(self):
         env_vars = {
@@ -75,13 +82,18 @@ class CentralConfig:
             "db_port": "DB_PORT",
             "db_name": "DB_NAME",
             "db_user": "DB_USER",
+            "docker_db_user": "DOCKER_DB_USER",
             "db_password": "DB_PASSWORD",
+            "_email_alerts": "EMAIL_ALERTS",
+            "_email": "EMAIL",
+            "_email_password": "EMAIL_PASSWORD",
             "_log_level": "LOG_LEVEL",
             "_async_mode": "ASYNC_MODE",
             "_quote_currency": "QUOTE_CURRENCY",
             "_order_size": "ORDER_SIZE",
             "_trailing_percentage": "TRAILING_PERCENTAGE",
             "_min_order_amount":"MIN_ORDER_AMOUNT",
+            "_min_buy_value": "MIN_BUY_VALUE",
             "_min_sell_value": "MIN_SELL_VALUE",
             "_max_value_of_crypto_to_buy_more":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
             "_min_volume": "MIN_VOLUME", # min daily volume strategies use to evaluate ovhlc data
@@ -126,7 +138,11 @@ class CentralConfig:
             "_currency_pairs_ignored": "CURRENCY_PAIRS_IGNORED",
             "_shill_coins": "SHILL_COINS",
             "_sleep_time": 'SLEEP',
-            "_web_url": 'WEB_URL',
+            "_pc_url": 'PC_URL',
+            "_docker_url": 'DOCKER_URL',
+            "_maker_fee": 'MAKER_FEE',
+            "_taker_fee": 'TAKER_FEE',
+
         }
 
         for attr, env_var in env_vars.items():
@@ -134,6 +150,7 @@ class CentralConfig:
             if value is not None:
                 setattr(self, attr, Decimal(value) if attr.startswith("_") and "percentage" in attr.lower() else value)
 
+        print(f"Configuration loaded successfully.")
 
     def _load_json_config(self):
         """Load and merge JSON configuration files from Shared_Utils."""
@@ -186,8 +203,14 @@ class CentralConfig:
     def _generate_database_url(self):
         """Generate the database URL."""
         try:
-            self.db_url = f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
-            print(f"Configured PostgreSQL database at: {self.db_url}")
+            # override self.db_host if in Docker
+            db_host = os.getenv("DOCKER_DB_HOST", "bottrader_postgres") if self.is_docker else self.db_host
+            db_user = os.getenv("DOCKER_DB_USER", self.db_user) if self.is_docker else self.db_user
+            print(f"is_docker: {self.is_docker}, db_host: {db_host}, db_user: {db_user}")
+            self.db_url = f"postgresql+asyncpg://{db_user}:{self.db_password}@{db_host}:{self.db_port}/{self.db_name}"
+
+            print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{self.db_port}/{self.db_name}")
+            print(f" ❇️  web_url: {self.web_url}  ❇️ ")
         except Exception as e:
             print(f"Error configuring database URL: {e}")
 
@@ -278,15 +301,12 @@ class CentralConfig:
     # def get_directory_paths(self, path):
     #     base_dir = self.get_database_dir()  # Always use the database directory handler
 
-    @staticmethod
-    def determine_machine_type() -> tuple:
+    def determine_machine_type(self) -> tuple:
         cwd_parts = os.getcwd().split('/')
         if 'app' in cwd_parts:
-            return 'docker', os.getenv('SIGHOOK_PORT', '8000')
+            return 'docker', int(os.getenv('WEBHOOK_PORT', 5000))
         elif len(cwd_parts) > 2:
-            webhook_port = int(os.getenv('WEBHOOK_PORT', 80))
-            sighook_port = int(os.getenv('SIGHOOK_PORT', 5000))
-            return cwd_parts[2], webhook_port, sighook_port
+            return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5000))
         else:
             raise ValueError(f"Invalid path {os.getcwd()}, unable to determine machine type.")
 
@@ -377,6 +397,10 @@ class CentralConfig:
         return Decimal(self._min_sell_value)
 
     @property
+    def min_buy_value(self):
+        return Decimal(self._min_buy_value)
+
+    @property
     def max_value_of_crypto_to_buy_more(self):
         return Decimal(self._max_value_of_crypto_to_buy_more)
 
@@ -396,6 +420,13 @@ class CentralConfig:
     def trailing_percentage(self):
         return self._trailing_percentage
 
+    @property
+    def maker_fee(self):
+        return self._maker_fee
+
+    @property
+    def taker_fee(self):
+        return self._taker_fee
 
     @property
     def min_volume(self):
@@ -403,6 +434,7 @@ class CentralConfig:
 
     @property
     def database_url(self):
+
         return self.db_url
 
     @property
@@ -432,6 +464,10 @@ class CentralConfig:
     @property
     def my_email(self):
         return self._my_email
+
+    @property
+    def email_alerts(self):
+        return self._email_alerts
 
     @property
     def order_size(self):
@@ -546,7 +582,12 @@ class CentralConfig:
 
     @property
     def web_url(self):
-        return self._web_url
+        if self.machine_type == 'Manny':
+            print(f'desktop: {self.machine_type}')
+            return self._pc_url
+        else:
+            print(f'docker: {self.machine_type}')
+            return self._docker_url
 
     @property
     def sleep_time(self):
