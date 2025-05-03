@@ -1,7 +1,7 @@
 
 from sqlalchemy import (Column, Integer, String, DateTime, Index)
 from sqlalchemy.sql import func
-from models.base import Base
+from TableModels.base import Base
 
 
 class SharedData(Base):

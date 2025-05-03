@@ -15,9 +15,9 @@ from Config.config_manager import CentralConfig as Config
 class OrderData:
     trading_pair: str
     time_order_placed: Union[datetime, None]
-    side: str
     type: str
     order_id: str
+    side: str
     order_amount: Decimal
     filled_price: Decimal
     base_currency: str
@@ -29,15 +29,17 @@ class OrderData:
     available_to_trade_crypto: Decimal
     base_decimal: int
     quote_decimal: int
+    quote_increment:Decimal
     highest_bid: Decimal
     lowest_ask: Decimal
-    maker_fee: Decimal
-    taker_fee: Decimal
+    maker: Decimal
+    taker: Decimal
     spread: Decimal
     open_orders: Union[pd.DataFrame, None] = None
     status: str = 'UNKNOWN'
     source: str = 'UNKNOWN'
-    price: Decimal = Decimal('0')
+    trigger: str = 'UNKNOWN'
+    price: Decimal = Decimal(0)
     cost_basis: Decimal = Decimal('0')  # spot_position
     limit_price: Decimal = Decimal('0')
     average_price: Optional[Decimal] = None
@@ -45,7 +47,6 @@ class OrderData:
     adjusted_size: Optional[Decimal] = None
     stop_loss_price: Optional[Decimal] = None
     take_profit_price: Optional[Decimal] = None
-    trigger: str = 'UNKNOWN'
     volume_24h: Optional[Decimal] = None
 
     @classmethod
@@ -76,6 +77,14 @@ class OrderData:
         else:
             product_id = data.trading_pair or data.symbol or data.product_id
             base_currency, quote_currency = extract_base_quote(product_id)
+
+        raw_qdec = data.get("quote_decimal")  # could be '', None, or int/str
+        try:
+            quote_decimal = int(raw_qdec)
+        except (TypeError, ValueError):
+            quote_decimal = 2  # sane default – adjust if needed
+
+        quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
         return cls(
             source=data.get('source', 'UNKNOWN'),
             time_order_placed=None,
@@ -99,10 +108,11 @@ class OrderData:
             available_to_trade_crypto=get_decimal('available_to_trade_crypto'),
             base_decimal=int(data.get('base_decimal', 8)),
             quote_decimal=int(data.get('quote_decimal', 2)),
+            quote_increment=quote_increment,
             highest_bid=get_decimal('highest_bid'),
             lowest_ask=get_decimal('lowest_ask'),
-            maker_fee=get_decimal('maker_fee'),
-            taker_fee=get_decimal('taker_fee'),
+            maker=get_decimal('maker_fee'),
+            taker=get_decimal('taker_fee'),
             spread=get_decimal('spread'),
             open_orders=data.get('open_orders', pd.DataFrame()),
             status=data.get('status', 'UNKNOWN'),
@@ -191,6 +201,15 @@ class ValidateOrders:
         base_currency = details.get("asset", trading_pair.split('/')[0])
         quote_currency = trading_pair.split('/')[1] if '/' in trading_pair else 'USD'
         order_amount = buy_amount if side == "buy" else sell_amount
+
+        raw_qdec = details.get("quote_decimal")  # could be '', None, or int/str
+        try:
+            quote_decimal = int(raw_qdec)
+        except (TypeError, ValueError):
+            quote_decimal = 2  # sane default – adjust if needed
+
+        quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
+
         return OrderData(
             source=details.get("source", "webhook"),
             time_order_placed=None,
@@ -214,10 +233,11 @@ class ValidateOrders:
             available_to_trade_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
             base_decimal=details.get("base_decimal", base_deci),
             quote_decimal=details.get("quote_decimal", quote_deci),
+            quote_increment=quote_increment,
             highest_bid=self.shared_utils_precision.safe_decimal(order_book_details.get("highest_bid")),
             lowest_ask=self.shared_utils_precision.safe_decimal(order_book_details.get("lowest_ask")),
-            maker_fee=self.shared_utils_precision.safe_decimal(details.get("maker_fee")),
-            taker_fee=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
+            maker=self.shared_utils_precision.safe_decimal(details.get("maker_fee")),
+            taker=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
             spread=self.shared_utils_precision.safe_decimal(order_book_details.get("spread")),
             open_orders=details.get("Open Orders", pd.DataFrame()),
             status=details.get("status", "VALID"),
@@ -467,8 +487,8 @@ class ValidateOrders:
                     "base_decimal": order_data.base_decimal,
                     "order_amount": order_data.order_amount,
                     "sell_amount": order_data.available_to_trade_crypto,
-                    "maker_fee": order_data.maker_fee,
-                    "taker_fee": order_data.taker_fee,
+                    "maker_fee": order_data.maker,
+                    "taker_fee": order_data.taker,
                     "Open Orders": open_orders,
                     "24h Quote Volume": order_data.volume_24h
                 }

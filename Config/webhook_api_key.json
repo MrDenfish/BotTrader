@@ -1,0 +1,6 @@
+{
+   "name": "organizations/75baf820-7e82-444a-ba30-b4ffd3859a95/apiKeys/461b656f-4138-4b56-9f11-8c4dbb3f53c6",
+   "privateKey": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIE4Hi7OmoP53lhTl9ZhHZTkS/TcV3u8lSdqMYJox3wWsoAoGCCqGSM49\nAwEHoUQDQgAEJcK+MW2DR4JJ/Jy4h2vfpdms+KQ2n/+gjQZEjjGY1ls2mZPObdMV\nP8D88J9IaqMcDWhFI1TpgLW8WcuviwfZPQ==\n-----END EC PRIVATE KEY-----\n",
+   "api_url": "wss://ws-feed.exchange.coinbase.com",
+   "uuid": "c5a8f238-d2ef-5bb4-93cd-0dfd7a773be7"
+}

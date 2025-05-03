@@ -1,0 +1,5 @@
+{
+   "name": "organizations/75baf820-7e82-444a-ba30-b4ffd3859a95/apiKeys/599b5405-ccab-4218-b0cd-914a9a958855",
+   "privateKey": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIA+liF45pjShdAD54GWsQ04Coq/BL2dTNQBxByhcNdESoAoGCCqGSM49\nAwEHoUQDQgAE9wizzMFF7zo+68mN55lgVTqouF2eR+g7X2c1sLJ/Z6Q5oCktUtRC\n8+GTIOE5rcs0iKONu74n6EcV8dimOHFB9A==\n-----END EC PRIVATE KEY-----\n",
+   "api_url": "api.coinbase.com:443"
+}

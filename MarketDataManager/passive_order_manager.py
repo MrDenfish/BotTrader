@@ -1,84 +1,225 @@
+from __future__ import annotations
+
+"""Passive market‑making helper.
+
+This module contains a self‑contained `PassiveOrderManager` class that
+implements a simple maker‑only strategy:
+  • Places resting bid/ask quotes just inside the spread when the spread
+    is wide enough to cover fees.
+  • Sizes quotes dynamically and respects balance / inventory limits.
+  • Cancels / refreshes quotes after a configurable time‑to‑live so they
+    do not get picked off when the market moves.
+
+It expects the surrounding code‑base to provide:
+  • `trade_order_manager` with an async `build_order_data()` and
+    `place_order()` that operate on your existing `OrderData` dataclass.
+  • `logger` implementing the stdlib `logging.Logger` interface.
+  • A `fee_cache` or similar object exposing `maker` and `taker` rates.
+
+Drop‑in defaults are provided for things like `min_spread_pct`, but tune
+these at runtime based on your exchange tier and risk appetite.
+"""
+
+import asyncio
 import copy
 import time
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
+from typing import Dict, Any, Tuple
+
+# ---------------------------------------------------------------------------
+# Type aliases – keep it loose here, real project will import your dataclass
+# ---------------------------------------------------------------------------
+
+OrderData = Any  # replace with from your_project.models import OrderData
 
 
 class PassiveOrderManager:
-    def __init__(self, trade_order_manager, logger, min_spread_pct=Decimal("0.005")):
-        """
-        Args:
-            trade_order_manager: Instance of TradeOrderManager
-            logger: LoggerManager or compatible logger
-            min_spread_pct: Minimum spread % required to place passive orders (e.g., 0.005 = 0.5%)
-        """
-        self.trade_order_manager = trade_order_manager
+    """A lightweight maker‑side quoting engine."""
+
+    #: How wide the spread must be *before* we even attempt to quote.
+    DEFAULT_MIN_SPREAD_PCT = Decimal("0.20") / Decimal("100")  # 0.20 %
+
+    #: Cancel & refresh resting orders after this many seconds.
+    DEFAULT_MAX_LIFETIME = 120
+
+    #: How aggressively to bias quotes when inventory is skewed.
+    INVENTORY_BIAS_FACTOR = Decimal("0.25")  # ≤ 25 % of current spread
+
+    def __init__(self, trade_order_manager, logger, fee_cache: Dict[str, Decimal], *,
+                 min_spread_pct: Decimal | None = None, max_lifetime: int | None = None,) -> None:
+
+        self.tom = trade_order_manager  # shorthand inside class
         self.logger = logger
-        self.min_spread_pct = min_spread_pct
-        self.passive_order_tracker = {}  # {symbol: {'buy': order_id, 'sell': order_id, 'timestamp': float}}
+        self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
-    async def place_passive_orders(self, asset: str, product_id: str):
+        self.min_spread_pct = min_spread_pct or self.DEFAULT_MIN_SPREAD_PCT
+        self.max_lifetime = max_lifetime or self.DEFAULT_MAX_LIFETIME
+
+        # {symbol: {"buy": order_id, "sell": order_id, "timestamp": float}}
+        self.passive_order_tracker: Dict[str, Dict[str, Any]] = {}
+
+        # launch watchdog
+        asyncio.create_task(self._watchdog())
+
+    _fee_lock: asyncio.Lock = asyncio.Lock()
+    async def update_fee_cache(self, new_fee: Dict[str, Decimal]) -> None:
+        """Hot-swap maker/taker fees atomically."""
+        async with self._fee_lock:
+            self.fee = new_fee
+    # ------------------------------------------------------------------
+    # Public entry – call this once per symbol you want to quote
+    # ------------------------------------------------------------------
+
+    async def place_passive_orders(self, asset: str, product_id: str) -> None:
+        """Attempt to quote both sides of the book for *product_id*.
+
+        Will silently return if conditions are not favourable (spread too
+        tight, insufficient balances, inventory skew too high, etc.).
+        """
+        trading_pair = product_id.replace("-", "/")
+
+        # ------------------------------------------------------------------
+        # Build initial OrderData snapshot (prices, balances, precision …)
+        # ------------------------------------------------------------------
         try:
-            trading_pair = product_id.replace("-", "/")
-
-            # Step 1: Build once
-            order_data = await self.trade_order_manager.build_order_data(
-                source="PassiveOrderManager",
-                trigger="low_vol",
+            od: OrderData | None = await self.tom.build_order_data(
+                source="PassiveMM",
+                trigger="market_making",
                 asset=asset,
-                product_id=product_id
+                product_id=product_id,
+            )
+        except Exception as exc:
+            self.logger.error(
+                f"❌ build_order_data failed for {trading_pair}: {exc}",
+                exc_info=True,
+            )
+            return
+
+        if not od or od.highest_bid == 0 or od.lowest_ask == 0:
+            return  # nothing to do – no order book yet
+
+        # ------------------------------------------------------------------
+        # Basic market sanity checks (spread vs fees)
+        # ------------------------------------------------------------------
+        spread: Decimal = od.lowest_ask - od.highest_bid
+        mid_price: Decimal = (od.lowest_ask + od.highest_bid) / 2
+        spread_pct: Decimal = spread / mid_price
+
+        # Edge must beat round‑trip maker fees + cushion
+        required_edge = self.fee["maker"] * 4  # in, out, +slippage cushion
+        if spread_pct < max(required_edge, self.min_spread_pct):
+            self.logger.debug(
+                f"⛔ Spread too narrow for {trading_pair}: {spread_pct:.4%}",
+            )
+            return
+
+        # ------------------------------------------------------------------
+        # Compute tick‑scaled nudge just inside the current spread
+        # ------------------------------------------------------------------
+        try:
+            tick = Decimal(str(od.quote_increment))
+            pct_nudge = Decimal("0.15") / Decimal("100")  # 0.15 % of mid
+            adjustment = max(tick, (mid_price * pct_nudge).quantize(tick))
+
+            # ------------------------------------------------------------------
+            # Bias quotes if inventory drifts away from 50 : 50 USD/CRYPTO
+            # ------------------------------------------------------------------
+
+            bias = self._compute_inventory_bias(
+                asset_value=od.limit_price * od.base_avail_balance, usd_value=od.usd_avail_balance, spread=spread
             )
 
-            if not order_data:
-                self.logger.warning(f"⚠️ Failed to build OrderData for {trading_pair}. Skipping.")
-                return
-
-            highest_bid = order_data.highest_bid
-            lowest_ask = order_data.lowest_ask
-            usd_avail = order_data.usd_avail_balance
-
-            if highest_bid == 0 or lowest_ask == 0:
-                self.logger.warning(f"❌ Missing bid/ask for {trading_pair}.")
-                return
-
-            if usd_avail < Decimal("25"):
-                self.logger.debug(f"� Not enough USD to trade {trading_pair}. Skipping.")
-                return
-
-            spread = lowest_ask - highest_bid
-            mid_price = (lowest_ask + highest_bid) / 2
-            spread_pct = spread / mid_price
-
-            if spread_pct < self.min_spread_pct:
-                self.logger.debug(f"⛔ Spread too narrow for {trading_pair}: {spread_pct:.4%}")
-                return
-
-            # Step 2: Clone for buy and sell
-            adjustment = Decimal("0.0001")
-
-            for side in ["buy", "sell"]:
-                cloned = copy.deepcopy(order_data)  # Make a clean clone for safety
-                cloned.post_only = True
-                cloned.type = "limit"
-                cloned.side = side
+            # ------------------------------------------------------------------
+            # Generate & submit both sides
+            # ------------------------------------------------------------------
+            for side in ("buy", "sell"):
+                quote_od = self._clone_order_data(od, side=side, post_only=True)
 
                 if side == "buy":
-                    cloned.adjusted_price = (highest_bid - adjustment).quantize(Decimal(f"1e-{cloned.quote_decimal}"))
+                    target_px = od.highest_bid - adjustment - bias
+                else:  # sell
+                    target_px = od.lowest_ask + adjustment + bias
+
+                quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+                quote_od.trigger = f"passive_{side}@{quote_od.adjusted_price}"
+
+                # per‑side balance sanity check
+                if not self._passes_balance_check(quote_od):
+                    continue
+
+                ok, res = await self.tom.place_order(quote_od)
+                if ok:
+                    self._track_passive_order(trading_pair, side, res.get('details',{}.get('order_id')))
+                    self.logger.info(
+                        f"✅ Passive {side.upper()} {trading_pair} @ {quote_od.adjusted_price}"
+                    )
                 else:
-                    cloned.adjusted_price = (lowest_ask + adjustment).quantize(Decimal(f"1e-{cloned.quote_decimal}"))
+                    self.logger.warning(
+                        f"⚠️ Passive {side.upper()} failed: {res.get('message')}",
+                    )
+        except Exception as exc:
+            self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True,)
+            return
+    # ------------------------------------------------------------------
+    # Helper methods
+    # ------------------------------------------------------------------
+    def _compute_inventory_bias(
+        self, *, asset_value: Decimal, usd_value: Decimal, spread: Decimal
+    ) -> Decimal:
+        """Return a ± bias (in price units) to skew quotes."""
+        total = asset_value + usd_value
+        if total == 0:
+            return Decimal("0")
+        imbalance = (usd_value - asset_value) / total  # +ve => long USD
+        return imbalance * self.INVENTORY_BIAS_FACTOR * spread
 
-                cloned.trigger = f"passive_{side}@{cloned.adjusted_price}"
+    def _passes_balance_check(self, od: OrderData) -> bool:
+        """Ensure we can afford the order we are about to place."""
+        maker_fee = self.fee["maker"]
+        if od.side == "buy":
+            cost = od.cost_basis * (1 + maker_fee)
+            if od.usd_avail_balance < cost:
+                return False
+        else:  # sell
+            if od.order_amount < od.base_avail_balance:
+                return False
+        return True
 
-                success, result = await self.trade_order_manager.place_order(cloned)
+    def _clone_order_data(self, od: OrderData, **overrides) -> OrderData:
+        """Deep‑copy `od` and update provided attributes."""
+        cloned = copy.deepcopy(od)
+        for k, v in overrides.items():
+            setattr(cloned, k, v)
+        return cloned
 
-                if success:
-                    self.logger.info(f"✅ Passive {side.upper()} order placed for {trading_pair} @ {cloned.adjusted_price}")
-                    self.passive_order_tracker[trading_pair] = {
-                        **self.passive_order_tracker.get(trading_pair, {}),
-                        side: result.get("details", {}).get("order_id"),
-                        "timestamp": time.time()
-                    }
-                else:
-                    self.logger.warning(f"⚠️ Passive {side.upper()} order failed for {trading_pair}: {result.get('message')}")
+    def _track_passive_order(self, symbol: str, side: str, order_id: str) -> None:
+        entry = self.passive_order_tracker.setdefault(symbol, {})
+        entry[side] = order_id
+        entry["timestamp"] = time.time()
 
-        except Exception as e:
-            self.logger.error(f"❌ Error in place_passive_orders() for {product_id}: {e}", exc_info=True)
+    # ------------------------------------------------------------------
+    # Housekeeping – cancel and refresh stale quotes
+    # ------------------------------------------------------------------
+    async def _watchdog(self) -> None:
+        """Background coroutine that clears expired resting orders."""
+        while True:
+            try:
+                await asyncio.sleep(5)
+                now = time.time()
+                for symbol, entry in list(self.passive_order_tracker.items()):
+                    if now - entry.get("timestamp", 0) < self.max_lifetime:
+                        continue
+                    # cancel both sides and purge tracker
+                    for side in ("buy", "sell"):
+                        oid = entry.get(side)
+                        if oid:
+                            try:
+                                await self.tom.cancel_order(oid, symbol)
+                            except Exception as exc:  # noqa: BLE001 (broad ok here)
+                                self.logger.warning(
+                                    f"⚠️ Failed to cancel expired {side} {symbol}: {exc}"
+                                )
+                    self.passive_order_tracker.pop(symbol, None)
+            except Exception as exc:  # watchdog must never die silently
+                self.logger.error("Watchdog error", exc_info=True)
+

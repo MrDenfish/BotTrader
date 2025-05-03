@@ -1,12 +1,13 @@
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from databases import Database
 from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
 
+import TableModels.ohlcv_data
 from Config.config_manager import CentralConfig
 
 
@@ -212,14 +213,14 @@ class MarketManager:
             ]
 
             # Define query with conflict handling
-            query = insert(self.db_tables.OHLCVData).on_conflict_do_update(
+            query = insert(TableModels.ohlcv_data.OHLCVData).on_conflict_do_update(
                 index_elements=['symbol', 'time'],
                 set_={
-                    "open": insert(self.db_tables.OHLCVData).excluded.open,
-                    "high": insert(self.db_tables.OHLCVData).excluded.high,
-                    "low": insert(self.db_tables.OHLCVData).excluded.low,
-                    "close": insert(self.db_tables.OHLCVData).excluded.close,
-                    "volume": insert(self.db_tables.OHLCVData).excluded.volume,
+                    "open": insert(TableModels.ohlcv_data.OHLCVData).excluded.open,
+                    "high": insert(TableModels.ohlcv_data.OHLCVData).excluded.high,
+                    "low": insert(TableModels.ohlcv_data.OHLCVData).excluded.low,
+                    "close": insert(TableModels.ohlcv_data.OHLCVData).excluded.close,
+                    "volume": insert(TableModels.ohlcv_data.OHLCVData).excluded.volume,
                     "last_updated": datetime.now(),
                 }
             )
@@ -246,7 +247,7 @@ class MarketManager:
             # Step 1: Fetch the count of rows for the symbol
             query = (
                 select(func.count())
-                .where(self.db_tables.OHLCVData.symbol == symbol)
+                .where(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
             )
             row_count = await self.database.fetch_val(query)
 
@@ -256,9 +257,9 @@ class MarketManager:
 
                 # Fetch the primary keys (or `time` values) of the oldest rows to delete
                 oldest_rows_query = (
-                    select(self.db_tables.OHLCVData.time)
-                    .where(self.db_tables.OHLCVData.symbol == symbol)
-                    .order_by(self.db_tables.OHLCVData.time.asc())  # Oldest first
+                    select(TableModels.ohlcv_data.OHLCVData.time)
+                    .where(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
+                    .order_by(TableModels.ohlcv_data.OHLCVData.time.asc())  # Oldest first
                     .limit(excess_rows)
                 )
                 oldest_rows = await self.database.fetch_all(oldest_rows_query)
@@ -268,10 +269,10 @@ class MarketManager:
 
                 # Perform the DELETE for the rows matching the fetched `time` values
                 delete_query = (
-                    delete(self.db_tables.OHLCVData)
+                    delete(TableModels.ohlcv_data.OHLCVData)
                     .where(
-                        self.db_tables.OHLCVData.symbol == symbol,
-                        self.db_tables.OHLCVData.time.in_(times_to_delete)
+                        TableModels.ohlcv_data.OHLCVData.symbol == symbol,
+                        TableModels.ohlcv_data.OHLCVData.time.in_(times_to_delete)
                     )
                 )
                 await self.database.execute(delete_query)
@@ -285,9 +286,9 @@ class MarketManager:
         Get the last timestamp for a symbol from the OHLCV table oldest.
         """
         query = (
-            select(self.db_tables.OHLCVData.time)
-            .filter(self.db_tables.OHLCVData.symbol == symbol)
-            .order_by(self.db_tables.OHLCVData.time.desc())
+            select(TableModels.ohlcv_data.OHLCVData.time)
+            .filter(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
+            .order_by(TableModels.ohlcv_data.OHLCVData.time.desc())
             .limit(1)
         )
         last_time = await self.database.fetch_one(query)

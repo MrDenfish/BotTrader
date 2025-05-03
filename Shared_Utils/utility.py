@@ -138,7 +138,7 @@ class SharedUtility:
             f"USD Balance:  ${source.usd_avail_balance} available",
             f"Price:        ${source.adjusted_price} | Size: {source.adjusted_size} {source.base_currency}",
             f"Stop-Loss:    ${source.stop_loss_price} | Take-Profit: ${source.take_profit_price}",
-            f"Fees:         Maker: {source.maker_fee} | Taker: {source.taker_fee}",
+            f"Fees:         Maker: {source.maker} | Taker: {source.taker}",
             f"Spread:       {source.spread}",
             f"Open Orders:  {len(source.open_orders) if isinstance(source.open_orders, pd.DataFrame) else 'N/A'}",
             f"Status:       {source.status}"

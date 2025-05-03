@@ -4,9 +4,9 @@ from sqlalchemy import (Column, Integer, String, Float, DateTime, UniqueConstrai
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import func, select
 import json
-import models.market_snapshot
-import models.order_management
-from models.base import Base
+import TableModels.market_snapshot
+import TableModels.order_management
+from TableModels.base import Base
 
 
 
@@ -31,14 +31,14 @@ class OHLCVData(Base):
 
     async def save_market_data_snapshot(self, data: dict):
         """Save a snapshot of market data."""
-        query = insert(models.market_snapshot.MarketDataSnapshot).values(
+        query = insert(TableModels.market_snapshot.MarketDataSnapshot).values(
             data=json.dumps(data)
         )
         await self.database.execute(query)
 
     async def save_order_management_snapshot(self, data: dict):
         """Save a snapshot of order management data."""
-        query = insert(models.order_management.OrderManagementSnapshot).values(
+        query = insert(TableModels.order_management.OrderManagementSnapshot).values(
             data=json.dumps(data)
         )
         await self.database.execute(query)
@@ -47,8 +47,8 @@ class OHLCVData(Base):
     async def fetch_recent_market_data_snapshot(self):
         """Fetch the most recent market data snapshot."""
         query = (
-            select(models.market_snapshot.MarketDataSnapshot)
-            .order_by(models.market_snapshot.MarketDataSnapshot.snapshot_time.desc())
+            select(TableModels.market_snapshot.MarketDataSnapshot)
+            .order_by(TableModels.market_snapshot.MarketDataSnapshot.snapshot_time.desc())
             .limit(1)
         )
         result = await self.database.fetch_one(query)
@@ -57,8 +57,8 @@ class OHLCVData(Base):
     async def fetch_recent_order_management_snapshot(self):
         """Fetch the most recent order management snapshot."""
         query = (
-            select(models.order_management.OrderManagementSnapshot)
-            .order_by(models.order_management.OrderManagementSnapshot.snapshot_time.desc())
+            select(TableModels.order_management.OrderManagementSnapshot)
+            .order_by(TableModels.order_management.OrderManagementSnapshot.snapshot_time.desc())
             .limit(1)
         )
         result = await self.database.fetch_one(query)

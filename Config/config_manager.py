@@ -81,7 +81,7 @@ class CentralConfig:
             "db_host": "DB_HOST",
             "db_port": "DB_PORT",
             "db_name": "DB_NAME",
-            "db_user": "DB_USER",
+            # "db_user": "DB_USER",
             "docker_db_user": "DOCKER_DB_USER",
             "db_password": "DB_PASSWORD",
             "_email_alerts": "EMAIL_ALERTS",
@@ -205,7 +205,7 @@ class CentralConfig:
         try:
             # override self.db_host if in Docker
             db_host = os.getenv("DOCKER_DB_HOST", "bottrader_postgres") if self.is_docker else self.db_host
-            db_user = os.getenv("DOCKER_DB_USER", self.db_user) if self.is_docker else self.db_user
+            db_user = os.getenv("DOCKER_DB_USER", self.machine_type) if self.is_docker else self.machine_type
             print(f"is_docker: {self.is_docker}, db_host: {db_host}, db_user: {db_user}")
             self.db_url = f"postgresql+asyncpg://{db_user}:{self.db_password}@{db_host}:{self.db_port}/{self.db_name}"
 
@@ -306,7 +306,10 @@ class CentralConfig:
         if 'app' in cwd_parts:
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5000))
         elif len(cwd_parts) > 2:
-            return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5000))
+            if cwd_parts[2] == 'jack':
+                return cwd_parts[2], int(5001)
+            else:
+                return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5000))
         else:
             raise ValueError(f"Invalid path {os.getcwd()}, unable to determine machine type.")
 
@@ -582,7 +585,7 @@ class CentralConfig:
 
     @property
     def web_url(self):
-        if self.machine_type == 'Manny':
+        if self.machine_type == 'Manny' or self.machine_type == 'jack':
             print(f'desktop: {self.machine_type}')
             return self._pc_url
         else:

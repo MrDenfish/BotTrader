@@ -22,8 +22,8 @@ from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
 from sighook.alerts_msgs_webhooks import SenderWebhook
 from sighook.async_functions import AsyncFunctions
-from sighook.database_ops import DatabaseOpsManager
-from sighook.database_table_models import DatabaseTables
+from database_manager.database_ops import DatabaseOpsManager
+from TableModels.database_table_models import DatabaseTables
 from sighook.holdings_process_manager import HoldingsProcessor
 from sighook.indicators import Indicators
 from sighook.order_manager import OrderManager

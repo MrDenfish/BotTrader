@@ -3,6 +3,7 @@ BotTraderv3.0/
 │    ├── __init__.py
 │    ├── __pycache__
 │    ├── api_exceptions.py
+│    ├── coinbase_api.py
 │    ├── api_manager.py
 │         └── api_manager.py
 ├── Config
@@ -17,23 +18,32 @@ BotTraderv3.0/
 │    ├── webhook_tb_api_key.json
 │           └── websocket_api_info.json
 ├── Discription
+├── database_manager
+│    ├── database_ops.py
+│    ├── database_session_manager.py
+│    ├── database_table_models.py
 ├── MarketDataManager
 │    ├── ___int___.py
 │    ├── __pycache__
 │    ├── market_data_manager.py
 │    ├── market_manager.py
 │    ├── ohlcv_manager.py
+│    ├── passive_order_manager.py
 │    └── ticker_manager.py
 ├── ProfitDataManager
 │    ├── __int__.py
 │    ├── __pycache__
+│    ├── fee_manager.py
+│    ├── performance_tracker.py
 │    └── profit_data_manager.py
 ├── SharedDataManager
 │    ├── __pycache__
+│    ├── trade_recorder.py
 │    └── shared_data_manager.py
 ├── Shared_Utils
 │    ├── __init__.py
 │    ├── __pycache__
+│    ├── alert_system.py
 │    ├── database_checker.py
 │    ├── dates_and_times.py
 │    ├── debugger.py
@@ -44,16 +54,6 @@ BotTraderv3.0/
 │    ├── snapshots_manager.py
 │    └── utility.py
 ├── project file tree
-├── certbot-dns.log
-├── database queries
-│    ├── Clear Entire Database.sql
-│    ├── Clear table.sql
-│    ├── Delete table.sql
-│    ├── Query by time.sql
-│    ├── add column.sql
-│    ├── confirm index exists.sql
-│    ├── delete column.sql
-│    └── unique items.sql
 ├── discription.py
 ├── docker-compose.digital_ocean.yml
 ├── docker-compose.mac.old.yaml
@@ -75,9 +75,6 @@ BotTraderv3.0/
 │    ├── __pycache__
 │    ├── alerts_msgs_webhooks.py
 │    ├── async_functions.py
-│    ├── database_ops.py
-│    ├── database_session_manager.py
-│    ├── database_table_models.py
 │    ├── holdings_process_manager.py
 │    ├── indicators.py
 │    ├── order_manager.py
@@ -87,11 +84,19 @@ BotTraderv3.0/
 │    ├── sender.py
 │    ├── test_trading_strategy.py
 │    └── trading_strategy.py
+├── TableModels
+│    ├── base.py
+│    ├── __init__.py
+│    ├── database_table_model.py
+│    ├── market_snapshot.py
+│    ├── ohlcv_data.py
+│    ├── order_management.py
+│    ├── shared_data.py
+│    ├── trade_record.py
 └── webhook
     ├── Dockerfile
     ├── __init__.py
     ├── __pycache__
-    ├── alert_system.py
     ├── listener.py
     ├── requirements.txt
     ├── trailing_stop_manager.py
@@ -102,4 +107,5 @@ BotTraderv3.0/
     ├── webhook_utils.py
     ├── webhook_validate_orders.py
     ├── websocket_helper.py
+    ├── websocket_market_manager.py
     └── websocket_test.py

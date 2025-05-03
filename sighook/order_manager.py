@@ -289,6 +289,7 @@ class OrderManager:
                 info = order.get('info', {})
                 common_fields = {
                     'order_id': order_id,
+                    'parent_id':info.get('originating_order_id'),
                     'product_id': info.get('product_id'),
                     'side': info.get('side'),
                     'filled': order.get('filled'),
