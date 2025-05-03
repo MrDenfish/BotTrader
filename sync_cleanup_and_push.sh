@@ -1,7 +1,14 @@
 #!/bin/bash
 
 # ----------------------------------------
-# Sync Cleanup and Git Push Script
+# ✅ Purpose:
+  #Run on laptop
+  #
+  #Cleans up system files and __pycache__
+  #
+  #Optionally commits all code changes
+  #
+  #Pushes changes to GitHub
 # ----------------------------------------
 
 echo "� Cleaning system and Python cache files..."
