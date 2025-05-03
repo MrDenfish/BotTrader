@@ -194,35 +194,32 @@ class TradeOrderManager:
                 maker_fee = self.default_maker_fee
                 taker_fee = self.default_taker_fee
             else:
-                maker_fee = Decimal(fee_info['maker_fee'])
-                taker_fee = Decimal(fee_info['taker_fee'])
-
+                maker_fee = Decimal(fee_info['maker'])
+                taker_fee = Decimal(fee_info['taker'])
 
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            base_quantizer = Decimal("1").scaleb(-base_deci)
             balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0)).quantize(
                 Decimal(f'1e-{base_deci}'),
                 rounding=ROUND_HALF_UP
             )
             volume_24h = Decimal(volume_24h).quantize(Decimal(1))
-            cost_basis = Decimal(cost_basis).quantize(Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP)
-            total_balance_crypto = Decimal(total_balance_crypto).quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_HALF_UP)
+            cost_basis = Decimal(cost_basis).quantize(quote_quantizer, rounding=ROUND_HALF_UP)
+            total_balance_crypto = Decimal(total_balance_crypto).quantize(base_quantizer, rounding=ROUND_HALF_UP)
             available_to_trade = Decimal(spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
-            available_to_trade = Decimal(available_to_trade).quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_HALF_UP)
-            usd_bal = Decimal(spot_position.get('USD', {}).get('total_balance_fiat', 0)).quantize(
-                Decimal(f'1e-{quote_deci}'),
-                rounding=ROUND_HALF_UP
-            )
-            usd_avail = Decimal(spot_position.get('USD', {}).get('available_to_trade_fiat', 0)).quantize(Decimal(f'1e-{quote_deci}'),
-                                                                                                         rounding=ROUND_HALF_UP)
+            available_to_trade = Decimal(available_to_trade).quantize(base_quantizer, rounding=ROUND_HALF_UP)
+            usd_bal = self.shared_utils_precision.safe_decimal(
+                spot_position.get("USD", {}).get("total_balance_fiat")).quantize(quote_quantizer, rounding=ROUND_HALF_UP)
+            usd_avail = Decimal(
+                spot_position.get('USD', {}).get('available_to_trade_fiat', 0)).quantize(quote_quantizer,rounding=ROUND_HALF_UP)
             print(f'‼️ USD Avail: {usd_avail}')
             print(f'‼️ USD Bal: {usd_bal}')
             pair = product_id.replace('-', '/')  # normalize first
             base_currency, quote_currency = pair.split('/')
             trading_pair = product_id.replace('-', '/')
             price = Decimal(self.market_data.get('current_prices', {}).get(trading_pair, 0)).quantize(
-                Decimal(f'1e-{quote_deci}'),
-                rounding=ROUND_HALF_UP
+                quote_quantizer, rounding=ROUND_HALF_UP
             )
 
             # Determine side
@@ -231,11 +228,11 @@ class TradeOrderManager:
             ) <= self.max_value_of_crypto_to_buy_more else 'sell'
 
             # Set fiat allocation
-            fiat_avail_for_order = Decimal(min(self.order_size, usd_avail)).quantize(Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP)
+            fiat_avail_for_order = Decimal(min(self.order_size, usd_avail)).quantize(quote_quantizer, rounding=ROUND_HALF_UP)
 
             # Calculate order size
             if side == 'buy':
-                size = (fiat_avail_for_order / price).quantize(Decimal(f'1e-{base_deci}')) if price > 0 else Decimal(0)
+                size = (fiat_avail_for_order / price).quantize(base_quantizer) if price > 0 else Decimal(0)
                 if (price * size) < self.min_order_amount:
                     print(f'‼️ Insufficient fiat balance to place buy order: {trading_pair}')
                     return None
@@ -273,39 +270,44 @@ class TradeOrderManager:
             fiat_avail_for_order = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, fiat_avail_for_order, 'quote')
             usd_bal = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_bal, 'quote')
             usd_avail = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_avail, 'quote')
+            spread = Decimal(order_book.get('spread'))
             return OrderData(
                 trading_pair=trading_pair,
                 time_order_placed=None,
                 type=order_type,
-                price=price,
-                order_id=None,
+                order_id='UNKNOWN',
                 side=side,
                 order_amount=fiat_avail_for_order,
+                filled_price=None,
                 base_currency=asset,
                 quote_currency=quote_currency,
                 usd_avail_balance=usd_avail,
                 usd_balance=usd_bal,
-                cost_basis=cost_basis,
                 base_avail_balance=balance,
-                available_to_trade_crypto=available_to_trade,
                 total_balance_crypto=total_balance_crypto,
+                available_to_trade_crypto=available_to_trade,
                 base_decimal=base_deci,
                 quote_decimal=quote_deci,
-                highest_bid=Decimal(temp_book['highest_bid']).quantize(Decimal(f'1e-{quote_deci}')),
-                lowest_ask=Decimal(temp_book['lowest_ask']).quantize(Decimal(f'1e-{quote_deci}')),
-                spread=Decimal(order_book.get('spread', 0)),
+                quote_increment=Decimal("1") / (Decimal("10") ** quote_deci),
+                highest_bid=Decimal(temp_book['highest_bid']).quantize(quote_quantizer),
+                lowest_ask=Decimal(temp_book['lowest_ask']).quantize(quote_quantizer),
+                maker=maker_fee,
+                taker=taker_fee,
+                spread=spread,
                 open_orders={'open_order': active_open_order, 'type': active_open_order_type, 'side': active_open_order_side},
+                status='UNKNOWN',
+                source=source,
+                trigger=trigger,
+                price=price,
+                cost_basis=cost_basis,
                 limit_price=adjusted_price,
-                filled_price=None,
-                maker_fee=maker_fee,
-                taker_fee=taker_fee,
+                average_price=None,
                 adjusted_price=adjusted_price,
                 adjusted_size=adjusted_size,
                 stop_loss_price=stop_price,
                 take_profit_price=None,
-                source=source,
                 volume_24h=volume_24h,
-                trigger=trigger
+
             )
 
         except Exception as e:
@@ -382,8 +384,8 @@ class TradeOrderManager:
 
             side = order_data.side.lower()
             type = order_data.type.lower()
-            maker_fee = order_data.maker_fee
-            taker_fee = order_data.taker_fee
+            maker_fee = order_data.maker
+            taker_fee = order_data.taker
 
             base_deci = order_data.base_decimal
             quote_deci = order_data.quote_decimal
@@ -491,6 +493,7 @@ class TradeOrderManager:
 
 
                 # Step 2: Recalculate TP/SL if needed
+                tp = sl = None
                 if order_type in ['tp_sl', 'limit', 'bracket']:
                     tp, sl = await self.profit_manager.calculate_tp_sl(order_data)
                     order_data.take_profit_price = tp
@@ -516,7 +519,8 @@ class TradeOrderManager:
                 if order_type == 'limit':
                     response = await self.order_types.place_limit_order("Webhook", order_data)
                 elif order_type == 'tp_sl':
-                    response = await self.order_types.process_limit_and_tp_sl_orders("Webhook", order_data, take_profit=tp, stop_loss=sl)
+                    response = await self.order_types.process_limit_and_tp_sl_orders("Webhook", order_data,
+                                                                                     take_profit=tp, stop_loss=sl)
                 elif order_type == 'trailing_stop':
                     response = await self.order_types.place_trailing_stop_order(order_book, order_data, highest_bid)
                 else:
@@ -530,6 +534,8 @@ class TradeOrderManager:
                 # Step 5: Handle success
                 if response and response.get('success') and response.get('success_response', {}).get('order_id'):
                     self.logger.info(f"✅ Successfully placed {order_type} order for {symbol}")
+                    order_data.order_id = response.get('success_response', {}).get('order_id')
+                    order_data.parent_order_id = response.get('success_response', {}).get('order_id')
                     return True, self.build_response(
                         success=True,
                         message="Order placed",

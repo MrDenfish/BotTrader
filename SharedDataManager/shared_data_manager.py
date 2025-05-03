@@ -7,6 +7,7 @@ from inspect import stack  # debugging
 
 import pandas as pd
 from sqlalchemy.sql import text
+from SharedDataManager.trade_recorder import TradeRecorder
 
 
 class CustomJSONDecoder(json.JSONDecoder):
@@ -31,6 +32,7 @@ class CustomJSONDecoder(json.JSONDecoder):
 
         return obj
 
+
 class DecimalEncoderIn(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
@@ -42,6 +44,7 @@ class DecimalEncoderIn(json.JSONEncoder):
                 # Add other attributes as needed
             }
         return super().default(obj)
+
 
 class DecimalDecoderOut(json.JSONDecoder):
     """Custom JSON decoder to restore Decimals."""
@@ -60,6 +63,7 @@ class DecimalDecoderOut(json.JSONDecoder):
                     pass  # Ignore if conversion fails
         return obj
 
+
 def preprocess_market_data(data):
     """Recursively process market data for JSON serialization."""
     processed_data = {}
@@ -74,12 +78,14 @@ def preprocess_market_data(data):
 
     return processed_data
 
+
 class PortfolioPosition:
     def __init__(self, asset, account_uuid, total_balance_fiat, total_balance_crypto):
         self.asset = asset
         self.account_uuid = account_uuid
         self.total_balance_fiat = total_balance_fiat
         self.total_balance_crypto = total_balance_crypto
+
 
 class SharedDataManager:
     _instance = None  # Singleton instance
@@ -98,6 +104,7 @@ class SharedDataManager:
         self.logger = logger_manager  # 🙂
 
         self.database_session_manager = database_session_manager
+        self.trade_recorder = TradeRecorder(self.database_session_manager, logger_manager)
         self.market_data = {}
         self.order_management = {}
         self.lock = asyncio.Lock()
@@ -160,7 +167,7 @@ class SharedDataManager:
 
     async def refresh_shared_data(self):
         """Refresh shared data periodically."""
-        async with self.lock:
+        async with (self.lock):
             try:
                 market_result = await self.database_session_manager.fetch_market_data()
                 self.market_data = json.loads(market_result["data"], cls=CustomJSONDecoder) if market_result else {}
@@ -195,7 +202,6 @@ class SharedDataManager:
     async def set_order_management(self, updated_order_management: dict):
         async with self.lock:
             self.order_management = updated_order_management
-
 
     async def fetch_market_data(self):
         """Fetch market_data from the database via DatabaseSessionManager."""
@@ -328,6 +334,7 @@ class SharedDataManager:
                 f"❌ Error saving order management snapshot: {e}",
                 exc_info=True
             )
+
     @staticmethod
     def dismantle_order_management(order_management):
         """Dismantle the order_management structure into simpler dictionaries."""
@@ -403,16 +410,17 @@ class SharedDataManager:
             # Prefer high-level fields first, fall back to nested structure
             normalized = {
                 "order_id": order.get("id") or order.get("order_id"),
-                "symbol": order.get("symbol") or
-                          info.get("product_id", "").replace("-", "/") or
-                          order.get("product_id", "").replace("-", "/"),
+                "symbol": order.get("symbol") or info.get("product_id", "").replace("-", "/") or
+                order.get("product_id", "").replace("-", "/"),
                 "side": order.get("side") or info.get("order_side") or order.get("order_side"),
                 "type": order.get("type") or info.get("order_type") or order.get("order_type"),
                 "status": order.get("status") or info.get("status"),
-                "filled": order.get("filled") or Decimal(info.get("filled_size", 0)),
-                "remaining": order.get("remaining") or Decimal(info.get("leaves_quantity", 0)) or Decimal(order.get("leaves_quantity", 0)),
+                "filled": order.get("filled") or Decimal(info.get("filled_size", 0)) or Decimal(order.get('filled_value')),
+                "remaining": order.get("remaining") or Decimal(info.get("leaves_quantity", 0)) or
+                Decimal(order.get("leaves_quantity", 0)),
                 "stopPrice": order.get("stopPrice") or Decimal(info.get("stop_price") or 0),
-                "price": order.get("price") or Decimal(info.get("limit_price") or 0) or Decimal(order.get("limit_price") or 0),
+                "price": order.get("price") or Decimal(info.get("limit_price") or 0) or
+                Decimal(order.get("limit_price") or 0),
                 "datetime": order.get("datetime") or info.get("created_time") or order.get("creation_time"),
                 "trigger_status": info.get("trigger_status", "Not Active"),
                 "clientOrderId": order.get("clientOrderId") or info.get("client_order_id"),

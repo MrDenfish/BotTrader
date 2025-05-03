@@ -5,6 +5,7 @@ import time
 from decimal import Decimal, getcontext
 
 from Config.config_manager import CentralConfig as Config
+from webhook.webhook_validate_orders import OrderData
 
 getcontext().prec = 10
 
@@ -111,118 +112,104 @@ class WebSocketMarketManager:
         ▸ Records TP/SL child SELL orders (trigger-bracket)
         ▸ Updates order_tracker in SharedDataManager
         ▸ Deletes DB rows when orders are CANCELLED
-        ▸ Keeps existing profit logic for filled sells
+        ▸ Triggers handle_order_fill on filled orders
         """
+        print(f"📥 Received user message: {json.dumps(data, indent=2)}")  # debug
         try:
             events = data.get("events", [])
             if not isinstance(events, list):
                 self.logger.error("user-payload missing events list")
                 return
 
-            # --- fresh snapshots & helpers ------------------------------------
+            # Snapshots and shared state
             mkt_snap, om_snap = await self.snapshot_manager.get_snapshots()
             spot_pos = mkt_snap.get("spot_positions", {})
             cur_prices = mkt_snap.get("current_prices", {})
             usd_pairs = mkt_snap.get("usd_pairs_cache", {})
-
             order_tracker = om_snap.get("order_tracker", {})
 
-            # ------------------------------------------------------------------
             for ev in events:
                 ev_type = ev.get("type", "")
                 orders = ev.get("orders", [])
                 if not isinstance(orders, list):
                     continue
 
-                for od in orders:
-                    order_id = od.get("order_id")
-                    parent_id = od.get("parent_order_id") or od.get("parent_id")
-                    symbol = od.get("product_id")
-                    side = (od.get("order_side") or "").lower()
-                    status = (od.get("status") or "").upper()
+                for order in orders:
+                    order_id = order.get("order_id")
+                    parent_id = order.get("parent_order_id") or order.get("parent_id")
+                    symbol = order.get("product_id")
+                    side = (order.get("order_side") or "").lower()
+                    status = (order.get("status") or "").upper()
 
                     if not order_id or not symbol:
                         continue
 
-                    # ------------- 1. delete on cancel ------------------------
+                    # --- Delete on cancel
                     if status == "CANCELLED":
                         try:
-                            await self.trade_recorder.delete_trade(order_id)
+                            await self.shared_data_manager.trade_recorder.record_trade(order_id)
                             self.logger.info(f"❎ {order_id} cancelled → removed from DB")
                         except Exception:
                             self.logger.error("delete_trade failed", exc_info=True)
                         order_tracker.pop(order_id, None)
-                        continue  # nothing else to do for cancelled orders
+                        continue
 
-                    # ------------- 2. record TP/SL sells ----------------------
-                    if (
-                            parent_id
-                            and side == "sell"
-                            and ev_type in {"order_created", "order_activated", "order_filled"}
-                    ):
+                    # --- Record TP/SL child sells
+                    if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
                         trade = {
                             "order_id": order_id,
                             "parent_order_id": parent_id,
                             "product_id": symbol,
                             "side": "sell",
-                            "price": od.get("limit_price") or od.get("price"),
-                            "size": od.get("size")
-                                    or od.get("filled_size")
-                                    or od.get("order_size"),
+                            "price": order.get("limit_price") or order.get("price"),
+                            "size": order.get("size") or order.get("filled_size") or order.get("order_size"),
                             "status": status.lower(),
-                            "order_time": od.get("event_time") or od.get("created_time"),
-                            "trigger": "tp"
-                            if od.get("order_type") == "TAKE_PROFIT"
-                            else "sl",
+                            "order_time": order.get("event_time") or order.get("created_time"),
+                            "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
                         }
                         try:
-                            await self.trade_recorder.record_trade(trade)
+                            await self.shared_data_manager.trade_recorder.record_trade(trade)
                             self.logger.debug(f"TP/SL child stored → {order_id}")
                         except Exception:
                             self.logger.error("record_trade failed", exc_info=True)
 
-                    # ------------- 3. maintain in-memory tracker --------------
-                    normalized = self.shared_data_manager.normalize_raw_order(od)
+                    # --- Maintain in-memory tracker
+                    normalized = self.shared_data_manager.normalize_raw_order(order)
                     if normalized:
                         if status in {"PENDING", "OPEN", "ACTIVE"}:
                             order_tracker[order_id] = normalized
-                        elif status in {"FILLED"}:
+                        elif status == "FILLED":
                             order_tracker.pop(order_id, None)
 
-                    # ------------- 4. profit handling for filled sells --------
-                    if status == "FILLED" and side == "sell":
-                        asset = symbol.split("-")[0]
-                        base_d, quote_d, *_ = self.shared_utils_precision.fetch_precision(
-                            symbol
-                        )
-                        avg_p = Decimal(od.get("avg_price") or 0)
-                        cost_bs = Decimal(
-                            spot_pos.get(asset, {}).get("cost_basis", {}).get("value", 0)
-                        )
-                        bal = Decimal(
-                            spot_pos.get(asset, {}).get("total_balance_crypto", 0)
-                        )
-                        req = {
-                            "avg_price": avg_p,
-                            "cost_basis": cost_bs,
-                            "asset_balance": bal,
-                            "current_price": None,
-                            "profit": None,
-                            "profit_percentage": None,
-                            "status_of_order": status,
-                        }
-                        p = await self.profit_data_manager.calculate_profitability(
-                            asset, req, cur_prices, usd_pairs
-                        )
-                        if p and p["profit"]:
-                            pf = self.shared_utils_precision.adjust_precision(
-                                base_d, quote_d, p["profit"], "quote"
-                            )
-                            self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
+                    # --- Handle filled orders (buy or sell)
+                    if status == "FILLED":
+                        order_data = OrderData.from_dict(order)
 
-                        await self.listener.handle_order_fill(od)
+                        if side == "sell":
+                            asset = symbol.split("-")[0]
+                            base_d, quote_d, *_ = self.shared_utils_precision.fetch_precision(symbol)
+                            avg_p = Decimal(order.get("avg_price") or 0)
+                            cost_bs = Decimal(spot_pos.get(asset, {}).get("cost_basis", {}).get("value", 0))
+                            bal = Decimal(spot_pos.get(asset, {}).get("total_balance_crypto", 0))
 
-            # ---- persist updated tracker back into SharedDataManager ---------
+                            req = {
+                                "avg_price": avg_p,
+                                "cost_basis": cost_bs,
+                                "asset_balance": bal,
+                                "current_price": None,
+                                "profit": None,
+                                "profit_percentage": None,
+                                "status_of_order": status,
+                            }
+                            p = await self.profit_data_manager.calculate_profitability(asset, req, cur_prices, usd_pairs)
+                            if p and p.get("profit"):
+                                pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
+                                self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
+
+                        self.logger.info(f"✅ Order filled: {order_id} at {order.get('avg_price')} with fee {order.get('total_fees')}")
+                        await self.listener.handle_order_fill(order_data)
+
+            # Finalize snapshot
             om_snap["order_tracker"] = order_tracker
             await self.shared_data_manager.set_order_management(om_snap)
 

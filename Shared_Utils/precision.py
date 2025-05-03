@@ -21,10 +21,7 @@ class PrecisionUtils:
         if PrecisionUtils._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
-        self.logger = logger_manager  # 🙂
-        # self.logger = logger_manager
-
-
+        self.logger = logger_manager.loggers.get('shared_logger') # 🙂
         self.shared_data_manager = shared_data_manager
 
     @property

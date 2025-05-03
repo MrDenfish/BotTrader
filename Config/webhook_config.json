@@ -5,7 +5,7 @@
   "Manny": {
     "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   },
-  "moe": {
+  "jack": {
     "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   },
   "do_server": {

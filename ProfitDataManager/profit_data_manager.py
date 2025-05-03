@@ -185,7 +185,7 @@ class ProfitDataManager:
         try:
             # Base price to start from
             entry_price = order_data.adjusted_price
-            fee = order_data.taker_fee
+            fee = order_data.taker
 
             # --- Take Profit ---
             # Target a % above entry price, then account for fee
@@ -194,7 +194,7 @@ class ProfitDataManager:
 
             # --- Stop Loss ---
             # Target a % below entry price, then account for fee
-            sl = entry_price * (Decimal("1.0") + self.stop_loss)
+            sl = entry_price * (Decimal("1.0") + self.stop_loss)  # stop_loss is negative by default
             sl -= sl * fee  # Deduct fee (optionally leave as sl = sl if you want to avoid extra tightening)
 
             # Round to appropriate precision

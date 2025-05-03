@@ -24,18 +24,20 @@ class OrderTypeManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,validate,
-                     logger_manager, alerts, ccxt_api, order_book_manager, websocket_helper, session):
+    def get_instance(cls, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,
+                     shared_data_manager, validate, logger_manager, alerts, ccxt_api, order_book_manager,
+                     websocket_helper, session):
         """
         Singleton method to ensure only one instance of OrderTypeManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,validate,
-                                logger_manager, alerts, ccxt_api, order_book_manager, websocket_helper, session)
+            cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,
+                                shared_data_manager, validate, logger_manager, alerts, ccxt_api, order_book_manager,
+                                websocket_helper, session)
         return cls._instance
 
-    def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, validate, logger_manager,
-                 alerts, ccxt_api, order_book_manager, websocket_helper, session):
+    def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, shared_data_manager,
+                 validate, logger_manager, alerts, ccxt_api, order_book_manager, websocket_helper, session):
         self.config = Config()
         self.exchange = exchange_client
         self.coinbase_api = coinbase_api
@@ -49,6 +51,7 @@ class OrderTypeManager:
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
+        self.shared_data_manager = shared_data_manager
         self.session = session  # Store the session as an attribute
         self.start_time = self.ticker_cache = self.non_zero_balances = self.market_data = None
         self.order_tracker = self.market_cache_usd = self.market_cache_vol = self.order_management = None
@@ -103,9 +106,10 @@ class OrderTypeManager:
         return self._min_sell_value
 
     async def process_limit_and_tp_sl_orders(
-            self, source: str, order_data: OrderData, take_profit: Optional[Decimal] = None,
+            self, source: str, order_data: OrderData,
+            take_profit: Optional[Decimal] = None,
             stop_loss: Optional[Decimal] = None
-    ) -> Union[dict, None]:
+            ) -> Union[dict, None]:
         """
         Processes limit orders with attached Take Profit (TP) and Stop Loss (SL).
 
@@ -161,7 +165,7 @@ class OrderTypeManager:
 
             # ✅ Step 4: Ensure sufficient balances
             side = order_data.side.upper()
-            usd_required = adjusted_size * order_data.adjusted_price * (1 + order_data.maker_fee)
+            usd_required = adjusted_size * order_data.adjusted_price * (1 + order_data.maker)
             usd_required = Decimal(usd_required).quantize(quote_quant, rounding=ROUND_DOWN)
 
             if side == 'BUY' and usd_required > Decimal(order_data.usd_balance):
@@ -176,7 +180,6 @@ class OrderTypeManager:
                     'code': validation_result.get('code'),
                     'message': f"⚠️ Order Blocked - Zero Size for {asset} BUY."
                 }
-
 
             if side == 'SELL' and adjusted_size > Decimal(order_data.available_to_trade_crypto):
                 return {
@@ -211,16 +214,32 @@ class OrderTypeManager:
             print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}   ⚠️')  # Debug
             print(f'')
             # ✅ Step 6: Execute Order
-            response_data = await self.coinbase_api.create_order(order_payload)
+            response = await self.coinbase_api.create_order(order_payload)
 
-            if response_data.get('success'):
-                order_id = response_data.get('success_response', {}).get('order_id')
+            if response.get('success') and response.get('success_response',{}).get('order_id'):
+                order_id = response.get('success_response', {}).get('order_id')
                 print(f"✅ Order Placed Successfully with TP/SL: {order_id} ✅")
-                return response_data
-            else:
-                print(f"❗️ Order Rejected TP/SL: {response_data.get('error_response', {}).get('message')} ❗️")
+                # 📝 Record the trade
+                trade_data = {
+                    'symbol': response.get('success_response',{}).get('product_id'),
+                    'side': response.get('success_response',{}).get('side').lower(),
+                    'amount': response.get('order_configuration',{}).get('limit_limit_gtc',{}).get('base_size'),
+                    'pnl':None,
+                    'total_fees':None,
+                    'price': response.get('order_configuration',{}).get('limit_limit_gtc',{}).get('limit_price'),
+                    'order_id': response.get('success_response',{}).get('order_id'),  # or client_order_id
+                    'parent_id':response.get('success_response',{}).get('order_id'),
+                    'order_time': datetime.utcnow(),  # Or response.get('timestamp') if exists
+                    'trigger': 'limit',
+                    'status': 'placed'
+                }
+                await self.shared_data_manager.trade_recorder.record_trade(trade_data)
 
-            return response_data
+                return response
+            else:
+                print(f"❗️ Order Rejected TP/SL: {response.get('error_response', {}).get('message')} ❗️")
+
+            return response
 
         except Exception as e:
             self.logger.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)
@@ -264,7 +283,7 @@ class OrderTypeManager:
 
             if order_data.side == 'buy':
                 usd_available = Decimal(str(order_data.usd_avail_balance))
-                usd_required = amount * price * (1 + order_data.maker_fee)
+                usd_required = amount * price * (1 + order_data.maker)
                 if usd_required > Decimal(order_data.usd_balance):
                     return {
                         'error': 'Insufficient_USD',
@@ -331,12 +350,25 @@ class OrderTypeManager:
                 self.exchange.create_order, 'private', symbol, 'limit', side, formatted_amount, formatted_price, params=params
             )
 
-            if response:
+            if response and response.get('success'):
                 print(f"✅ Order placed successfully: {response.get('side')} {response.get('symbol')} ✅")
+                # 📝 Record the trade
+                trade_data = {
+                    'symbol': response.get('success_response', {}).get('product_id'),
+                    'side': response.get('success_response', {}).get('side').lower(),
+                    'amount': response.get('order_configuration', {}).get('limit_limit_gtc', {}).get('base_size'),
+                    'price': response.get('order_configuration', {}).get('limit_limit_gtc', {}).get('limit_price'),
+                    'order_id': response.get('success_response', {}).get('order_id'),  # or client_order_id
+                    'order_time': datetime.now(),  # Or response.get('timestamp') if exists
+                    'trigger': 'limit',
+                    'status': 'placed'
+                }
+                await self.shared_data_manager.trade_recorder.record_trade(trade_data)
+
                 return response
             else:
-                self.logger.error(f"⚠️ Received None from create_order for {symbol}. Order data: {order_data}")
-                return None
+                print(f"❗️ Order Rejected Limit Order: {response.get('status')}:{response.get('reason') }❗️")
+                return response
 
         except Exception as ex:
             self.logger.error(f"❌ Error in place_limit_order: {ex}", exc_info=True)

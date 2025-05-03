@@ -7,6 +7,7 @@ import signal
 import time
 
 import aiohttp
+from decimal import Decimal
 from aiohttp import web
 
 from Config.config_manager import CentralConfig as Config
@@ -20,10 +21,11 @@ from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
-from sighook.database_session_manager import DatabaseSessionManager
+from database_manager.database_session_manager import DatabaseSessionManager
 from sighook.sender import TradeBot
-from webhook.listener import WebSocketHelper, WebSocketManager, WebhookListener
-from webhook.websocket_helper import WebSocketMarketManager
+from webhook.listener import WebSocketManager, WebhookListener
+from webhook.websocket_helper import WebSocketHelper
+from webhook.websocket_market_manager import WebSocketMarketManager
 
 shutdown_event = asyncio.Event()
 
@@ -35,7 +37,7 @@ def is_docker_env():
 # Force singleton initialization across all environments
 _ = Config(is_docker=is_docker_env())
 print("✅ CentralConfig preloaded:")
-print(f"   DB: {_.db_user}@{_.db_host}/{_.db_name}")
+print(f"   DB: {_.machine_type}@{_.db_host}/{_.db_name}")
 
 async def load_config():
     return Config(is_docker=is_docker_env())
@@ -66,9 +68,20 @@ async def init_shared_data(logger_manager, shared_logger):
 
 
 async def build_websocket_components(listener, shared_data_manager):
+    # --- NEW: pull latest maker / taker rates -------------
+    fee_rates = await listener.coinbase_api.get_fee_rates()
+    if "maker" not in fee_rates:  # API down?  Use a worst-case stub
+        listener.logger.warning("⚠️  Using fallback fee tier 0.0020")
+        fee_rates = {"maker": Decimal("0.0020"), "taker": Decimal("0.0025")}
+
+    # ------------------------------------------------------
     passive_order_manager = PassiveOrderManager(
         trade_order_manager=listener.trade_order_manager,
-        logger=listener.logger
+        logger=listener.logger,
+        fee_cache=fee_rates,  # ← new
+        # optional knobs ↓
+        min_spread_pct=Decimal("0.15") / 100,  # 0.15 %, overrides default 0.20 %
+        max_lifetime=90,  # cancel / refresh after 90 s
     )
 
     websocket_helper = WebSocketHelper(
@@ -162,7 +175,7 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
 
 async def run_webhook(config, shared_data_manager, logger_manager, alert,
                       shared_utils_debugger, shared_utils_print, startup_event=None, trade_bot=None):
-    async with aiohttp.ClientSession() as session:
+    async with (aiohttp.ClientSession() as session):
         exchange = config.exchange
 
         listener = WebhookListener(
@@ -203,9 +216,8 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
             listener.ohlcv_manager.market_manager = listener.market_manager
 
         listener.order_manager = trade_bot.order_manager
-        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(
-            listener, shared_data_manager
-        )
+        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(listener,
+                                                                                                  shared_data_manager)
 
         listener.websocket_helper = websocket_helper
         listener.websocket_manager = websocket_manager
@@ -233,6 +245,7 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
         background_tasks = [
             asyncio.create_task(listener.refresh_market_data(), name="Market Data Refresher"),
             asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
+            asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
         ]
 
         try:

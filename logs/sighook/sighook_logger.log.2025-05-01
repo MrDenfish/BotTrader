@@ -1,0 +1,469 @@
+2025-05-01 00:00:18,789 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 00:05:27,957 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 00:10:10,683 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 00:15:06,500 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 00:36:25,928 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 01:41:59,729 - sighook_logger - ERROR - ❌ Error fetching OHLCV data for SOL/USD:  (trading_strategy.py:313)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2329, in connect
+    return await connect_utils._connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 991, in _connect
+    conn = await _connect_addr(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 828, in _connect_addr
+    return await __connect_addr(params, True, *args)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 873, in __connect_addr
+    tr, pr = await connector
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 744, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1060, in create_connection
+    sock = await self._connect_sock(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 969, in _connect_sock
+    await self.sock_connect(sock, address)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/selector_events.py", line 501, in sock_connect
+    return await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/trading_strategy.py", line 288, in fetch_ohlcv_data_from_db
+    ohlcv_data = await self.db_manager.database.fetch_all(query)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 173, in fetch_all
+    async with self.connection() as connection:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 267, in __aenter__
+    raise e
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 264, in __aenter__
+    await self._connection.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/backends/postgres.py", line 170, in acquire
+    self._connection = await self._database._pool.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 821, in _acquire
+    return await _acquire_impl()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 806, in _acquire_impl
+    proxy = await ch.acquire()  # type: PoolConnectionProxy
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 136, in acquire
+    await self.connect()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 128, in connect
+    self._con = await self._pool._get_new_connection()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 502, in _get_new_connection
+    con = await connection.connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2328, in connect
+    async with compat.timeout(timeout):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-05-01 01:41:59,734 - sighook_logger - ERROR - ❌ Error fetching OHLCV data for VOXEL/USD:  (trading_strategy.py:313)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2329, in connect
+    return await connect_utils._connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 991, in _connect
+    conn = await _connect_addr(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 828, in _connect_addr
+    return await __connect_addr(params, True, *args)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 873, in __connect_addr
+    tr, pr = await connector
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 744, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1060, in create_connection
+    sock = await self._connect_sock(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 969, in _connect_sock
+    await self.sock_connect(sock, address)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/selector_events.py", line 501, in sock_connect
+    return await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/trading_strategy.py", line 288, in fetch_ohlcv_data_from_db
+    ohlcv_data = await self.db_manager.database.fetch_all(query)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 173, in fetch_all
+    async with self.connection() as connection:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 267, in __aenter__
+    raise e
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 264, in __aenter__
+    await self._connection.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/backends/postgres.py", line 170, in acquire
+    self._connection = await self._database._pool.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 821, in _acquire
+    return await _acquire_impl()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 806, in _acquire_impl
+    proxy = await ch.acquire()  # type: PoolConnectionProxy
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 136, in acquire
+    await self.connect()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 128, in connect
+    self._con = await self._pool._get_new_connection()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 502, in _get_new_connection
+    con = await connection.connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2328, in connect
+    async with compat.timeout(timeout):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-05-01 01:41:59,737 - sighook_logger - ERROR - ❌ Error fetching OHLCV data for ONDO/USD:  (trading_strategy.py:313)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2329, in connect
+    return await connect_utils._connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 991, in _connect
+    conn = await _connect_addr(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 828, in _connect_addr
+    return await __connect_addr(params, True, *args)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 873, in __connect_addr
+    tr, pr = await connector
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 744, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1060, in create_connection
+    sock = await self._connect_sock(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 969, in _connect_sock
+    await self.sock_connect(sock, address)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/selector_events.py", line 501, in sock_connect
+    return await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/trading_strategy.py", line 288, in fetch_ohlcv_data_from_db
+    ohlcv_data = await self.db_manager.database.fetch_all(query)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 173, in fetch_all
+    async with self.connection() as connection:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 267, in __aenter__
+    raise e
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 264, in __aenter__
+    await self._connection.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/backends/postgres.py", line 170, in acquire
+    self._connection = await self._database._pool.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 821, in _acquire
+    return await _acquire_impl()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 806, in _acquire_impl
+    proxy = await ch.acquire()  # type: PoolConnectionProxy
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 136, in acquire
+    await self.connect()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 128, in connect
+    self._con = await self._pool._get_new_connection()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 502, in _get_new_connection
+    con = await connection.connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2328, in connect
+    async with compat.timeout(timeout):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-05-01 01:41:59,740 - sighook_logger - ERROR - ❌ Error fetching OHLCV data for CRV/USD:  (trading_strategy.py:313)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2329, in connect
+    return await connect_utils._connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 991, in _connect
+    conn = await _connect_addr(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 828, in _connect_addr
+    return await __connect_addr(params, True, *args)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 873, in __connect_addr
+    tr, pr = await connector
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 744, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1060, in create_connection
+    sock = await self._connect_sock(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 969, in _connect_sock
+    await self.sock_connect(sock, address)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/selector_events.py", line 501, in sock_connect
+    return await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/trading_strategy.py", line 288, in fetch_ohlcv_data_from_db
+    ohlcv_data = await self.db_manager.database.fetch_all(query)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 173, in fetch_all
+    async with self.connection() as connection:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 267, in __aenter__
+    raise e
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 264, in __aenter__
+    await self._connection.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/backends/postgres.py", line 170, in acquire
+    self._connection = await self._database._pool.acquire()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 821, in _acquire
+    return await _acquire_impl()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 806, in _acquire_impl
+    proxy = await ch.acquire()  # type: PoolConnectionProxy
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 136, in acquire
+    await self.connect()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 128, in connect
+    self._con = await self._pool._get_new_connection()
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 502, in _get_new_connection
+    con = await connection.connect(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2328, in connect
+    async with compat.timeout(timeout):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-05-01 01:41:59,749 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 01:52:01,714 - sighook_logger - ERROR - ❌Error in main loop: cannot unpack non-iterable NoneType object (sender.py:429)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/sender.py", line 406, in run_bot
+    self.market_data, self.order_management = await self.shared_data_manager.refresh_shared_data()
+TypeError: cannot unpack non-iterable NoneType object
+2025-05-01 07:56:43,655 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:01:02,250 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 300 (trading_strategy.py:308)
+2025-05-01 08:01:20,781 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:05:55,754 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 305 (trading_strategy.py:308)
+2025-05-01 08:06:14,389 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:10:50,003 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 310 (trading_strategy.py:308)
+2025-05-01 08:11:09,796 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:15:52,319 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 315 (trading_strategy.py:308)
+2025-05-01 08:16:10,874 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:20:52,172 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 320 (trading_strategy.py:308)
+2025-05-01 08:21:10,557 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:25:53,298 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 325 (trading_strategy.py:308)
+2025-05-01 08:26:11,833 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:30:58,525 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 330 (trading_strategy.py:308)
+2025-05-01 08:31:17,064 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:35:50,438 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 335 (trading_strategy.py:308)
+2025-05-01 08:36:07,526 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:40:56,014 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 340 (trading_strategy.py:308)
+2025-05-01 08:41:11,880 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:45:55,535 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 345 (trading_strategy.py:308)
+2025-05-01 08:46:12,013 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:50:54,729 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 350 (trading_strategy.py:308)
+2025-05-01 08:51:10,665 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 08:55:53,664 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 355 (trading_strategy.py:308)
+2025-05-01 08:56:10,022 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:00:52,916 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 360 (trading_strategy.py:308)
+2025-05-01 09:01:10,147 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:05:55,634 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 365 (trading_strategy.py:308)
+2025-05-01 09:06:12,938 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:08:55,082 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 368 (trading_strategy.py:308)
+2025-05-01 09:09:13,626 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:13:13,692 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 372 (trading_strategy.py:308)
+2025-05-01 09:14:39,803 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 374 (trading_strategy.py:308)
+2025-05-01 09:14:58,355 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:19:10,377 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 378 (trading_strategy.py:308)
+2025-05-01 09:19:28,931 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:24:04,256 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 383 (trading_strategy.py:308)
+2025-05-01 09:24:22,600 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 09:29:05,406 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 388 (trading_strategy.py:308)
+2025-05-01 09:29:05,789 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 300 (trading_strategy.py:308)
+2025-05-01 09:29:25,696 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:01:48,098 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 421 (trading_strategy.py:308)
+2025-05-01 10:01:48,692 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 333 (trading_strategy.py:308)
+2025-05-01 10:02:08,231 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:15:59,594 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 435 (trading_strategy.py:308)
+2025-05-01 10:15:59,977 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 347 (trading_strategy.py:308)
+2025-05-01 10:16:18,936 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:16:51,970 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 436 (trading_strategy.py:308)
+2025-05-01 10:16:52,241 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 348 (trading_strategy.py:308)
+2025-05-01 10:17:11,653 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:21:53,220 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 441 (trading_strategy.py:308)
+2025-05-01 10:21:53,530 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 353 (trading_strategy.py:308)
+2025-05-01 10:22:12,887 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:47:50,826 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 467 (trading_strategy.py:308)
+2025-05-01 10:47:51,224 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 379 (trading_strategy.py:308)
+2025-05-01 10:48:10,924 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:52:45,736 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 472 (trading_strategy.py:308)
+2025-05-01 10:52:45,964 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 384 (trading_strategy.py:308)
+2025-05-01 10:53:00,753 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 10:57:45,346 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 477 (trading_strategy.py:308)
+2025-05-01 10:57:45,551 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 389 (trading_strategy.py:308)
+2025-05-01 10:57:45,659 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 300 (trading_strategy.py:308)
+2025-05-01 10:58:02,301 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:02:40,432 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 482 (trading_strategy.py:308)
+2025-05-01 11:02:40,687 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 394 (trading_strategy.py:308)
+2025-05-01 11:02:40,692 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 305 (trading_strategy.py:308)
+2025-05-01 11:02:57,618 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:07:41,157 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 487 (trading_strategy.py:308)
+2025-05-01 11:07:41,316 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 399 (trading_strategy.py:308)
+2025-05-01 11:07:41,480 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 310 (trading_strategy.py:308)
+2025-05-01 11:07:58,110 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:12:43,713 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 492 (trading_strategy.py:308)
+2025-05-01 11:12:43,965 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 404 (trading_strategy.py:308)
+2025-05-01 11:12:43,994 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 315 (trading_strategy.py:308)
+2025-05-01 11:12:56,792 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:17:46,823 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 497 (trading_strategy.py:308)
+2025-05-01 11:17:47,024 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 409 (trading_strategy.py:308)
+2025-05-01 11:17:47,031 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 320 (trading_strategy.py:308)
+2025-05-01 11:17:59,465 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:22:48,111 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 502 (trading_strategy.py:308)
+2025-05-01 11:22:48,301 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 414 (trading_strategy.py:308)
+2025-05-01 11:22:48,425 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 325 (trading_strategy.py:308)
+2025-05-01 11:23:02,427 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:27:49,651 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 507 (trading_strategy.py:308)
+2025-05-01 11:27:49,842 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 330 (trading_strategy.py:308)
+2025-05-01 11:27:49,896 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 419 (trading_strategy.py:308)
+2025-05-01 11:28:03,988 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:32:42,760 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 512 (trading_strategy.py:308)
+2025-05-01 11:32:42,946 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 424 (trading_strategy.py:308)
+2025-05-01 11:32:42,974 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 334 (trading_strategy.py:308)
+2025-05-01 11:32:56,884 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:37:50,528 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 517 (trading_strategy.py:308)
+2025-05-01 11:37:50,743 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 340 (trading_strategy.py:308)
+2025-05-01 11:37:50,774 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 429 (trading_strategy.py:308)
+2025-05-01 11:38:04,761 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:42:45,147 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 522 (trading_strategy.py:308)
+2025-05-01 11:42:45,333 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 434 (trading_strategy.py:308)
+2025-05-01 11:42:45,362 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 344 (trading_strategy.py:308)
+2025-05-01 11:42:59,647 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:47:48,378 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 527 (trading_strategy.py:308)
+2025-05-01 11:47:48,689 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 439 (trading_strategy.py:308)
+2025-05-01 11:47:48,997 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 350 (trading_strategy.py:308)
+2025-05-01 11:48:04,304 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:52:53,064 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 532 (trading_strategy.py:308)
+2025-05-01 11:52:53,234 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 355 (trading_strategy.py:308)
+2025-05-01 11:52:53,265 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 444 (trading_strategy.py:308)
+2025-05-01 11:53:07,292 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 11:57:50,965 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 537 (trading_strategy.py:308)
+2025-05-01 11:57:51,173 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 449 (trading_strategy.py:308)
+2025-05-01 11:57:51,237 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 360 (trading_strategy.py:308)
+2025-05-01 11:58:06,607 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:02:56,029 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 542 (trading_strategy.py:308)
+2025-05-01 12:02:56,734 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 454 (trading_strategy.py:308)
+2025-05-01 12:02:56,876 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 365 (trading_strategy.py:308)
+2025-05-01 12:03:12,300 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:07:53,152 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 547 (trading_strategy.py:308)
+2025-05-01 12:07:53,271 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 459 (trading_strategy.py:308)
+2025-05-01 12:07:53,324 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 370 (trading_strategy.py:308)
+2025-05-01 12:08:07,338 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:12:57,927 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 552 (trading_strategy.py:308)
+2025-05-01 12:12:58,219 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 464 (trading_strategy.py:308)
+2025-05-01 12:12:58,226 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 375 (trading_strategy.py:308)
+2025-05-01 12:13:12,199 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:17:56,911 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 557 (trading_strategy.py:308)
+2025-05-01 12:17:57,084 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 469 (trading_strategy.py:308)
+2025-05-01 12:17:57,135 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 380 (trading_strategy.py:308)
+2025-05-01 12:18:11,144 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:22:53,883 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 562 (trading_strategy.py:308)
+2025-05-01 12:22:54,060 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 384 (trading_strategy.py:308)
+2025-05-01 12:22:54,070 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 474 (trading_strategy.py:308)
+2025-05-01 12:23:08,151 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:27:52,842 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 567 (trading_strategy.py:308)
+2025-05-01 12:27:53,048 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 479 (trading_strategy.py:308)
+2025-05-01 12:27:53,469 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 388 (trading_strategy.py:308)
+2025-05-01 12:28:10,304 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:33:17,974 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 572 (trading_strategy.py:308)
+2025-05-01 12:33:18,121 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 393 (trading_strategy.py:308)
+2025-05-01 12:33:18,250 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 484 (trading_strategy.py:308)
+2025-05-01 12:33:32,305 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:37:52,934 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 577 (trading_strategy.py:308)
+2025-05-01 12:37:53,084 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 489 (trading_strategy.py:308)
+2025-05-01 12:37:53,092 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 398 (trading_strategy.py:308)
+2025-05-01 12:38:07,212 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:42:58,445 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 582 (trading_strategy.py:308)
+2025-05-01 12:42:59,249 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 494 (trading_strategy.py:308)
+2025-05-01 12:42:59,285 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 403 (trading_strategy.py:308)
+2025-05-01 12:43:13,420 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:48:08,412 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 587 (trading_strategy.py:308)
+2025-05-01 12:48:08,559 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 499 (trading_strategy.py:308)
+2025-05-01 12:48:08,612 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 408 (trading_strategy.py:308)
+2025-05-01 12:48:22,758 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:53:01,414 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 592 (trading_strategy.py:308)
+2025-05-01 12:53:01,577 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 504 (trading_strategy.py:308)
+2025-05-01 12:53:01,584 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 413 (trading_strategy.py:308)
+2025-05-01 12:53:15,705 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 12:57:56,727 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 597 (trading_strategy.py:308)
+2025-05-01 12:57:56,871 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 418 (trading_strategy.py:308)
+2025-05-01 12:57:56,886 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 509 (trading_strategy.py:308)
+2025-05-01 12:58:09,676 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:03:06,578 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 602 (trading_strategy.py:308)
+2025-05-01 13:03:06,766 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 423 (trading_strategy.py:308)
+2025-05-01 13:03:06,799 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 514 (trading_strategy.py:308)
+2025-05-01 13:03:20,962 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:08:00,523 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 607 (trading_strategy.py:308)
+2025-05-01 13:08:00,642 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 519 (trading_strategy.py:308)
+2025-05-01 13:08:00,671 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 428 (trading_strategy.py:308)
+2025-05-01 13:08:12,060 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:12:55,642 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 612 (trading_strategy.py:308)
+2025-05-01 13:12:56,342 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 433 (trading_strategy.py:308)
+2025-05-01 13:12:56,406 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 524 (trading_strategy.py:308)
+2025-05-01 13:13:07,781 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:17:52,801 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 617 (trading_strategy.py:308)
+2025-05-01 13:17:52,923 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 529 (trading_strategy.py:308)
+2025-05-01 13:17:52,955 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 438 (trading_strategy.py:308)
+2025-05-01 13:18:04,436 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:23:05,522 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 622 (trading_strategy.py:308)
+2025-05-01 13:23:05,678 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 534 (trading_strategy.py:308)
+2025-05-01 13:23:05,743 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 443 (trading_strategy.py:308)
+2025-05-01 13:23:19,012 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:28:24,850 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 627 (trading_strategy.py:308)
+2025-05-01 13:28:25,073 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 540 (trading_strategy.py:308)
+2025-05-01 13:28:25,112 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 448 (trading_strategy.py:308)
+2025-05-01 13:28:38,393 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:33:08,386 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 632 (trading_strategy.py:308)
+2025-05-01 13:33:08,554 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 544 (trading_strategy.py:308)
+2025-05-01 13:33:08,586 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 453 (trading_strategy.py:308)
+2025-05-01 13:33:23,758 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:37:57,888 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 637 (trading_strategy.py:308)
+2025-05-01 13:37:58,008 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 458 (trading_strategy.py:308)
+2025-05-01 13:37:58,017 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 549 (trading_strategy.py:308)
+2025-05-01 13:38:08,569 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 13:43:13,147 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 642 (trading_strategy.py:308)
+2025-05-01 13:43:13,337 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 554 (trading_strategy.py:308)
+2025-05-01 13:43:13,371 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 463 (trading_strategy.py:308)
+2025-05-01 13:43:28,482 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:26:25,476 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 685 (trading_strategy.py:308)
+2025-05-01 14:26:25,695 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 598 (trading_strategy.py:308)
+2025-05-01 14:26:25,774 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 506 (trading_strategy.py:308)
+2025-05-01 14:26:39,901 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:27:08,953 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 686 (trading_strategy.py:308)
+2025-05-01 14:27:09,117 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 598 (trading_strategy.py:308)
+2025-05-01 14:27:09,148 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 507 (trading_strategy.py:308)
+2025-05-01 14:27:09,153 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 310 (trading_strategy.py:308)
+2025-05-01 14:27:23,682 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:32:08,573 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 691 (trading_strategy.py:308)
+2025-05-01 14:32:08,719 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 315 (trading_strategy.py:308)
+2025-05-01 14:32:08,738 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 603 (trading_strategy.py:308)
+2025-05-01 14:32:08,794 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 511 (trading_strategy.py:308)
+2025-05-01 14:32:23,312 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:37:10,009 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 696 (trading_strategy.py:308)
+2025-05-01 14:37:10,518 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 320 (trading_strategy.py:308)
+2025-05-01 14:37:10,548 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 516 (trading_strategy.py:308)
+2025-05-01 14:37:10,558 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 608 (trading_strategy.py:308)
+2025-05-01 14:37:25,119 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:42:08,099 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 701 (trading_strategy.py:308)
+2025-05-01 14:42:08,207 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 613 (trading_strategy.py:308)
+2025-05-01 14:42:08,284 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 521 (trading_strategy.py:308)
+2025-05-01 14:42:08,290 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 325 (trading_strategy.py:308)
+2025-05-01 14:42:21,454 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:47:08,453 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 706 (trading_strategy.py:308)
+2025-05-01 14:47:08,609 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 618 (trading_strategy.py:308)
+2025-05-01 14:47:08,694 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 526 (trading_strategy.py:308)
+2025-05-01 14:47:08,727 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 329 (trading_strategy.py:308)
+2025-05-01 14:47:21,977 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 14:55:17,098 - sighook_logger - WARNING - Insufficient OHLCV data for BTC/USD. Rows fetched: 714 (trading_strategy.py:308)
+2025-05-01 14:55:17,250 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 626 (trading_strategy.py:308)
+2025-05-01 14:55:17,281 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 336 (trading_strategy.py:308)
+2025-05-01 14:55:17,335 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 532 (trading_strategy.py:308)
+2025-05-01 14:55:31,989 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 15:47:22,883 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 679 (trading_strategy.py:308)
+2025-05-01 15:47:22,894 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 388 (trading_strategy.py:308)
+2025-05-01 15:47:22,953 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 584 (trading_strategy.py:308)
+2025-05-01 15:47:37,059 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 15:48:03,524 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 584 (trading_strategy.py:308)
+2025-05-01 15:48:03,536 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 679 (trading_strategy.py:308)
+2025-05-01 15:48:03,588 - sighook_logger - WARNING - Insufficient OHLCV data for AVAX/USD. Rows fetched: 389 (trading_strategy.py:308)
+2025-05-01 15:48:17,743 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 15:53:09,259 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 684 (trading_strategy.py:308)
+2025-05-01 15:53:09,317 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 589 (trading_strategy.py:308)
+2025-05-01 15:53:24,322 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 15:58:05,303 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 689 (trading_strategy.py:308)
+2025-05-01 15:58:05,313 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 593 (trading_strategy.py:308)
+2025-05-01 15:58:20,156 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 16:03:06,704 - sighook_logger - WARNING - Insufficient OHLCV data for LTC/USD. Rows fetched: 694 (trading_strategy.py:308)
+2025-05-01 16:03:06,739 - sighook_logger - WARNING - Insufficient OHLCV data for AAVE/USD. Rows fetched: 598 (trading_strategy.py:308)
+2025-05-01 16:03:20,033 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 16:03:23,985 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed", "code": "500", "details": {"trading_pair": "BAL/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 11.966, "filled_price": 0.0, "base_currency": "BAL", "quote_currency": "USD", "usd_avail_balance":... (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-01 16:03:33,220 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed", "code": "500", "details": {"trading_pair": "BAL/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 11.966, "filled_price": 0.0, "base_currency": "BAL", "quote_currency": "USD", "usd_avail_balance":... (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-01 16:03:37,014 - sighook_logger - ERROR - ❌ Error in throttled_send: Unhandled HTTP ‼️ 422: {"success": false, "message": "Failed to build order data"} (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Failed to build order data"}
+2025-05-01 16:03:37,016 - sighook_logger - INFO - TAKE_PROFIT: BAL/USD sell signal triggered profit @ sell price 1.2528 (order_manager.py:491)
+2025-05-01 23:49:55,691 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-01 23:54:14,580 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)

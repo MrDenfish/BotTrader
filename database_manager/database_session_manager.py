@@ -6,14 +6,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from Config.config_manager import CentralConfig
-from sighook.database_ops import DatabaseOpsManager
-from TableModels.database_table_models import DatabaseTables
+from database_manager.database_ops import DatabaseOpsManager
 from TableModels.base import Base
 from TableModels.ohlcv_data import OHLCVData
-from TableModels.shared_data import SharedData
-from TableModels.market_snapshot import MarketDataSnapshot
-from TableModels.order_management import OrderManagementSnapshot
-from TableModels.trade_record import TradeRecord
 
 
 class DatabaseSessionManager:

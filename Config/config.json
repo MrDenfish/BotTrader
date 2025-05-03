@@ -21,7 +21,7 @@
     "DATABASE_FILE": "trades.db",
     "CHUNKS_DIR": "data/trades/"
   },
-  "moe": {
+  "jack": {
     "UTILS_DIR": "Utils",
     "SENDER_ERROR_LOG_DIR": "logs/signal_logs",
     "LISTENER_ERROR_LOG_DIR": "logs/listener_logs",

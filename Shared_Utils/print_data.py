@@ -69,7 +69,12 @@ class PrintData:
         #     return f"\033[93m{text}\033[0m" if color_output else str(text)
 
         def extract_threshold(value):
-            return value[2] if isinstance(value, tuple) and len(value) == 3 else None
+            if isinstance(value, tuple) and len(value) == 3:
+                try:
+                    return round(float(value[2]), 2)
+                except (TypeError, ValueError):
+                    return None
+            return None
 
         def extract_computed_value(value):
             if isinstance(value, tuple) and len(value) == 3:
@@ -79,8 +84,12 @@ class PrintData:
         def color_if_signal(value):
             if isinstance(value, tuple) and len(value) == 3:
                 signal, computed, threshold = value
-                computed = green(computed) if signal == 1 else computed
-                return f"{computed}/{threshold}"
+                if signal == 1:
+                    computed = green(computed)
+                    return f"{computed}/{round(threshold, 2)}"
+                else:
+                    # ✅ If no signal, just show computed
+                    return round(computed, 2) if computed is not None else ""
             return value
 
         # 1. Threshold row
@@ -90,6 +99,11 @@ class PrintData:
         matrix = matrix.copy()
         for col in matrix.columns:
             if col in ['Buy Signal', 'Sell Signal']:
+                # ✅ Special formatting: Threshold row shows only threshold
+                threshold_df[col] = threshold_df[col].apply(
+                    lambda val: round(val, 2) if isinstance(val, (float, int)) else val)
+
+                # ✅ Regular rows show computed/threshold
                 matrix[col] = matrix[col].apply(color_if_signal)
             elif any(x in col for x in ['Buy', 'Sell']) and col not in ['Buy Signal', 'Sell Signal']:
                 matrix[col] = matrix[col].apply(

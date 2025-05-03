@@ -1,0 +1,16 @@
+{
+   "name": "organizations/75baf820-7e82-444a-ba30-b4ffd3859a95/apiKeys/d827d99f-8f4c-4862-938f-3da26d875dce",
+   "signing_key": "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIPBp7si8X8MBHr1KX/VEVmlfwym+iB6xo2UQh0SN9X8roAoGCCqGSM49\nAwEHoUQDQgAEbNakT4KBw2hCvzTKr9Thry4EkqPr7xVREiHTIU7F1pEj/OTI54sV\naisavDGe+x26aTwuS8lOv8adJQ1kojKtwA==\n-----END EC PRIVATE KEY-----\n",
+   "user_api_url": "wss://advanced-trade-ws-user.coinbase.com",
+   "market_api_url": "wss://advanced-trade-ws.coinbase.com",
+   "rest_api_url": "https://api.coinbase.com",
+   "algorithm": "ES256",
+   "market_channels": {
+      "ticker_batch": "ticker_batch_async",
+      "heartbeats": "heartbeats_async"
+   },
+   "user_channels": {
+      "user": "user_async",
+      "heartbeats": "heartbeats_async"
+   }
+}
