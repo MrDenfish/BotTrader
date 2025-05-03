@@ -2,12 +2,18 @@ import asyncio
 
 from databases import Database
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from Config.config_manager import CentralConfig
 from sighook.database_ops import DatabaseOpsManager
-from sighook.database_table_models import Base  # already imported implicitly
-from sighook.database_table_models import OHLCVData
+from TableModels.database_table_models import DatabaseTables
+from TableModels.base import Base
+from TableModels.ohlcv_data import OHLCVData
+from TableModels.shared_data import SharedData
+from TableModels.market_snapshot import MarketDataSnapshot
+from TableModels.order_management import OrderManagementSnapshot
+from TableModels.trade_record import TradeRecord
 
 
 class DatabaseSessionManager:
@@ -44,14 +50,17 @@ class DatabaseSessionManager:
         # Initialize the SQLAlchemy async engine
         self.engine = create_async_engine(self.config.database_url, echo=False)
 
-
-        # Use the new database_url method
-        #self.database = Database(self.config.database_url)
+        self.async_session_factory = sessionmaker(
+            bind=self.engine,
+            expire_on_commit=False,
+            class_=AsyncSession
+        )
         self.database_ops = None  # Will be set later after components are initialized
 
     async def initialize_schema(self):
         try:
             async with self.engine.begin() as conn:
+
                 await conn.run_sync(Base.metadata.create_all)
             self.logger.info("✅ Database schema initialized (tables created if they didn't exist).")
         except Exception as e:
@@ -98,7 +107,7 @@ class DatabaseSessionManager:
                     self.logger.info("Database connected successfully.")
                     return
             except Exception as e:
-                self.logger.warning(f"❌ Database connection attempt {attempt} failed: {e}")
+                self.logger.warning(f"❌ Database connection attempt {attempt} failed: {e}", exc_info=True)
                 await asyncio.sleep(2)  # Wait before retrying
         raise ConnectionError("Failed to establish a database connection after retries.")
 
@@ -124,7 +133,7 @@ class DatabaseSessionManager:
                 """)
                 self.logger.info("✅ Inserted initial market_data row.")
         except Exception as e:
-            self.logger.error(f"❌ Failed to populate initial shared_data: {e}")
+            self.logger.error(f"❌ Failed to populate initial shared_data: {e}",exc_info=True)
 
 
     async def disconnect(self):
