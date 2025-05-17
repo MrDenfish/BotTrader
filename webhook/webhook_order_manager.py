@@ -455,110 +455,82 @@ class TradeOrderManager:
 
         for attempt in range(max_attempts):
             try:
-                self.logger.debug(f"� Attempt #{attempt + 1} to place {order_type} order for {symbol}...")
+                self.logger.debug(f"📤 Attempt #{attempt + 1} to place {order_type} order for {symbol}...")
 
                 # Step 1: Refresh order book
                 order_book = await self.order_book_manager.get_order_book(order_data, symbol)
                 highest_bid = Decimal(order_book['highest_bid'])
                 lowest_ask = Decimal(order_book['lowest_ask'])
 
+                # Step 1.1: Adjust price
                 adjustment = Decimal('0.0001')
                 side = order_data.side.lower()
-                if side == 'buy':
-                    price = min(highest_bid, lowest_ask - adjustment)
-                else:
-                    price = max(highest_bid, lowest_ask + adjustment)
-
+                price = min(highest_bid, lowest_ask - adjustment) if side == 'buy' else max(highest_bid, lowest_ask + adjustment)
                 order_data.adjusted_price = price.quantize(Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_HALF_UP)
 
-                # Step 1.5: Validate post-only pricing rules
+                # Step 1.5: Validate post-only logic
                 if getattr(order_data, 'post_only', False):
                     if (side == 'buy' and order_data.adjusted_price >= lowest_ask) or \
                             (side == 'sell' and order_data.adjusted_price <= highest_bid):
-                        self.logger.warning(
-                            f"⚠️ Invalid post-only {side.upper()} price for {symbol}: "
-                            f"{order_data.adjusted_price} violates order book constraints. "
-                            f"highest_bid={highest_bid}, lowest_ask={lowest_ask}"
-                        )
+                        self.logger.warning(f"⚠️ Invalid post-only {side.upper()} price for {symbol}.")
                         return False, self.build_response(
-                            success=False,
-                            message="Post-only order rejected due to limit price violating book constraints",
-                            code="422",
-                            details=order_data.__dict__,
-                            error_response={
-                                "error": "INVALID_LIMIT_PRICE_POST_ONLY",
-                                "message": "⚠️ Adjusted price would match immediately (not a maker order)."
-                            }
+                            success=False, code="422", message="Post-only price violation", details=order_data.__dict__,
+                            error_response={"error": "INVALID_LIMIT_PRICE_POST_ONLY", "message": "Would match immediately"}
                         )
 
-
-                # Step 2: Recalculate TP/SL if needed
-                tp = sl = None
+                # Step 2: Recalculate TP/SL if applicable
                 if order_type in ['tp_sl', 'limit', 'bracket']:
                     tp, sl = await self.profit_manager.calculate_tp_sl(order_data)
-                    order_data.take_profit_price = tp
-                    order_data.stop_loss_price = sl
+                    order_data.take_profit_price, order_data.stop_loss_price = tp, sl
 
-                # Step 3: Early balance check
+                # Step 3: Balance check
                 if side == 'buy':
                     estimated_cost = order_data.adjusted_price * order_data.adjusted_size
                     if estimated_cost > order_data.usd_avail_balance:
                         return False, self.build_response(
-                            success=False,
-                            message="Order Blocked - Insufficient USD",
-                            code="422",
-                            details=order_data.__dict__,
-                            error_response={
-                                "error": "INSUFFICIENT_USD",
-                                "message": f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_avail_balance}) "
-                                           f"for {symbol} BUY. Required: ${estimated_cost.quantize(Decimal('1e-2'))}"
-                            }
+                            success=False, code="422", message="Insufficient USD", details=order_data.__dict__,
+                            error_response={"error": "INSUFFICIENT_USD",
+                                            "message": f"Need ${estimated_cost:.2f}, have ${order_data.usd_avail_balance:.2f}"}
                         )
 
-                # Step 4: Place order
+                # Step 4: Attempt order placement
                 if order_type == 'limit':
                     response = await self.order_types.place_limit_order("Webhook", order_data)
                 elif order_type == 'tp_sl':
-                    response = await self.order_types.process_limit_and_tp_sl_orders("Webhook", order_data,
-                                                                                     take_profit=tp, stop_loss=sl)
+                    response = await self.order_types.process_limit_and_tp_sl_orders("Webhook", order_data, tp, sl)
                 elif order_type == 'trailing_stop':
                     response = await self.order_types.place_trailing_stop_order(order_book, order_data, highest_bid)
                 else:
-                    return False, self.build_response(
-                        success=False,
-                        message=f"Unknown order type: {order_type}",
-                        code="400",
-                        details=order_data.__dict__
-                    )
+                    return False, self.build_response(False, f"Unknown order type: {order_type}", "400", order_data.__dict__)
 
-                # Step 5: Handle success
-                if response and response.get('success') and response.get('success_response', {}).get('order_id'):
+                # Step 5: Handle known failure format: {'status': 'failed', 'reason': ...}
+                if isinstance(response, dict) and response.get('status') == 'failed':
+                    reason = response.get('reason', '')
+                    if reason == 'insufficient_balance':
+                        return False, self.build_response(
+                            success=False, code="422", message="Insufficient balance", details=order_data.__dict__,
+                            error_response={"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}
+                        )
+                    # Add more custom 'reason' cases here as needed
+
+                # Step 6: Handle success
+                if response.get('success') and response.get('success_response', {}).get('order_id'):
+                    order_id = response['success_response']['order_id']
+                    order_data.order_id = order_id
+                    order_data.parent_order_id = order_id
                     self.logger.info(f"✅ Successfully placed {order_type} order for {symbol}")
-                    order_data.order_id = response.get('success_response', {}).get('order_id')
-                    order_data.parent_order_id = response.get('success_response', {}).get('order_id')
-                    return True, self.build_response(
-                        success=True,
-                        message="Order placed",
-                        code="200",
-                        details=order_data.__dict__
-                    )
+                    return True, self.build_response(True, "Order placed", "200", order_data.__dict__)
 
-                # Step 6: Handle known recoverable errors
-                if not response:
-                    self.logger.error(f"❌ No response received from order placement attempt #{attempt + 1} for {symbol}.")
-                    continue
-
+                # Step 7: Handle recoverable or known errors
                 error_response = response.get('error_response', {})
-
                 error_code = error_response.get('error', '') or response.get('error', '')
                 error_msg = error_response.get('message', '') or response.get('message', '')
 
                 if error_code in ['amend', 'Too many decimals', 'INVALID_SIZE_PRECISION']:
                     self.logger.warning(f"⚠️ Fixing precision (Attempt {attempt + 1}/{max_attempts})")
                     adjusted_price, adjusted_size = self.shared_utils_precision.adjust_price_and_size(order_data.__dict__, order_book)
-                    order_data.adjusted_price = self.shared_utils_precision.adjust_precision(
-                        order_data.base_decimal, order_data.quote_decimal, adjusted_price, convert='quote'
-                    )
+                    order_data.adjusted_price = self.shared_utils_precision.adjust_precision(order_data.base_decimal, order_data.quote_decimal,
+                                                                                             adjusted_price, 'quote')
                     order_data.adjusted_size = adjusted_size
                     continue
 
@@ -572,50 +544,35 @@ class TradeOrderManager:
                     continue
 
                 if error_code == 'INVALID_LIMIT_PRICE_POST_ONLY' and attempt == max_attempts - 1:
-                    self.logger.warning(f"� Retrying without post-only constraint for {symbol}")
+                    self.logger.warning(f"⚠️ Retrying without post-only constraint for {symbol}")
                     order_data.post_only = False
                     continue
 
-                # ❗ Final retry — rebuild order_data from scratch
                 if attempt == max_attempts - 1:
-                    self.logger.warning(f"� Last attempt, rebuilding OrderData for {symbol}...")
-
+                    self.logger.warning(f"🛠️ Last attempt: rebuilding OrderData for {symbol}")
                     rebuilt_order_data = await self.trade_order_manager.build_order_data(
                         order_data.source, order_data.trigger, order_data.base_currency, order_data.trading_pair, None, None
                     )
-
                     if rebuilt_order_data:
-                        # ✅ Log key field changes
-                        diff_log = []
-                        for attr in ['adjusted_price', 'adjusted_size', 'usd_avail_balance', 'limit_price']:
-                            original = getattr(order_data, attr, None)
-                            rebuilt = getattr(rebuilt_order_data, attr, None)
-                            if original != rebuilt:
-                                diff_log.append(f"{attr}: {original} ➜ {rebuilt}")
-
-                        if diff_log:
-                            self.logger.info(f"� OrderData updated on retry:\n" + "\n".join(diff_log))
+                        changes = [f"{attr}: {getattr(order_data, attr)} ➜ {getattr(rebuilt_order_data, attr)}"
+                                   for attr in ['adjusted_price', 'adjusted_size', 'usd_avail_balance', 'limit_price']
+                                   if getattr(order_data, attr) != getattr(rebuilt_order_data, attr)]
+                        if changes:
+                            self.logger.info("🔁 Rebuilt OrderData with changes:\n" + "\n".join(changes))
                         else:
-                            self.logger.info("⚠️ OrderData rebuilt but no key fields changed.")
-
+                            self.logger.info("⚠️ Rebuilt OrderData but no changes found.")
                         order_data = rebuilt_order_data
                         continue
                     else:
-                        self.logger.error(f"❌ Failed to rebuild OrderData on final retry for {symbol}")
-                        return False, self.build_response(
-                            success=False,
-                            message="Failed to rebuild order",
-                            code="500",
-                            details=order_data.__dict__
-                        )
+                        self.logger.error(f"❌ Failed to rebuild OrderData on final attempt for {symbol}")
+                        return False, self.build_response(False, "Failed to rebuild order", "500", order_data.__dict__)
 
-                # Unrecoverable or unknown error
                 return False, self.build_response(False, error_msg or "Order placement failed", "500", order_data.__dict__,
                                                   error_response=error_response)
+
             except Exception as ex:
-                self.logger.error(f"❌ Error during attempt #{attempt + 1}: {ex}", exc_info=True)
+                self.logger.error(f"❌ Exception during attempt #{attempt + 1}: {ex}", exc_info=True)
 
-
-        self.logger.info(f"❌ Order placement failed after {max_attempts} attempts for {symbol}.")
-        return False, self.build_response("Order placement failed after retries", "500", order_data.__dict__)
+        self.logger.info(f"❌ All {max_attempts} attempts to place order for {symbol} failed.")
+        return False, self.build_response(False, "Order placement failed after retries", "500", order_data.__dict__)
 

@@ -77,6 +77,7 @@ async def build_websocket_components(listener, shared_data_manager):
     # ------------------------------------------------------
     passive_order_manager = PassiveOrderManager(
         trade_order_manager=listener.trade_order_manager,
+        order_manager=listener.order_manager,
         logger=listener.logger,
         fee_cache=fee_rates,  # ← new
         # optional knobs ↓
@@ -216,8 +217,7 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
             listener.ohlcv_manager.market_manager = listener.market_manager
 
         listener.order_manager = trade_bot.order_manager
-        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(listener,
-                                                                                                  shared_data_manager)
+        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(listener,shared_data_manager)
 
         listener.websocket_helper = websocket_helper
         listener.websocket_manager = websocket_manager

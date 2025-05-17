@@ -2,6 +2,7 @@ import asyncio
 import json
 import math
 import time
+from datetime import datetime
 from decimal import Decimal, getcontext
 
 from Config.config_manager import CentralConfig as Config
@@ -114,7 +115,7 @@ class WebSocketMarketManager:
         ▸ Deletes DB rows when orders are CANCELLED
         ▸ Triggers handle_order_fill on filled orders
         """
-        print(f"📥 Received user message: {json.dumps(data, indent=2)}")  # debug
+        #  print(f"📥 Received user message: {json.dumps(data, indent=2)}")  # debug
         try:
             events = data.get("events", [])
             if not isinstance(events, list):
@@ -141,32 +142,32 @@ class WebSocketMarketManager:
                     side = (order.get("order_side") or "").lower()
                     status = (order.get("status") or "").upper()
 
+                    trade = {
+                        "order_id": order_id,
+                        "parent_id": parent_id,
+                        "symbol": symbol,
+                        "side": "sell",
+                        "price": order.get("limit_price") or order.get("price"),
+                        "amount": order.get("size") or order.get("filled_size") or order.get("order_size") or 0,
+                        "status": status.lower(),
+                        "order_time": order.get("event_time") or order.get("created_time") or  datetime.utcnow().isoformat(),
+                        "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
+                    }
                     if not order_id or not symbol:
                         continue
 
                     # --- Delete on cancel
                     if status == "CANCELLED":
                         try:
-                            await self.shared_data_manager.trade_recorder.record_trade(order_id)
-                            self.logger.info(f"❎ {order_id} cancelled → removed from DB")
+                            await self.shared_data_manager.trade_recorder.delete_trade(order_id)
+                            self.logger.info(f"❎ {order_id} CANCELLED → deleted from DB")
                         except Exception:
-                            self.logger.error("delete_trade failed", exc_info=True)
+                            self.logger.error("❌ delete_trade failed", exc_info=True)
                         order_tracker.pop(order_id, None)
                         continue
 
                     # --- Record TP/SL child sells
                     if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
-                        trade = {
-                            "order_id": order_id,
-                            "parent_order_id": parent_id,
-                            "product_id": symbol,
-                            "side": "sell",
-                            "price": order.get("limit_price") or order.get("price"),
-                            "size": order.get("size") or order.get("filled_size") or order.get("order_size"),
-                            "status": status.lower(),
-                            "order_time": order.get("event_time") or order.get("created_time"),
-                            "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
-                        }
                         try:
                             await self.shared_data_manager.trade_recorder.record_trade(trade)
                             self.logger.debug(f"TP/SL child stored → {order_id}")
@@ -206,8 +207,8 @@ class WebSocketMarketManager:
                                 pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
                                 self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
 
-                        self.logger.info(f"✅ Order filled: {order_id} at {order.get('avg_price')} with fee {order.get('total_fees')}")
-                        await self.listener.handle_order_fill(order_data)
+                            self.logger.info(f"✅ Order filled: {order_id} at {order.get('avg_price')} with fee {order.get('total_fees')}")
+                            await self.listener.handle_order_fill(order_data)
 
             # Finalize snapshot
             om_snap["order_tracker"] = order_tracker

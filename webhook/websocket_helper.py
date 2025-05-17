@@ -673,7 +673,7 @@ class WebSocketHelper:
                         order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
                         self.logger.info(f"Placed stop-loss order for {symbol}: {response_msg}")
 
-            await asyncio.sleep(15)
+            await asyncio.sleep(30)
 
         except Exception as e:
             self.logger.error(f"Error in monitor_untracked_assets: {e}", exc_info=True)
@@ -727,6 +727,12 @@ class WebSocketHelper:
                     #print(f"� Removing obsolete order: {obsolete_order_id}")# debug
                     del order_tracker_master[obsolete_order_id]
 
+            def parse_float(value, default=0.0):
+                try:
+                    return float(value) if value not in (None, '', 'null') else default
+                except (ValueError, TypeError):
+                    return default
+
             # ✅ Update order tracker with new API data
             for order in all_open_orders:
                 order_id = order.get('id')
@@ -735,9 +741,33 @@ class WebSocketHelper:
                     if created_time_str:
                         created_time = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
                         now = datetime.now(timezone.utc)
-                        order['order_duration'] = round((now - created_time).total_seconds() / 60, 2)
+                        order_duration = round((now - created_time).total_seconds() / 60, 2)
+                    else:
+                        order_duration = None
 
-                    order_tracker_master[order_id] = order
+                    # Updated structure for consistency
+                    order_tracker_master[order_id] = {
+                        'order_id': order_id,
+                        'symbol': order.get('symbol'),
+                        'side': order.get('side').upper(),
+                        'type': order.get('type').upper() if order.get('type') else 'LIMIT',
+                        'status': order.get('status').upper(),
+                        'filled': parse_float(order.get('filled', 0)),
+                        'remaining': parse_float(order.get('remaining')),
+                        'amount': parse_float(order.get('amount', 0)),
+                        'price': parse_float(order.get('price', 0)),
+                        'triggerPrice': parse_float(order.get('triggerPrice')),
+                        'stopPrice': parse_float(order.get('stopPrice')),
+                        'datetime': order.get('datetime'),
+                        'order_duration': order_duration,
+                        'trigger_status': order.get('info', {}).get('trigger_status', 'Not Active'),
+                        'clientOrderId': order.get('clientOrderId'),
+                        'info': order.get('info', {}),
+                        'limit_price': parse_float(order.get('info', {}).get('order_configuration', {})
+                                                   .get('limit_limit_gtc', {})
+                                                   .get('limit_price'))
+                    }
+
             # ✅ Ensure latest data is stored
 
             # ✅ Save updated tracker

@@ -137,8 +137,11 @@ class WebSocketManager:
                 await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
                 self.reconnect_attempts += 1
 
+            except asyncio.CancelledError:
+                self.logger.warning("⚠️ WebSocket connection task was cancelled.")
+                raise  # re-raise to allow upstream shutdown handling
             except Exception as general_error:
-                self.logger.error(f"Unexpected WebSocket error: {general_error}", exc_info=True)
+                self.logger.error(f"Unexpected WebSocket error, check NGROK connection: {general_error}", exc_info=True)
                 await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
                 self.reconnect_attempts += 1
 
@@ -220,6 +223,7 @@ class WebhookListener:
 
         self.passive_order_manager = PassiveOrderManager(
             trade_order_manager=None,
+            order_manager = None,
             logger=None,
             fee_cache=self.fee_rates,  # ← new
             # optional knobs ↓
@@ -470,10 +474,10 @@ class WebhookListener:
                     # Add the trailing stop order to the order_tracker
                     self.order_management['order_tracker'][response_data["order_id"]] = {
                         'symbol': order_data.trading_pair,
-                        'take_profit_price': tp,
+                        'take_profit_price': order_data.take_profit_price,
                         'purchase_price': order_data.average_price,
                         'amount': order_data.order_amount,
-                        'stop_loss_price': sl,
+                        'stop_loss_price': order_data.stop_loss_price,
                         'limit_price': order_data.limit_price * Decimal('1.002')  # Example limit price adjustment
                     }
                     order_id = response_data.get("order_id")
@@ -525,7 +529,7 @@ class WebhookListener:
                     self.logger.order_sent(
                         f"Webhook response: {message} {symbol} side:{side} size:{order_amount}. Order originated from {origin}"
                     )
-                print(json.dumps(body, indent=2))  # Optional debugging output
+                #print(json.dumps(body, indent=2))  # Optional debugging output
 
             except Exception as decode_error:
                 self.logger.error(f"⚠️ Could not decode JSON response: {decode_error}", exc_info=True)
@@ -652,8 +656,6 @@ class WebhookListener:
 
             # ✅ Convert Decimals to JSON-safe format
             return self.shared_utils_utility.safe_json_response(response, status=code)
-
-
         except Exception as e:
             self.logger.error(f"Error processing webhook: {e}", exc_info=True)
             return web.json_response({"success": False, "message": f"Internal error: {e}"}, status=500)
@@ -664,11 +666,8 @@ class WebhookListener:
             asset = trade_data['base_currency']
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-
-
             current_prices = market_data_snapshot.get('current_prices', {})
             base_price = self.shared_utils_precision.float_to_decimal(current_prices.get(trading_pair, 0), quote_deci)
-
             quote_price = Decimal(1.00)
             return base_price, quote_price
         except Exception as e:
@@ -882,7 +881,6 @@ class WebhookListener:
                         break
             else:  # simple top-level key
                 cur = o.get(path)
-
             if cur not in (None, "", []):
                 return cur
         return default

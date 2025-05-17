@@ -146,7 +146,6 @@ class OrderManager:
                 self.logger.error(f"❌ Error in throttled_send: {e}", exc_info=True)
                 return None
 
-
     async def get_open_orders(self):  # async
         """PART III: Trading Strategies"""
         """ Fetch open orders for ALL USD paired coins  and process the data to determine if the order should be
@@ -289,9 +288,9 @@ class OrderManager:
                 info = order.get('info', {})
                 common_fields = {
                     'order_id': order_id,
-                    'parent_id':info.get('originating_order_id'),
-                    'product_id': info.get('product_id'),
-                    'side': info.get('side'),
+                    'parent_id':None if info.get("side", "").lower() == "buy" else info.get("originating_order_id"),
+                    'product_id': info.get('product_id',order.get('symbol')),
+                    'side': info.get('side',order.get('side')),
                     'filled': order.get('filled'),
                     'remaining': order.get('remaining'),
                     'order_type': order_type,

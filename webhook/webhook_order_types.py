@@ -237,7 +237,7 @@ class OrderTypeManager:
 
                 return response
             else:
-                print(f"❗️ Order Rejected TP/SL: {response.get('error_response', {}).get('message')} ❗️")
+                print(f"❗️ Order Rejected TP/SL: {response.get('error_response', {}).get('message')} ❗️") # debug
 
             return response
 
