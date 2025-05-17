@@ -2,8 +2,6 @@
 # SharedDataManager/trade_recorder.py
 
 from TableModels.trade_record import TradeRecord
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import NoResultFound
 from sqlalchemy.future import select
 from decimal import Decimal
 from datetime import datetime
@@ -23,19 +21,27 @@ class TradeRecorder:
         """
         async with self.db_session_manager.async_session_factory() as session:
             try:
+                order_time_raw = trade_data.get('order_time', datetime.utcnow())
+                order_time = (
+                    datetime.fromisoformat(order_time_raw)
+                    if isinstance(order_time_raw, str)
+                    else order_time_raw
+                )
+
                 trade_record = TradeRecord(
                     symbol=trade_data['symbol'],
                     side=trade_data['side'],
-                    order_time=trade_data.get('order_time', datetime.utcnow()),
+                    order_time=order_time,
                     size=Decimal(str(trade_data['amount'])),
                     pnl_usd=None,
                     total_fees_usd=None,
                     price=Decimal(str(trade_data['price'])),
                     order_id=trade_data['order_id'],
-                    parent_id=trade_data['order_id'],
+                    parent_id=trade_data['parent_id'] or trade_data['order_id'],
                     trigger=trade_data['trigger'],
                     status=trade_data['status']
                 )
+
                 session.add(trade_record)
                 await session.commit()
 
@@ -68,9 +74,23 @@ class TradeRecorder:
             trades = result.scalars().all()
             return trades
 
-    async def delete_trade(self, order_id: str) -> None:
-        """Remove a trade row entirely when an order is cancelled."""
-        async with self.db_session_manager.session() as session:
-            rec = await session.get(TradeRecord, order_id)
-            if rec:
-                await session.delete(rec)
+    async def delete_trade(self, order_id: str):
+        """
+        Deletes a trade from the database by its order_id.
+        """
+        async with self.db_session_manager.async_session_factory() as session:
+            try:
+                result = await session.get(TradeRecord, order_id)
+                if result:
+                    await session.delete(result)
+                    await session.commit()
+                    if self.logger:
+                        self.logger.info(f"🗑️ Deleted trade record for order_id {order_id}")
+                else:
+                    if self.logger:
+                        self.logger.warning(f"⚠️ Tried to delete trade {order_id}, but it was not found.")
+            except Exception as e:
+                await session.rollback()
+                if self.logger:
+                    self.logger.error(f"❌ Failed to delete trade {order_id}: {e}", exc_info=True)
+

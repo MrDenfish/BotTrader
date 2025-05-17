@@ -99,9 +99,8 @@ class PrecisionUtils:
         raise ValueError(f"Symbol {symbol} not found in market_cache.")
 
     def adjust_price_and_size(self, order_data, order_book) -> tuple[Decimal, Decimal]:
-
         """
-        Adjusts price and size based on order book data, ensuring proper precision. Fees are added tp give a more accurate price.
+        Adjusts price and size based on order book data, ensuring proper precision and size limits.
 
         Args:
             order_data (dict): Order details containing side, order size, quote amount, etc.
@@ -123,9 +122,9 @@ class PrecisionUtils:
 
             # Determine the base price
             if side == 'SELL':
-                adjusted_price = highest_bid  # Selling uses highest bid
+                adjusted_price = highest_bid
             elif side == 'BUY':
-                adjusted_price = lowest_ask  # Buying uses lowest ask
+                adjusted_price = lowest_ask
             else:
                 raise ValueError(f"Unsupported order side: {side}")
 
@@ -136,43 +135,47 @@ class PrecisionUtils:
 
             # Ensure the adjustment factor respects the asset's precision
             precision_quote = Decimal(f"1e-{order_data.get('quote_decimal', 2)}")
-            precision_base = Decimal(f"1e-{order_data.get('base_decimal',8)}")
+            precision_base = Decimal(f"1e-{order_data.get('base_decimal', 8)}")
             precision = min(precision_quote, precision_base)
             adjustment_factor = max(adjustment_factor, precision_quote)
 
-            # Adjust both bid and ask
-            adjusted_bid = highest_bid + adjustment_factor  # Increase bid slightly
-            adjusted_ask = lowest_ask - adjustment_factor  # Decrease ask slightly
-            if order_data.get('type'):
-                fee_rate = Decimal(order_data.get('maker_fee') if order_data.get('type') == 'limit' else order_data.get('taker_fee'))
-            elif side.upper() == ' SELL':
-                fee_rate = Decimal(order_data.get('taker_fee') if not order_data.get('type') else order_data.get('maker_fee'))
-            elif side.upper() == 'BUY':
-                fee_rate = Decimal(order_data.get('maker_fee') if not order_data.get('type') else order_data.get('taker_fee'))
-            else:
-                fee_rate = order_data.get('taker_fee')
+            # Adjust bid and ask prices slightly to be competitive
+            adjusted_bid = highest_bid + adjustment_factor
+            adjusted_ask = lowest_ask - adjustment_factor
 
-            # Apply adjusted price for both sides
+            # Determine fee rate
+            order_type = order_data.get('type')
+            if order_type == 'limit':
+                fee_rate = Decimal(order_data.get('maker_fee'))
+            else:
+                fee_rate = Decimal(order_data.get('taker_fee'))
+
             if side == 'BUY':
                 net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
                 adjusted_price = net_proceeds.quantize(precision, rounding=ROUND_DOWN)
+
                 quote_amount = Decimal(str(order_data.get('order_amount', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")
-                adjusted_size = quote_amount / adjusted_price
-                adjusted_size = adjusted_size.quantize(precision_base, rounding=ROUND_DOWN)
+
+                adjusted_size = (quote_amount / adjusted_price).quantize(precision_base, rounding=ROUND_DOWN)
+
             elif side == 'SELL':
                 gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
                 adjusted_price = gross_cost.quantize(precision_quote, rounding=ROUND_DOWN)
 
-                raw_size = Decimal(str(max(
+                raw_size = Decimal(str(min(
                     order_data.get('sell_amount', 0),
                     order_data.get('base_avail_to_trade', 0)
                 )))
 
-                # � Apply a safety margin based on precision
                 safety_margin = precision_base * Decimal('2')  # 2 ticks worth of precision
                 adjusted_size = (raw_size - safety_margin).quantize(precision_base, rounding=ROUND_DOWN)
+
+                # Ensure adjusted_size does not exceed available balance
+                base_available = Decimal(str(order_data.get('base_avail_to_trade', 0)))
+                if adjusted_size > base_available:
+                    adjusted_size = base_available.quantize(precision_base, rounding=ROUND_DOWN)
 
             if adjusted_price is None or adjusted_size is None:
                 raise ValueError("Adjusted price or size cannot be None.")

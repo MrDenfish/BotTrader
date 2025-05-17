@@ -45,10 +45,11 @@ class PassiveOrderManager:
     #: How aggressively to bias quotes when inventory is skewed.
     INVENTORY_BIAS_FACTOR = Decimal("0.25")  # ≤ 25 % of current spread
 
-    def __init__(self, trade_order_manager, logger, fee_cache: Dict[str, Decimal], *,
+    def __init__(self, trade_order_manager, order_manager, logger, fee_cache: Dict[str, Decimal], *,
                  min_spread_pct: Decimal | None = None, max_lifetime: int | None = None,) -> None:
 
         self.tom = trade_order_manager  # shorthand inside class
+        self.order_manager = order_manager
         self.logger = logger
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
@@ -214,7 +215,7 @@ class PassiveOrderManager:
                         oid = entry.get(side)
                         if oid:
                             try:
-                                await self.tom.cancel_order(oid, symbol)
+                                await self.order_manager.cancel_order(oid, symbol)
                             except Exception as exc:  # noqa: BLE001 (broad ok here)
                                 self.logger.warning(
                                     f"⚠️ Failed to cancel expired {side} {symbol}: {exc}"

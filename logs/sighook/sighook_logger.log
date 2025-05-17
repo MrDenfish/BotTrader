@@ -1,42 +1,797 @@
-2025-05-02 00:01:02,304 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:04:07,836 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:11:13,439 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:323)
-2025-05-02 00:11:13,440 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:323)
-2025-05-02 00:11:13,440 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:323)
-2025-05-02 00:11:13,443 - sighook_logger - ERROR - ❌ Error cancelling stale orders: 'NoneType' object has no attribute 'split' (order_manager.py:221)
+2025-05-16 05:56:52,583 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 683 (trading_strategy.py:308)
+2025-05-16 05:56:56,379 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 05:56:58,557 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
+<html class="h-full" lang="en-US" dir="ltr">
+  <head>
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <meta charset="utf-8">
+    <meta name="author" content="ngrok">
+    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
+    <noscript>The endpoint 12f9962f21fa.ngrok.app is offline. (ERR_NGROK_3200)</noscript>
+    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
+  </head>
+  <body class="h-full" id="ngrok">
+    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAxMmY5OTYyZjIxZmEubmdyb2suYXBwIGlzIG9mZmxpbmUuIiwidGl0bGUiOiJOb3QgRm91bmQifQ=="></div>
+  </body>
+</html>
+ (alerts_msgs_webhooks.py:155)
+2025-05-16 05:56:58,557 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.08 (order_manager.py:490)
+2025-05-16 05:56:58,561 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
+<html class="h-full" lang="en-US" dir="ltr">
+  <head>
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <meta charset="utf-8">
+    <meta name="author" content="ngrok">
+    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
+    <noscript>The endpoint 12f9962f21fa.ngrok.app is offline. (ERR_NGROK_3200)</noscript>
+    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
+  </head>
+  <body class="h-full" id="ngrok">
+    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAxMmY5OTYyZjIxZmEubmdyb2suYXBwIGlzIG9mZmxpbmUuIiwidGl0bGUiOiJOb3QgRm91bmQifQ=="></div>
+  </body>
+</html>
+ (alerts_msgs_webhooks.py:155)
+2025-05-16 05:56:58,561 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7277 (order_manager.py:490)
+2025-05-16 05:56:58,599 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
+<html class="h-full" lang="en-US" dir="ltr">
+  <head>
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
+    <meta charset="utf-8">
+    <meta name="author" content="ngrok">
+    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
+    <noscript>The endpoint 12f9962f21fa.ngrok.app is offline. (ERR_NGROK_3200)</noscript>
+    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
+  </head>
+  <body class="h-full" id="ngrok">
+    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAxMmY5OTYyZjIxZmEubmdyb2suYXBwIGlzIG9mZmxpbmUuIiwidGl0bGUiOiJOb3QgRm91bmQifQ=="></div>
+  </body>
+</html>
+ (alerts_msgs_webhooks.py:155)
+2025-05-16 05:56:58,599 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2805.05 (order_manager.py:490)
+2025-05-16 05:58:32,057 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 685 (trading_strategy.py:308)
+2025-05-16 05:58:34,802 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:03:05,122 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:03:05,122 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:03:05,122 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:03:05,122 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:03:05,123 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:03:05,123 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:03:05,123 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-16 06:04:55,987 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 690 (trading_strategy.py:308)
+2025-05-16 06:04:59,904 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:06:11,905 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
 Traceback (most recent call last):
-  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 171, in cancel_stale_orders
-    asset = symbols.pop().split('-')[0]
-AttributeError: 'NoneType' object has no attribute 'split'
-2025-05-02 00:15:45,510 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:17:49,848 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:22:52,127 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:27:53,097 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:32:56,338 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:37:45,195 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:42:56,362 - sighook_logger - WARNING - Insufficient OHLCV data for PEPE/USD. Rows fetched: 326 (trading_strategy.py:308)
-2025-05-02 00:43:03,639 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:49:18,324 - sighook_logger - WARNING - Insufficient OHLCV data for PEPE/USD. Rows fetched: 331 (trading_strategy.py:308)
-2025-05-02 00:49:24,306 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 00:53:46,425 - sighook_logger - WARNING - Insufficient OHLCV data for PEPE/USD. Rows fetched: 336 (trading_strategy.py:308)
-2025-05-02 00:53:52,634 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 06:14:48,315 - sighook_logger - WARNING - Insufficient OHLCV data for PEPE/USD. Rows fetched: 657 (trading_strategy.py:308)
-2025-05-02 06:14:53,526 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 06:19:47,102 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 300 (trading_strategy.py:308)
-2025-05-02 06:19:47,182 - sighook_logger - WARNING - Insufficient OHLCV data for UNI/USD. Rows fetched: 304 (trading_strategy.py:308)
-2025-05-02 06:19:47,193 - sighook_logger - WARNING - Insufficient OHLCV data for PEPE/USD. Rows fetched: 662 (trading_strategy.py:308)
-2025-05-02 06:19:55,707 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 07:01:30,032 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 342 (trading_strategy.py:308)
-2025-05-02 07:01:30,162 - sighook_logger - WARNING - Insufficient OHLCV data for UNI/USD. Rows fetched: 347 (trading_strategy.py:308)
-2025-05-02 07:01:30,175 - sighook_logger - WARNING - Insufficient OHLCV data for PEPE/USD. Rows fetched: 703 (trading_strategy.py:308)
-2025-05-02 07:01:38,734 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 07:06:21,587 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 347 (trading_strategy.py:308)
-2025-05-02 07:06:27,685 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 07:11:33,167 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 352 (trading_strategy.py:308)
-2025-05-02 07:11:40,645 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 07:16:28,683 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 357 (trading_strategy.py:308)
-2025-05-02 07:16:31,885 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 07:21:20,743 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 362 (trading_strategy.py:308)
-2025-05-02 07:21:23,972 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-02 07:26:41,050 - sighook_logger - WARNING - Insufficient OHLCV data for TURBO/USD. Rows fetched: 367 (trading_strategy.py:308)
-2025-05-02 07:26:44,446 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:06:11,906 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7279 (order_manager.py:490)
+2025-05-16 06:06:11,907 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:06:11,907 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2822.32 (order_manager.py:490)
+2025-05-16 06:06:11,908 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:06:11,908 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.08 (order_manager.py:490)
+2025-05-16 06:08:20,977 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 695 (trading_strategy.py:308)
+2025-05-16 06:08:23,696 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:09:05,209 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed", "code": "500", "details": {"trading_pair": "LSETH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 0.01819, "filled_price": 0.0, "base_currency": "LSETH", "quote_currency": "USD", "usd_avail_bala... (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-16 06:09:12,111 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:09:12,111 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.08 (order_manager.py:490)
+2025-05-16 06:09:12,111 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:09:12,112 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7279 (order_manager.py:490)
+2025-05-16 06:09:20,196 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+aiohttp.client_exceptions.ServerDisconnectedError: Server disconnected
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:09:20,197 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2822.32 (order_manager.py:490)
+2025-05-16 06:13:21,910 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 700 (trading_strategy.py:308)
+2025-05-16 06:13:23,685 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:15:29,778 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed", "code": "500", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_bal... (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-16 06:15:31,951 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:15:31,952 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7318 (order_manager.py:490)
+2025-05-16 06:15:31,953 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:15:31,954 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2815.78 (order_manager.py:490)
+2025-05-16 06:15:45,424 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+aiohttp.client_exceptions.ServerDisconnectedError: Server disconnected
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:15:45,425 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.08 (order_manager.py:490)
+2025-05-16 06:18:23,337 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 705 (trading_strategy.py:308)
+2025-05-16 06:18:26,044 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:20:29,988 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:20:29,989 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.08 (order_manager.py:490)
+2025-05-16 06:20:29,990 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:20:29,990 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7336 (order_manager.py:490)
+2025-05-16 06:20:29,991 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:20:29,992 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2824.25 (order_manager.py:490)
+2025-05-16 06:32:53,180 - sighook_logger - WARNING - Insufficient OHLCV data for XCN/USD. Rows fetched: 719 (trading_strategy.py:308)
+2025-05-16 06:32:57,078 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:33:58,385 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:33:58,385 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 06:33:58,385 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:33:58,386 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7318 (order_manager.py:490)
+2025-05-16 06:33:58,386 - sighook_logger - ERROR - ❌ Error in throttled_send: local variable 'response_text' referenced before assignment (order_manager.py:146)
+Traceback (most recent call last):
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 137, in send_webhook
+    response = await http_session.post(
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1054, in start
+    with self._timer:
+  File "/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/helpers.py", line 749, in __exit__
+    raise asyncio.TimeoutError from exc_val
+asyncio.exceptions.TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+UnboundLocalError: local variable 'response_text' referenced before assignment
+2025-05-16 06:33:58,386 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2807.53 (order_manager.py:490)
+2025-05-16 06:38:00,350 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:38:09,302 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "LSETH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 0.01819, "filled_price": 0.0, "base_currency": "LSETH", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 0.01819, "total_balance_crypto": 0.02, "available_to_trade_crypto": 0.02, "base_decimal": 5, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 2807.56, "lowest_ask": 2824.13, "maker": 0.0015, "taker": 0.0025, "spread": 16.57, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 2824.11, "adjusted_size": 0.01998, "stop_loss_price": 2795.92, "take_profit_price": 2901.94, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:38:09,302 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2824.23 (order_manager.py:490)
+2025-05-16 06:38:12,925 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 49.115, "total_balance_crypto": 49.12, "available_to_trade_crypto": 49.12, "base_decimal": 3, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 1.08, "lowest_ask": 1.09, "maker": 0.0015, "taker": 0.0025, "spread": 0.01, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 1.09, "adjusted_size": 49.118, "stop_loss_price": 1.07, "take_profit_price": 1.12, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:38:12,925 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 06:38:14,843 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BNT/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 72.88959, "filled_price": 0.0, "base_currency": "BNT", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 72.88959, "total_balance_crypto": 72.8896, "available_to_trade_crypto": 72.8896, "base_decimal": 6, "quote_decimal": 4, "quote_increment": 0.0001, "highest_bid": 0.7314, "lowest_ask": 0.7333, "maker": 0.0015, "taker": 0.0025, "spread": 0.0019, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 0.7334, "adjusted_size": 72.889598, "stop_loss_price": 0.726, "take_profit_price": 0.7536, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:38:14,844 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7340 (order_manager.py:490)
+2025-05-16 06:43:08,445 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:43:25,980 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BNT/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 72.88959, "filled_price": 0.0, "base_currency": "BNT", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 72.88959, "total_balance_crypto": 72.8896, "available_to_trade_crypto": 72.8896, "base_decimal": 6, "quote_decimal": 4, "quote_increment": 0.0001, "highest_bid": 0.7306, "lowest_ask": 0.7309, "maker": 0.0015, "taker": 0.0025, "spread": 0.0003, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 0.731, "adjusted_size": 72.889598, "stop_loss_price": 0.7237, "take_profit_price": 0.7511, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:43:25,981 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7328 (order_manager.py:490)
+2025-05-16 06:43:27,757 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 49.115, "total_balance_crypto": 49.12, "available_to_trade_crypto": 49.12, "base_decimal": 3, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 1.08, "lowest_ask": 1.09, "maker": 0.0015, "taker": 0.0025, "spread": 0.01, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 1.09, "adjusted_size": 49.118, "stop_loss_price": 1.07, "take_profit_price": 1.12, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:43:27,758 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 06:43:31,165 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "LSETH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 0.01819, "filled_price": 0.0, "base_currency": "LSETH", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 0.01819, "total_balance_crypto": 0.02, "available_to_trade_crypto": 0.02, "base_decimal": 5, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 2802.87, "lowest_ask": 2806.02, "maker": 0.0015, "taker": 0.0025, "spread": 3.15, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 2806.02, "adjusted_size": 0.01998, "stop_loss_price": 2778.01, "take_profit_price": 2883.36, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:43:31,165 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2824.25 (order_manager.py:490)
+2025-05-16 06:48:15,386 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:48:26,979 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BNT/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 72.88959, "filled_price": 0.0, "base_currency": "BNT", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 72.88959, "total_balance_crypto": 72.8896, "available_to_trade_crypto": 72.8896, "base_decimal": 6, "quote_decimal": 4, "quote_increment": 0.0001, "highest_bid": 0.7307, "lowest_ask": 0.7326, "maker": 0.0015, "taker": 0.0025, "spread": 0.0019, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 0.7327, "adjusted_size": 72.889598, "stop_loss_price": 0.7253, "take_profit_price": 0.7528, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:48:26,980 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7320 (order_manager.py:490)
+2025-05-16 06:48:32,909 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "LSETH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 0.01819, "filled_price": 0.0, "base_currency": "LSETH", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 0.01819, "total_balance_crypto": 0.02, "available_to_trade_crypto": 0.02, "base_decimal": 5, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 2810.59, "lowest_ask": 2824.22, "maker": 0.0015, "taker": 0.0025, "spread": 13.63, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 2824.22, "adjusted_size": 0.01998, "stop_loss_price": 2796.03, "take_profit_price": 2902.06, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:48:32,910 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2824.23 (order_manager.py:490)
+2025-05-16 06:48:34,425 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 49.115, "total_balance_crypto": 49.12, "available_to_trade_crypto": 49.12, "base_decimal": 3, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 1.08, "lowest_ask": 1.09, "maker": 0.0015, "taker": 0.0025, "spread": 0.01, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 1.09, "adjusted_size": 49.118, "stop_loss_price": 1.07, "take_profit_price": 1.12, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:48:34,426 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 06:53:36,112 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:53:51,474 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BNT/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 72.88959, "filled_price": 0.0, "base_currency": "BNT", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 72.88959, "total_balance_crypto": 72.8896, "available_to_trade_crypto": 72.8896, "base_decimal": 6, "quote_decimal": 4, "quote_increment": 0.0001, "highest_bid": 0.7306, "lowest_ask": 0.7318, "maker": 0.0015, "taker": 0.0025, "spread": 0.0012, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 0.7319, "adjusted_size": 72.889598, "stop_loss_price": 0.7245, "take_profit_price": 0.752, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:53:51,475 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7318 (order_manager.py:490)
+2025-05-16 06:53:53,317 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "LSETH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 0.01819, "filled_price": 0.0, "base_currency": "LSETH", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 0.01819, "total_balance_crypto": 0.02, "available_to_trade_crypto": 0.02, "base_decimal": 5, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 2804.52, "lowest_ask": 2808.36, "maker": 0.0015, "taker": 0.0025, "spread": 3.84, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 2808.36, "adjusted_size": 0.01998, "stop_loss_price": 2780.32, "take_profit_price": 2885.76, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:53:53,317 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2824.23 (order_manager.py:490)
+2025-05-16 06:53:54,055 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 49.115, "total_balance_crypto": 49.12, "available_to_trade_crypto": 49.12, "base_decimal": 3, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 1.08, "lowest_ask": 1.09, "maker": 0.0015, "taker": 0.0025, "spread": 0.01, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 1.09, "adjusted_size": 49.118, "stop_loss_price": 1.07, "take_profit_price": 1.12, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:53:54,055 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 06:58:13,776 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 06:58:29,634 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "LSETH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 0.01819, "filled_price": 0.0, "base_currency": "LSETH", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 0.01819, "total_balance_crypto": 0.02, "available_to_trade_crypto": 0.02, "base_decimal": 5, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 2813.6, "lowest_ask": 2824.25, "maker": 0.0015, "taker": 0.0025, "spread": 10.65, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 2824.25, "adjusted_size": 0.01998, "stop_loss_price": 2796.06, "take_profit_price": 2902.09, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:58:29,635 - sighook_logger - INFO - TAKE_PROFIT: LSETH/USD sell signal triggered profit @ sell price 2824.17 (order_manager.py:490)
+2025-05-16 06:58:31,048 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BNT/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 72.88959, "filled_price": 0.0, "base_currency": "BNT", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 72.88959, "total_balance_crypto": 72.8896, "available_to_trade_crypto": 72.8896, "base_decimal": 6, "quote_decimal": 4, "quote_increment": 0.0001, "highest_bid": 0.7308, "lowest_ask": 0.733, "maker": 0.0015, "taker": 0.0025, "spread": 0.0022, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 0.733, "adjusted_size": 72.889598, "stop_loss_price": 0.7256, "take_profit_price": 0.7532, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:58:31,048 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7329 (order_manager.py:490)
+2025-05-16 06:58:31,516 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 49.115, "total_balance_crypto": 49.12, "available_to_trade_crypto": 49.12, "base_decimal": 3, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 1.08, "lowest_ask": 1.09, "maker": 0.0015, "taker": 0.0025, "spread": 0.01, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 1.09, "adjusted_size": 49.118, "stop_loss_price": 1.07, "take_profit_price": 1.12, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 06:58:31,516 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 07:03:01,129 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-16 07:03:08,768 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BADGER/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 49.115, "filled_price": 0.0, "base_currency": "BADGER", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 49.115, "total_balance_crypto": 49.12, "available_to_trade_crypto": 49.12, "base_decimal": 3, "quote_decimal": 2, "quote_increment": 0.01, "highest_bid": 1.08, "lowest_ask": 1.09, "maker": 0.0015, "taker": 0.0025, "spread": 0.01, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 1.09, "adjusted_size": 49.118, "stop_loss_price": 1.07, "take_profit_price": 1.12, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 07:03:08,769 - sighook_logger - INFO - TAKE_PROFIT: BADGER/USD sell signal triggered profit @ sell price 1.09 (order_manager.py:490)
+2025-05-16 07:03:08,905 - sighook_logger - ERROR - ❌ Error in throttled_send: sequence item 0: expected str instance, traceback found (order_manager.py:146)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+Exception: Unhandled HTTP ‼️ 422: {"success": false, "message": "Insufficient balance", "code": "422", "details": {"trading_pair": "BNT/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "sell", "order_amount": 72.88959, "filled_price": 0.0, "base_currency": "BNT", "quote_currency": "USD", "usd_avail_balance": 15.06, "usd_balance": 15.06, "base_avail_balance": 72.88959, "total_balance_crypto": 72.8896, "available_to_trade_crypto": 72.8896, "base_decimal": 6, "quote_decimal": 4, "quote_increment": 0.0001, "highest_bid": 0.7306, "lowest_ask": 0.7312, "maker": 0.0015, "taker": 0.0025, "spread": 0.0006, "open_orders": [], "status": "VALID", "source": "webhook", "trigger": null, "price": 0.0, "cost_basis": 0.0, "limit_price": 0.0, "average_price": null, "adjusted_price": 0.7313, "adjusted_size": 72.889598, "stop_loss_price": 0.724, "take_profit_price": 0.7514, "volume_24h": null}, "error_response": {"error": "INSUFFICIENT_BALANCE", "message": "Exchange reported insufficient funds"}}
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/sighook/order_manager.py", line 143, in throttled_send
+    response = await self.webhook.send_webhook(self.http_session, webhook_payload)
+  File "/Users/jack/Python_Projects/BotTrader/sighook/alerts_msgs_webhooks.py", line 185, in send_webhook
+    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
+TypeError: sequence item 0: expected str instance, traceback found
+2025-05-16 07:03:08,906 - sighook_logger - INFO - TAKE_PROFIT: BNT/USD sell signal triggered profit @ sell price 0.7308 (order_manager.py:490)

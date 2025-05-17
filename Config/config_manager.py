@@ -307,7 +307,7 @@ class CentralConfig:
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5000))
         elif len(cwd_parts) > 2:
             if cwd_parts[2] == 'jack':
-                return cwd_parts[2], int(5001)
+                return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5000))
             else:
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5000))
         else:
