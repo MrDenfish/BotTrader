@@ -145,20 +145,20 @@ class PrecisionUtils:
 
             # Determine fee rate
             order_type = order_data.get('type')
-            if order_type == 'limit':
-                fee_rate = Decimal(order_data.get('maker_fee'))
-            else:
+            if order_type == 'market':
                 fee_rate = Decimal(order_data.get('taker_fee'))
+            else:
+                fee_rate = Decimal(order_data.get('maker_fee'))
 
             if side == 'BUY':
                 net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
                 adjusted_price = net_proceeds.quantize(precision, rounding=ROUND_DOWN)
 
-                quote_amount = Decimal(str(order_data.get('order_amount', 0)))
+                quote_amount_fiat = Decimal(str(order_data.get('order_amount_fiat', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")
 
-                adjusted_size = (quote_amount / adjusted_price).quantize(precision_base, rounding=ROUND_DOWN)
+                adjusted_size = (quote_amount_fiat / adjusted_price).quantize(precision_base, rounding=ROUND_DOWN)
 
             elif side == 'SELL':
                 gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)

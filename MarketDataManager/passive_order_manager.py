@@ -23,7 +23,7 @@ these at runtime based on your exchange tier and risk appetite.
 import asyncio
 import copy
 import time
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Dict, Any, Tuple
 
 # ---------------------------------------------------------------------------
@@ -37,16 +37,18 @@ class PassiveOrderManager:
     """A lightweight maker‑side quoting engine."""
 
     #: How wide the spread must be *before* we even attempt to quote.
-    DEFAULT_MIN_SPREAD_PCT = Decimal("0.20") / Decimal("100")  # 0.20 %
+    DEFAULT_MIN_SPREAD_PCT = Decimal("0.0025")  # 0.25%  # 0.20 %
 
     #: Cancel & refresh resting orders after this many seconds.
-    DEFAULT_MAX_LIFETIME = 120
+    DEFAULT_MAX_LIFETIME = 600 # 10 minutes
 
     #: How aggressively to bias quotes when inventory is skewed.
-    INVENTORY_BIAS_FACTOR = Decimal("0.25")  # ≤ 25 % of current spread
+    INVENTORY_BIAS_FACTOR = Decimal("0.10")  # ≤ 25 % of current spread Lower inventory skew
 
-    def __init__(self, trade_order_manager, order_manager, logger, fee_cache: Dict[str, Decimal], *,
-                 min_spread_pct: Decimal | None = None, max_lifetime: int | None = None,) -> None:
+    MIN_ORDER_COST_BASIS = Decimal("25.00")
+
+    def __init__(self, trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *,
+                  max_lifetime: int | None = None,) -> None:
 
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
@@ -54,6 +56,7 @@ class PassiveOrderManager:
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
         self.min_spread_pct = min_spread_pct or self.DEFAULT_MIN_SPREAD_PCT
+        self.min_order_cost_basis = self.MIN_ORDER_COST_BASIS
         self.max_lifetime = max_lifetime or self.DEFAULT_MAX_LIFETIME
 
         # {symbol: {"buy": order_id, "sell": order_id, "timestamp": float}}
@@ -107,10 +110,10 @@ class PassiveOrderManager:
         spread_pct: Decimal = spread / mid_price
 
         # Edge must beat round‑trip maker fees + cushion
-        required_edge = self.fee["maker"] * 4  # in, out, +slippage cushion
+        required_edge = self.fee["maker"] * Decimal(2.5)  # in, out, +slippage cushion
         if spread_pct < max(required_edge, self.min_spread_pct):
-            self.logger.debug(
-                f"⛔ Spread too narrow for {trading_pair}: {spread_pct:.4%}",
+            print(
+                f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < threshold {max(required_edge, self.min_spread_pct):.4%}"
             )
             return
 
@@ -119,7 +122,7 @@ class PassiveOrderManager:
         # ------------------------------------------------------------------
         try:
             tick = Decimal(str(od.quote_increment))
-            pct_nudge = Decimal("0.15") / Decimal("100")  # 0.15 % of mid
+            pct_nudge = Decimal("0.3") / Decimal("100")  # 0.15 % of mid
             adjustment = max(tick, (mid_price * pct_nudge).quantize(tick))
 
             # ------------------------------------------------------------------
@@ -142,6 +145,17 @@ class PassiveOrderManager:
                     target_px = od.lowest_ask + adjustment + bias
 
                 quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+                quote_od.adjusted_size_fiat = quote_od.order_amount_fiat  # if not already set
+                quote_od.adjusted_size = (quote_od.order_amount_fiat / quote_od.adjusted_price).quantize(
+                    Decimal(f'1e-{quote_od.base_decimal}'),
+                    rounding=ROUND_DOWN,
+                )
+
+                quote_od.cost_basis = (quote_od.adjusted_price * quote_od.adjusted_size).quantize(
+                    Decimal(f'1e-{quote_od.quote_decimal}'),
+                    rounding=ROUND_HALF_UP,
+                )
+
                 quote_od.trigger = f"passive_{side}@{quote_od.adjusted_price}"
 
                 # per‑side balance sanity check
@@ -175,14 +189,17 @@ class PassiveOrderManager:
         return imbalance * self.INVENTORY_BIAS_FACTOR * spread
 
     def _passes_balance_check(self, od: OrderData) -> bool:
-        """Ensure we can afford the order we are about to place."""
+        """Ensure affordability of the order about to placed."""
         maker_fee = self.fee["maker"]
+        if od.cost_basis < self.min_order_cost_basis :
+            return False
         if od.side == "buy":
-            cost = od.cost_basis * (1 + maker_fee)
+            fee_multiplier = Decimal(1) + self.fee["maker"]
+            cost = od.cost_basis * fee_multiplier
             if od.usd_avail_balance < cost:
                 return False
         else:  # sell
-            if od.order_amount < od.base_avail_balance:
+            if od.order_amount_fiat < od.base_avail_balance:
                 return False
         return True
 
@@ -218,7 +235,7 @@ class PassiveOrderManager:
                                 await self.order_manager.cancel_order(oid, symbol)
                             except Exception as exc:  # noqa: BLE001 (broad ok here)
                                 self.logger.warning(
-                                    f"⚠️ Failed to cancel expired {side} {symbol}: {exc}"
+                                    f"⚠️ Failed to cancel expired {side} {symbol} (ID: {oid}): {exc}", exc_info=True
                                 )
                     self.passive_order_tracker.pop(symbol, None)
             except Exception as exc:  # watchdog must never die silently

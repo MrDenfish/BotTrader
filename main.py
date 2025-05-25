@@ -67,7 +67,7 @@ async def init_shared_data(logger_manager, shared_logger):
     return shared_data_manager, shared_utils_debugger, shared_utils_print
 
 
-async def build_websocket_components(listener, shared_data_manager):
+async def build_websocket_components(config, listener, shared_data_manager):
     # --- NEW: pull latest maker / taker rates -------------
     fee_rates = await listener.coinbase_api.get_fee_rates()
     if "maker" not in fee_rates:  # API down?  Use a worst-case stub
@@ -79,9 +79,9 @@ async def build_websocket_components(listener, shared_data_manager):
         trade_order_manager=listener.trade_order_manager,
         order_manager=listener.order_manager,
         logger=listener.logger,
+        min_spread_pct=config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
         fee_cache=fee_rates,  # ← new
         # optional knobs ↓
-        min_spread_pct=Decimal("0.15") / 100,  # 0.15 %, overrides default 0.20 %
         max_lifetime=90,  # cancel / refresh after 90 s
     )
 
@@ -217,7 +217,7 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
             listener.ohlcv_manager.market_manager = listener.market_manager
 
         listener.order_manager = trade_bot.order_manager
-        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(listener,shared_data_manager)
+        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(config,listener,shared_data_manager)
 
         listener.websocket_helper = websocket_helper
         listener.websocket_manager = websocket_manager

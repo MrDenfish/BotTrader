@@ -225,9 +225,9 @@ class WebhookListener:
             trade_order_manager=None,
             order_manager = None,
             logger=None,
-            fee_cache=self.fee_rates,  # ← new
+            fee_cache=self.fee_rates,
+            min_spread_pct=self.bot_config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
             # optional knobs ↓
-            min_spread_pct=Decimal("0.15") / 100,  # 0.15 %, overrides default 0.20 %
             max_lifetime=90,  # cancel / refresh after 90 s
         )
         self.websocket_manager = WebSocketManager(self.bot_config, self.ccxt_api, self.logger,
@@ -412,9 +412,9 @@ class WebhookListener:
                 websocket_order_data.price = self.shared_utils_precision.adjust_precision(
                     base_deci, quote_deci, websocket_order_data.price, 'quote'
                 )
-            if websocket_order_data.order_amount:
-                websocket_order_data.order_amount = self.shared_utils_precision.adjust_precision(
-                    base_deci, quote_deci, websocket_order_data.order_amount, 'base'
+            if websocket_order_data.order_amount_fiat:
+                websocket_order_data.order_amount_fiat = self.shared_utils_precision.adjust_precision(
+                    base_deci, quote_deci, websocket_order_data.order_amount_fiat, 'base'
                 )
             if websocket_order_data.limit_price:
                 websocket_order_data.limit_price = self.shared_utils_precision.adjust_precision(
@@ -476,7 +476,7 @@ class WebhookListener:
                         'symbol': order_data.trading_pair,
                         'take_profit_price': order_data.take_profit_price,
                         'purchase_price': order_data.average_price,
-                        'amount': order_data.order_amount,
+                        'amount': order_data.order_amount_fiat,
                         'stop_loss_price': order_data.stop_loss_price,
                         'limit_price': order_data.limit_price * Decimal('1.002')  # Example limit price adjustment
                     }
@@ -508,7 +508,7 @@ class WebhookListener:
 
             symbol = request_json.get("pair")
             side = request_json.get("side")
-            order_amount = request_json.get("order_amount")
+            order_amount = request_json.get("order_amount_fiat")
             origin = request_json.get("origin")
 
             if origin == "TradingView":
@@ -630,7 +630,7 @@ class WebhookListener:
 
             if new_maker is not None and new_maker != old_maker:
                 await self.passive_order_manager.update_fee_cache(fee_info)
-            _, _, base_value = self.calculate_order_size(trade_data, base_price, quote_price,
+            _, _, base_value = self.calculate_order_size_fiat(trade_data, base_price, quote_price,
                                                          precision_data, fee_info)
             if trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
                 return web.json_response(
@@ -674,14 +674,14 @@ class WebhookListener:
             self.logger.error(f"Error fetching prices: {e}", exc_info=True)
             return Decimal(0), Decimal(0)
 
-    def calculate_order_size(self, trade_data: dict, base_price: Decimal, quote_price: Decimal, precision_data: tuple, fee_info: dict):
+    def calculate_order_size_fiat(self, trade_data: dict, base_price: Decimal, quote_price: Decimal, precision_data: tuple, fee_info: dict):
         """
-        Wrapper function to call webhook_manager's calculate_order_size with correct arguments.
+        Wrapper function to call webhook_manager's calculate_order_size_fiat with correct arguments.
         """
         base_deci, quote_deci, _, _ = precision_data  # Extract precision values
-        return self.webhook_manager.calculate_order_size(
+        return self.webhook_manager.calculate_order_size_fiat(
             trade_data.get("side"),
-            trade_data.get("order_amount"),
+            trade_data.get("order_amount_fiat"),
             trade_data.get("quote_avail_balance"),  # This is USD balance for buying
             trade_data.get("base_avail_balance", 0),  # Base asset balance for selling
             quote_price,

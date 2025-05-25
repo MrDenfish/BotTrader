@@ -143,9 +143,27 @@ class PrintData:
 
             # ✅ PRINT OPEN ORDERS
             if open_orders is not None and len(open_orders) > 0:
-                print("� Open Orders:")
-                print(tabulate(open_orders, headers='keys', tablefmt='pretty', showindex=False, stralign='center',
-                               numalign='center'))
+                print("📬 Open Orders (abbreviated):")
+
+                # Copy to avoid modifying original DataFrame
+                open_orders = open_orders.copy()
+
+                # Shorten order_id and parent_id
+                open_orders['order_id'] = open_orders['order_id'].apply(
+                    lambda x: f"{x[:8]}...{x[-4:]}" if isinstance(x, str) and len(x) > 12 else x)
+                open_orders['parent_id'] = open_orders['parent_id'].apply(
+                    lambda x: f"{x[:8]}...{x[-4:]}" if isinstance(x, str) and len(x) > 12 else x)
+
+                # Simplify order_type
+                open_orders['order_type'] = open_orders['order_type'].replace('TAKE_PROFIT_STOP_LOSS', 'TP/SL')
+
+                # Truncate timestamp
+                open_orders['time active'] = open_orders['time active'].apply(
+                    lambda x: x[:21] if isinstance(x, str) else x.strftime('%Y-%m-%d %H:%M:%S.%f')[:21]
+                )
+
+                print(tabulate(open_orders, headers='keys', tablefmt='pretty', showindex=False,
+                               stralign='center', numalign='center'))
                 print("")
             else:
                 print("❌ No open orders found.")
@@ -187,9 +205,12 @@ class PrintData:
                     volume_text = f"{num_signaled} Currencies trading with a Buy/Sell signal (Min Vol: {minvol})"
                     print(f"\n� {volume_text}\n")
 
-                    print(tabulate(condensed_matrix, headers='keys', tablefmt='fancy_grid', showindex=True,
-                                   stralign='center', numalign='center'))
+                    self.print_condensed_buy_sell_matrix(condensed_matrix)
+
+                    # print(tabulate(condensed_matrix, headers='keys', tablefmt='fancy_grid', showindex=True,
+                    #                stralign='center', numalign='center'))
                     print("")
+
 
             # ✅ PRINT AGGREGATED HOLDINGS
             if aggregated_df is not None and not aggregated_df.empty:
@@ -261,3 +282,36 @@ class PrintData:
         except Exception as e:
             print(f"Error printing order_tracker in {func_name}. Exception: {e}")
             self.logger_manager.error({e}, exc_info=True)
+
+
+    def print_condensed_buy_sell_matrix(self,condensed_matrix):
+        # Define logical column groups
+        meta_cols = ['price', 'bVol', 'qVol', 'chg%']
+        buy_cols = ['bRt', 'Buy Touch', 'W-Bottom', 'bRSI', 'bROC', 'bMACD', 'Buy Swing']
+        sell_cols = ['sRt', 'Sell Touch', 'M-Top', 'sRSI', 'sROC', 'sMACD', 'Sell Swing']
+        signal_cols = ['bSig', 'sSig']
+
+        # Slice data rows and filter for non-empty signals or threshold row
+        filtered_matrix = condensed_matrix.loc[
+            (condensed_matrix.index == 'Threshold') |
+            ((condensed_matrix[signal_cols] != 0).any(axis=1))
+            ].copy()
+
+        # Optional: Format index into a column for cleaner tabulate output
+        filtered_matrix.insert(0, 'Symbol', filtered_matrix.index)
+
+        # Display metadata
+        print("\n📊 Market Overview (Price & Volume)")
+        print(tabulate(filtered_matrix[['Symbol'] + meta_cols], headers='keys', tablefmt='fancy_grid'))
+
+        # Display buy indicators
+        print("\n📈 Buy Indicators")
+        print(tabulate(filtered_matrix[['Symbol'] + buy_cols], headers='keys', tablefmt='fancy_grid'))
+
+        # Display sell indicators
+        print("\n📉 Sell Indicators")
+        print(tabulate(filtered_matrix[['Symbol'] + sell_cols], headers='keys', tablefmt='fancy_grid'))
+
+        # Display signal scores
+        print("\n🚨 Trade Signals")
+        print(tabulate(filtered_matrix[['Symbol'] + signal_cols], headers='keys', tablefmt='fancy_grid'))

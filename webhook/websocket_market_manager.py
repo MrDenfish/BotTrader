@@ -70,7 +70,7 @@ class WebSocketMarketManager:
         self._trailing_percentage = Decimal(self.config.trailing_percentage)
         self._trailing_stop = Decimal(self.config.trailing_stop)
         self._hodl = self.config.hodl
-        self._order_size = Decimal(self.config.order_size)
+        self._order_size_fiat = Decimal(self.config.order_size_fiat)
         self._roc_5min = Decimal(self.config._roc_5min)
 
         # Snapshot and data managers
@@ -236,7 +236,7 @@ class WebSocketMarketManager:
             usd_volume = base_volume * current_price
 
             # call manager at most once every 5 s per symbol
-            if now - last > 5:
+            if now - last > 30:
                 asyncio.create_task(  # don’t block the ticker loop
                     self.passive_order_manager.place_passive_orders(
                         asset=symbol,
