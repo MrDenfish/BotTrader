@@ -236,8 +236,9 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
         site = web.TCPSite(runner, '0.0.0.0', config.webhook_port)
         await site.start()
         print(f"✅ TradeBot is running on version:{config.program_version} ✅")
-        print(f'Webhook {config.program_version} is Listening on port {config.webhook_port}...')
-
+        print("\n" + "<><><><<><>" * 5 + "\n")
+        print(f'👉   Webhook {config.program_version} is Listening on port {config.webhook_port}...   👈')
+        print("\n" + "<><><><<><>" * 5 + "\n")
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda: asyncio.create_task(graceful_shutdown(listener, runner)))

@@ -807,3 +807,76 @@ ccxt.base.errors.BadRequest: coinbase cancelOrders() has failed, check your argu
 2025-05-25 10:22:43,061 - shared_logger - WARNING - ⚠️ No new OHLCV data for BAL-USD (ohlcv_manager.py:85)
 2025-05-25 10:22:43,882 - shared_logger - WARNING - ⚠️ No new OHLCV data for MUSE-USD (ohlcv_manager.py:85)
 2025-05-25 10:22:45,438 - shared_logger - WARNING - ⚠️ No new OHLCV data for BAL-USD (ohlcv_manager.py:85)
+2025-05-25 15:03:46,526 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:03:46,723 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 15:03:46,723 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 15:03:46,966 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 15:03:51,338 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 15:03:51,339 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:03:51,339 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:03:51,344 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:03:51,369 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 15:04:01,550 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 15:05:47,234 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 15:05:47,957 - shared_logger - ERROR - � Network Error while creating order: [Errno 54] Connection reset by peer (coinbase_api.py:107)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/selector_events.py", line 862, in _read_ready__data_received
+    data = self._sock.recv(self.max_size)
+ConnectionResetError: [Errno 54] Connection reset by peer
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/coinbase_api.py", line 76, in create_order
+    async with self.session.post(f'{self.rest_url}{request_path}', headers=headers, json=payload) as response:
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 1360, in __aenter__
+    self._resp: _RetType = await self._coro
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 690, in _request
+    await resp.start(conn)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client_reqrep.py", line 1059, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/streams.py", line 644, in read
+    await self._waiter
+aiohttp.client_exceptions.ClientOSError: [Errno 54] Connection reset by peer
+2025-05-25 15:06:09,694 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:06:09,833 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 15:06:09,833 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 15:06:09,901 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 15:06:09,914 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 15:06:09,915 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:06:09,915 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:06:09,919 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:06:09,937 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 15:06:20,903 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 15:06:30,028 - shared_logger - WARNING - ⚠️ No new OHLCV data for POWR-USD (ohlcv_manager.py:85)
+2025-05-25 15:06:32,435 - shared_logger - WARNING - ⚠️ No new OHLCV data for POWR-USD (ohlcv_manager.py:85)
+2025-05-25 15:07:43,139 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 15:07:54,093 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:07:54,213 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 15:07:54,214 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 15:07:54,258 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 15:07:54,272 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 15:07:54,272 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:07:54,273 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:07:54,277 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:07:54,305 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 15:08:05,375 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 15:08:55,975 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:08:56,092 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 15:08:56,092 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 15:08:56,139 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 15:08:56,151 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 15:08:56,152 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:08:56,152 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:08:56,158 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:08:56,188 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 15:09:07,664 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 15:10:53,703 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:10:53,845 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 15:10:53,846 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 15:10:53,916 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 15:10:53,935 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 15:10:53,935 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:10:53,936 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:10:53,940 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 15:10:53,959 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
