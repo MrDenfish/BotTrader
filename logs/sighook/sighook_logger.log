@@ -8,3 +8,8 @@
 2025-05-25 09:22:24,553 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
 2025-05-25 10:17:25,624 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
 2025-05-25 10:22:36,425 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 15:05:46,688 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 15:06:57,408 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 15:08:04,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-25 15:08:47,016 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 15:09:47,130 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
