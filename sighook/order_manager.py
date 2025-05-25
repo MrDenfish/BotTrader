@@ -93,7 +93,7 @@ class OrderManager:
         return self._min_sell_value
 
     @property
-    def order_size(self):
+    def order_size_fiat(self):
         return self._order_size_fiat
 
     @property
@@ -514,7 +514,7 @@ class OrderManager:
             'order_id': str(uuid.uuid4()),  # Generate unique order ID
             'action': 'close_at_limit' if side == 'sell' and order_type == 'bracket' else side.lower(),
             'order_type': order_type,
-            'order_amount': float(self.order_size) if side == 'buy' else base_avail_to_trade,
+            'order_amount': float(self.order_size_fiat) if side == 'buy' else base_avail_to_trade,
             'side': side.lower(),
             'quote_avail_balance': quote_avail_balance,
             'base_avail_to_trade': base_avail_to_trade,
