@@ -18,15 +18,10 @@ class OrderData:
     type: str
     order_id: str
     side: str
-    order_amount: Decimal
     filled_price: Decimal
     base_currency: str
     quote_currency: str
-    usd_avail_balance: Decimal
     usd_balance: Decimal
-    base_avail_balance: Decimal
-    total_balance_crypto: Decimal  # spot_position
-    available_to_trade_crypto: Decimal
     base_decimal: int
     quote_decimal: int
     quote_increment:Decimal
@@ -39,6 +34,12 @@ class OrderData:
     status: str = 'UNKNOWN'
     source: str = 'UNKNOWN'
     trigger: str = 'UNKNOWN'
+    base_avail_balance: Decimal = Decimal('0')
+    total_balance_crypto: Decimal = Decimal('0')  # spot_position
+    available_to_trade_crypto: Decimal = Decimal('0')
+    usd_avail_balance: Decimal = Decimal('0')
+    order_amount_fiat: Decimal = Decimal('0')
+    order_amount_crypto: Decimal = Decimal('0')
     price: Decimal = Decimal(0)
     cost_basis: Decimal = Decimal('0')  # spot_position
     limit_price: Decimal = Decimal('0')
@@ -49,12 +50,30 @@ class OrderData:
     take_profit_price: Optional[Decimal] = None
     volume_24h: Optional[Decimal] = None
 
+    def get_effective_amount(self) -> Decimal:
+        """
+                Returns the correct value (crypto or fiat) depending on order side.
+                - Buy orders use fiat amount.
+                - Sell orders use crypto amount.
+                """
+        if self.side.lower() == 'buy':
+            return self.order_amount_fiat or Decimal('0')
+        return self.order_amount_crypto or Decimal('0')
+
+
+    @property
+    def is_valid(self) -> bool:
+        return (self.get_effective_amount() > 0 and self.adjusted_price is not None)
+
+
     @classmethod
     def from_dict(cls, data: dict) -> 'OrderData':
         """Used when rebuilding an OrderData object from raw data
         -snapshot from order_tracker
         -WebSocket or REST API payload
         -Data loaded from a .json file or DB"""
+
+
 
         def get_decimal(key, default='0'):
             val = data.get(key, default)
@@ -94,7 +113,8 @@ class OrderData:
             trading_pair=product_id.replace('-', '/'),
             side=data.get('side', '').lower(),
             type=data.get('type', '').lower(),
-            order_amount=get_decimal('order_amount'),
+            order_amount_fiat=get_decimal('order_amount'),
+            order_amount_crypto = get_decimal('adjusted_size') or get_decimal('available_to_trade_crypto') or Decimal("0"),
             price=get_decimal('price'),
             cost_basis=data.get('cost_basis'),  # spot_position
             limit_price=get_decimal(data.get('info', {}).get('order_configuration', {}).get('limit_limit_gtc', {}).get('limit_price')),
@@ -166,7 +186,7 @@ class ValidateOrders:
 
         # Only store necessary attributes
         self._min_sell_value = self.config.min_sell_value
-        self._min_order_amount = self.config.min_order_amount
+        self._min_order_amount_fiat = self.config.min_order_amount_fiat
         self._max_value_of_crypto_to_buy_more = self.config.max_value_of_crypto_to_buy_more
         self._hodl = self.config.hodl  # ✅ Ensure this is used elsewhere
         self._version = self.config.program_version  # ✅ Ensure this is required
@@ -180,8 +200,8 @@ class ValidateOrders:
         return self._min_sell_value  # Minimum value of a sell order
 
     @property
-    def min_order_amount(self):
-        return self._min_order_amount  # Minimum order amount
+    def min_order_amount_fiat(self):
+        return self._min_order_amount_fiat  # Minimum order amount
 
     @property
     def max_value_of_crypto_to_buy_more(self):
@@ -191,11 +211,13 @@ class ValidateOrders:
     def version(self):
         return self._version
 
+
+
     def build_order_data_from_validation_result(self, validation_result: dict, order_book_details: dict, precision_data: tuple) -> OrderData:
         details = validation_result.get("details", {})
         base_deci, quote_deci, *_ = precision_data
         side = details.get("side", "buy")
-        buy_amount = self.shared_utils_precision.safe_decimal(details.get("order_amount"))
+        buy_amount = self.shared_utils_precision.safe_decimal(details.get("order_amount_fiat"))
         sell_amount = self.shared_utils_precision.safe_decimal(details.get("base_balance"))
         trading_pair = details.get("trading_pair", "")
         base_currency = details.get("asset", trading_pair.split('/')[0])
@@ -219,7 +241,10 @@ class ValidateOrders:
             trading_pair=trading_pair,
             side=details.get("side", "buy"),
             type=details.get("Order Type", "limit").lower(),
-            order_amount=order_amount,
+            order_amount_fiat=details.get('order_amount_fiat'),
+            order_amount_crypto=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) or \
+                                self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")) or \
+                                Decimal("0"),
             price=Decimal("0"),
             cost_basis=Decimal("0"),
             limit_price=self.shared_utils_precision.safe_decimal(details.get("limit_price")),
@@ -265,7 +290,9 @@ class ValidateOrders:
 
         side = order_details.side
         usd_balance = order_details.usd_avail_balance
-        order_size = order_details.order_amount
+        order_size = order_details.get_effective_amount()
+
+        #order_size = order_details.order_amount_fiat if side == 'buy' else order_details.order_amount_crypto
         base_balance = order_details.base_avail_balance
         symbol = order_details.trading_pair
         asset =symbol.split('/')[0]
@@ -388,7 +415,8 @@ class ValidateOrders:
             available_to_trade = to_decimal(data.available_to_trade_crypto)
             highest_bid = to_decimal(data.highest_bid)
             lowest_ask = to_decimal(data.lowest_ask)
-            order_amount = to_decimal(data.order_amount)
+            order_size = data.get_effective_amount()
+           # order_size = data.order_amount_fiat if side == 'buy' else data.order_amount_crypto
 
             base_deci = data.base_decimal
             quote_deci = data.quote_decimal
@@ -426,12 +454,12 @@ class ValidateOrders:
             hodling = base_currency in self.hodl
 
             if side == 'buy':
-                if adjusted_usd >= order_amount and (hodling or base_bal_value <= self.min_order_amount):
+                if adjusted_usd >= order_size and (hodling or base_bal_value <= self.min_order_amount_fiat):
                     valid = True
                     condition = '✅ Buy order conditions met.'
-                elif adjusted_usd < order_amount and order_amount > self.min_order_amount:
+                elif adjusted_usd < order_size and order_size > self.min_order_amount_fiat:
                     self.logger.info(
-                        f"⚠️ Order reduced: USD available ${adjusted_usd} < order amount ${order_amount} for {trading_pair}."
+                        f"⚠️ Order reduced: USD available ${adjusted_usd} < order amount ${order_size} for {trading_pair}."
                     )
                     valid = True
                     condition = 'Reduced buy order submitted.'
@@ -485,7 +513,8 @@ class ValidateOrders:
                     "condition": condition,
                     "quote_decimal": order_data.quote_decimal,
                     "base_decimal": order_data.base_decimal,
-                    "order_amount": order_data.order_amount,
+                    "order_amount_fiat": order_data.order_amount_fiat,
+                    "order_amount_crypto": order_data.order_amount_crypto,
                     "sell_amount": order_data.available_to_trade_crypto,
                     "maker_fee": order_data.maker,
                     "taker_fee": order_data.taker,

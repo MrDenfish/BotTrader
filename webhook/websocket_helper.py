@@ -79,7 +79,7 @@ class WebSocketHelper:
         self._trailing_percentage = Decimal(self.config.trailing_percentage)
         self._trailing_stop = Decimal(self.config.trailing_stop)
         self._hodl = self.config.hodl
-        self._order_size = Decimal(self.config.order_size)
+        self._order_size_fiat = Decimal(self.config.order_size_fiat)
         self._roc_5min = Decimal(self.config._roc_5min)
 
         # Snapshot and data managers
@@ -148,7 +148,7 @@ class WebSocketHelper:
 
     @property
     def order_size(self):
-        return self._order_size
+        return self._order_size_fiat
 
     @property
     def trailing_percentage(self):
@@ -186,7 +186,7 @@ class WebSocketHelper:
         """Handle incoming user WebSocket messages and delegate to processor."""
         try:
             data = json.loads(message)
-            print(json.dumps(data, indent=2)) # debug
+            # print(json.dumps(data, indent=2)) # debug
             if data.get("type") == "error":
                 self.logger.warning(f"� User WebSocket error message: {data}")
                 if "subscribe_market or unsubscribe required" in data.get("message", ""):
@@ -289,7 +289,7 @@ class WebSocketHelper:
                     print(f"💙 MARKET heartbeat: Counter={heartbeat_counter}")
                     self.count = 0
             elif channel == "subscriptions":
-                self.logger.info(f"� Confirmed Market Subscriptions: ")
+                self.logger.info(f"💙 Confirmed Market Subscriptions: ")
             else:
                 self.logger.warning(f"⚠️ Unhandled market WebSocket channel: {channel} | Message: {json.dumps(data)}")
 
@@ -539,9 +539,10 @@ class WebSocketHelper:
 
                             # Define a threshold for price difference (e.g., 1%)
                             price_difference = (best_ask - order_data.price) / order_data.price
+
                             if price_difference > Decimal('0.01'):
 
-                                # Cancel the existing limit buy order
+                                # Cancel the existing limit buy order because price is out of range
                                 await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
 
                                 # Calculate a new limit price (e.g., slightly below the best ask)
@@ -583,8 +584,8 @@ class WebSocketHelper:
                         if Decimal(profit.get('profit percent', '0').replace('%', '')) / 100 <= self.stop_loss:
                             await self.listener.handle_order_fill(order_data)
 
-                    except Exception as e:
-                        self.logger.error(f"Error handling tracked order {order_id}: {e}", exc_info=True)
+                    except Exception as inner_ex:
+                        self.logger.error(f"Error handling tracked order {order_id}: {inner_ex}", exc_info=True)
 
             if profit_data_list:
                 profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
@@ -596,8 +597,8 @@ class WebSocketHelper:
 
             await self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot)
 
-        except Exception as e:
-            self.logger.error(f"Error in monitor_and_update_active_orders: {e}", exc_info=True)
+        except Exception as outer_e:
+            self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
 
     async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any],
                                        order_management_snapshot: Dict[str,Any]):
@@ -614,7 +615,7 @@ class WebSocketHelper:
 
             for asset, position in spot_positions.items():
                 symbol = f"{asset}/USD"
-                if asset == 'FIS':
+                if asset == 'BADGER':
                     pass
                 if symbol in self.currency_pairs_ignored:
                     continue

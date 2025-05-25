@@ -134,7 +134,7 @@ class SharedUtility:
             f"� Order Summary [{source.__class__.__name__}]",
             f"Pair:         {source.trading_pair}",
             f"Side:         {source.side.upper()}  | Type: {source.type.upper()}",
-            f"Amount:       {source.order_amount} {source.base_currency}",
+            f"Amount:       {source.order_amount_fiat} {source.base_currency}",
             f"USD Balance:  ${source.usd_avail_balance} available",
             f"Price:        ${source.adjusted_price} | Size: {source.adjusted_size} {source.base_currency}",
             f"Stop-Loss:    ${source.stop_loss_price} | Take-Profit: ${source.take_profit_price}",

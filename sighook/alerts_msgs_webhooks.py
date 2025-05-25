@@ -32,7 +32,7 @@ from Config.config_manager import CentralConfig
 #         self._e_mailpass = self.config.e_mailpass
 #         self._my_email = self.config.my_email
 #         self._email_alerts_on =self.config.email_alerts
-#         self._order_size = self.config.order_size
+#         self._order_size_fiat = self.config.order_size_fiat
 #         self._smtp_host = 'smtp.gmail.com'
 #         self._smtp_port = 465
 #         self.logger = logger_manager
@@ -60,7 +60,7 @@ class SenderWebhook:
         self._e_mailpass = self.config.e_mailpass
         self._my_email = self.config.my_email
         self._email_alerts_on = self.config.email_alerts
-        self._order_size = self.config.order_size
+        self._order_size_fiat = self.config.order_size_fiat
         self._version = self.config.program_version
         self.shared_utils_utility = shared_utils_utility
         self.logger = logger_manager  # 🙂
@@ -97,7 +97,7 @@ class SenderWebhook:
 
     @property
     def order_size(self):
-        return self._order_size
+        return self._order_size_fiat
 
     @property
     def email_alerts_on(self):

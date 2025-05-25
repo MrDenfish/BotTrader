@@ -37,11 +37,11 @@ class WebHookManager:
         self.session = session
 
         # Trading parameters
-        self._order_size = Decimal(self.config.order_size)
+        self._order_size_fiat = Decimal(self.config.order_size_fiat)
 
     @property
     def order_size(self):
-        return self._order_size
+        return self._order_size_fiat
 
     async def handle_action(self, order_details: OrderData, precision_data: tuple) -> dict:
         """
@@ -92,7 +92,7 @@ class WebHookManager:
                 "error_response": {"error": str(e)},
             }
 
-    def calculate_order_size(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci, fee_info):
+    def calculate_order_size_fiat(self, side, order_amount, usd_amount, base_amount, quote_price, base_price, quote_deci, base_deci, fee_info):
         """
         Calculates order size and converts base amount to its USD equivalent (base_value).
 
@@ -107,47 +107,47 @@ class WebHookManager:
             base_deci (int): Precision of base currency
 
         Returns:
-            tuple: (base_order_size, order_amount, base_value)
+            tuple: (base_order_size_fiat, order_amount, base_value)
         """
         try:
 
             taker_fee = float(fee_info.get('taker_fee', 0.0))
             maker_fee = float(fee_info.get('maker_fee', 0.0))
 
-            base_order_size = None
+            base_order_size_fiat = None
             base_value = Decimal(0)  # Default to zero to avoid NoneType errors
 
             if side == 'buy':
                 # Calculate how much base currency we can buy
-                base_order_size = order_amount / (base_price * Decimal(1.001 + taker_fee))  # Adjust for fees
-                base_value = base_order_size * base_price  # The cost in USD should match order_amount
+                base_order_size_fiat = order_amount / (base_price * Decimal(1.001 + taker_fee))  # Adjust for fees
+                base_value = base_order_size_fiat * base_price  # The cost in USD should match order_amount
 
             elif side == 'sell':
                 # Ensure we don't sell more than available
-                base_order_size = min(order_amount, base_amount)
-                base_value = base_order_size * base_price  # Convert crypto amount to USD
+                base_order_size_fiat = min(order_amount, base_amount)
+                base_value = base_order_size_fiat * base_price  # Convert crypto amount to USD
 
             # Convert to proper decimal precision
             formatted_base_decimal = self.shared_utils_precision.get_decimal_format(base_deci)
             formatted_quote_decimal = self.shared_utils_precision.get_decimal_format(quote_deci)
 
-            if base_order_size is not None:
-                base_order_size = base_order_size.quantize(formatted_base_decimal, rounding=ROUND_HALF_UP)
+            if base_order_size_fiat is not None:
+                base_order_size_fiat = base_order_size_fiat.quantize(formatted_base_decimal, rounding=ROUND_HALF_UP)
 
             if base_value is not None:
                 base_value = base_value.quantize(formatted_quote_decimal, rounding=ROUND_HALF_UP)
 
             # Debugging logs to confirm values
             self.logger.debug(
-                f"Calculated order size: side={side}, base_order_size={base_order_size}, order_amount={order_amount}, base_value={base_value}"
+                f"Calculated order size: side={side}, base_order_size_fiat={base_order_size_fiat}, order_amount={order_amount}, base_value={base_value}"
             )
 
-            return base_order_size, order_amount, base_value
+            return base_order_size_fiat, order_amount, base_value
 
         except Exception as e:
             caller_function_name = stack()[1].function  # Debugging
             print(f'{caller_function_name} - base_amount: {base_amount}, base_price: {base_price}')
-            self.logger.error(f'calculate_order_size: An unexpected error occurred: {e}', exc_info=True)
+            self.logger.error(f'calculate_order_size_fiat: An unexpected error occurred: {e}', exc_info=True)
             return None, None, None  # Return safe defaults on error
 
     def parse_webhook_request(self, request_json):
@@ -171,7 +171,7 @@ class WebHookManager:
                 # ✅ Convert quote_amount safely to Decimal, default to 0 if missing
                 'quote_avail_balance': Decimal(request_json.get('quote_avail_balance', '0')), # amount od USD available to buy crypto
 
-                'order_amount': self._order_size if not request_json.get('order_amount') else Decimal(request_json.get('order_amount')),
+                'order_amount': self._order_size_fiat if not request_json.get('order_amount_fiat') else Decimal(request_json.get('order_amount')),
 
                 # ✅ Ensure base_amount is correctly assigned for buy/sell conditions
                 'base_avail_balance': Decimal('0') if 'open' in request_json.get('action', '') else Decimal(request_json.get(
@@ -207,7 +207,7 @@ class WebHookManager:
         extra_error_details = {
             'action': order_details['side'],
             'trading_pair': order_details['trading_pair'],
-            'buy_size': order_details['base_order_size'],
+            'buy_size': order_details['base_order_size_fiat'],
             'formatted_time': order_details['formatted_time'],
         }
         # Map status_code to custom exceptions

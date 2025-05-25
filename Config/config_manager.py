@@ -34,7 +34,7 @@ class CentralConfig:
         self.db_url = self.db_user = self.db_password = self.db_host = None
         self.db_port = self.db_name = self._api_url = self._json_config = None
         self._phone = self._email = self._e_mailpass = self._my_email = self._email_alerts = None
-        self._order_size = self._version = self._max_ohlcv_rows = self._async_mode = None
+        self._order_size_fiat = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
         self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_of_crypto_to_buy_more = None
@@ -51,7 +51,7 @@ class CentralConfig:
         self._assets_ignored = self._buy_target = self._sell_target = None
         self._quote_currency = self._trailing_percentage = self._min_volume = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
-        self._maker_fee = self._taker_fee = self._min_order_amount = None
+        self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
 
         # Default values
         self._json_config = {}
@@ -90,9 +90,9 @@ class CentralConfig:
             "_log_level": "LOG_LEVEL",
             "_async_mode": "ASYNC_MODE",
             "_quote_currency": "QUOTE_CURRENCY",
-            "_order_size": "ORDER_SIZE",
+            "_order_size_fiat": "ORDER_SIZE_FIAT", # in USD
             "_trailing_percentage": "TRAILING_PERCENTAGE",
-            "_min_order_amount":"MIN_ORDER_AMOUNT",
+            "_min_order_amount_fiat":"MIN_ORDER_AMOUNT_FIAT", # in USD
             "_min_buy_value": "MIN_BUY_VALUE",
             "_min_sell_value": "MIN_SELL_VALUE",
             "_max_value_of_crypto_to_buy_more":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
@@ -107,6 +107,7 @@ class CentralConfig:
             "_roc_sell_24h": "ROC_SELL_24H",
             "_roc_window": "ROC_WINDOW",
             "_roc_5min":"ROC_5min",
+            "_min_spread_pct":"MIN_SPREAD_PCT",
             "_docker_staticip": "DOCKER_STATICIP",
             "_tv_whitelist": "TV_WHITELIST",
             "_coin_whitelist": "COIN_WHITELIST",
@@ -392,8 +393,8 @@ class CentralConfig:
         return self._assets_ignored
 
     @property
-    def min_order_amount(self):
-        return Decimal(self._min_order_amount)
+    def min_order_amount_fiat(self):
+        return Decimal(self._min_order_amount_fiat)
 
     @property
     def min_sell_value(self):
@@ -473,8 +474,8 @@ class CentralConfig:
         return self._email_alerts
 
     @property
-    def order_size(self):
-        return self._order_size
+    def order_size_fiat(self):
+        return self._order_size_fiat
 
     @property
     def program_version(self):
@@ -574,6 +575,10 @@ class CentralConfig:
     @property
     def roc_5min(self):
         return int(self._roc_5min)
+
+    @property
+    def min_spread_pct(self):
+        return Decimal(self._min_spread_pct)/100 # .0025% for example
 
     @property
     def csv_dir(self):

@@ -35,7 +35,7 @@ class OrderManager:
         self.ccxt_api = ccxt_api
         self._version = self.config.program_version
         self._min_sell_value = Decimal(self.config.min_sell_value)
-        self._order_size = Decimal(self.config.order_size)
+        self._order_size_fiat = Decimal(self.config.order_size_fiat)
         self._trailing_percentage = Decimal(self.config.trailing_percentage)  # Default trailing stop at 0.5%
         self._hodl = self.config.hodl
         self._take_profit = Decimal(self.config.take_profit)
@@ -94,7 +94,7 @@ class OrderManager:
 
     @property
     def order_size(self):
-        return self._order_size
+        return self._order_size_fiat
 
     @property
     def cxl_buy(self):
@@ -193,19 +193,19 @@ class OrderManager:
             merged_orders['bid'] = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, merged_orders[
                 'bid'], 'base')
 
-            if merged_orders['time active (minutes)'].dtype == 'object':
-                merged_orders['time active (minutes)'] = merged_orders['time active (minutes)'].str.replace(' minutes', '')
-            merged_orders['time active (minutes)'] = pd.to_numeric(merged_orders['time active (minutes)'],
+            if merged_orders['active (mins)'].dtype == 'object':
+                merged_orders['active (mins)'] = merged_orders['active (mins)'].str.replace(' minutes', '')
+            merged_orders['active (mins)'] = pd.to_numeric(merged_orders['active (mins)'],
                                                                    errors='coerce').fillna(0).astype(int)
-            merged_orders['time active > 5 minutes'] = merged_orders['time active (minutes)'] > 5
+            merged_orders['active > 5 mins '] = merged_orders['active (mins)'] > 5
 
             merged_orders['is_stale'] = (
                     ((merged_orders['side'].str.upper() == 'BUY') &
                      (merged_orders['price'] < merged_orders['ask'] * (1 - Decimal(self.cxl_buy))) &
-                     (merged_orders['time active > 5 minutes'])) |
+                     (merged_orders['active > 5 mins '])) |
                     ((merged_orders['side'].str.upper() == 'SELL') & (merged_orders['order_type'].str.upper() == 'LIMIT') &
                      (merged_orders['price'] > merged_orders['ask'] * (1 + Decimal(self.cxl_sell))) &
-                     (merged_orders['time active > 5 minutes']))
+                     (merged_orders['active > 5 mins ']))
             )
 
             stale_orders = merged_orders[merged_orders['is_stale']]
@@ -229,7 +229,7 @@ class OrderManager:
                 endpoint = 'private'
 
                 async with self.ccxt_api.get_semaphore(endpoint):
-                    await self.ccxt_api.ccxt_api_call(self.exchange.cancel_order,endpoint,order_id)
+                    await self.ccxt_api.ccxt_api_call(self.exchange.cancel_order,endpoint,order_id,product_id)
                     print(f"  🟪🟨  open order canceled  🟨🟪  ")  # debug
                     return
             print(f'‼️ Order {product_id}:{order_id}  was not cancelled')
@@ -329,11 +329,11 @@ class OrderManager:
             if not df.empty:
                 df['time active'] = pd.to_datetime(df['time active'], errors='coerce')
                 current_time = pd.Timestamp.utcnow()
-                df['time active (minutes)'] = df['time active'].apply(
+                df['active (mins)'] = df['time active'].apply(
                     lambda x: (current_time - x).total_seconds() / 60 if pd.notnull(x) else None
                 )
-                df['time_temp'] = pd.to_numeric(df['time active (minutes)'], errors='coerce')
-                df['time active > 5 minutes'] = df['time_temp'] > 5
+                df['time_temp'] = pd.to_numeric(df['active (mins)'], errors='coerce')
+                df['active > 5 mins '] = df['time_temp'] > 5
                 df.drop(columns=['time_temp'], inplace=True)
 
             return df
@@ -501,10 +501,10 @@ class OrderManager:
         valid_order = 'valid'
         if base_avail_to_trade * price < self.min_sell_value and side == 'sell':
             valid_order = 'invalid'
-        elif quote_avail_balance < self._order_size and side == 'buy':
+        elif quote_avail_balance < self._order_size_fiat and side == 'buy':
             valid_order = 'invalid'
         else:
-            if quote_avail_balance < self._order_size and side == 'buy':
+            if quote_avail_balance < self._order_size_fiat and side == 'buy':
                 valid_order = 'invalid'
 
         # Construct payload
