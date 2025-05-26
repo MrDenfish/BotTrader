@@ -880,3 +880,1056 @@ aiohttp.client_exceptions.ClientOSError: [Errno 54] Connection reset by peer
 2025-05-25 15:10:53,936 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
 2025-05-25 15:10:53,940 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
 2025-05-25 15:10:53,959 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 19:28:59,790 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 19:28:59,951 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 19:28:59,951 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 19:29:00,047 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 19:29:00,069 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 19:29:00,069 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 19:29:00,069 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 19:29:00,075 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 19:29:00,097 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 19:29:18,793 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:30:14,571 - shared_logger - WARNING - ⚠️ No new OHLCV data for LQTY-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:16,989 - shared_logger - WARNING - ⚠️ No new OHLCV data for LQTY-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:19,003 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:30:19,394 - shared_logger - WARNING - ⚠️ No new OHLCV data for OXT-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:21,781 - shared_logger - WARNING - ⚠️ No new OHLCV data for OXT-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:36,940 - shared_logger - WARNING - ⚠️ No new OHLCV data for ROSE-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:39,418 - shared_logger - WARNING - ⚠️ No new OHLCV data for ROSE-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:42,162 - shared_logger - WARNING - ⚠️ No new OHLCV data for ZK-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:44,541 - shared_logger - WARNING - ⚠️ No new OHLCV data for ZK-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:51,734 - shared_logger - WARNING - ⚠️ No new OHLCV data for LOKA-USD (ohlcv_manager.py:85)
+2025-05-25 19:30:54,118 - shared_logger - WARNING - ⚠️ No new OHLCV data for LOKA-USD (ohlcv_manager.py:85)
+2025-05-25 19:31:19,095 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:31:31,146 - shared_logger - WARNING - ⚠️ No new OHLCV data for FLOKI-USD (ohlcv_manager.py:85)
+2025-05-25 19:31:33,535 - shared_logger - WARNING - ⚠️ No new OHLCV data for FLOKI-USD (ohlcv_manager.py:85)
+2025-05-25 19:31:35,924 - shared_logger - WARNING - ⚠️ No new OHLCV data for SPA-USD (ohlcv_manager.py:85)
+2025-05-25 19:31:38,513 - shared_logger - WARNING - ⚠️ No new OHLCV data for SPA-USD (ohlcv_manager.py:85)
+2025-05-25 19:32:19,178 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:34:07,447 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:35:56,587 - shared_logger - WARNING - ⚠️ No new OHLCV data for BNT-USD (ohlcv_manager.py:85)
+2025-05-25 19:35:56,826 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:36:04,170 - shared_logger - WARNING - ⚠️ No new OHLCV data for BNT-USD (ohlcv_manager.py:85)
+2025-05-25 19:41:04,643 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:41:04,965 - shared_logger - WARNING - ⚠️ No new OHLCV data for RLC-USD (ohlcv_manager.py:85)
+2025-05-25 19:41:07,764 - shared_logger - WARNING - ⚠️ No new OHLCV data for RLC-USD (ohlcv_manager.py:85)
+2025-05-25 19:41:38,023 - shared_logger - WARNING - ⚠️ No new OHLCV data for STORJ-USD (ohlcv_manager.py:85)
+2025-05-25 19:41:41,332 - shared_logger - WARNING - ⚠️ No new OHLCV data for STORJ-USD (ohlcv_manager.py:85)
+2025-05-25 19:42:14,369 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:42:29,024 - shared_logger - WARNING - ⚠️ No new OHLCV data for CLV-USD (ohlcv_manager.py:85)
+2025-05-25 19:42:35,328 - shared_logger - WARNING - ⚠️ No new OHLCV data for CLV-USD (ohlcv_manager.py:85)
+2025-05-25 19:42:39,893 - shared_logger - WARNING - ⚠️ No new OHLCV data for QI-USD (ohlcv_manager.py:85)
+2025-05-25 19:42:42,484 - shared_logger - WARNING - ⚠️ No new OHLCV data for QI-USD (ohlcv_manager.py:85)
+2025-05-25 19:43:23,681 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 19:43:41,770 - shared_logger - WARNING - ⚠️ No new OHLCV data for INDEX-USD (ohlcv_manager.py:85)
+2025-05-25 19:43:44,148 - shared_logger - WARNING - ⚠️ No new OHLCV data for INDEX-USD (ohlcv_manager.py:85)
+2025-05-25 19:48:04,312 - shared_logger - WARNING - ⚠️ No new OHLCV data for ELA-USD (ohlcv_manager.py:85)
+2025-05-25 19:48:05,592 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 20:53:23,167 - shared_logger - ERROR - ❌ Error fetching market data:  (database_session_manager.py:185)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2329, in connect
+    return await connect_utils._connect(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 991, in _connect
+    conn = await _connect_addr(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 828, in _connect_addr
+    return await __connect_addr(params, True, *args)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 873, in __connect_addr
+    tr, pr = await connector
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connect_utils.py", line 744, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1060, in create_connection
+    sock = await self._connect_sock(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 969, in _connect_sock
+    await self.sock_connect(sock, address)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/selector_events.py", line 501, in sock_connect
+    return await fut
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/database_manager/database_session_manager.py", line 178, in fetch_market_data
+    result = await self.database.fetch_one(query)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 181, in fetch_one
+    async with self.connection() as connection:
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 267, in __aenter__
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/core.py", line 264, in __aenter__
+    await self._connection.acquire()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/databases/backends/postgres.py", line 170, in acquire
+    self._connection = await self._database._pool.acquire()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 821, in _acquire
+    return await _acquire_impl()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 806, in _acquire_impl
+    proxy = await ch.acquire()  # type: PoolConnectionProxy
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 136, in acquire
+    await self.connect()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 128, in connect
+    self._con = await self._pool._get_new_connection()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/pool.py", line 502, in _get_new_connection
+    con = await connection.connect(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/asyncpg/connection.py", line 2328, in connect
+    async with compat.timeout(timeout):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-05-25 20:53:23,169 - shared_logger - ERROR - ❌ Error refreshing shared data: ticker_cache is not a DataFrame. (shared_data_manager.py:182)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/SharedDataManager/shared_data_manager.py", line 174, in refresh_shared_data
+    self.market_data = self.validate_market_data(self.market_data)
+  File "/Users/Manny/Python_Projects/BotTrader/SharedDataManager/shared_data_manager.py", line 187, in validate_market_data
+    raise TypeError("ticker_cache is not a DataFrame.")
+TypeError: ticker_cache is not a DataFrame.
+2025-05-25 20:53:36,746 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 20:53:36,887 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 20:53:36,887 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 20:53:36,970 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 20:53:36,991 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 20:53:36,991 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 20:53:36,991 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 20:53:36,995 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 20:53:37,017 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 20:53:51,516 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 20:54:01,921 - shared_logger - WARNING - ⚠️ No new OHLCV data for VTHO-USD (ohlcv_manager.py:85)
+2025-05-25 20:54:05,226 - shared_logger - WARNING - ⚠️ No new OHLCV data for VTHO-USD (ohlcv_manager.py:85)
+2025-05-25 20:54:14,873 - shared_logger - WARNING - ⚠️ No new OHLCV data for CTX-USD (ohlcv_manager.py:85)
+2025-05-25 20:54:17,264 - shared_logger - WARNING - ⚠️ No new OHLCV data for CTX-USD (ohlcv_manager.py:85)
+2025-05-25 20:55:02,643 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 20:56:27,200 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:04:04,760 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:04:27,871 - shared_logger - WARNING - ⚠️ No new OHLCV data for OGN-USD (ohlcv_manager.py:85)
+2025-05-25 21:04:28,197 - shared_logger - WARNING - ⚠️ No new OHLCV data for ABT-USD (ohlcv_manager.py:85)
+2025-05-25 21:04:30,530 - shared_logger - WARNING - ⚠️ No new OHLCV data for OGN-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:06,295 - shared_logger - WARNING - ⚠️ No new OHLCV data for ABT-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:07,060 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:05:15,847 - shared_logger - WARNING - ⚠️ No new OHLCV data for PLU-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:18,642 - shared_logger - WARNING - ⚠️ No new OHLCV data for PLU-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:21,161 - shared_logger - WARNING - ⚠️ No new OHLCV data for NMR-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:30,829 - shared_logger - WARNING - ⚠️ No new OHLCV data for NMR-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:33,917 - shared_logger - WARNING - ⚠️ No new OHLCV data for ZETA-USD (ohlcv_manager.py:85)
+2025-05-25 21:05:37,683 - shared_logger - WARNING - ⚠️ No new OHLCV data for ZETA-USD (ohlcv_manager.py:85)
+2025-05-25 21:06:55,362 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:07:27,224 - shared_logger - WARNING - ⚠️ No new OHLCV data for RAD-USD (ohlcv_manager.py:85)
+2025-05-25 21:07:27,242 - shared_logger - ERROR - ❌ Exception in get_fee_rates(): Connection timeout to host https://api.coinbase.com/api/v3/brokerage/transaction_summary (coinbase_api.py:153)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/connector.py", line 1109, in _wrap_create_connection
+    sock = await aiohappyeyeballs.start_connection(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohappyeyeballs/impl.py", line 89, in start_connection
+    sock, _, _ = await _staggered.staggered_race(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohappyeyeballs/_staggered.py", line 160, in staggered_race
+    done = await _wait_one(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohappyeyeballs/_staggered.py", line 41, in _wait_one
+    return await wait_next
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 663, in _request
+    conn = await self._connector.connect(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/connector.py", line 538, in connect
+    proto = await self._create_connection(req, traces, timeout)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/connector.py", line 1050, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/connector.py", line 1384, in _create_direct_connection
+    raise last_exc
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/connector.py", line 1353, in _create_direct_connection
+    transp, proto = await self._wrap_create_connection(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/connector.py", line 1106, in _wrap_create_connection
+    async with ceil_timeout(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 179, in __aexit__
+    self._do_exit(exc_type)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/async_timeout/__init__.py", line 265, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/coinbase_api.py", line 137, in get_fee_rates
+    async with self.session.get(url, headers=headers) as response:
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 1360, in __aenter__
+    self._resp: _RetType = await self._coro
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/aiohttp/client.py", line 667, in _request
+    raise ConnectionTimeoutError(
+aiohttp.client_exceptions.ConnectionTimeoutError: Connection timeout to host https://api.coinbase.com/api/v3/brokerage/transaction_summary
+2025-05-25 21:07:34,343 - shared_logger - WARNING - ⚠️ No new OHLCV data for RAD-USD (ohlcv_manager.py:85)
+2025-05-25 21:08:35,439 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:10:28,619 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:12:29,875 - shared_logger - WARNING - ⚠️ No new OHLCV data for ME-USD (ohlcv_manager.py:85)
+2025-05-25 21:12:34,421 - shared_logger - WARNING - ⚠️ No new OHLCV data for ME-USD (ohlcv_manager.py:85)
+2025-05-25 21:12:38,329 - shared_logger - WARNING - ⚠️ No new OHLCV data for KRL-USD (ohlcv_manager.py:85)
+2025-05-25 21:12:41,112 - shared_logger - WARNING - ⚠️ No new OHLCV data for KRL-USD (ohlcv_manager.py:85)
+2025-05-25 21:12:48,767 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 21:12:49,248 - shared_logger - WARNING - ⚠️ No new OHLCV data for KAVA-USD (ohlcv_manager.py:85)
+2025-05-25 21:12:53,029 - shared_logger - WARNING - ⚠️ No new OHLCV data for KAVA-USD (ohlcv_manager.py:85)
+2025-05-25 21:15:13,903 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:44:25,335 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:44:25,503 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 22:44:25,504 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 22:44:25,569 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 22:44:25,586 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 22:44:25,587 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:44:25,587 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:44:25,592 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:44:25,615 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 22:44:44,121 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:45:06,137 - shared_logger - WARNING - ⚠️ No new OHLCV data for RPL-USD (ohlcv_manager.py:85)
+2025-05-25 22:45:08,522 - shared_logger - WARNING - ⚠️ No new OHLCV data for RPL-USD (ohlcv_manager.py:85)
+2025-05-25 22:45:50,963 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:46:46,388 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:46:46,516 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 22:46:46,516 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 22:46:46,580 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 22:46:46,593 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 22:46:46,593 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:46:46,593 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:46:46,596 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:46:46,614 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 22:46:58,946 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:47:03,816 - shared_logger - WARNING - ⚠️ No new OHLCV data for PRIME-USD (ohlcv_manager.py:85)
+2025-05-25 22:47:06,760 - shared_logger - WARNING - ⚠️ No new OHLCV data for PRIME-USD (ohlcv_manager.py:85)
+2025-05-25 22:47:16,200 - shared_logger - WARNING - ⚠️ No new OHLCV data for MSOL-USD (ohlcv_manager.py:85)
+2025-05-25 22:47:18,585 - shared_logger - WARNING - ⚠️ No new OHLCV data for MSOL-USD (ohlcv_manager.py:85)
+2025-05-25 22:48:02,989 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:48:10,217 - shared_logger - WARNING - ⚠️ No new OHLCV data for INDEX-USD (ohlcv_manager.py:85)
+2025-05-25 22:48:12,601 - shared_logger - WARNING - ⚠️ No new OHLCV data for INDEX-USD (ohlcv_manager.py:85)
+2025-05-25 22:48:14,982 - shared_logger - WARNING - ⚠️ No new OHLCV data for RBN-USD (ohlcv_manager.py:85)
+2025-05-25 22:48:23,913 - shared_logger - WARNING - ⚠️ No new OHLCV data for RBN-USD (ohlcv_manager.py:85)
+2025-05-25 22:52:06,659 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:52:06,778 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 22:52:06,779 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 22:52:06,823 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 22:52:06,837 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 22:52:06,837 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:52:06,838 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:52:06,843 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:52:06,871 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 22:52:19,050 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:54:03,176 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 22:56:42,075 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:56:42,215 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 22:56:42,215 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 22:56:42,293 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 22:56:42,307 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 22:56:42,308 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:56:42,308 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:56:42,311 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 22:56:42,332 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 22:56:52,811 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:01:17,517 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:03:52,627 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:05:07,704 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:05:07,865 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 23:05:07,865 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 23:05:07,934 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 23:05:07,945 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 23:05:07,946 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:05:07,946 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:05:07,949 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:05:07,966 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 23:05:20,111 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:05:30,636 - shared_logger - WARNING - ⚠️ No new OHLCV data for UMA-USD (ohlcv_manager.py:85)
+2025-05-25 23:05:33,010 - shared_logger - WARNING - ⚠️ No new OHLCV data for UMA-USD (ohlcv_manager.py:85)
+2025-05-25 23:05:53,196 - shared_logger - WARNING - ⚠️ No new OHLCV data for ARPA-USD (ohlcv_manager.py:85)
+2025-05-25 23:08:49,908 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:10:10,976 - shared_logger - WARNING - ⚠️ No new OHLCV data for SHPING-USD (ohlcv_manager.py:85)
+2025-05-25 23:10:16,129 - shared_logger - WARNING - ⚠️ No new OHLCV data for SHPING-USD (ohlcv_manager.py:85)
+2025-05-25 23:15:56,196 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:17:06,101 - shared_logger - WARNING - ⚠️ No new OHLCV data for 00-USD (ohlcv_manager.py:85)
+2025-05-25 23:18:43,603 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:18:43,928 - shared_logger - WARNING - ⚠️ No new OHLCV data for 00-USD (ohlcv_manager.py:85)
+2025-05-25 23:35:35,744 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:35:35,875 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 23:35:35,875 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 23:35:35,941 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 23:35:35,957 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 23:35:35,957 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:35:35,958 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:35:35,961 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:35:35,979 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 23:35:49,028 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:36:50,178 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:36:50,296 - shared_logger - INFO - Database connected successfully. (database_session_manager.py:102)
+2025-05-25 23:36:50,296 - shared_logger - INFO - DatabaseSessionManager initialized and connected to the database. (database_session_manager.py:112)
+2025-05-25 23:36:50,342 - shared_logger - INFO - ✅ Database schema initialized (tables created if they didn't exist). (database_session_manager.py:60)
+2025-05-25 23:36:50,355 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:30)
+2025-05-25 23:36:50,355 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:36:50,355 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:36:50,362 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:31)
+2025-05-25 23:36:50,391 - shared_logger - INFO - ✅ Startup snapshot loaded from database. (shared_data_manager.py:135)
+2025-05-25 23:37:01,961 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:38:01,108 - shared_logger - WARNING - ⚠️ No new OHLCV data for BLZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:38:01,579 - shared_logger - INFO - ✅ Trade recorded successfully: BLZ-USD buy @ 0.0421 (trade_recorder.py:49)
+2025-05-25 23:38:08,561 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:38:08,902 - shared_logger - WARNING - ⚠️ No new OHLCV data for BLZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:38:11,823 - shared_logger - WARNING - ⚠️ No new OHLCV data for PIRATE-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:07,160 - shared_logger - WARNING - ⚠️ No new OHLCV data for PIRATE-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:09,754 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:39:18,889 - shared_logger - WARNING - ⚠️ No new OHLCV data for HNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:21,266 - shared_logger - WARNING - ⚠️ No new OHLCV data for HNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:25,850 - shared_logger - WARNING - ⚠️ No new OHLCV data for ZK-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:28,727 - shared_logger - WARNING - ⚠️ No new OHLCV data for ZK-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:29,844 - shared_logger - WARNING - ⚠️ No new OHLCV data for G-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:32,222 - shared_logger - WARNING - ⚠️ No new OHLCV data for G-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:38,002 - shared_logger - INFO - ✅ Trade recorded successfully: INDEX-USD buy @ 1.36 (trade_recorder.py:49)
+2025-05-25 23:39:41,373 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'BLZ/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 38, 0, 624702), 'type': 'limit', 'order_id': '4a2016fc-4f31-4263-96d9-1cd6ec654acd', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'BLZ', 'quote_currency': 'USD', 'usd_balance': Decimal('507.3100'), 'base_decimal': 1, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.0421'), 'lowest_ask': Decimal('0.0423'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0002'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.0419', 'base_avail_balance': Decimal('0.0'), 'total_balance_crypto': Decimal('0.0'), 'available_to_trade_crypto': Decimal('0.0'), 'usd_avail_balance': Decimal('507.3100'), 'order_amount_fiat': Decimal('50.0000'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.0421'), 'adjusted_size': Decimal('1187.6'), 'stop_loss_price': Decimal('0.0416'), 'take_profit_price': Decimal('0.0432'), 'volume_24h': None, 'parent_order_id': '4a2016fc-4f31-4263-96d9-1cd6ec654acd'}, 'BLZ/USD') (api_manager.py:166)
+2025-05-25 23:39:41,373 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:39:41,383 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:39:43,125 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:45,123 - shared_logger - INFO - ✅ Trade recorded successfully: BADGER-USD buy @ 1.20 (trade_recorder.py:49)
+2025-05-25 23:39:46,440 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:50,440 - shared_logger - WARNING - ⚠️ No new OHLCV data for DNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:39:51,079 - shared_logger - INFO - ✅ Trade recorded successfully: DNT-USD buy @ 0.0307 (trade_recorder.py:49)
+2025-05-25 23:39:54,451 - shared_logger - WARNING - ⚠️ No new OHLCV data for DNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:07,840 - shared_logger - WARNING - ⚠️ No new OHLCV data for GLM-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:10,241 - shared_logger - WARNING - ⚠️ No new OHLCV data for GLM-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:10,718 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:40:15,888 - shared_logger - WARNING - ⚠️ No new OHLCV data for BTRST-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:19,272 - shared_logger - WARNING - ⚠️ No new OHLCV data for BTRST-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:39,024 - shared_logger - WARNING - ⚠️ No new OHLCV data for GTC-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:42,016 - shared_logger - WARNING - ⚠️ No new OHLCV data for GTC-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:51,393 - shared_logger - WARNING - ⚠️ No new OHLCV data for DIA-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:54,113 - shared_logger - WARNING - ⚠️ No new OHLCV data for DIA-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:56,988 - shared_logger - WARNING - ⚠️ No new OHLCV data for FORTH-USD (ohlcv_manager.py:85)
+2025-05-25 23:40:59,839 - shared_logger - WARNING - ⚠️ No new OHLCV data for FORTH-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:02,521 - shared_logger - WARNING - ⚠️ No new OHLCV data for GFI-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:05,424 - shared_logger - WARNING - ⚠️ No new OHLCV data for GFI-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:08,100 - shared_logger - WARNING - ⚠️ No new OHLCV data for RAD-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:08,652 - shared_logger - WARNING - ⚠️ No new OHLCV data for CELR-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:09,531 - shared_logger - INFO - ✅ Trade recorded successfully: RAD-USD buy @ 0.75 (trade_recorder.py:49)
+2025-05-25 23:41:10,805 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'INDEX/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 39, 37, 739304), 'type': 'limit', 'order_id': '5996f78b-9e27-4e31-8eb6-cb93bd97af85', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'INDEX', 'quote_currency': 'USD', 'usd_balance': Decimal('507.31'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.37'), 'lowest_ask': Decimal('1.38'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.35', 'base_avail_balance': Decimal('0.002'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('457.19'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.36'), 'adjusted_size': Decimal('36.576'), 'stop_loss_price': Decimal('1.34'), 'take_profit_price': Decimal('1.39'), 'volume_24h': None, 'parent_order_id': '5996f78b-9e27-4e31-8eb6-cb93bd97af85'}, 'INDEX/USD') (api_manager.py:166)
+2025-05-25 23:41:10,805 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:41:10,806 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:41:11,121 - shared_logger - WARNING - ⚠️ No new OHLCV data for RAD-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:11,616 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:41:11,888 - shared_logger - WARNING - ⚠️ No new OHLCV data for CELR-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:15,654 - shared_logger - WARNING - ⚠️ No new OHLCV data for RARI-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:16,310 - shared_logger - INFO - ✅ Trade recorded successfully: RARI-USD buy @ 1.17 (trade_recorder.py:49)
+2025-05-25 23:41:17,251 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'BADGER/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 39, 44, 855292), 'type': 'limit', 'order_id': '90bf8999-2ff8-45f2-a8c9-74d63d2741db', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'BADGER', 'quote_currency': 'USD', 'usd_balance': Decimal('507.31'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.21'), 'lowest_ask': Decimal('1.22'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.19', 'base_avail_balance': Decimal('0.002'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('457.19'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.20'), 'adjusted_size': Decimal('41.390'), 'stop_loss_price': Decimal('1.18'), 'take_profit_price': Decimal('1.23'), 'volume_24h': None, 'parent_order_id': '90bf8999-2ff8-45f2-a8c9-74d63d2741db'}, 'BADGER/USD') (api_manager.py:166)
+2025-05-25 23:41:17,252 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:41:17,252 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:41:18,952 - shared_logger - WARNING - ⚠️ No new OHLCV data for RARI-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:22,648 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'DNT/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 39, 50, 825223), 'type': 'limit', 'order_id': '55258b38-93cc-4959-910f-c885ca4ca185', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'DNT', 'quote_currency': 'USD', 'usd_balance': Decimal('507.3100'), 'base_decimal': 1, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.0307'), 'lowest_ask': Decimal('0.0309'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0002'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.0305', 'base_avail_balance': Decimal('0.1'), 'total_balance_crypto': Decimal('0.1'), 'available_to_trade_crypto': Decimal('0.1'), 'usd_avail_balance': Decimal('457.1900'), 'order_amount_fiat': Decimal('50.0000'), 'order_amount_crypto': Decimal('0.1'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.0307'), 'adjusted_size': Decimal('1628.6'), 'stop_loss_price': Decimal('0.0303'), 'take_profit_price': Decimal('0.0315'), 'volume_24h': None, 'parent_order_id': '55258b38-93cc-4959-910f-c885ca4ca185'}, 'DNT/USD') (api_manager.py:166)
+2025-05-25 23:41:22,648 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:41:22,649 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:41:34,460 - shared_logger - WARNING - ⚠️ No new OHLCV data for REZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:37,416 - shared_logger - WARNING - ⚠️ No new OHLCV data for REZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:47,616 - shared_logger - WARNING - ⚠️ No new OHLCV data for FX-USD (ohlcv_manager.py:85)
+2025-05-25 23:41:48,345 - shared_logger - INFO - ✅ Trade recorded successfully: FX-USD buy @ 0.1897 (trade_recorder.py:49)
+2025-05-25 23:41:49,998 - shared_logger - WARNING - ⚠️ No new OHLCV data for FX-USD (ohlcv_manager.py:85)
+2025-05-25 23:42:01,466 - shared_logger - INFO - ✅ Trade recorded successfully: BICO-USD buy @ 0.1158 (trade_recorder.py:49)
+2025-05-25 23:42:12,187 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:42:21,018 - shared_logger - WARNING - ⚠️ No new OHLCV data for VARA-USD (ohlcv_manager.py:85)
+2025-05-25 23:42:23,405 - shared_logger - WARNING - ⚠️ No new OHLCV data for VARA-USD (ohlcv_manager.py:85)
+2025-05-25 23:43:42,727 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'RAD/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 41, 9, 270653), 'type': 'limit', 'order_id': 'aba063a0-8789-4111-9237-f3b4e02afcc5', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'RAD', 'quote_currency': 'USD', 'usd_balance': Decimal('507.31'), 'base_decimal': 2, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('0.76'), 'lowest_ask': Decimal('0.77'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.74', 'base_avail_balance': Decimal('0.00'), 'total_balance_crypto': Decimal('0.00'), 'available_to_trade_crypto': Decimal('0.00'), 'usd_avail_balance': Decimal('307.41'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.75'), 'adjusted_size': Decimal('66.66'), 'stop_loss_price': Decimal('0.74'), 'take_profit_price': Decimal('0.77'), 'volume_24h': None, 'parent_order_id': 'aba063a0-8789-4111-9237-f3b4e02afcc5'}, 'RAD/USD') (api_manager.py:166)
+2025-05-25 23:43:42,727 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:43:42,728 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:43:43,378 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'RARI/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 41, 16, 65469), 'type': 'limit', 'order_id': '87c2a00a-9db2-42ef-8a0e-17b3af96b465', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'RARI', 'quote_currency': 'USD', 'usd_balance': Decimal('507.31'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.18'), 'lowest_ask': Decimal('1.19'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.16', 'base_avail_balance': Decimal('0.001'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('307.41'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.17'), 'adjusted_size': Decimal('42.444'), 'stop_loss_price': Decimal('1.15'), 'take_profit_price': Decimal('1.20'), 'volume_24h': None, 'parent_order_id': '87c2a00a-9db2-42ef-8a0e-17b3af96b465'}, 'RARI/USD') (api_manager.py:166)
+2025-05-25 23:43:43,379 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:43:43,379 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:43:43,788 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'FX/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 41, 48, 31904), 'type': 'limit', 'order_id': 'aad9e9a3-5f4b-4e38-bb69-377661a8c733', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'FX', 'quote_currency': 'USD', 'usd_balance': Decimal('507.3100'), 'base_decimal': 1, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.1890'), 'lowest_ask': Decimal('0.1899'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0009'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.1884', 'base_avail_balance': Decimal('0.1'), 'total_balance_crypto': Decimal('0.1'), 'available_to_trade_crypto': Decimal('0.1'), 'usd_avail_balance': Decimal('307.1700'), 'order_amount_fiat': Decimal('50.0000'), 'order_amount_crypto': Decimal('0.1'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.1897'), 'adjusted_size': Decimal('263.8'), 'stop_loss_price': Decimal('0.1878'), 'take_profit_price': Decimal('0.1949'), 'volume_24h': None, 'parent_order_id': 'aad9e9a3-5f4b-4e38-bb69-377661a8c733'}, 'FX/USD') (api_manager.py:166)
+2025-05-25 23:43:43,788 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:43:43,789 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:43:44,166 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'BICO/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 42, 1, 189890), 'type': 'limit', 'order_id': 'c40186b8-7262-45f9-9adf-01f66c8e3576', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'BICO', 'quote_currency': 'USD', 'usd_balance': Decimal('507.3100'), 'base_decimal': 2, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.1154'), 'lowest_ask': Decimal('0.1160'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0006'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.1150', 'base_avail_balance': Decimal('0.02'), 'total_balance_crypto': Decimal('0.02'), 'available_to_trade_crypto': Decimal('0.02'), 'usd_avail_balance': Decimal('307.1700'), 'order_amount_fiat': Decimal('50.0000'), 'order_amount_crypto': Decimal('0.02'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.1158'), 'adjusted_size': Decimal('432.15'), 'stop_loss_price': Decimal('0.1146'), 'take_profit_price': Decimal('0.1189'), 'volume_24h': None, 'parent_order_id': 'c40186b8-7262-45f9-9adf-01f66c8e3576'}, 'BICO/USD') (api_manager.py:166)
+2025-05-25 23:43:44,166 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:43:44,167 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:43:44,208 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:43:53,278 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:43:55,794 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:43:55,844 - shared_logger - INFO - ✅ Trade recorded successfully: BADGER-USD buy @ 1.20 (trade_recorder.py:49)
+2025-05-25 23:43:57,713 - shared_logger - WARNING - ⚠️ No new OHLCV data for CHZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:43:59,033 - shared_logger - WARNING - ⚠️ No new OHLCV data for KAVA-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:00,102 - shared_logger - WARNING - ⚠️ No new OHLCV data for CHZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:02,095 - shared_logger - WARNING - ⚠️ No new OHLCV data for KAVA-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:04,984 - shared_logger - WARNING - ⚠️ No new OHLCV data for RARI-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:06,862 - shared_logger - INFO - ✅ Trade recorded successfully: RARI-USD buy @ 1.17 (trade_recorder.py:49)
+2025-05-25 23:44:08,017 - shared_logger - WARNING - ⚠️ No new OHLCV data for RARI-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:10,399 - shared_logger - WARNING - ⚠️ No new OHLCV data for ALEPH-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:13,199 - shared_logger - WARNING - ⚠️ No new OHLCV data for ALEPH-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:19,642 - shared_logger - WARNING - ⚠️ No new OHLCV data for STG-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:22,164 - shared_logger - WARNING - ⚠️ No new OHLCV data for STG-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:25,423 - shared_logger - WARNING - ⚠️ No new OHLCV data for AIOZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:26,889 - shared_logger - WARNING - ⚠️ No new OHLCV data for COTI-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:27,807 - shared_logger - WARNING - ⚠️ No new OHLCV data for AIOZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:29,305 - shared_logger - WARNING - ⚠️ No new OHLCV data for COTI-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:32,153 - shared_logger - WARNING - ⚠️ No new OHLCV data for SNX-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:35,442 - shared_logger - WARNING - ⚠️ No new OHLCV data for TIME-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:38,366 - shared_logger - WARNING - ⚠️ No new OHLCV data for TIME-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:38,393 - shared_logger - ERROR - ⚠️ [400] Bad Request: {"error":"INVALID_ARGUMENT","error_details":"Orderbook is in limit only mode - attached orders are not allowed","message":"Orderbook is in limit only mode - attached orders are not allowed"} (coinbase_api.py:87)
+2025-05-25 23:44:47,812 - shared_logger - WARNING - ⚠️ No new OHLCV data for AVT-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:48,811 - shared_logger - WARNING - ⚠️ No new OHLCV data for COTI-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:49,568 - shared_logger - INFO - ✅ Trade recorded successfully: AVT-USD buy @ 1.70 (trade_recorder.py:49)
+2025-05-25 23:44:50,011 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:44:50,937 - shared_logger - WARNING - ⚠️ No new OHLCV data for AVT-USD (ohlcv_manager.py:85)
+2025-05-25 23:44:55,930 - shared_logger - WARNING - ⚠️ No new OHLCV data for COTI-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:11,609 - shared_logger - WARNING - ⚠️ No new OHLCV data for VARA-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:14,396 - shared_logger - WARNING - ⚠️ No new OHLCV data for VARA-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:17,078 - shared_logger - WARNING - ⚠️ No new OHLCV data for KAVA-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:19,924 - shared_logger - WARNING - ⚠️ No new OHLCV data for KAVA-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:22,594 - shared_logger - WARNING - ⚠️ No new OHLCV data for BLZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:23,012 - shared_logger - WARNING - ⚠️ No new OHLCV data for RARI-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:24,475 - shared_logger - INFO - ✅ Trade recorded successfully: RARI-USD buy @ 1.17 (trade_recorder.py:49)
+2025-05-25 23:45:25,786 - shared_logger - WARNING - ⚠️ No new OHLCV data for BLZ-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:26,033 - shared_logger - WARNING - ⚠️ No new OHLCV data for RARI-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:28,459 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'BADGER/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 43, 55, 27121), 'type': 'limit', 'order_id': '7f4b0351-3111-4c0e-b386-91294cd1348c', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'BADGER', 'quote_currency': 'USD', 'usd_balance': Decimal('407.08'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.21'), 'lowest_ask': Decimal('1.22'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.19', 'base_avail_balance': Decimal('0.002'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('306.83'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.20'), 'adjusted_size': Decimal('41.390'), 'stop_loss_price': Decimal('1.18'), 'take_profit_price': Decimal('1.23'), 'volume_24h': None, 'parent_order_id': '7f4b0351-3111-4c0e-b386-91294cd1348c'}, 'BADGER/USD') (api_manager.py:166)
+2025-05-25 23:45:28,459 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:45:28,460 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:45:28,777 - shared_logger - WARNING - ⚠️ No new OHLCV data for POWR-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:29,479 - shared_logger - WARNING - ⚠️ No new OHLCV data for METIS-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:31,294 - shared_logger - WARNING - ⚠️ No new OHLCV data for POWR-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:32,055 - shared_logger - WARNING - ⚠️ No new OHLCV data for METIS-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:41,311 - shared_logger - WARNING - ⚠️ No new OHLCV data for DNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:44,326 - shared_logger - WARNING - ⚠️ No new OHLCV data for DNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:50,723 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:45:51,173 - shared_logger - WARNING - ⚠️ No new OHLCV data for DASH-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:53,554 - shared_logger - WARNING - ⚠️ No new OHLCV data for DASH-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:56,355 - shared_logger - WARNING - ⚠️ No new OHLCV data for OXT-USD (ohlcv_manager.py:85)
+2025-05-25 23:45:59,210 - shared_logger - WARNING - ⚠️ No new OHLCV data for OXT-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:00,541 - shared_logger - INFO - ✅ Trade recorded successfully: OMNI-USD buy @ 2.877 (trade_recorder.py:49)
+2025-05-25 23:46:19,729 - shared_logger - WARNING - ⚠️ No new OHLCV data for WCFG-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:20,389 - shared_logger - WARNING - ⚠️ No new OHLCV data for MUSE-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:21,698 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'AVT/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 44, 49, 311432), 'type': 'limit', 'order_id': 'abdc090a-5474-4b6e-8e41-b6044c30d79a', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'AVT', 'quote_currency': 'USD', 'usd_balance': Decimal('407.08'), 'base_decimal': 2, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.71'), 'lowest_ask': Decimal('1.72'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.69', 'base_avail_balance': Decimal('0.02'), 'total_balance_crypto': Decimal('0.02'), 'available_to_trade_crypto': Decimal('0.02'), 'usd_avail_balance': Decimal('306.83'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0.02'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.70'), 'adjusted_size': Decimal('29.41'), 'stop_loss_price': Decimal('1.68'), 'take_profit_price': Decimal('1.74'), 'volume_24h': None, 'parent_order_id': 'abdc090a-5474-4b6e-8e41-b6044c30d79a'}, 'AVT/USD') (api_manager.py:166)
+2025-05-25 23:46:21,698 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:46:21,699 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:46:22,115 - shared_logger - WARNING - ⚠️ No new OHLCV data for WCFG-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:22,147 - shared_logger - INFO - ✅ Trade recorded successfully: WCFG-USD buy @ 0.244 (trade_recorder.py:49)
+2025-05-25 23:46:23,626 - shared_logger - WARNING - ⚠️ No new OHLCV data for MUSE-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:28,771 - shared_logger - INFO - ✅ Trade recorded successfully: ZETACHAIN-USD buy @ 0.2562 (trade_recorder.py:49)
+2025-05-25 23:46:31,835 - shared_logger - WARNING - ⚠️ No new OHLCV data for INDEX-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:35,610 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:36,287 - shared_logger - INFO - ✅ Trade recorded successfully: INDEX-USD buy @ 1.36 (trade_recorder.py:49)
+2025-05-25 23:46:36,434 - shared_logger - INFO - ✅ Trade recorded successfully: RAD-USD buy @ 0.75 (trade_recorder.py:49)
+2025-05-25 23:46:38,485 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:39,294 - shared_logger - INFO - ✅ Trade recorded successfully: BADGER-USD buy @ 1.20 (trade_recorder.py:49)
+2025-05-25 23:46:51,377 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:46:53,236 - shared_logger - WARNING - ⚠️ No new OHLCV data for GHST-USD (ohlcv_manager.py:85)
+2025-05-25 23:46:54,655 - shared_logger - INFO - ✅ Trade recorded successfully: SYN-USD buy @ 0.233 (trade_recorder.py:49)
+2025-05-25 23:46:56,109 - shared_logger - WARNING - ⚠️ No new OHLCV data for GHST-USD (ohlcv_manager.py:85)
+2025-05-25 23:47:00,101 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'RARI/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 45, 24, 222533), 'type': 'limit', 'order_id': '4cdd6818-58d4-4163-bd7f-50792e2fb639', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'RARI', 'quote_currency': 'USD', 'usd_balance': Decimal('407.08'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.18'), 'lowest_ask': Decimal('1.19'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.16', 'base_avail_balance': Decimal('0.001'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('157.14'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.17'), 'adjusted_size': Decimal('42.444'), 'stop_loss_price': Decimal('1.15'), 'take_profit_price': Decimal('1.20'), 'volume_24h': None, 'parent_order_id': '4cdd6818-58d4-4163-bd7f-50792e2fb639'}, 'RARI/USD') (api_manager.py:166)
+2025-05-25 23:47:00,101 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:47:00,102 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:47:32,598 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'OMNI/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 45, 59, 862992), 'type': 'limit', 'order_id': '0e3375af-6205-422e-b511-96f007208cad', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'OMNI', 'quote_currency': 'USD', 'usd_balance': Decimal('407.080'), 'base_decimal': 2, 'quote_decimal': 3, 'quote_increment': Decimal('0.001'), 'highest_bid': Decimal('2.866'), 'lowest_ask': Decimal('2.879'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.013'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@2.855', 'base_avail_balance': Decimal('0.02'), 'total_balance_crypto': Decimal('0.02'), 'available_to_trade_crypto': Decimal('0.02'), 'usd_avail_balance': Decimal('157.140'), 'order_amount_fiat': Decimal('50.000'), 'order_amount_crypto': Decimal('0.02'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('2.877'), 'adjusted_size': Decimal('17.40'), 'stop_loss_price': Decimal('2.848'), 'take_profit_price': Decimal('2.956'), 'volume_24h': None, 'parent_order_id': '0e3375af-6205-422e-b511-96f007208cad'}, 'OMNI/USD') (api_manager.py:166)
+2025-05-25 23:47:32,599 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:47:32,600 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:47:35,310 - shared_logger - WARNING - ⚠️ No new OHLCV data for MASK-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:35,142 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'WCFG/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 46, 21, 304845), 'type': 'limit', 'order_id': '927277e4-f1cf-4032-b324-bc770f30b2cf', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'WCFG', 'quote_currency': 'USD', 'usd_balance': Decimal('356.940'), 'base_decimal': 2, 'quote_decimal': 3, 'quote_increment': Decimal('0.001'), 'highest_bid': Decimal('0.244'), 'lowest_ask': Decimal('0.246'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.002'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.242', 'base_avail_balance': Decimal('0.02'), 'total_balance_crypto': Decimal('0.02'), 'available_to_trade_crypto': Decimal('0.02'), 'usd_avail_balance': Decimal('206.910'), 'order_amount_fiat': Decimal('50.000'), 'order_amount_crypto': Decimal('0.02'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.244'), 'adjusted_size': Decimal('204.91'), 'stop_loss_price': Decimal('0.241'), 'take_profit_price': Decimal('0.250'), 'volume_24h': None, 'parent_order_id': '927277e4-f1cf-4032-b324-bc770f30b2cf'}, 'WCFG/USD') (api_manager.py:166)
+2025-05-25 23:48:35,142 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:48:35,143 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:48:35,510 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'ZETACHAIN/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 46, 27, 993412), 'type': 'limit', 'order_id': 'b094b1f8-2cbe-46a2-bfff-e28b4d0e3a5a', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'ZETACHAIN', 'quote_currency': 'USD', 'usd_balance': Decimal('356.9400'), 'base_decimal': 2, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.2552'), 'lowest_ask': Decimal('0.2562'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0010'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.2543', 'base_avail_balance': Decimal('0.02'), 'total_balance_crypto': Decimal('0.02'), 'available_to_trade_crypto': Decimal('0.02'), 'usd_avail_balance': Decimal('206.9100'), 'order_amount_fiat': Decimal('50.0000'), 'order_amount_crypto': Decimal('0.02'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.2562'), 'adjusted_size': Decimal('195.54'), 'stop_loss_price': Decimal('0.2536'), 'take_profit_price': Decimal('0.2632'), 'volume_24h': None, 'parent_order_id': 'b094b1f8-2cbe-46a2-bfff-e28b4d0e3a5a'}, 'ZETACHAIN/USD') (api_manager.py:166)
+2025-05-25 23:48:35,510 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:48:35,511 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:48:35,881 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'INDEX/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 46, 34, 983931), 'type': 'limit', 'order_id': '0738b7e8-a9e9-4f40-a26b-b1d0b3726b35', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'INDEX', 'quote_currency': 'USD', 'usd_balance': Decimal('356.94'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.37'), 'lowest_ask': Decimal('1.38'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.35', 'base_avail_balance': Decimal('0.002'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('206.91'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.36'), 'adjusted_size': Decimal('36.576'), 'stop_loss_price': Decimal('1.34'), 'take_profit_price': Decimal('1.39'), 'volume_24h': None, 'parent_order_id': '0738b7e8-a9e9-4f40-a26b-b1d0b3726b35'}, 'INDEX/USD') (api_manager.py:166)
+2025-05-25 23:48:35,881 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:48:35,882 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:48:36,249 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'RAD/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 46, 36, 178197), 'type': 'limit', 'order_id': 'e1ddc0e1-9f51-451e-a361-b4d4b40225af', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'RAD', 'quote_currency': 'USD', 'usd_balance': Decimal('356.94'), 'base_decimal': 2, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('0.76'), 'lowest_ask': Decimal('0.77'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.74', 'base_avail_balance': Decimal('0.00'), 'total_balance_crypto': Decimal('0.00'), 'available_to_trade_crypto': Decimal('0.00'), 'usd_avail_balance': Decimal('206.91'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.75'), 'adjusted_size': Decimal('66.66'), 'stop_loss_price': Decimal('0.74'), 'take_profit_price': Decimal('0.77'), 'volume_24h': None, 'parent_order_id': 'e1ddc0e1-9f51-451e-a361-b4d4b40225af'}, 'RAD/USD') (api_manager.py:166)
+2025-05-25 23:48:36,249 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:48:36,250 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:48:36,621 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'BADGER/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 46, 37, 947228), 'type': 'limit', 'order_id': '3b788fc3-a9b0-4f59-87ee-778a101b0952', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'BADGER', 'quote_currency': 'USD', 'usd_balance': Decimal('356.94'), 'base_decimal': 3, 'quote_decimal': 2, 'quote_increment': Decimal('0.01'), 'highest_bid': Decimal('1.21'), 'lowest_ask': Decimal('1.22'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.01'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@1.19', 'base_avail_balance': Decimal('0.002'), 'total_balance_crypto': Decimal('0.000'), 'available_to_trade_crypto': Decimal('0.000'), 'usd_avail_balance': Decimal('206.91'), 'order_amount_fiat': Decimal('50.00'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.20'), 'adjusted_size': Decimal('41.390'), 'stop_loss_price': Decimal('1.18'), 'take_profit_price': Decimal('1.23'), 'volume_24h': None, 'parent_order_id': '3b788fc3-a9b0-4f59-87ee-778a101b0952'}, 'BADGER/USD') (api_manager.py:166)
+2025-05-25 23:48:36,621 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:48:36,622 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:48:36,995 - shared_logger - ERROR - ⚠️ Post-only limit buys must be priced below the lowest sell price({'trading_pair': 'SYN/USD', 'time_order_placed': datetime.datetime(2025, 5, 25, 23, 46, 54, 338037), 'type': 'limit', 'order_id': '6fdd913d-f525-45f0-8623-2a891f079443', 'side': 'buy', 'filled_price': Decimal('0'), 'base_currency': 'SYN', 'quote_currency': 'USD', 'usd_balance': Decimal('356.940'), 'base_decimal': 2, 'quote_decimal': 3, 'quote_increment': Decimal('0.001'), 'highest_bid': Decimal('0.233'), 'lowest_ask': Decimal('0.234'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.001'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'webhook', 'trigger': 'passive_buy@0.231', 'base_avail_balance': Decimal('0.00'), 'total_balance_crypto': Decimal('0.00'), 'available_to_trade_crypto': Decimal('0.00'), 'usd_avail_balance': Decimal('206.910'), 'order_amount_fiat': Decimal('50.000'), 'order_amount_crypto': Decimal('0'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.233'), 'adjusted_size': Decimal('215.51'), 'stop_loss_price': Decimal('0.230'), 'take_profit_price': Decimal('0.239'), 'volume_24h': None, 'parent_order_id': '6fdd913d-f525-45f0-8623-2a891f079443'}, 'SYN/USD') (api_manager.py:166)
+2025-05-25 23:48:36,995 - shared_logger - ERROR - Exchange error cancel_order : coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"} (api_manager.py:168)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 577, in fetch
+    response.raise_for_status()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://api.coinbase.com/api/v3/brokerage/orders/batch_cancel
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
+    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3185, in cancel_order
+    orders = self.cancel_orders([id], symbol, params)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3206, in cancel_orders
+    response = self.v3PrivatePostBrokerageOrdersBatchCancel(self.extend(request, params))
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
+    return _self.request(self.path, self.api, self.method, params, config=self.config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4401, in request
+    return self.fetch2(path, api, method, params, headers, body, config)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4397, in fetch2
+    raise e
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4386, in fetch2
+    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 593, in fetch
+    skip_further_error_handling = self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 4892, in handle_errors
+    raise ExchangeError(feedback)
+ccxt.base.errors.ExchangeError: coinbase {"error":"unknown","error_details":"proto: (line 1:15): invalid value for string field orderIds: {","message":"proto: (line 1:15): invalid value for string field orderIds: {"}
+2025-05-25 23:48:36,996 - shared_logger - INFO - API call failed after all retries. cancel_order (api_manager.py:181)
+NoneType: None
+2025-05-25 23:48:37,034 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:48:37,893 - shared_logger - WARNING - ⚠️ No new OHLCV data for MASK-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:45,905 - shared_logger - WARNING - ⚠️ No new OHLCV data for TIME-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:47,233 - shared_logger - WARNING - ⚠️ No new OHLCV data for BNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:48,280 - shared_logger - WARNING - ⚠️ No new OHLCV data for TIME-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:49,615 - shared_logger - WARNING - ⚠️ No new OHLCV data for BNT-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:50,683 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:53,064 - shared_logger - WARNING - ⚠️ No new OHLCV data for BADGER-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:55,444 - shared_logger - WARNING - ⚠️ No new OHLCV data for RLC-USD (ohlcv_manager.py:85)
+2025-05-25 23:48:57,823 - shared_logger - WARNING - ⚠️ No new OHLCV data for RLC-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:15,686 - shared_logger - INFO - ✅ Trade recorded successfully: SKL-USD buy @ 0.0243 (trade_recorder.py:49)
+2025-05-25 23:49:21,203 - shared_logger - WARNING - ⚠️ No new OHLCV data for MOBILE-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:23,149 - shared_logger - INFO - ✅ Trade recorded successfully: MOBILE-USD buy @ 0.000530 (trade_recorder.py:49)
+2025-05-25 23:49:24,313 - shared_logger - WARNING - ⚠️ No new OHLCV data for MOBILE-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:27,252 - shared_logger - WARNING - ⚠️ No new OHLCV data for SEAM-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:29,631 - shared_logger - WARNING - ⚠️ No new OHLCV data for SEAM-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:35,476 - shared_logger - WARNING - ⚠️ No new OHLCV data for 00-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:35,591 - shared_logger - INFO - ✅ Trade recorded successfully: MOG-USD buy @ 0.00000120 (trade_recorder.py:49)
+2025-05-25 23:49:37,533 - shared_logger - INFO - Starting to save shared data... (shared_data_manager.py:275)
+2025-05-25 23:49:38,724 - shared_logger - WARNING - ⚠️ No new OHLCV data for 00-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:42,095 - shared_logger - WARNING - ⚠️ No new OHLCV data for BAT-USD (ohlcv_manager.py:85)
+2025-05-25 23:49:43,469 - shared_logger - ERROR - ⚠️ [400] Bad Request: {"error":"INVALID_ARGUMENT","error_details":"Orderbook is in limit only mode - attached orders are not allowed","message":"Orderbook is in limit only mode - attached orders are not allowed"} (coinbase_api.py:87)
+2025-05-25 23:49:45,795 - shared_logger - WARNING - ⚠️ No new OHLCV data for BAT-USD (ohlcv_manager.py:85)
