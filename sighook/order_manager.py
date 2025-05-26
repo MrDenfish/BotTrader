@@ -203,7 +203,7 @@ class OrderManager:
                     ((merged_orders['side'].str.upper() == 'BUY') &
                      (merged_orders['price'] < merged_orders['ask'] * (1 - Decimal(self.cxl_buy))) &
                      (merged_orders['active > 5 mins '])) |
-                    ((merged_orders['side'].str.upper() == 'SELL') & (merged_orders['order_type'].str.upper() == 'LIMIT') &
+                    ((merged_orders['side'].str.upper() == 'SELL') & (merged_orders['type'].str.upper() == 'LIMIT') &
                      (merged_orders['price'] > merged_orders['ask'] * (1 + Decimal(self.cxl_sell))) &
                      (merged_orders['active > 5 mins ']))
             )
@@ -293,7 +293,7 @@ class OrderManager:
                     'side': info.get('side',order.get('side')),
                     'filled': order.get('filled'),
                     'remaining': order.get('remaining'),
-                    'order_type': order_type,
+                    'type': order_type,
                     'time active': info.get('created_time')
                 }
 

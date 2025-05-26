@@ -137,7 +137,7 @@ class HoldingsProcessor:
 
             # Prepare trailing stop orders
             trailing_stop_orders = (
-                open_orders[open_orders['order_type'] == 'STOP_PENDING']
+                open_orders[open_orders['type'] == 'STOP_PENDING']
                 if open_orders is not None and not open_orders.empty else pd.DataFrame()
             )
 

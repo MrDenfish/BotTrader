@@ -1,30 +1,393 @@
-2025-05-25 08:07:43,236 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 08:13:10,320 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 08:15:30,052 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 08:20:42,004 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 08:27:08,757 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 09:17:16,799 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 09:19:04,575 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 09:22:24,553 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 10:17:25,624 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 10:22:36,425 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 15:05:46,688 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 15:06:57,408 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 15:08:04,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-05-25 15:08:47,016 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 15:09:47,130 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 19:30:00,723 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 19:42:12,667 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 19:43:21,712 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 20:53:23,169 - sighook_logger - ERROR - ❌Error in main loop: cannot unpack non-iterable NoneType object (sender.py:429)
+2025-05-26 00:05:18,291 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:10:11,590 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:15:21,435 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:20:20,880 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:25:16,528 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:30:29,917 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:35:17,905 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:40:16,357 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:45:21,169 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:50:21,903 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 00:55:40,392 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:00:24,501 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:05:29,806 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:10:33,010 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:15:28,414 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:20:33,040 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:25:20,452 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:30:21,517 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:35:22,491 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:40:26,034 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:45:24,810 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:50:20,424 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:55:28,073 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 01:55:29,770 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Internal error: '<' not supported between instances of 'NoneType' and 'float'"} (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-26 01:55:31,632 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Internal error: '<' not supported between instances of 'NoneType' and 'float'"} (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-26 01:55:34,202 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Internal error: '<' not supported between instances of 'NoneType' and 'float'"} (Retrying...) (alerts_msgs_webhooks.py:178)
+2025-05-26 01:55:34,202 - sighook_logger - ERROR - ❌ Max retries reached for webhook: bff3b371-a5df-4902-9803-972c281f6a34 (alerts_msgs_webhooks.py:201)
+2025-05-26 02:00:21,644 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:05:25,443 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:10:21,944 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:15:23,146 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:20:23,321 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:25:24,349 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:30:23,331 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:35:33,226 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:40:26,793 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:45:26,369 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:50:26,846 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 02:55:36,304 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:00:40,369 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:05:31,298 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:10:34,946 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:15:30,969 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:20:43,117 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:25:38,321 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:30:40,229 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:35:36,105 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:40:32,243 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:45:41,046 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:50:44,984 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 03:55:34,816 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:00:25,770 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:05:44,090 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:10:35,587 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:15:39,219 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:20:25,291 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:25:32,959 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:30:29,881 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:35:33,431 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:40:35,882 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:45:30,716 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:50:33,561 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 04:55:35,102 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:00:32,400 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:05:38,980 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:10:33,293 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:15:40,050 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:19:45,731 - sighook_logger - WARNING - Insufficient OHLCV data for SHIB/USD. Rows fetched: 299 (trading_strategy.py:308)
+2025-05-26 05:20:41,373 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:25:41,145 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:30:40,887 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:35:42,011 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:40:46,081 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:45:45,011 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:50:46,736 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 05:55:41,514 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:00:51,414 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:05:46,497 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:10:48,088 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:15:45,431 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:20:47,906 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:25:53,553 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:30:43,734 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:35:42,427 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:40:57,076 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:45:57,128 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:50:50,543 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 06:55:55,175 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:00:51,053 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:05:54,723 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:10:54,369 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:16:02,508 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:21:04,203 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:26:17,935 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:31:08,800 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:37:02,548 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:43:39,170 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:51:44,166 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:53:37,296 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 07:58:27,910 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 08:03:31,891 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 08:12:44,200 - sighook_logger - WARNING - Insufficient OHLCV data for SHIB/USD. Rows fetched: 472 (trading_strategy.py:308)
+2025-05-26 08:13:49,648 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 08:17:40,688 - sighook_logger - WARNING - Insufficient OHLCV data for SHIB/USD. Rows fetched: 477 (trading_strategy.py:308)
+2025-05-26 08:17:40,744 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 299 (trading_strategy.py:308)
+2025-05-26 08:18:50,846 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 08:27:56,270 - sighook_logger - WARNING - Insufficient OHLCV data for SHIB/USD. Rows fetched: 487 (trading_strategy.py:308)
+2025-05-26 08:27:56,281 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 309 (trading_strategy.py:308)
+2025-05-26 08:29:02,658 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 08:31:12,900 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,900 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,900 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,900 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,901 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,901 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,901 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:31:12,901 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,510 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,510 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,510 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,511 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,511 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,511 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,511 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:32:18,511 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,993 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,994 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,994 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,994 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,994 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,995 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,995 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:42:50,995 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:43:29,646 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 325 (trading_strategy.py:308)
+2025-05-26 08:43:59,229 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:40,102 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:40,895 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:41,568 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:42,197 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:42,791 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:43,332 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:43,877 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:47:44,398 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,804 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,804 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,805 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,805 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,805 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,805 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,806 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:11,806 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,913 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:48:38,914 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,378 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,379 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,379 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,379 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,379 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,380 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,380 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 08:50:11,380 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,235 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,236 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,236 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,236 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,236 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,237 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,237 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:01:51,237 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,211 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,212 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,212 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,212 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,212 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,212 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,212 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:21:43,213 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,119 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,119 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,119 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,119 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,119 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,119 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,120 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:23:37,120 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,142 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,143 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,143 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,143 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,143 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,143 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,144 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:25:33,144 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:21,035 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:21,953 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:22,773 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:23,416 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:24,030 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:24,604 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:25,216 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:26:25,866 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:32,943 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:34,307 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:35,338 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:36,302 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:37,588 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:38,754 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:39,833 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:39:40,910 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,560 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,560 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,560 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,560 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,561 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,561 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,561 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:41:42,561 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,610 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,610 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,610 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:50:45,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,864 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,866 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,866 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:52:19,866 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,724 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,724 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,725 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,725 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,725 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,725 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,725 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:57:37,725 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,770 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 09:59:45,771 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,664 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,664 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,664 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,664 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,665 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,665 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,665 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:34,665 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:46:58,587 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 448 (trading_strategy.py:308)
+2025-05-26 10:47:59,910 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 10:51:17,536 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,536 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,536 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,537 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,537 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,537 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,537 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:17,537 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-05-26 10:51:36,584 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 453 (trading_strategy.py:308)
+2025-05-26 10:52:36,201 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 11:01:09,794 - sighook_logger - ERROR - ❌ Error cancelling stale orders: 'order_type' (order_manager.py:220)
 Traceback (most recent call last):
-  File "/Users/Manny/Python_Projects/BotTrader/sighook/sender.py", line 406, in run_bot
-    self.market_data, self.order_management = await self.shared_data_manager.refresh_shared_data()
-TypeError: cannot unpack non-iterable NoneType object
-2025-05-25 20:55:01,638 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 21:05:04,672 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 21:15:54,754 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 22:48:02,084 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 23:39:04,513 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 23:43:41,027 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
-2025-05-25 23:48:34,186 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3805, in get_loc
+    return self._engine.get_loc(casted_key)
+  File "index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7081, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7089, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'order_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/order_manager.py", line 206, in cancel_stale_orders
+    ((merged_orders['side'].str.upper() == 'SELL') & (merged_orders['order_type'].str.upper() == 'LIMIT') &
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    raise KeyError(key) from err
+KeyError: 'order_type'
+2025-05-26 11:01:28,934 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 463 (trading_strategy.py:308)
+2025-05-26 11:02:33,168 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 11:07:19,554 - sighook_logger - ERROR - ❌ Error cancelling stale orders: 'order_type' (order_manager.py:220)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3805, in get_loc
+    return self._engine.get_loc(casted_key)
+  File "index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7081, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7089, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'order_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/order_manager.py", line 206, in cancel_stale_orders
+    ((merged_orders['side'].str.upper() == 'SELL') & (merged_orders['order_type'].str.upper() == 'LIMIT') &
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    raise KeyError(key) from err
+KeyError: 'order_type'
+2025-05-26 11:15:33,143 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 477 (trading_strategy.py:308)
+2025-05-26 11:16:32,489 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 11:16:32,489 - sighook_logger - ERROR - ❌Failed to process holdings data: 'order_type' (holdings_process_manager.py:172)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3805, in get_loc
+    return self._engine.get_loc(casted_key)
+  File "index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7081, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7089, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'order_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/holdings_process_manager.py", line 140, in process_holdings
+    open_orders[open_orders['order_type'] == 'STOP_PENDING']
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    raise KeyError(key) from err
+KeyError: 'order_type'
+2025-05-26 11:16:32,495 - sighook_logger - ERROR - ❌ update_and_process_holdings: 'order_type' (profit_manager.py:81)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3805, in get_loc
+    return self._engine.get_loc(casted_key)
+  File "index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7081, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7089, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'order_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/profit_manager.py", line 75, in update_and_process_holdings
+    aggregated_df = await self.holdings_processor.process_holdings(open_orders, holdings_list)
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/holdings_process_manager.py", line 140, in process_holdings
+    open_orders[open_orders['order_type'] == 'STOP_PENDING']
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    raise KeyError(key) from err
+KeyError: 'order_type'
+2025-05-26 11:16:32,495 - sighook_logger - ERROR - ❌Error in main loop: 'order_type' (sender.py:429)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3805, in get_loc
+    return self._engine.get_loc(casted_key)
+  File "index.pyx", line 167, in pandas._libs.index.IndexEngine.get_loc
+  File "index.pyx", line 196, in pandas._libs.index.IndexEngine.get_loc
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7081, in pandas._libs.hashtable.PyObjectHashTable.get_item
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7089, in pandas._libs.hashtable.PyObjectHashTable.get_item
+KeyError: 'order_type'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/sender.py", line 383, in run_bot
+    aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders, holdings_list)
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/profit_manager.py", line 75, in update_and_process_holdings
+    aggregated_df = await self.holdings_processor.process_holdings(open_orders, holdings_list)
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/holdings_process_manager.py", line 140, in process_holdings
+    open_orders[open_orders['order_type'] == 'STOP_PENDING']
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/base.py", line 3812, in get_loc
+    raise KeyError(key) from err
+KeyError: 'order_type'
+2025-05-26 11:18:57,734 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 480 (trading_strategy.py:308)
+2025-05-26 11:19:58,467 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 11:21:28,492 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 483 (trading_strategy.py:308)
+2025-05-26 11:22:31,820 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 11:27:12,844 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 488 (trading_strategy.py:308)
+2025-05-26 11:28:18,202 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-26 11:30:07,349 - sighook_logger - WARNING - Insufficient OHLCV data for ZORA/USD. Rows fetched: 491 (trading_strategy.py:308)
+2025-05-26 11:31:07,444 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)

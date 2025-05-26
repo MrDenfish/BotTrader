@@ -164,8 +164,7 @@ class ApiManager:
                         return None
                     else:
                         self.logger.error(f"⚠️ Post-only limit buys must be priced below the lowest sell price"
-                                                   f"{args}")
-                        self.logger.error(f"Exchange error {func.__name__} : {e}", exc_info=True)
+                                                   f"{args}  {func.__name__} from {caller_function_name}",exc_info=True)
                         break
                 except asyncio.TimeoutError:
                     print(f'{caller_function_name}')
