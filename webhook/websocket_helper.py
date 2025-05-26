@@ -703,10 +703,10 @@ class WebSocketHelper:
                     self.exchange.fetch_open_orders, endpoint, params=params
                 )
 
-                if all_open_orders:
-                    break  # ✅ Stop retrying if orders are found
-
-                print(f"⚠️ Attempt {attempt + 1}: No open orders found. Retrying...")
+                if all_open_orders or len(all_open_orders) == 0:
+                    if len(all_open_orders) == 0:
+                        print(f"⚠️ Attempt {attempt + 1}: No open orders found.")
+                    break  # ✅ Stop retrying if orders are found or there are no open orders
                 await asyncio.sleep(2)  # Small delay before retrying
 
             # ✅ Retrieve the existing order tracker

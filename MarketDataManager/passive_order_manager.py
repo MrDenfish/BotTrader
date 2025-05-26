@@ -170,7 +170,7 @@ class PassiveOrderManager:
                     )
                 else:
                     self.logger.warning(
-                        f"⚠️ Passive {side.upper()} failed: {res.get('message')}",
+                        f"⚠️ Passive {side.upper()} failed: {res.get('message')}",exc_info=True
                     )
         except Exception as exc:
             self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True,)

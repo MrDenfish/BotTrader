@@ -115,7 +115,7 @@ class PrecisionUtils:
             side = order_data['side'].upper()
             highest_bid = Decimal(str(order_book.get('highest_bid', 0)))
             lowest_ask = Decimal(str(order_book.get('lowest_ask', 0)))
-            adjusted_size = Decimal(str(order_data.get('order_size', 0)))
+            adjusted_size = Decimal(str(order_data.get('order_amount_fiat', 0)))
 
             if highest_bid == 0 or lowest_ask == 0:
                 raise ValueError("Invalid order book data: highest_bid or lowest_ask is zero.")

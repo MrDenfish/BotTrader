@@ -350,8 +350,6 @@ class TradeOrderManager:
             # Step 2: Get order book
             order_book_details = await self.order_book_manager.get_order_book(raw_order_data)
 
-            if len(order_book_details) == 0:
-                pass
             # Step 3: Full validation
             validation_result = self.validate.fetch_and_validate_rules(raw_order_data)
             if not validation_result["is_valid"]:
@@ -449,9 +447,12 @@ class TradeOrderManager:
             validation_result = 'limit'
             return validation_result
 
-    def get_post_only_price(self,highest_bid, lowest_ask, quote_increment):
-        adjustment = quote_increment * 2  # a multiple of tick size
-        return min(highest_bid, lowest_ask - adjustment)
+    def get_post_only_price(self, highest_bid, lowest_ask, quote_increment, side):
+        adjustment = quote_increment * 2  # or 1 if tighter spacing is acceptable
+        if side == 'buy':
+            return (lowest_ask - adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
+        else:
+            return (highest_bid + adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
 
     async def attempt_order_placement(self, order_data: OrderData, order_type: str, max_attempts: int = 3) -> tuple[bool, dict]:
         symbol = order_data.trading_pair
@@ -467,10 +468,15 @@ class TradeOrderManager:
                 lowest_ask = Decimal(order_book['lowest_ask'])
 
                 # Step 1.1: Adjust price
-                adjustment = self.get_post_only_price(highest_bid, lowest_ask, order_data.quote_increment)
                 side = order_data.side.lower()
-                price = min(highest_bid, lowest_ask - adjustment) if side == 'buy' else max(highest_bid, lowest_ask + adjustment)
-                order_data.adjusted_price = price.quantize(Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_HALF_UP)
+                adjusted_price = self.get_post_only_price(highest_bid,
+                                                          lowest_ask,
+                                                          order_data.quote_increment,
+                                                          side)
+
+                order_data.adjusted_price = adjusted_price
+
+                order_data.adjusted_price = adjusted_price.quantize(Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_HALF_UP)
 
                 # Step 1.5: Validate post-only logic
                 if getattr(order_data, 'post_only', False):

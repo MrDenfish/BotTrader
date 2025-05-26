@@ -13,3 +13,18 @@
 2025-05-25 15:08:04,865 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
 2025-05-25 15:08:47,016 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
 2025-05-25 15:09:47,130 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 19:30:00,723 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 19:42:12,667 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 19:43:21,712 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 20:53:23,169 - sighook_logger - ERROR - ❌Error in main loop: cannot unpack non-iterable NoneType object (sender.py:429)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/sighook/sender.py", line 406, in run_bot
+    self.market_data, self.order_management = await self.shared_data_manager.refresh_shared_data()
+TypeError: cannot unpack non-iterable NoneType object
+2025-05-25 20:55:01,638 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 21:05:04,672 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 21:15:54,754 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 22:48:02,084 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 23:39:04,513 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 23:43:41,027 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)
+2025-05-25 23:48:34,186 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:136)

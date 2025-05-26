@@ -214,65 +214,68 @@ class ValidateOrders:
 
 
     def build_order_data_from_validation_result(self, validation_result: dict, order_book_details: dict, precision_data: tuple) -> OrderData:
-        details = validation_result.get("details", {})
-        base_deci, quote_deci, *_ = precision_data
-        side = details.get("side", "buy")
-        buy_amount = self.shared_utils_precision.safe_decimal(details.get("order_amount_fiat"))
-        sell_amount = self.shared_utils_precision.safe_decimal(details.get("base_balance"))
-        trading_pair = details.get("trading_pair", "")
-        base_currency = details.get("asset", trading_pair.split('/')[0])
-        quote_currency = trading_pair.split('/')[1] if '/' in trading_pair else 'USD'
-        order_amount = buy_amount if side == "buy" else sell_amount
-
-        raw_qdec = details.get("quote_decimal")  # could be '', None, or int/str
         try:
-            quote_decimal = int(raw_qdec)
-        except (TypeError, ValueError):
-            quote_decimal = 2  # sane default – adjust if needed
+            details = validation_result.get("details", {})
+            base_deci, quote_deci, *_ = precision_data
+            side = details.get("side", "buy")
+            buy_amount = self.shared_utils_precision.safe_decimal(details.get("order_amount_fiat"))
+            sell_amount = self.shared_utils_precision.safe_decimal(details.get("base_balance"))
+            trading_pair = details.get("trading_pair", "")
+            base_currency = details.get("asset", trading_pair.split('/')[0])
+            quote_currency = trading_pair.split('/')[1] if '/' in trading_pair else 'USD'
+            order_amount = buy_amount if side == "buy" else sell_amount
 
-        quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
+            raw_qdec = details.get("quote_decimal")  # could be '', None, or int/str
+            try:
+                quote_decimal = int(raw_qdec)
+            except (TypeError, ValueError):
+                quote_decimal = 2  # sane default – adjust if needed
 
-        return OrderData(
-            source=details.get("source", "webhook"),
-            time_order_placed=None,
-            volume_24h=None,
-            trigger=details.get("trigger", ""),
-            order_id=details.get("order_id", ""),
-            trading_pair=trading_pair,
-            side=details.get("side", "buy"),
-            type=details.get("Order Type", "limit").lower(),
-            order_amount_fiat=details.get('order_amount_fiat'),
-            order_amount_crypto=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) or \
-                                self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")) or \
-                                Decimal("0"),
-            price=Decimal("0"),
-            cost_basis=Decimal("0"),
-            limit_price=self.shared_utils_precision.safe_decimal(details.get("limit_price")),
-            filled_price=self.shared_utils_precision.safe_decimal(details.get("average_price")),
-            base_currency=base_currency,
-            quote_currency=quote_currency,
-            usd_avail_balance=self.shared_utils_precision.safe_decimal(details.get("usd_avail_balance")),
-            usd_balance=self.shared_utils_precision.safe_decimal(details.get("usd_balance")),
-            base_avail_balance=self.shared_utils_precision.safe_decimal(details.get("base_balance")),
-            total_balance_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
-            available_to_trade_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
-            base_decimal=details.get("base_decimal", base_deci),
-            quote_decimal=details.get("quote_decimal", quote_deci),
-            quote_increment=quote_increment,
-            highest_bid=self.shared_utils_precision.safe_decimal(order_book_details.get("highest_bid")),
-            lowest_ask=self.shared_utils_precision.safe_decimal(order_book_details.get("lowest_ask")),
-            maker=self.shared_utils_precision.safe_decimal(details.get("maker_fee")),
-            taker=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
-            spread=self.shared_utils_precision.safe_decimal(order_book_details.get("spread")),
-            open_orders=details.get("Open Orders", pd.DataFrame()),
-            status=details.get("status", "VALID"),
-            average_price=self.shared_utils_precision.safe_decimal(details.get("average_price")) if details.get("average_price") else None,
-            adjusted_price=self.shared_utils_precision.safe_decimal(details.get("adjusted_price")) if details.get("adjusted_price") else None,
-            adjusted_size=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) if details.get("adjusted_size") else None,
-            stop_loss_price=self.shared_utils_precision.safe_decimal(details.get("stop_loss_price")) if details.get("stop_loss_price") else None,
-            take_profit_price=self.shared_utils_precision.safe_decimal(details.get("take_profit_price")) if details.get(
-                "take_profit_price") else None,
-        )
+            quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
+
+            return OrderData(
+                source=details.get("source", "webhook"),
+                time_order_placed=None,
+                volume_24h=None,
+                trigger=details.get("trigger", ""),
+                order_id=details.get("order_id", ""),
+                trading_pair=trading_pair,
+                side=details.get("side", "buy"),
+                type=details.get("Order Type", "limit").lower(),
+                order_amount_fiat=details.get('order_amount_fiat'),
+                order_amount_crypto=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) or \
+                                    self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")) or \
+                                    Decimal("0"),
+                price=Decimal("0"),
+                cost_basis=Decimal("0"),
+                limit_price=self.shared_utils_precision.safe_decimal(details.get("limit_price")),
+                filled_price=self.shared_utils_precision.safe_decimal(details.get("average_price")),
+                base_currency=base_currency,
+                quote_currency=quote_currency,
+                usd_avail_balance=self.shared_utils_precision.safe_decimal(details.get("usd_avail_balance")),
+                usd_balance=self.shared_utils_precision.safe_decimal(details.get("usd_balance")),
+                base_avail_balance=self.shared_utils_precision.safe_decimal(details.get("base_balance")),
+                total_balance_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
+                available_to_trade_crypto=self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")),
+                base_decimal=details.get("base_decimal", base_deci),
+                quote_decimal=details.get("quote_decimal", quote_deci),
+                quote_increment=quote_increment,
+                highest_bid=self.shared_utils_precision.safe_decimal(order_book_details.get("highest_bid")),
+                lowest_ask=self.shared_utils_precision.safe_decimal(order_book_details.get("lowest_ask")),
+                maker=self.shared_utils_precision.safe_decimal(details.get("maker_fee")),
+                taker=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
+                spread=self.shared_utils_precision.safe_decimal(order_book_details.get("spread")),
+                open_orders=details.get("Open Orders", pd.DataFrame()),
+                status=details.get("status", "VALID"),
+                average_price=self.shared_utils_precision.safe_decimal(details.get("average_price")) if details.get("average_price") else None,
+                adjusted_price=self.shared_utils_precision.safe_decimal(details.get("adjusted_price")) if details.get("adjusted_price") else None,
+                adjusted_size=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) if details.get("adjusted_size") else None,
+                stop_loss_price=self.shared_utils_precision.safe_decimal(details.get("stop_loss_price")) if details.get("stop_loss_price") else None,
+                take_profit_price=self.shared_utils_precision.safe_decimal(details.get("take_profit_price")) if details.get(
+                    "take_profit_price") else None,
+            )
+        except Exception as e:
+            raise Exception(f"Error creating OrderData object: {e}")
 
     def validate_order_conditions(self, order_details: OrderData, open_orders):
         """
