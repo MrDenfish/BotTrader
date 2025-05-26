@@ -373,19 +373,15 @@ class WebhookListener:
                     await asyncio.sleep(60)
                     continue
 
-                # Update shared state via SharedDataManager
-                await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
-                print("⚠️ Market data and order management updated successfully. ⚠️")
-
                 # Refresh open orders and get the updated order_tracker
                 _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
 
                 # Reflect the updated order_tracker in the shared state
                 if updated_order_tracker:
                     new_order_management['order_tracker'] = updated_order_tracker
-                    await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
-
-
+                # Update shared state via SharedDataManager
+                await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
+                print("⚠️ Market data and order management updated successfully. ⚠️")
                 # Monitor and update active orders
                 await self.websocket_helper.monitor_and_update_active_orders(new_market_data, new_order_management)
 
@@ -771,6 +767,7 @@ class WebhookListener:
                             "parent_id": None if o.get("side", "").lower() == "buy" else o.get("originating_order_id"),
                             "symbol": o["product_id"],
                             "side": o["side"].lower(),
+                            "order_type": o.get("order_type", "unknown").lower(),
                             "order_time": self.iso_to_dt(
                                 self.pick(
                                     o,

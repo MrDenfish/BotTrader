@@ -144,7 +144,15 @@ class PassiveOrderManager:
                 else:  # sell
                     target_px = od.lowest_ask + adjustment + bias
 
-                quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+                if side == "buy":
+                    # One tick below the lowest ask
+                    target_px = min(od.highest_bid, od.lowest_ask - tick)
+                    quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+                else:  # sell
+                    # One tick above the highest bid
+                    target_px = max(od.lowest_ask, od.highest_bid + tick)
+                    quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+
                 quote_od.adjusted_size_fiat = quote_od.order_amount_fiat  # if not already set
                 quote_od.adjusted_size = (quote_od.order_amount_fiat / quote_od.adjusted_price).quantize(
                     Decimal(f'1e-{quote_od.base_decimal}'),
@@ -164,9 +172,15 @@ class PassiveOrderManager:
 
                 ok, res = await self.tom.place_order(quote_od)
                 if ok:
-                    self._track_passive_order(trading_pair, side, res.get('details',{}.get('order_id')))
+                    order_id = res['details']['order_id']
+                    if order_id:
+                        self._track_passive_order(trading_pair, side, order_id)
                     self.logger.info(
                         f"✅ Passive {side.upper()} {trading_pair} @ {quote_od.adjusted_price}"
+                    )
+                elif res.get('code') == '411':
+                    print(
+                        f"⚠️ Passive {side.upper()} failed: {res.get('error')}"
                     )
                 else:
                     self.logger.warning(
@@ -230,6 +244,8 @@ class PassiveOrderManager:
                     # cancel both sides and purge tracker
                     for side in ("buy", "sell"):
                         oid = entry.get(side)
+                        if isinstance(oid, dict):  # accidental structure
+                            oid = oid.get("order_id")
                         if oid:
                             try:
                                 await self.order_manager.cancel_order(oid, symbol)

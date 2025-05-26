@@ -155,7 +155,7 @@ class PrintData:
                     lambda x: f"{x[:8]}...{x[-4:]}" if isinstance(x, str) and len(x) > 12 else x)
 
                 # Simplify order_type
-                open_orders['order_type'] = open_orders['order_type'].replace('TAKE_PROFIT_STOP_LOSS', 'TP/SL')
+                open_orders['type'] = open_orders['type'].replace('TAKE_PROFIT_STOP_LOSS', 'TP/SL')
 
                 # Truncate timestamp
                 open_orders['time active'] = open_orders['time active'].apply(

@@ -1,4 +1,5 @@
 import asyncio
+import decimal
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -502,7 +503,12 @@ class WebSocketHelper:
                         avg_price = spot_positions.get(asset, {}).get('average_entry_price', {}).get('value', 0)
                         avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
                         asset_balance = Decimal(spot_positions.get(asset, {}).get('total_balance_crypto', 0))
-                        asset_balance = Decimal(asset_balance).quantize(Decimal('1.' + '0' * quote_deci))
+                        try:
+                            quantizer = Decimal(f'1e-{quote_deci}')
+                            asset_balance = Decimal(asset_balance).quantize(quantizer)
+                        except decimal.InvalidOperation:
+                            self.logger.warning(f"⚠️ Could not quantize asset_balance={asset_balance} with precision={quote_deci}")
+                            asset_balance = Decimal(asset_balance).scaleb(-quote_deci).quantize(quantizer)
                         current_price = current_prices.get(symbol, 0)
                         cost_basis = spot_positions.get(asset, {}).get('cost_basis', {}).get('value', 0)
                         cost_basis = Decimal(cost_basis).quantize(Decimal('1.' + '0' * quote_deci))

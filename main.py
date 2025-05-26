@@ -142,11 +142,23 @@ async def build_websocket_components(config, listener, shared_data_manager):
 
     return websocket_helper, websocket_manager, market_ws_manager
 
+async def refresh_loop(shared_data_manager, interval=60):
+    """Continuously refresh shared data from the database."""
+    while True:
+        try:
+            await shared_data_manager.refresh_shared_data()
+        except Exception as e:
+            print(f"⚠️ Error in refresh_loop: {e}")
+        await asyncio.sleep(interval)
+
+
 
 async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, logger_manager, alert,
                       shared_utils_debugger, shared_utils_print, startup_event=None):
     if startup_event:
         await startup_event.wait()
+
+    await shared_data_manager.initialize_shared_data()
 
     exchange = config.exchange
     trade_bot = TradeBot(
@@ -163,6 +175,10 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
                                shared_utils_print=shared_utils_print)
 
     sighook_logger = logger_manager.get_logger("sighook")
+
+    # Start periodic refresh of shared data
+    asyncio.create_task(refresh_loop(shared_data_manager, interval=60))
+
     try:
         while not shutdown_event.is_set():
             await trade_bot.run_bot()
@@ -270,7 +286,6 @@ async def graceful_shutdown(listener, runner):
         await listener.shutdown()
     await runner.cleanup()
     shutdown_event.set()
-
 
 async def main():
 

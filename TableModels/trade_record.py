@@ -17,6 +17,7 @@ class TradeRecord(Base):
     pnl_usd = Column(Float, nullable=True)  # Can calculate automatically later
     total_fees_usd = Column(Float, nullable=True)
     trigger = Column(String, nullable=True)  # e.g., 'roc_buy', 'score'
+    order_type = Column(String, nullable=True)
     status = Column(String, nullable=True)
 
     __table_args__ = (
