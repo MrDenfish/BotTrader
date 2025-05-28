@@ -23,6 +23,7 @@ these at runtime based on your exchange tier and risk appetite.
 import asyncio
 import copy
 import time
+from webhook.webhook_validate_orders import OrderData
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Dict, Any, Tuple
 
@@ -30,7 +31,6 @@ from typing import Dict, Any, Tuple
 # Type aliases – keep it loose here, real project will import your dataclass
 # ---------------------------------------------------------------------------
 
-OrderData = Any  # replace with from your_project.models import OrderData
 
 
 class PassiveOrderManager:
@@ -47,9 +47,9 @@ class PassiveOrderManager:
 
     MIN_ORDER_COST_BASIS = Decimal("25.00")
 
-    def __init__(self, trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *,
+    def __init__(self, config, ccxt_api, coinbase_api, exchange, trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *,
                   max_lifetime: int | None = None,) -> None:
-
+        self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
         self.logger = logger
@@ -62,6 +62,17 @@ class PassiveOrderManager:
         # {symbol: {"buy": order_id, "sell": order_id, "timestamp": float}}
         self.passive_order_tracker: Dict[str, Dict[str, Any]] = {}
 
+        self.ccxt_api = ccxt_api
+        self.exchange = exchange
+        self.coinbase_api = coinbase_api
+
+        # Trading parameters
+        self._stop_loss = Decimal(config.stop_loss)
+        self._take_profit = Decimal(config.take_profit)
+        self._trailing_percentage = Decimal(config.trailing_percentage)
+        self._trailing_stop = Decimal(config.trailing_stop)
+        self._min_order_amount_fiat = Decimal(config.min_order_amount_fiat)
+        self._min_buy_value = Decimal(config.min_buy_value)
         # launch watchdog
         asyncio.create_task(self._watchdog())
 
@@ -73,6 +84,53 @@ class PassiveOrderManager:
     # ------------------------------------------------------------------
     # Public entry – call this once per symbol you want to quote
     # ------------------------------------------------------------------
+
+    async def monitor_passive_position(self, symbol: str, od: OrderData):
+        """Continuously monitor a passive BUY order and simulate stop-limit exit if needed."""
+        try:
+            # Retrieve the latest market price
+            ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol)
+            current_price = Decimal(ticker_data['last'])
+
+            # Dynamically calculate SL threshold (e.g., 0.75%–1.5% based on spread)
+            dynamic_sl_pct = max(self.fee["taker"] * Decimal(2), od.spread * Decimal(1.25))  # e.g., 1–1.5%
+            stop_price = od.limit_price * (Decimal("1.0") - dynamic_sl_pct)
+
+            if current_price <= stop_price:
+                self.logger.warning(f"🔻 {symbol} dropped below dynamic SL threshold. Initiating simulated SL sell...")
+
+                # Cancel the passive BUY
+                order_id = self.passive_order_tracker.get(symbol, {}).get("buy")
+                if order_id:
+                    await self.order_manager.cancel_order(order_id, symbol)
+
+                # Construct new SELL OrderData
+                sl_od = self._clone_order_data(od, side="sell", trigger="simulated_sl", source="PassiveMM")
+                sl_od.type = "limit"
+                sl_od.adjusted_price = current_price.quantize(Decimal(f'1e-{od.quote_decimal}'))
+                sl_od.adjusted_size = od.available_to_trade_crypto
+                sl_od.cost_basis = (sl_od.adjusted_price * sl_od.adjusted_size).quantize(
+                    Decimal(f'1e-{od.quote_decimal}'), rounding=ROUND_HALF_UP
+                )
+
+                if not self._passes_balance_check(sl_od):
+                    self.logger.warning(f"⚠️ Not enough balance to place SL SELL for {symbol}")
+                    return
+
+                # Place SL order
+                if "sl" in self.passive_order_tracker.get(symbol, {}):
+                    return
+                ok, res = await self.tom.place_order(sl_od)
+                if ok:
+                    sl_order_id = res.get('details', {}).get('order_id')
+                    self.logger.info(f"✅ SL SELL placed for {symbol} @ {sl_od.adjusted_price}")
+                    # Track the SL order
+                    self._track_passive_order(symbol, "sl", sl_order_id)
+                else:
+                    self.logger.error(f"❌ Failed to place SL SELL for {symbol}: {res}")
+        except Exception as e:
+            self.logger.error(f"❌ Error in monitor_passive_position() for {symbol}: {e}", exc_info=True)
+
 
     async def place_passive_orders(self, asset: str, product_id: str) -> None:
         """Attempt to quote both sides of the book for *product_id*.
@@ -140,19 +198,22 @@ class PassiveOrderManager:
                 quote_od = self._clone_order_data(od, side=side, post_only=True)
 
                 if side == "buy":
-                    target_px = od.highest_bid - adjustment - bias
+                    if (quote_od.adjusted_price * quote_od.total_balance_crypto) <= self._min_buy_value:
+                        # One tick below the lowest ask
+                        target_px = min(od.highest_bid, od.lowest_ask - tick)
+                        quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
                 else:  # sell
-                    target_px = od.lowest_ask + adjustment + bias
+                    if (quote_od.adjusted_price * quote_od.total_balance_crypto) > self._min_order_amount_fiat:
+                        # Minimum sell price for profit: entry * (1 + TP - SL buffer)
+                        min_profit_pct = self._take_profit + self.fee["maker"]
 
-                if side == "buy":
-                    # One tick below the lowest ask
-                    target_px = min(od.highest_bid, od.lowest_ask - tick)
-                    quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
-                else:  # sell
-                    # One tick above the highest bid
-                    target_px = max(od.lowest_ask, od.highest_bid + tick)
-                    quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+                        min_sell_price = od.limit_price * (Decimal("1.0") + min_profit_pct)
 
+                        # Price tick one above bid
+                        target_px = max(min_sell_price, od.highest_bid + tick)
+
+                        quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+                    break
                 quote_od.adjusted_size_fiat = quote_od.order_amount_fiat  # if not already set
                 quote_od.adjusted_size = (quote_od.order_amount_fiat / quote_od.adjusted_price).quantize(
                     Decimal(f'1e-{quote_od.base_decimal}'),
@@ -174,17 +235,26 @@ class PassiveOrderManager:
                 if ok:
                     order_id = res['details']['order_id']
                     if order_id:
-                        self._track_passive_order(trading_pair, side, order_id)
+                        self._track_passive_order(trading_pair, side, order_id, quote_od)
                     self.logger.info(
                         f"✅ Passive {side.upper()} {trading_pair} @ {quote_od.adjusted_price}"
                     )
                 elif res.get('code') == '411':
                     print(
-                        f"⚠️ Passive {side.upper()} failed: {res.get('error')}"
+                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('error')}"
                     )
+                elif res.get('code') == '415':
+                    print(
+                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('error')}"
+                    )
+                elif res.get('code') == '500':
+                    print(
+                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('message')}"
+                    )
+
                 else:
                     self.logger.warning(
-                        f"⚠️ Passive {side.upper()} failed: {res.get('message')}",exc_info=True
+                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('message')}",exc_info=True
                     )
         except Exception as exc:
             self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True,)
@@ -224,9 +294,11 @@ class PassiveOrderManager:
             setattr(cloned, k, v)
         return cloned
 
-    def _track_passive_order(self, symbol: str, side: str, order_id: str) -> None:
+    def _track_passive_order(self, symbol: str, side: str, order_id: str, od: OrderData = None) -> None:
         entry = self.passive_order_tracker.setdefault(symbol, {})
         entry[side] = order_id
+        if od:
+            entry["order_data"] = od
         entry["timestamp"] = time.time()
 
     # ------------------------------------------------------------------
@@ -240,6 +312,11 @@ class PassiveOrderManager:
                 now = time.time()
                 for symbol, entry in list(self.passive_order_tracker.items()):
                     if now - entry.get("timestamp", 0) < self.max_lifetime:
+                        # Only monitor active BUYs
+                        if "buy" in entry:
+                            od = entry.get("order_data")
+                            if isinstance(od, OrderData):
+                                await self.monitor_passive_position(symbol, od)
                         continue
                     # cancel both sides and purge tracker
                     for side in ("buy", "sell"):
@@ -254,6 +331,8 @@ class PassiveOrderManager:
                                     f"⚠️ Failed to cancel expired {side} {symbol} (ID: {oid}): {exc}", exc_info=True
                                 )
                     self.passive_order_tracker.pop(symbol, None)
+                    print(f"🔍 Monitoring: {list(self.passive_order_tracker.keys())}")
+
             except Exception as exc:  # watchdog must never die silently
                 self.logger.error("Watchdog error", exc_info=True)
 

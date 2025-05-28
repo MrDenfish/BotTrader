@@ -40,9 +40,10 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, exchange, logger_manager=None, shared_utils_debugger=None,
+    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, exchange, logger_manager=None, websocket_helper=None, shared_utils_debugger=None,
                  shared_utils_print=None):
         self.shared_data_manager = shared_data_mgr
+        self.websocket_helper = websocket_helper
         self.app_config = bot_config()
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
@@ -281,9 +282,11 @@ class TradeBot:
             self.shared_data_manager
         )
 
-        self.market_data_manager = await MarketDataUpdater.get_instance(
+        self.market_data_updater = await MarketDataUpdater.get_instance(
             ticker_manager=self.ticker_manager,
-            logger_manager=self.logger_manager
+            logger_manager=self.logger_manager,
+            websocket_helper=self.websocket_helper,
+            shared_data_manager=self.shared_data_manager
         )
 
         self.profit_manager = ProfitabilityManager.get_instance(

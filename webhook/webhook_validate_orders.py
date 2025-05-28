@@ -7,7 +7,7 @@ from decimal import InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from typing import Optional, Union
 
 import pandas as pd
-
+import decimal
 from Config.config_manager import CentralConfig as Config
 
 
@@ -73,13 +73,13 @@ class OrderData:
         -WebSocket or REST API payload
         -Data loaded from a .json file or DB"""
 
-
-
-        def get_decimal(key, default='0'):
-            val = data.get(key, default)
+        def get_decimal(key_path, default='0'):
             try:
+                val = data
+                for key in key_path if isinstance(key_path, list) else [key_path]:
+                    val = val[key]
                 return Decimal(val)
-            except:
+            except (KeyError, TypeError, ValueError, decimal.InvalidOperation):
                 return Decimal(default)
 
         def extract_base_quote(pair: str):
@@ -109,18 +109,20 @@ class OrderData:
             time_order_placed=None,
             volume_24h=None,
             trigger='None',
-            order_id=data.get('id') or data.get('info', {}).get('order_id'),
-            trading_pair=product_id.replace('-', '/'),
+            order_id=data.get('id') or get_decimal(['info', 'order_id']) or data.get('order_id'),
+            trading_pair=product_id,
             side=data.get('side', '').lower(),
             type=data.get('type', '').lower(),
             order_amount_fiat=get_decimal('order_amount'),
-            order_amount_crypto = get_decimal('adjusted_size') or get_decimal('available_to_trade_crypto') or Decimal("0"),
+            order_amount_crypto = get_decimal(['info', 'order_configuration', 'limit_limit_gtc', 'base_size']) or
+                                  get_decimal('available_to_trade_crypto') or
+                                  Decimal("0"),
             price=get_decimal('price'),
             cost_basis=data.get('cost_basis'),  # spot_position
-            limit_price=get_decimal(data.get('info', {}).get('order_configuration', {}).get('limit_limit_gtc', {}).get('limit_price')),
-            filled_price=get_decimal(data.get('info', {}).get('average_filled_price')),
-            base_currency=data.get('base_currency') or base_currency,
-            quote_currency=data.get('quote_currency') or quote_currency,
+            limit_price=get_decimal(['info', 'order_configuration', 'limit_limit_gtc', 'limit_price']),
+            filled_price=get_decimal(['info', 'average_filled_price']),
+            base_currency=product_id.split("/")[0] or base_currency,
+            quote_currency=product_id.split("/")[1] or quote_currency,
             usd_avail_balance=get_decimal('usd_avail_balance'),
             usd_balance=get_decimal('usd_balance'),
             base_avail_balance=get_decimal('base_avail_balance'),
@@ -145,6 +147,9 @@ class OrderData:
 
     def debug_summary(self, verbose: bool = False) -> str:
         """Generate a safe, readable summary of this order for debugging/logging."""
+        print("\n" + "<><><><<><>" * 5 + "\n")
+        print(f'                  DEBUG SUMMARY')
+
         summary_lines = [f"\n� OrderData Summary for {self.trading_pair} [{self.side.upper()}]"]
 
         for key, value in asdict(self).items():

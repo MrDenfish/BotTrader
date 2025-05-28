@@ -349,6 +349,14 @@ class OrderTypeManager:
             response = await self.ccxt_api.ccxt_api_call(
                 self.exchange.create_order, 'private', symbol, 'limit', side, formatted_amount, formatted_price, params=params
             )
+            if not response:
+                self.logger.error("❌ Order placement failed — response is None")
+                return {
+                    "success": False,
+                    "code": "NULL_RESPONSE",
+                    "message": "No response returned from ccxt API (likely rejected preflight)",
+                    "error": "NoResponse",
+                }
 
             if response and response.get('success'):
                 print(f"✅ Order placed successfully: {response.get('side')} {response.get('symbol')} ✅")
@@ -366,7 +374,24 @@ class OrderTypeManager:
                 await self.shared_data_manager.trade_recorder.record_trade(trade_data)
 
                 return response
+            elif response.get('info', {}).get('order_id') is not None:
+                info = response.get('info')
+                print(f"✅ Order placed successfully: {info.get('side')} {info.get('symbol')} ✅")
+                # 📝 Record the trade
+                trade_data = {
+                    'symbol': response.get('symbol'),
+                    'side': info.get('side').lower(),
+                    'amount':"",
+                    'price': "",
+                    'order_id': info.get('order_id'),  # or client_order_id
+                    'order_time': datetime.now(),  # Or response.get('timestamp') if exists
+                    'trigger': 'limit',
+                    'status': 'placed'
+                }
+                await self.shared_data_manager.trade_recorder.record_trade(trade_data)
+                return response
             else:
+                self.logger.warning(f"❗️ Order Rejected Limit Order: {response.get('status')}:{response.get('reason') }❗️")
                 print(f"❗️ Order Rejected Limit Order: {response.get('status')}:{response.get('reason') }❗️")
                 return response
 

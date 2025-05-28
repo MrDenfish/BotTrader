@@ -395,7 +395,7 @@ class OrderManager:
             action_methods = {
                 'buy': self.handle_buy_action,
                 'sell': self.handle_sell_action,
-                'hold': self.handle_trailing_stop
+                # 'hold': self.handle_trailing_stop
             }
 
             if action_type in action_methods:
@@ -475,10 +475,10 @@ class OrderManager:
             self.logger.error(f'❌ handle_sell_action: Error processing order for {symbol}: {e}', exc_info=True)
             return None
 
-    async def handle_trailing_stop(self, holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order):
-        """Handles trailing stop sell orders when available."""
-        return await self.handle_sell_action(holdings, symbol, base_avail_to_trade, quote_avail_balance,
-                                             price, order)
+    # async def handle_trailing_stop(self, holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order):
+    #     """Handles trailing stop sell orders when available."""
+    #     return await self.handle_sell_action(holdings, symbol, base_avail_to_trade, quote_avail_balance,
+    #                                          price, order)
 
     async def execute_tp_sl_order(self, symbol, price, base_avail_to_trade, quote_avail_balance, trigger, score, coin):
         """Submits a tp_sl order (take profit/loss) when applicable."""
@@ -514,7 +514,7 @@ class OrderManager:
             'order_id': str(uuid.uuid4()),  # Generate unique order ID
             'action': 'close_at_limit' if side == 'sell' and order_type == 'bracket' else side.lower(),
             'order_type': order_type,
-            'order_amount': float(self.order_size_fiat) if side == 'buy' else base_avail_to_trade,
+            'order_amount_fiat': float(self.order_size_fiat) if side == 'buy' else base_avail_to_trade,
             'side': side.lower(),
             'quote_avail_balance': quote_avail_balance,
             'base_avail_to_trade': base_avail_to_trade,

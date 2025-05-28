@@ -153,7 +153,7 @@ class WebhookListener:
     _exchange_instance_count = 0
 
     def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager, session, market_manager,
-                 market_data_manager, exchange):
+                 market_data_updater, exchange):
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
             print("REST client is not initialized. Initializing now...")
@@ -168,7 +168,7 @@ class WebhookListener:
         # self.order_management = {'order_tracker': {}}
         self.shared_data_manager = shared_data_manager
         self.market_manager = market_manager
-        self.market_data_manager = market_data_manager
+        self.market_data_updater = market_data_updater
         self.logger_manager = logger_manager  # 🙂
         self.logger = logger_manager.loggers['webhook_logger']  # ✅ this is the actual logger you’ll use
 
@@ -222,6 +222,10 @@ class WebhookListener:
         )
 
         self.passive_order_manager = PassiveOrderManager(
+            config=self.bot_config,
+            ccxt_api=None,
+            coinbase_api=None,
+            exchange=None,
             trade_order_manager=None,
             order_manager = None,
             logger=None,
@@ -285,6 +289,7 @@ class WebhookListener:
             logger_manager=self.logger,
             alerts=self.alerts,
             ccxt_api=self.ccxt_api,
+            market_data_updater=self.market_data_updater,
             order_book_manager=self.order_book_manager,
             order_types=self.order_type_manager,
             websocket_helper=self.websocket_helper,
@@ -360,7 +365,7 @@ class WebhookListener:
         while True:
             try:
                 # Fetch new market data
-                new_market_data, new_order_management = await self.market_data_manager.update_market_data(time.time())
+                new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
 
                 # Ensure fetched data is valid before proceeding
                 if not new_market_data:
@@ -383,7 +388,8 @@ class WebhookListener:
                 await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
                 print("⚠️ Market data and order management updated successfully. ⚠️")
                 # Monitor and update active orders
-                await self.websocket_helper.monitor_and_update_active_orders(new_market_data, new_order_management)
+                await self.websocket_helper.monitor_and_update_active_orders(new_market_data,
+                                                                             new_order_management)
 
             except Exception as e:
                 self.logger.error(f"❌ Error refreshing market_data: {e}", exc_info=True)

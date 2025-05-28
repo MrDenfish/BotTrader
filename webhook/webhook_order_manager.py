@@ -15,19 +15,23 @@ class TradeOrderManager:
 
     @classmethod
     def get_instance(cls, coinbase_api=None, exchange_client=None, shared_utils_precision=None, shared_utils_utility= None, validate=None,
-                     logger_manager=None, alerts=None, ccxt_api=None, order_book_manager=None, order_types=None, websocket_helper=None,
-                     shared_data_manager=None, session=None, profit_manager=None):
+                     logger_manager=None, alerts=None, ccxt_api=None, market_data_updater= None, order_book_manager=None, order_types=None,
+                     websocket_helper=None, shared_data_manager=None, session=None, profit_manager=None):
         """
         Singleton method to ensure only one instance of TradeOrderManager exists.
         If already instantiated, returns the existing instance.
         """
         if cls._instance is None:
-            cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, validate, logger_manager, alerts,
-                                ccxt_api, order_book_manager, order_types, websocket_helper, shared_data_manager, session, profit_manager)
+            cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision,
+                                shared_utils_utility, validate, logger_manager, alerts,
+                                ccxt_api, market_data_updater, order_book_manager,
+                                order_types, websocket_helper,shared_data_manager,
+                                session, profit_manager)
         return cls._instance
 
     def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, validate, logger_manager,
-                 alerts, ccxt_api, order_book_manager, order_types, websocket_helper, shared_data_manager, session, profit_manager):
+                 alerts, ccxt_api, market_data_updater, order_book_manager, order_types, websocket_helper, shared_data_manager, session,
+                 profit_manager):
         """
         Initializes the TradeOrderManager.
         """
@@ -47,14 +51,10 @@ class TradeOrderManager:
         self.validate= validate
         self.order_types = order_types
         self.order_book_manager = order_book_manager
+        self.market_data_updater = market_data_updater
         self.websocket_helper = websocket_helper
-        self.ccxt_api = ccxt_api
-        self.alerts = alerts
         self._shared_data_manager = shared_data_manager
 
-        self.order_types = order_types
-        self.order_book_manager = order_book_manager
-        self.websocket_helper = websocket_helper
         self.ccxt_api = ccxt_api
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
@@ -241,12 +241,9 @@ class TradeOrderManager:
             temp_data = {'quote_decimal': quote_deci, 'base_decimal': base_deci, 'trading_pair': trading_pair}
             temp_data = OrderData.from_dict(temp_data)
             order_book = await self.order_book_manager.get_order_book(temp_data, trading_pair)
-            if trigger == 'ROC':
-                type = 'limit'
-
             temp_order = {
                 'side': side,
-                'type': type,
+                'type': order_type,
                 'maker_fee': maker_fee,
                 'taker_fee': taker_fee,
                 'usd_avail_balance': usd_avail,
@@ -273,7 +270,7 @@ class TradeOrderManager:
             return OrderData(
                 trading_pair=trading_pair,
                 time_order_placed=None,
-                type=order_type,
+                type= 'limit' if trigger in ('ROC', 'market_making') else None,
                 order_id='UNKNOWN',
                 side=side,
                 order_amount_fiat=fiat_avail_for_order,
@@ -425,7 +422,7 @@ class TradeOrderManager:
             order_data.stop_loss_price = sl_adjusted
 
             # Choose order type
-            order_type = self.order_type_to_use(side, order_data.adjusted_price, order_data.highest_bid, order_data.lowest_ask)
+            order_type = self.order_type_to_use(side, order_data)
 
             self.logger.debug(f"� Order Type: {order_type} | Adjusted Price: {adjusted_price} | Size: {adjusted_size_of_order_qty}")
             #print(f' ⚠️ handle_order - Order Data: {order_data.debug_summary(verbose=True)}')
@@ -436,27 +433,11 @@ class TradeOrderManager:
             self.logger.error(f"⚠️ Error in handle_order: {ex}", exc_info=True)
             return False, self.build_response(str(ex), "500", order_data.__dict__)
 
-    def order_type_to_use(self, side, adjusted_price, highest_bid, lowest_ask):
-        # Initial thought for using a trailing stop order is when ROC trigger is met. Signal will come from  sighook.
-        validation_result = 'limit'
-
-        if side == 'buy':
-            validation_result = 'tp_sl'
-            return validation_result
-        elif side == 'sell':
-            validation_result = 'limit'
-            return validation_result
-
-    def get_post_only_price(self, highest_bid, lowest_ask, quote_increment, side):
-        adjustment = quote_increment * 2  # or 1 if tighter spacing is acceptable
-        if side == 'buy':
-            return (lowest_ask - adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
-        else:
-            return (highest_bid + adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
-
     async def attempt_order_placement(self, order_data: OrderData, order_type: str, max_attempts: int = 3) -> tuple[bool, dict]:
         symbol = order_data.trading_pair
         asset = order_data.base_currency
+
+        await self.market_data_updater.run_single_refresh_market_data()
 
         for attempt in range(max_attempts):
             try:
@@ -590,4 +571,25 @@ class TradeOrderManager:
 
         self.logger.info(f"❌ All {max_attempts} attempts to place order for {symbol} failed.")
         return False, self.build_response(False, "Order placement failed after retries", "500", order_data.__dict__)
+
+    def order_type_to_use(self, side, order_data):
+        # Initial thought for using a trailing stop order is when ROC trigger is met. Signal will come from  sighook.
+        if order_data.trigger and "passive_buy" in order_data.trigger:
+            validation_result = 'limit'
+            return validation_result
+        if side == 'buy':
+            validation_result = 'tp_sl'
+            return validation_result
+        elif side == 'sell':
+            validation_result = 'limit'
+            return validation_result
+
+    def get_post_only_price(self, highest_bid, lowest_ask, quote_increment, side):
+        adjustment = quote_increment * 2  # or 1 if tighter spacing is acceptable
+        if side == 'buy':
+            return (lowest_ask - adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
+        else:
+            return (highest_bid + adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
+
+
 

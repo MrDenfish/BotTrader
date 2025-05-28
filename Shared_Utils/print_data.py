@@ -159,7 +159,9 @@ class PrintData:
 
                 # Truncate timestamp
                 open_orders['time active'] = open_orders['time active'].apply(
-                    lambda x: x[:21] if isinstance(x, str) else x.strftime('%Y-%m-%d %H:%M:%S.%f')[:21]
+                    lambda x: x[:21] if isinstance(x, str)
+                    else x.strftime('%Y-%m-%d %H:%M:%S.%f')[:21] if not pd.isna(x)
+                    else ""
                 )
 
                 print(tabulate(open_orders, headers='keys', tablefmt='pretty', showindex=False,
@@ -229,7 +231,7 @@ class PrintData:
             print("\n" + "<><><><<><>" * 20 + "\n")
 
         except Exception as e:
-            self.log_manager.error(f"⚠️ Error printing data: {e}", exc_info=True)
+            self.logger.error(f"⚠️ Error printing data: {e}", exc_info=True)
 
     def print_order_tracker(self, order_tracker, func_name):
         """

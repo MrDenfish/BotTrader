@@ -76,6 +76,10 @@ async def build_websocket_components(config, listener, shared_data_manager):
 
     # ------------------------------------------------------
     passive_order_manager = PassiveOrderManager(
+        config=config,
+        ccxt_api=listener.ccxt_api,
+        coinbase_api=listener.coinbase_api,
+        exchange=listener.exchange,
         trade_order_manager=listener.trade_order_manager,
         order_manager=listener.order_manager,
         logger=listener.logger,
@@ -152,14 +156,16 @@ async def refresh_loop(shared_data_manager, interval=60):
         await asyncio.sleep(interval)
 
 
-
 async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, logger_manager, alert,
-                      shared_utils_debugger, shared_utils_print, startup_event=None):
+                      shared_utils_debugger, shared_utils_print, startup_event=None, listener=None):
+
+
     if startup_event:
         await startup_event.wait()
 
     await shared_data_manager.initialize_shared_data()
 
+    websocket_helper = listener.websocket_helper if listener else None
     exchange = config.exchange
     trade_bot = TradeBot(
         shared_data_mgr=shared_data_manager,
@@ -168,7 +174,8 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
         exchange=config.exchange,
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
-        shared_utils_print=shared_utils_print
+        shared_utils_print=shared_utils_print,
+        websocket_helper=websocket_helper
     )
     await trade_bot.async_init(validate_startup_data=False,
                                shared_utils_debugger=shared_utils_debugger,
@@ -202,7 +209,7 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
             logger_manager=logger_manager,
             session=session,
             market_manager=None,
-            market_data_manager=None,
+            market_data_updater=None,
             exchange=exchange
         )
         listener.rest_client = config.rest_client
@@ -216,8 +223,9 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
                 exchange=exchange,
                 logger_manager=logger_manager,
                 shared_utils_debugger=shared_utils_debugger,
-                shared_utils_print=shared_utils_print
-            )
+                shared_utils_print=shared_utils_print,
+                websocket_helper=listener.websocket_helper)
+
             await trade_bot.async_init(validate_startup_data=True,
                                        shared_utils_debugger=shared_utils_debugger,
                                        shared_utils_print=shared_utils_print)
@@ -225,20 +233,28 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
         listener.market_manager = trade_bot.market_manager
         await listener.async_init()
 
-        listener.market_data_manager = await MarketDataUpdater.get_instance(
-            listener.ticker_manager, logger_manager
-        )
-
         if listener.ohlcv_manager:
             listener.ohlcv_manager.market_manager = listener.market_manager
 
         listener.order_manager = trade_bot.order_manager
-        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(config,listener,shared_data_manager)
+        websocket_helper, websocket_manager, market_ws_manager = await build_websocket_components(
+            config, listener, shared_data_manager
+        )
 
         listener.websocket_helper = websocket_helper
         listener.websocket_manager = websocket_manager
 
-        await listener.market_data_manager.update_market_data(time.time())
+        listener.market_data_updater = await MarketDataUpdater.get_instance(
+            listener.ticker_manager, logger_manager, websocket_helper=websocket_helper,
+            shared_data_manager=shared_data_manager
+        )
+        listener.trade_order_manager.shared_data_mgr = listener.shared_data_manager
+        listener.trade_order_manager.websocket_helper = listener.websocket_helper
+
+        listener.market_data_manager = listener.market_data_updater  # for compatibility
+        listener.trade_order_manager.market_data_updater = listener.market_data_updater
+
+        await listener.market_data_updater.update_market_data(time.time())
         print(f"✅ Market Data Keys: {list(shared_data_manager.market_data.keys())}")
 
         if startup_event:
@@ -279,6 +295,7 @@ async def run_webhook(config, shared_data_manager, logger_manager, alert,
                 pass
 
         await graceful_shutdown(listener, runner)
+        return listener
 
 
 async def graceful_shutdown(listener, runner):
@@ -338,6 +355,16 @@ async def main():
             )
 
         elif args.run == 'both':
+            listener = await run_webhook(
+                config,
+                shared_data_manager,
+                logger_manager,
+                alert,
+                shared_utils_debugger=shared_utils_debugger,
+                shared_utils_print=shared_utils_print,
+                startup_event=startup_event
+
+            )
             sighook_task = asyncio.create_task(run_sighook(
                 config,
                 shared_data_manager,
@@ -347,7 +374,8 @@ async def main():
                 alert,
                 shared_utils_debugger=shared_utils_debugger,
                 shared_utils_print=shared_utils_print,
-                startup_event=startup_event
+                startup_event=startup_event,
+                listener=listener
             ))
 
             webhook_task = asyncio.create_task(run_webhook(
