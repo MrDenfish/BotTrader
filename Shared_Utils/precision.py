@@ -34,6 +34,14 @@ class PrecisionUtils:
         except (TypeError, ValueError, InvalidOperation):
             return Decimal(default)
 
+    def safe_quantize(self, value: Decimal, precision: Decimal, rounding=ROUND_DOWN) -> Decimal:
+        from decimal import InvalidOperation
+        try:
+            return value.quantize(precision, rounding=rounding)
+        except InvalidOperation:
+            # Normalize then re-quantize as a safe fallback
+            return value.normalize().quantize(precision, rounding=rounding)
+
     def fetch_precision(self, symbol: str) -> tuple:
         """
         Fetch the precision for base and quote currencies of a given symbol.
@@ -152,17 +160,18 @@ class PrecisionUtils:
 
             if side == 'BUY':
                 net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
-                adjusted_price = net_proceeds.quantize(precision, rounding=ROUND_DOWN)
+                adjusted_price = self.safe_quantize(net_proceeds, precision_quote)
 
                 quote_amount_fiat = Decimal(str(order_data.get('order_amount_fiat', 0)))
                 if adjusted_price == 0:
                     raise ValueError("Adjusted price cannot be zero for BUY order.")
+                adjusted_size = (quote_amount_fiat / adjusted_price)
+                adjusted_size = self.safe_quantize(net_proceeds, precision_base)
 
-                adjusted_size = (quote_amount_fiat / adjusted_price).quantize(precision_base, rounding=ROUND_DOWN)
 
             elif side == 'SELL':
                 gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
-                adjusted_price = gross_cost.quantize(precision_quote, rounding=ROUND_DOWN)
+                adjusted_price = self.safe_quantize(gross_cost, precision_quote)
 
                 raw_size = Decimal(str(min(
                     order_data.get('sell_amount', 0),
@@ -170,12 +179,13 @@ class PrecisionUtils:
                 )))
 
                 safety_margin = precision_base * Decimal('2')  # 2 ticks worth of precision
-                adjusted_size = (raw_size - safety_margin).quantize(precision_base, rounding=ROUND_DOWN)
+                adjusted_size = (raw_size - safety_margin)
+                adjusted_size = self.safe_quantize(adjusted_size, precision_base)
 
                 # Ensure adjusted_size does not exceed available balance
                 base_available = Decimal(str(order_data.get('base_avail_to_trade', 0)))
                 if adjusted_size > base_available:
-                    adjusted_size = base_available.quantize(precision_base, rounding=ROUND_DOWN)
+                    adjusted_size = self.safe_quantize(base_available, precision_base)
 
             if adjusted_price is None or adjusted_size is None:
                 raise ValueError("Adjusted price or size cannot be None.")
