@@ -8,6 +8,7 @@ from typing import Optional, Union
 
 import pandas as pd
 import decimal
+import re
 from Config.config_manager import CentralConfig as Config
 
 
@@ -67,83 +68,72 @@ class OrderData:
 
 
     @classmethod
+    @classmethod
     def from_dict(cls, data: dict) -> 'OrderData':
-        """Used when rebuilding an OrderData object from raw data
-        -snapshot from order_tracker
-        -WebSocket or REST API payload
-        -Data loaded from a .json file or DB"""
+        try:
+            def get_decimal(key_path, default='0'):
+                try:
+                    val = data
+                    for key in key_path if isinstance(key_path, list) else [key_path]:
+                        val = val[key]
+                    return Decimal(val)
+                except (KeyError, TypeError, ValueError, decimal.InvalidOperation):
+                    return Decimal(default)
 
-        def get_decimal(key_path, default='0'):
-            try:
-                val = data
-                for key in key_path if isinstance(key_path, list) else [key_path]:
-                    val = val[key]
-                return Decimal(val)
-            except (KeyError, TypeError, ValueError, decimal.InvalidOperation):
-                return Decimal(default)
+            def extract_base_quote(pair: str):
+                if not pair:
+                    return '', ''
+                split_pair = pair.replace('-', '/').split('/')
+                return (split_pair[0], split_pair[1]) if len(split_pair) == 2 else ('', '')
 
-        def extract_base_quote(pair: str):
-            """Safely split a trading pair using either '-' or '/'."""
-            if not pair:
-                return '', ''
-            split_pair = pair.replace('-', '/').split('/')
-            return (split_pair[0], split_pair[1]) if len(split_pair) == 2 else ('', '')
-
-        # Pull a product or trading pair string from possible keys
-        if isinstance(data, dict):
             product_id = data.get('trading_pair') or data.get('symbol') or data.get('product_id', '')
             base_currency, quote_currency = extract_base_quote(product_id)
-        else:
-            product_id = data.trading_pair or data.symbol or data.product_id
-            base_currency, quote_currency = extract_base_quote(product_id)
 
-        raw_qdec = data.get("quote_decimal")  # could be '', None, or int/str
-        try:
-            quote_decimal = int(raw_qdec)
-        except (TypeError, ValueError):
-            quote_decimal = 2  # sane default – adjust if needed
+            quote_decimal = int(data.get("quote_decimal") or 2)
+            base_decimal = int(data.get("base_decimal") or 8)
+            quote_increment = Decimal("1").scaleb(-quote_decimal)
 
-        quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
-        return cls(
-            source=data.get('source', 'UNKNOWN'),
-            time_order_placed=None,
-            volume_24h=None,
-            trigger='None',
-            order_id=data.get('id') or get_decimal(['info', 'order_id']) or data.get('order_id'),
-            trading_pair=product_id,
-            side=data.get('side', '').lower(),
-            type=data.get('type', '').lower(),
-            order_amount_fiat=get_decimal('order_amount'),
-            order_amount_crypto = get_decimal(['info', 'order_configuration', 'limit_limit_gtc', 'base_size']) or
-                                  get_decimal('available_to_trade_crypto') or
-                                  Decimal("0"),
-            price=get_decimal('price'),
-            cost_basis=data.get('cost_basis'),  # spot_position
-            limit_price=get_decimal(['info', 'order_configuration', 'limit_limit_gtc', 'limit_price']),
-            filled_price=get_decimal(['info', 'average_filled_price']),
-            base_currency=product_id.split("/")[0] or base_currency,
-            quote_currency=product_id.split("/")[1] or quote_currency,
-            usd_avail_balance=get_decimal('usd_avail_balance'),
-            usd_balance=get_decimal('usd_balance'),
-            base_avail_balance=get_decimal('base_avail_balance'),
-            total_balance_crypto=data.get('total_balance_crypto'),  # spot_position
-            available_to_trade_crypto=get_decimal('available_to_trade_crypto'),
-            base_decimal=int(data.get('base_decimal', 8)),
-            quote_decimal=int(data.get('quote_decimal', 2)),
-            quote_increment=quote_increment,
-            highest_bid=get_decimal('highest_bid'),
-            lowest_ask=get_decimal('lowest_ask'),
-            maker=get_decimal('maker_fee'),
-            taker=get_decimal('taker_fee'),
-            spread=get_decimal('spread'),
-            open_orders=data.get('open_orders', pd.DataFrame()),
-            status=data.get('status', 'UNKNOWN'),
-            average_price=get_decimal('average_price') if data.get('average_price') else None,
-            adjusted_price=get_decimal('adjusted_price') if data.get('adjusted_price') else None,
-            adjusted_size=get_decimal('adjusted_size') if data.get('adjusted_size') else None,
-            stop_loss_price=get_decimal('stop_loss_price') if data.get('stop_loss_price') else None,
-            take_profit_price=get_decimal('take_profit_price') if data.get('take_profit_price') else None
-        )
+            return cls(
+                trading_pair=product_id,
+                time_order_placed=data.get('time_order_placed', None),
+                type=data.get('type', 'limit'),
+                order_id=data.get('order_id', 'UNKNOWN'),
+                side=data.get('side', 'buy'),
+                filled_price=get_decimal(['filled_price']),
+                base_currency=base_currency,
+                quote_currency=quote_currency,
+                usd_balance=get_decimal('usd_balance'),
+                base_decimal=base_decimal,
+                quote_decimal=quote_decimal,
+                quote_increment=quote_increment,
+                highest_bid=get_decimal('highest_bid'),
+                lowest_ask=get_decimal('lowest_ask'),
+                maker=get_decimal('maker_fee'),
+                taker=get_decimal('taker_fee'),
+                spread=get_decimal('spread'),
+                open_orders=data.get('open_orders', None),
+                status=data.get('status', 'UNKNOWN'),
+                source=data.get('source', 'UNKNOWN'),
+                trigger=data.get('trigger', 'UNKNOWN'),
+                base_avail_balance=get_decimal('base_avail_balance'),
+                total_balance_crypto=get_decimal('total_balance_crypto'),
+                available_to_trade_crypto=get_decimal('available_to_trade_crypto'),
+                usd_avail_balance=get_decimal('usd_avail_balance'),
+                order_amount_fiat=get_decimal('order_amount_fiat'),
+                order_amount_crypto=get_decimal('order_amount_crypto'),
+                price=get_decimal('price'),
+                cost_basis=get_decimal('cost_basis'),
+                limit_price=get_decimal('limit_price'),
+                average_price=get_decimal('average_price'),
+                adjusted_price=get_decimal('adjusted_price'),
+                adjusted_size=get_decimal('adjusted_size'),
+                stop_loss_price=get_decimal('stop_loss_price'),
+                take_profit_price=get_decimal('take_profit_price'),
+                volume_24h=get_decimal('volume_24h'),
+            )
+        except Exception as e:
+            print(f"❌ Error creating OrderData from dict: {e}")
+            raise
 
     def debug_summary(self, verbose: bool = False) -> str:
         """Generate a safe, readable summary of this order for debugging/logging."""
@@ -224,12 +214,15 @@ class ValidateOrders:
             base_deci, quote_deci, *_ = precision_data
             side = details.get("side", "buy")
             buy_amount = self.shared_utils_precision.safe_decimal(details.get("order_amount_fiat"))
+
+            if side == 'buy' and buy_amount == 0:
+                pass #debug
             sell_amount = self.shared_utils_precision.safe_decimal(details.get("base_balance"))
             trading_pair = details.get("trading_pair", "")
             base_currency = details.get("asset", trading_pair.split('/')[0])
             quote_currency = trading_pair.split('/')[1] if '/' in trading_pair else 'USD'
-            order_amount = buy_amount if side == "buy" else sell_amount
-
+            order_amount_fiat = buy_amount if side == "buy" else 0
+            order_amount_crypto = sell_amount if side == 'sell' else self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto"))
             raw_qdec = details.get("quote_decimal")  # could be '', None, or int/str
             try:
                 quote_decimal = int(raw_qdec)
@@ -237,9 +230,10 @@ class ValidateOrders:
                 quote_decimal = 2  # sane default – adjust if needed
 
             quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
+            source = details.get("source") or details.get("trigger", "").split('@')[0] or "webhook"
 
             return OrderData(
-                source=details.get("source", "webhook"),
+                source=source,
                 time_order_placed=None,
                 volume_24h=None,
                 trigger=details.get("trigger", ""),
@@ -247,10 +241,8 @@ class ValidateOrders:
                 trading_pair=trading_pair,
                 side=details.get("side", "buy"),
                 type=details.get("Order Type", "limit").lower(),
-                order_amount_fiat=details.get('order_amount_fiat'),
-                order_amount_crypto=self.shared_utils_precision.safe_decimal(details.get("adjusted_size")) or \
-                                    self.shared_utils_precision.safe_decimal(details.get("available_to_trade_crypto")) or \
-                                    Decimal("0"),
+                order_amount_fiat=order_amount_fiat,
+                order_amount_crypto=order_amount_crypto,
                 price=Decimal("0"),
                 cost_basis=Decimal("0"),
                 limit_price=self.shared_utils_precision.safe_decimal(details.get("limit_price")),
@@ -414,7 +406,7 @@ class ValidateOrders:
 
         try:
             trading_pair = data.trading_pair
-            base_currency, quote_currency = trading_pair.split('/')
+            base_currency, quote_currency = re.split(r'[-/]', trading_pair)
             side = data.side.lower()
 
             # Extract and normalize values
@@ -535,6 +527,18 @@ class ValidateOrders:
             if is_valid:
                 response_msg["message"] = f"✅ Order validation successful for {order_data.trading_pair}."
                 return response_msg
+            if not is_valid:
+                if "insufficient balance to sell" in condition:
+                    response_msg.update(
+                        {
+                            "is_valid": False,
+                            "error": f"Insufficient balance to sell {order_data.base_currency}.",
+                            "code": "414",
+                            "details": {**response_msg["details"], "condition": condition}
+                        }
+                    )
+                    return response_msg
+
 
             # ✅ Crypto balance value too high to buy more
             if base_balance_value is not None and base_balance_value > Decimal("1.0") and order_data.side.lower() == 'buy':
@@ -640,7 +644,7 @@ class ValidateOrders:
 
             side = order_data['side'].lower()
             symbol = order_data['trading_pair'].replace('/', '-')
-            maker_fee_rate = Decimal(str(order_data.get('maker_fee', '0.0')))  # Default to 0.0
+            maker_fee_rate = self.shared_utils_precision.safe_convert(order_data.get('maker_fee', '0.0'), order_data['quote_decimal'])  # Default to 0.0
 
             # ✅ Base price and precision
             price = Decimal(order_data.get('highest_bid' if side == 'sell' else 'lowest_ask', 0))

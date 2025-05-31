@@ -1,4 +1,4 @@
-import asyncio
+
 import copy
 import json
 import time
@@ -6,6 +6,9 @@ from decimal import Decimal
 from inspect import stack  # debugging
 
 import pandas as pd
+from asyncio import Event
+import asyncio
+
 from sqlalchemy.sql import text
 from SharedDataManager.trade_recorder import TradeRecorder
 
@@ -91,23 +94,26 @@ class SharedDataManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager, database_session_manager):
+    def get_instance(cls, logger_manager, database_session_manager, shared_utils_precision):
         """Ensures only one instance of SharedDataManager is created."""
         if cls._instance is None:
-            cls._instance = cls(logger_manager, database_session_manager)
+            cls._instance = cls(logger_manager, database_session_manager, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, logger_manager, database_session_manager):
+    def __init__(self, logger_manager, database_session_manager, shared_utils_precision):
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
         self.logger = logger_manager  # 🙂
 
         self.database_session_manager = database_session_manager
-        self.trade_recorder = TradeRecorder(self.database_session_manager, logger_manager)
+        self.shared_utils_precision = shared_utils_precision
+        self.trade_recorder = TradeRecorder(self.database_session_manager, logger_manager,
+                                            shared_utils_precision)
         self.market_data = {}
         self.order_management = {}
         self.lock = asyncio.Lock()
+        self._initialized_event = Event()
 
     async def validate_startup_state(self, ticker_manager):
         """Ensure required shared data exists, or initialize it if missing."""
@@ -143,6 +149,26 @@ class SharedDataManager:
         except Exception as e:
             self.logger.error(f"Failed to initialize SharedDataManager: {e}", exc_info=True)
             raise
+
+    async def wait_until_initialized(self):
+        await self._initialized_event.wait()
+
+    async def update_market_data(self, new_market_data, new_order_management):
+        try:
+            async with self.lock:
+                if new_market_data:
+                    self.logger.debug(f"🧠 Updating market_data: Keys = {list(new_market_data.keys())}")
+                    self.market_data = new_market_data
+                if new_order_management:
+                    self.logger.debug(f"📦 Updating order_management: Keys = {list(new_order_management.keys())}")
+                    self.order_management = new_order_management
+
+                if not self._initialized_event.is_set():
+                    self._initialized_event.set()
+                    self.logger.info("✅ SharedDataManager market data initialized.")
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in update_market_data : {e}", exc_info=True)
 
     async def initialize_shared_data(self):
         """Initialize market_data and order_management from the database."""
@@ -238,19 +264,6 @@ class SharedDataManager:
             except Exception as e:
                 self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
                 return {}, {}
-
-    async def update_market_data(self, new_market_data, new_order_management):
-        try:
-            async with self.lock:
-                if new_market_data:
-                    self.logger.debug(f"� Updating market_data: Keys = {list(new_market_data.keys())}")
-                    self.market_data = new_market_data  # Overwrite instead of update
-                if new_order_management:
-                    self.logger.debug(f"� Updating order_management: Keys = {list(new_order_management.keys())}")
-                    self.order_management = new_order_management
-
-        except Exception as e:
-            self.logger.error(f"❌ Error in update_market_data : {e}", exc_info=True)
 
     async def update_data(self, data_type, data, conn):
         """Update shared data in the database."""

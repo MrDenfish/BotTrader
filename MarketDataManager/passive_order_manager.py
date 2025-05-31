@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 """Passive market‑making helper.
@@ -31,8 +32,6 @@ from typing import Dict, Any, Tuple
 # Type aliases – keep it loose here, real project will import your dataclass
 # ---------------------------------------------------------------------------
 
-
-
 class PassiveOrderManager:
     """A lightweight maker‑side quoting engine."""
 
@@ -47,11 +46,13 @@ class PassiveOrderManager:
 
     MIN_ORDER_COST_BASIS = Decimal("25.00")
 
-    def __init__(self, config, ccxt_api, coinbase_api, exchange, trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *,
+    def __init__(self, config, ccxt_api, coinbase_api, exchange, shared_utils_precision, ohlcv_manager, trade_order_manager, order_manager, logger, min_spread_pct,
+                 fee_cache: Dict[str, Decimal], *,
                   max_lifetime: int | None = None,) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
+        self.shared_utils_precision = shared_utils_precision
         self.logger = logger
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
@@ -73,6 +74,10 @@ class PassiveOrderManager:
         self._trailing_stop = Decimal(config.trailing_stop)
         self._min_order_amount_fiat = Decimal(config.min_order_amount_fiat)
         self._min_buy_value = Decimal(config.min_buy_value)
+
+        # Data managers
+        self.ohlcv_manager = ohlcv_manager
+
         # launch watchdog
         asyncio.create_task(self._watchdog())
 
@@ -131,18 +136,13 @@ class PassiveOrderManager:
         except Exception as e:
             self.logger.error(f"❌ Error in monitor_passive_position() for {symbol}: {e}", exc_info=True)
 
-
     async def place_passive_orders(self, asset: str, product_id: str) -> None:
-        """Attempt to quote both sides of the book for *product_id*.
-
-        Will silently return if conditions are not favourable (spread too
-        tight, insufficient balances, inventory skew too high, etc.).
+        """
+        Attempt to quote both sides of the book for *product_id*.
+        Will return silently if market conditions aren't favorable.
         """
         trading_pair = product_id.replace("-", "/")
 
-        # ------------------------------------------------------------------
-        # Build initial OrderData snapshot (prices, balances, precision …)
-        # ------------------------------------------------------------------
         try:
             od: OrderData | None = await self.tom.build_order_data(
                 source="PassiveMM",
@@ -151,114 +151,116 @@ class PassiveOrderManager:
                 product_id=product_id,
             )
         except Exception as exc:
-            self.logger.error(
-                f"❌ build_order_data failed for {trading_pair}: {exc}",
-                exc_info=True,
-            )
+            self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
             return
 
         if not od or od.highest_bid == 0 or od.lowest_ask == 0:
-            return  # nothing to do – no order book yet
+            return  # No usable order book
 
-        # ------------------------------------------------------------------
-        # Basic market sanity checks (spread vs fees)
-        # ------------------------------------------------------------------
-        spread: Decimal = od.lowest_ask - od.highest_bid
-        mid_price: Decimal = (od.lowest_ask + od.highest_bid) / 2
-        spread_pct: Decimal = spread / mid_price
+        spread = od.lowest_ask - od.highest_bid
+        mid_price = (od.lowest_ask + od.highest_bid) / 2
+        spread_pct = spread / mid_price
+        price = od.limit_price or od.price
 
-        # Edge must beat round‑trip maker fees + cushion
-        required_edge = self.fee["maker"] * Decimal(2.5)  # in, out, +slippage cushion
-        if spread_pct < max(required_edge, self.min_spread_pct):
-            print(
-                f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < threshold {max(required_edge, self.min_spread_pct):.4%}"
+        required_edge = self.fee["maker"] * Decimal("2.5")
+        min_required_spread = max(required_edge, self.min_spread_pct)
+        if spread_pct < min_required_spread:
+            self.logger.info(
+                f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < threshold {min_required_spread:.4%}"
             )
             return
 
-        # ------------------------------------------------------------------
-        # Compute tick‑scaled nudge just inside the current spread
-        # ------------------------------------------------------------------
         try:
-            tick = Decimal(str(od.quote_increment))
-            pct_nudge = Decimal("0.3") / Decimal("100")  # 0.15 % of mid
+            tick = self.shared_utils_precision.safe_convert(od.quote_increment, od.quote_decimal)
+            pct_nudge = Decimal("0.3") / Decimal("100")
             adjustment = max(tick, (mid_price * pct_nudge).quantize(tick))
 
-            # ------------------------------------------------------------------
-            # Bias quotes if inventory drifts away from 50 : 50 USD/CRYPTO
-            # ------------------------------------------------------------------
-
             bias = self._compute_inventory_bias(
-                asset_value=od.limit_price * od.base_avail_balance, usd_value=od.usd_avail_balance, spread=spread
+                asset_value=price * od.base_avail_balance,
+                usd_value=od.usd_avail_balance,
+                spread=spread,
             )
 
-            # ------------------------------------------------------------------
-            # Generate & submit both sides
-            # ------------------------------------------------------------------
-            for side in ("buy", "sell"):
-                quote_od = self._clone_order_data(od, side=side, post_only=True)
-
-                if side == "buy":
-                    if (quote_od.adjusted_price * quote_od.total_balance_crypto) <= self._min_buy_value:
-                        # One tick below the lowest ask
-                        target_px = min(od.highest_bid, od.lowest_ask - tick)
-                        quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
-                else:  # sell
-                    if (quote_od.adjusted_price * quote_od.total_balance_crypto) > self._min_order_amount_fiat:
-                        # Minimum sell price for profit: entry * (1 + TP - SL buffer)
-                        min_profit_pct = self._take_profit + self.fee["maker"]
-
-                        min_sell_price = od.limit_price * (Decimal("1.0") + min_profit_pct)
-
-                        # Price tick one above bid
-                        target_px = max(min_sell_price, od.highest_bid + tick)
-
-                        quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
-                    break
-                quote_od.adjusted_size_fiat = quote_od.order_amount_fiat  # if not already set
-                quote_od.adjusted_size = (quote_od.order_amount_fiat / quote_od.adjusted_price).quantize(
-                    Decimal(f'1e-{quote_od.base_decimal}'),
-                    rounding=ROUND_DOWN,
+            # Fetch OHLCV once for use in SELL side
+            try:
+                oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(
+                    product_id, limit=5
                 )
-
-                quote_od.cost_basis = (quote_od.adjusted_price * quote_od.adjusted_size).quantize(
-                    Decimal(f'1e-{quote_od.quote_decimal}'),
-                    rounding=ROUND_HALF_UP,
+            except Exception as exc:
+                self.logger.warning(
+                    f"⚠️ Failed to fetch OHLCV for {trading_pair}, skipping SELL: {exc}", exc_info=True
                 )
+                oldest_close = latest_close = average_close = None
 
-                quote_od.trigger = f"passive_{side}@{quote_od.adjusted_price}"
+            await self._quote_passive_buy(od, trading_pair, tick)
+            await self._quote_passive_sell(od, trading_pair, tick, average_close)
 
-                # per‑side balance sanity check
-                if not self._passes_balance_check(quote_od):
-                    continue
-
-                ok, res = await self.tom.place_order(quote_od)
-                if ok:
-                    order_id = res['details']['order_id']
-                    if order_id:
-                        self._track_passive_order(trading_pair, side, order_id, quote_od)
-                    self.logger.info(
-                        f"✅ Passive {side.upper()} {trading_pair} @ {quote_od.adjusted_price}"
-                    )
-                elif res.get('code') == '411':
-                    print(
-                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('error')}"
-                    )
-                elif res.get('code') == '415':
-                    print(
-                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('error')}"
-                    )
-                elif res.get('code') == '500':
-                    print(
-                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('message')}"
-                    )
-
-                else:
-                    self.logger.warning(
-                        f"⚠️ Passive {side.upper()} failed for {trading_pair}: {res.get('message')}",exc_info=True
-                    )
         except Exception as exc:
-            self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True,)
+            self.logger.error(f"❌ Error in passive MM for {trading_pair}: {exc}", exc_info=True)
+
+    async def _quote_passive_buy(self, od: OrderData, trading_pair: str, tick: Decimal):
+        quote_od = self._clone_order_data(od, side="buy", post_only=True)
+        total_value = quote_od.price * quote_od.total_balance_crypto
+        if total_value <= self._min_buy_value:
+            target_px = min(od.highest_bid, od.lowest_ask - tick)
+            quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+            await self._finalize_passive_order(quote_od, trading_pair)
+
+    async def _quote_passive_sell(
+            self, od: OrderData, trading_pair: str, tick: Decimal, average_close: Decimal | None
+    ):
+        quote_od = self._clone_order_data(od, side="sell", post_only=True)
+        total_value = quote_od.price * quote_od.total_balance_crypto
+        if total_value <= self._min_order_amount_fiat:
             return
+
+        min_profit_pct = self._take_profit + self.fee["maker"]
+        min_sell_price = od.price * (Decimal("1.0") + min_profit_pct)
+        current_price = od.lowest_ask
+
+        if average_close and average_close < current_price:
+            self.logger.info(
+                f"📉 Skipping passive SELL for {trading_pair} — average_close ({average_close}) < current_price ({current_price})"
+            )
+            return
+
+        target_px = max(min_sell_price, od.highest_bid + tick)
+        quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+        await self._finalize_passive_order(quote_od, trading_pair)
+
+    async def _finalize_passive_order(self, quote_od: OrderData, trading_pair: str):
+        # Set price/size/cost basis
+        price = quote_od.adjusted_price
+        fiat = quote_od.order_amount_fiat
+        base_deci = quote_od.base_decimal
+        quote_deci = quote_od.quote_decimal
+
+        quote_od.adjusted_size_fiat = fiat
+        quote_od.adjusted_size = (fiat / price).quantize(
+            Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN
+        )
+        quote_od.cost_basis = (price * quote_od.adjusted_size).quantize(
+            Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP
+        )
+        quote_od.trigger = f"passive_{quote_od.side}@{price}"
+
+        if not self._passes_balance_check(quote_od):
+            return
+
+        ok, res = await self.tom.place_order(quote_od)
+        if ok:
+            order_id = res['details'].get('order_id')
+            if order_id:
+                self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
+            self.logger.info(f"✅ Passive {quote_od.side.upper()} {trading_pair} @ {price}")
+        elif res.get('code') in {'411', '414', '415', '500'}:
+            print(f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {res.get('error') or res.get('message')}")
+        else:
+            self.logger.warning(
+                f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {res.get('message')}",
+                exc_info=True
+            )
+
     # ------------------------------------------------------------------
     # Helper methods
     # ------------------------------------------------------------------

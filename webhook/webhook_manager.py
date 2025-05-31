@@ -171,7 +171,7 @@ class WebHookManager:
                 # ✅ Convert quote_amount safely to Decimal, default to 0 if missing
                 'quote_avail_balance': Decimal(request_json.get('quote_avail_balance', '0')), # amount od USD available to buy crypto
 
-                'order_amount': self._order_size_fiat if not request_json.get('order_amount_fiat') else Decimal(request_json.get('order_amount')),
+                'order_amount_fiat': self._order_size_fiat if not request_json.get('order_amount_fiat') else Decimal(0), #Decimal(request_json.get('order_amount')),
 
                 # ✅ Ensure base_amount is correctly assigned for buy/sell conditions
                 'base_avail_balance': Decimal('0') if 'open' in request_json.get('action', '') else Decimal(request_json.get(
@@ -191,7 +191,7 @@ class WebHookManager:
             }
 
         except Exception as e:
-            self.logger.error(f"❌ Error parsing webhook request: {e}")
+            self.logger.error(f"❌ Error parsing webhook request: {e}", exc_info=True)
             return None
 
 

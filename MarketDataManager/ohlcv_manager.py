@@ -43,7 +43,8 @@ class OHLCVManager:
             limit (int): Number of candles to retrieve (default: 5).
 
         Returns:
-            Tuple[float, float] | Tuple[None, None]: Oldest and newest close values.
+            Tuple[float, float, float] | Tuple[None, None, None]:
+            Oldest close, newest close, and 5-min average close.
         """
         try:
             now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -55,9 +56,11 @@ class OHLCVManager:
                 last_cached_time = cached_data["timestamp"]
                 if last_cached_time >= five_min_ago:
                     self.logger.debug(f"✅ Using cached OHLCV data for {symbol}")
-                    newest_close = cached_data['data'].iloc[-1]['close']
-                    oldest_close = cached_data['data'].iloc[0]['close']
-                    return oldest_close, newest_close
+                    df = cached_data['data']
+                    oldest_close = df.iloc[0]['close']
+                    newest_close = df.iloc[-1]['close']
+                    average_close = df['close'].mean()
+                    return oldest_close, newest_close, average_close
 
             # ✅ Step 2: Prepare safe `since` timestamp
             safe_since = int((five_min_ago - timedelta(seconds=10)).timestamp() * 1000)
@@ -67,7 +70,7 @@ class OHLCVManager:
             endpoint = 'public'
             params = {'paginate': False}
 
-            self.logger.debug(f"� Fetching fresh OHLCV data for {symbol} (Last 5 min)")
+            self.logger.debug(f"📉 Fetching fresh OHLCV data for {symbol} (Last 5 min)")
             ohlcv_result = await self.market_manager.fetch_ohlcv(endpoint, symbol, timeframe, safe_since, params=params)
 
             if ohlcv_result and not ohlcv_result['data'].empty:
@@ -77,17 +80,19 @@ class OHLCVManager:
                 df = df.resample('1min').asfreq().ffill().reset_index()
 
                 self.ohlcv_cache[symbol] = {"timestamp": now, "data": df}
-                newest_close = df.iloc[-1]['close']
-                oldest_close = df.iloc[0]['close']
 
-                return oldest_close, newest_close
+                oldest_close = df.iloc[0]['close']
+                newest_close = df.iloc[-1]['close']
+                average_close = df['close'].mean()
+
+                return oldest_close, newest_close, average_close
             else:
                 self.logger.warning(f"⚠️ No new OHLCV data for {symbol}")
-                return None, None
+                return None, None, None
 
         except Exception as e:
             self.logger.error(f"❌ Error fetching last 5-minute OHLCV for {symbol}: {e}", exc_info=True)
-            return None, None
+            return None, None, None
 
     async def fetch_volatility_5min(self, symbol, timeframe='1m', limit=5, threshold_multiplier=1.1):
         """
@@ -107,7 +112,7 @@ class OHLCVManager:
             if symbol in self.ohlcv_cache:
                 df = self.ohlcv_cache[symbol]['data']
             else:
-                _, _ = await self.fetch_last_5min_ohlcv(symbol, timeframe, limit)
+                _, _, _ = await self.fetch_last_5min_ohlcv(symbol, timeframe, limit)
                 df = self.ohlcv_cache[symbol]['data'] if symbol in self.ohlcv_cache else None
 
             if df is None or df.empty or len(df) < limit:

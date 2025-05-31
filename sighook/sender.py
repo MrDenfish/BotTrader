@@ -383,7 +383,7 @@ class TradeBot:
                 # Profitability Analysis and Order Generation update holdings db
 
                 print(f'Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
-                aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders, holdings_list)
+                aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders)
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:

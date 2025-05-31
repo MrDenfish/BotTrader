@@ -11,9 +11,10 @@ class TradeRecorder:
     Handles recording of trades into the trade_records table.
     """
 
-    def __init__(self, database_session_manager, logger):
+    def __init__(self, database_session_manager, logger, shared_utils_precision):
         self.db_session_manager = database_session_manager
         self.logger = logger
+        self.shared_utils_precision = shared_utils_precision
 
     async def record_trade(self, trade_data: dict):
         """
@@ -27,15 +28,17 @@ class TradeRecorder:
                     if isinstance(order_time_raw, str)
                     else order_time_raw
                 )
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(trade_data['symbol'])
+
 
                 trade_record = TradeRecord(
                     symbol=trade_data['symbol'],
                     side=trade_data['side'],
                     order_time=order_time,
-                    size=Decimal(str(trade_data['amount'])),
+                    size=self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci),
                     pnl_usd=None,
                     total_fees_usd=None,
-                    price=Decimal(str(trade_data['price'])),
+                    price=self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci),
                     order_id=trade_data['order_id'],
                     parent_id=trade_data['parent_id'] or trade_data['order_id'],
                     trigger=trade_data['trigger'],
