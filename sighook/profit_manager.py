@@ -67,12 +67,12 @@ class ProfitabilityManager:
     def hodl(self):
         return self._hodl
 
-    async def update_and_process_holdings(self, start_time, open_orders, holdings_list):
+    async def update_and_process_holdings(self, start_time, open_orders):
         """PART VI:
         Analyze profitability and place sell orders using calculate_profitability."""
         try:
             # Process holdings and calculate profitability
-            aggregated_df = await self.holdings_processor.process_holdings(open_orders, holdings_list)
+            aggregated_df = await self.holdings_processor.process_holdings(open_orders)
             # Evaluate and execute sell orders
             await self.check_and_execute_sell_orders(start_time, aggregated_df, open_orders)
 

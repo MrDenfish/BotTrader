@@ -186,7 +186,8 @@ class WebhookListener:
         self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
         self.shared_utils_debugger = Debugging()
 
-        self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, self.logger_manager)
+        self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, self.logger_manager,
+                                        self.shared_utils_precision )
         self.alerts = AlertSystem(self.logger_manager)
         self.ccxt_api = ApiManager.get_instance(self.exchange, self.logger_manager, self.alerts)
 
@@ -226,6 +227,8 @@ class WebhookListener:
             ccxt_api=None,
             coinbase_api=None,
             exchange=None,
+            ohlcv_manager=None,
+            shared_utils_precision=None,
             trade_order_manager=None,
             order_manager = None,
             logger=None,
@@ -241,7 +244,8 @@ class WebhookListener:
 
         # self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, self.logger)
 
-        self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger_manager)
+        self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.shared_utils_precision,
+                                                              self.logger_manager)
 
         # Instantiation of ....
         self.utility = TradeBotUtils.get_instance(self.logger, self.coinbase_api, self.exchange,
@@ -362,40 +366,56 @@ class WebhookListener:
 
     async def refresh_market_data(self):
         """Refresh market_data and manage orders periodically."""
-        while True:
-            try:
-                # Fetch new market data
-                new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
+        try:
+            while True:
+                try:
+                    # Fetch new market data
 
-                # Ensure fetched data is valid before proceeding
-                if not new_market_data:
-                    self.logger.error("❌ new_market_data is empty! Skipping update.")
-                    await asyncio.sleep(60)  # Wait before retrying
-                    continue
+                    new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
 
-                if not new_order_management:
-                    self.logger.error("❌ new_order_management is empty! Skipping update.")
+                    # Ensure fetched data is valid before proceeding
+                    if not new_market_data:
+                        self.logger.error("❌ new_market_data is empty! Skipping update.")
+                        await asyncio.sleep(60)  # Wait before retrying
+                        continue
+
+                    if not new_order_management:
+                        self.logger.error("❌ new_order_management is empty! Skipping update.")
+                        await asyncio.sleep(60)
+                        continue
+
+                    # Refresh open orders and get the updated order_tracker
+
+                    _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
+
+                    # Reflect the updated order_tracker in the shared state
+                    if updated_order_tracker:
+                        new_order_management['order_tracker'] = updated_order_tracker
+                    # Update shared state via SharedDataManager
+
+                    await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
+
+
+                    print("⚠️ Market data and order management updated successfully. ⚠️")
+                    # Monitor and update active orders
+
+                    await self.websocket_helper.monitor_and_update_active_orders(new_market_data,
+                                                                                 new_order_management)
+                    await asyncio.sleep(30)
+                except Exception as e:
+                    self.logger.error(f"❌ refresh_market_data inner loop error: {e}", exc_info=True)
                     await asyncio.sleep(60)
-                    continue
 
-                # Refresh open orders and get the updated order_tracker
-                _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
+        except asyncio.CancelledError:
+            self.logger.warning("⚠️ refresh_market_data was cancelled by the event loop.", exc_info=True)
+            raise  # allow the task to be properly cancelled
 
-                # Reflect the updated order_tracker in the shared state
-                if updated_order_tracker:
-                    new_order_management['order_tracker'] = updated_order_tracker
-                # Update shared state via SharedDataManager
-                await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
-                print("⚠️ Market data and order management updated successfully. ⚠️")
-                # Monitor and update active orders
-                await self.websocket_helper.monitor_and_update_active_orders(new_market_data,
-                                                                             new_order_management)
+        except Exception as e:
+            self.logger.error(f"❌ refresh_market_data crashed: {e}", exc_info=True)
 
-            except Exception as e:
-                self.logger.error(f"❌ Error refreshing market_data: {e}", exc_info=True)
+        finally:
+            self.logger.error("🚨 refresh_market_data loop exited unexpectedly!", exc_info=True)
 
-            # Sleep before next update
-            await asyncio.sleep(30)
 
     async def handle_order_fill(self, websocket_order_data: OrderData):
         """Process existing orders that are Open or Active or have been filled"""
@@ -453,8 +473,10 @@ class WebhookListener:
         """
         print(f"Processing order fill: {order_data.side}:{order_data.trading_pair}")
         try:
-            if order_data.open_orders.get('open_order'):
-                return
+            if order_data.open_orders:
+                if order_data.open_orders.get('open_order'):
+                    return
+
 
             # Fetch the order book for price and size adjustments
             order_book = await self.order_book_manager.get_order_book(order_data)

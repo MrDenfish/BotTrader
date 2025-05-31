@@ -1,19 +1,20 @@
 
 import math
-from decimal import Decimal, ROUND_DOWN, InvalidOperation
 from inspect import stack  # debugging
 
 import pandas as pd
+import decimal
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 
 class PrecisionUtils:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager, shared_data_manager):
+    def get_instance(cls, logger_manager,shared_data_manager):
         """ Ensures only one instance of PrecisionUtils is created. """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, shared_data_manager)
+            cls._instance = cls(logger_manager,shared_data_manager)
         return cls._instance
 
     def __init__(self, logger_manager, shared_data_manager):
@@ -24,6 +25,7 @@ class PrecisionUtils:
         self.logger = logger_manager.loggers.get('shared_logger') # 🙂
         self.shared_data_manager = shared_data_manager
 
+
     @property
     def usd_pairs(self):
         return self.shared_data_manager.market_data.get('usd_pairs_cache', pd.DataFrame())
@@ -33,6 +35,24 @@ class PrecisionUtils:
             return Decimal(value)
         except (TypeError, ValueError, InvalidOperation):
             return Decimal(default)
+
+    def safe_convert(self, val, decimal_places: int = 1) -> Decimal:
+        """
+        Safely convert a value to Decimal and quantize it using the given number of decimal places.
+        If decimal_places is invalid, defaults to 4.
+        """
+        try:
+            if not isinstance(decimal_places, int) or decimal_places < 0:
+                self.logger.warning(f"⚠️ safe_convert: Invalid decimal_places={decimal_places}. Defaulting to 1.")
+                decimal_places = 1
+
+            quantize_format = Decimal('1').scaleb(-decimal_places)
+            return Decimal(str(val)).quantize(quantize_format, rounding=ROUND_DOWN)
+
+        except (InvalidOperation, ValueError, TypeError) as e:
+            self.logger.warning(f"⚠️ safe_convert: Could not convert value={val} with decimal_places={decimal_places}: {e}")
+            fallback_format = Decimal('1').scaleb(-decimal_places if isinstance(decimal_places, int) and decimal_places >= 0 else -1)
+            return Decimal('0').quantize(fallback_format)
 
     def safe_quantize(self, value: Decimal, precision: Decimal, rounding=ROUND_DOWN) -> Decimal:
         from decimal import InvalidOperation
@@ -109,91 +129,107 @@ class PrecisionUtils:
     def adjust_price_and_size(self, order_data, order_book) -> tuple[Decimal, Decimal]:
         """
         Adjusts price and size based on order book data, ensuring proper precision and size limits.
-
-        Args:
-            order_data (dict): Order details containing side, order size, quote amount, etc.
-            order_book (dict): Market order book data containing highest_bid and lowest_ask.
-
-        Returns:
-            tuple[Decimal, Decimal]: Adjusted price and size.
+        Returns (adjusted_price, adjusted_size).
         """
         try:
-            caller_function = stack()[1].function
+            # Precision settings
+            try:
+                quote_decimal = int(order_data.get('quote_decimal', 3))
+                base_decimal = int(order_data.get('base_decimal', 8))
+                precision_quote = Decimal(f"1e-{quote_decimal}")
+                precision_base = Decimal(f"1e-{base_decimal}")
+            except Exception as e:
+                self.logger.error(f"❌ Failed to parse decimal precision values: {e}")
+                return None, None
 
-            side = order_data['side'].upper()
-            highest_bid = Decimal(str(order_book.get('highest_bid', 0)))
-            lowest_ask = Decimal(str(order_book.get('lowest_ask', 0)))
-            adjusted_size = Decimal(str(order_data.get('order_amount_fiat', 0)))
+            caller_function = stack()[1].function
+            side = str(order_data.get('side', '')).upper()
+
+            # Defensive conversion of order book prices
+            try:
+                highest_bid = self.safe_convert(order_book.get('highest_bid', '0'))
+                lowest_ask = self.safe_convert(order_book.get('lowest_ask', '0'))
+            except InvalidOperation as e:
+                self.logger.error(f"❌ InvalidOperation on bid/ask conversion: {e} — Data: {order_book}")
+                return None, None
 
             if highest_bid == 0 or lowest_ask == 0:
-                raise ValueError("Invalid order book data: highest_bid or lowest_ask is zero.")
+                self.logger.warning("🚫 Invalid order book data: highest_bid or lowest_ask is zero.")
+                return None, None
 
-            # Determine the base price
-            if side == 'SELL':
-                adjusted_price = highest_bid
-            elif side == 'BUY':
-                adjusted_price = lowest_ask
-            else:
-                raise ValueError(f"Unsupported order side: {side}")
+            self.logger.debug(f"📈 highest_bid: {highest_bid}, lowest_ask: {lowest_ask}, side: {side}")
 
-            # Calculate spread and adjustment factor
-            spread = lowest_ask - highest_bid
-            adjustment_percentage = Decimal('0.002')  # 0.2%
-            adjustment_factor = spread * adjustment_percentage
+            # Spread adjustment
+            try:
+                spread = lowest_ask - highest_bid
+                adjustment_percentage = Decimal('0.002')
+                adjustment_factor = max(spread * adjustment_percentage, Decimal(f"1e-{order_data.get('quote_decimal', 3)}"))
+            except InvalidOperation as e:
+                self.logger.error(f"❌ InvalidOperation calculating spread/adjustment_factor: {e}")
+                return None, None
 
-            # Ensure the adjustment factor respects the asset's precision
-            precision_quote = Decimal(f"1e-{order_data.get('quote_decimal', 2)}")
-            precision_base = Decimal(f"1e-{order_data.get('base_decimal', 8)}")
-            precision = min(precision_quote, precision_base)
-            adjustment_factor = max(adjustment_factor, precision_quote)
+            # Adjusted prices
+            try:
+                adjusted_bid = highest_bid + adjustment_factor
+                adjusted_ask = lowest_ask - adjustment_factor
+            except InvalidOperation as e:
+                self.logger.error(f"❌ InvalidOperation adjusting bid/ask: {e}")
+                return None, None
+            # Fee rate
+            try:
+                fee_rate = self.safe_convert(order_data.get('taker_fee')) if order_data.get('type') == 'market' else Decimal(
+                    str(order_data.get('maker_fee')))
+            except (InvalidOperation, TypeError) as e:
+                self.logger.error(f"❌ Fee rate parsing error: {e}")
+                return None, None
 
-            # Adjust bid and ask prices slightly to be competitive
-            adjusted_bid = highest_bid + adjustment_factor
-            adjusted_ask = lowest_ask - adjustment_factor
+            # Order side logic
+            try:
+                if side == 'BUY':
+                    net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
+                    adjusted_price = self.safe_quantize(net_proceeds, precision_quote)
 
-            # Determine fee rate
-            order_type = order_data.get('type')
-            if order_type == 'market':
-                fee_rate = Decimal(order_data.get('taker_fee'))
-            else:
-                fee_rate = Decimal(order_data.get('maker_fee'))
+                    quote_amount_fiat = self.safe_convert(order_data.get('order_amount_fiat', '0'))
+                    if adjusted_price <= 0:
+                        raise ValueError("Adjusted price must be > 0 for BUY order.")
 
-            if side == 'BUY':
-                net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
-                adjusted_price = self.safe_quantize(net_proceeds, precision_quote)
+                    adjusted_size = quote_amount_fiat / adjusted_price
+                    adjusted_size = self.safe_quantize(adjusted_size, precision_base)
 
-                quote_amount_fiat = Decimal(str(order_data.get('order_amount_fiat', 0)))
-                if adjusted_price == 0:
-                    raise ValueError("Adjusted price cannot be zero for BUY order.")
-                adjusted_size = (quote_amount_fiat / adjusted_price)
-                adjusted_size = self.safe_quantize(net_proceeds, precision_base)
+                elif side == 'SELL':
+                    gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
+                    adjusted_price = self.safe_quantize(gross_cost, precision_quote)
 
+                    base_avail = self.safe_convert(order_data.get('base_avail_to_trade', '0'))
+                    sell_amount = self.safe_convert(order_data.get('sell_amount', '0'))
+                    raw_size = min(sell_amount, base_avail)
 
-            elif side == 'SELL':
-                gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
-                adjusted_price = self.safe_quantize(gross_cost, precision_quote)
+                    safety_margin = precision_base * 2  # 2 ticks
+                    adjusted_size = self.safe_quantize(raw_size - safety_margin, precision_base)
+                    if adjusted_size > base_avail:
+                        adjusted_size = self.safe_quantize(base_avail, precision_base)
+                else:
+                    raise ValueError(f"Unsupported order side: {side}")
 
-                raw_size = Decimal(str(min(
-                    order_data.get('sell_amount', 0),
-                    order_data.get('base_avail_to_trade', 0)
-                )))
+            except (InvalidOperation, ValueError, ZeroDivisionError) as e:
+                self.logger.error(f"❌ Error during price/size adjustment: {e}", exc_info=True)
+                return None, None
 
-                safety_margin = precision_base * Decimal('2')  # 2 ticks worth of precision
-                adjusted_size = (raw_size - safety_margin)
-                adjusted_size = self.safe_quantize(adjusted_size, precision_base)
-
-                # Ensure adjusted_size does not exceed available balance
-                base_available = Decimal(str(order_data.get('base_avail_to_trade', 0)))
-                if adjusted_size > base_available:
-                    adjusted_size = self.safe_quantize(base_available, precision_base)
-
+            # Final checks
             if adjusted_price is None or adjusted_size is None:
-                raise ValueError("Adjusted price or size cannot be None.")
+                self.logger.warning("🚨 Adjusted price or size is None.")
+                return None, None
+            if not isinstance(adjusted_price, Decimal) or not isinstance(adjusted_size, Decimal):
+                self.logger.warning("🚨 Adjusted values are not Decimals.")
+                return None, None
 
+            self.logger.debug(f"✅ Final adjusted_price={adjusted_price}, adjusted_size={adjusted_size}")
+            if adjusted_size == 0:
+                pass
             return adjusted_price, adjusted_size
 
         except Exception as e:
-            self.logger.error(f"❌ adjust_price_and_size: Error - {e}", exc_info=True)
+            self.logger.error(f"❌ adjust_price_and_size (outer): Unexpected error — {e}", exc_info=True)
             return None, None
 
     def adjust_precision(self, base_deci, quote_deci, num_to_adjust, convert):
@@ -211,6 +247,8 @@ class PrecisionUtils:
                 decimal_places = quote_deci
             else:
                 decimal_places = 8
+            if num_to_adjust is None:
+                return None
 
             # Handle scalar (single value) inputs
             if isinstance(num_to_adjust, (int, float, Decimal)):
@@ -233,32 +271,36 @@ class PrecisionUtils:
             self.logger.error(f'❌ adjust_precision: An error occurred: {e}', exc_info=True)
             return None
 
-    def float_to_decimal(self, value, decimal_places):
+    def float_to_decimal(self, value, decimal_places: int = 4) -> Decimal | pd.Series:
         """
-        Convert a float or array-like values to a Decimal with a specified number of decimal places.
-        Supports scalar values and pandas Series for better compatibility with DataFrames.
+        Convert a float, int, str, or pandas Series to a Decimal with specified decimal places.
+        Uses safe_convert() internally to guard against InvalidOperation errors.
+
+        Args:
+            value: Single value or pd.Series to convert.
+            decimal_places: Number of decimal places to quantize to.
+
+        Returns:
+            Decimal or Series of Decimals quantized to the specified precision.
         """
         try:
-            # Construct a string representing the desired decimal format
-            decimal_format = '0.' + '0' * decimal_places if decimal_places > 0 else '0'
-
             # Handle scalar values
             if isinstance(value, (int, float, str, Decimal)):
-                value_decimal = Decimal(str(value)).quantize(Decimal(decimal_format), rounding=ROUND_DOWN)
-                return value_decimal
+                return self.safe_convert(value, decimal_places)
 
-            # Handle pandas Series or NumPy arrays
+            # Handle pandas Series
             elif isinstance(value, pd.Series):
-                return value.apply(lambda x: Decimal(str(x)).quantize(Decimal(decimal_format), rounding=ROUND_DOWN))
+                return value.apply(lambda x: self.safe_convert(x, decimal_places))
 
             else:
                 raise TypeError(f"Unsupported input type for float_to_decimal: {type(value)}")
 
         except Exception as e:
-            self.logger.error(f'❌ float_to_decimal: An error occurred: {e}. Value: {value},'
-                                   f'Decimal places: {decimal_places}', exc_info=True)
+            self.logger.error(
+                f'❌ float_to_decimal: Error converting value={value} to Decimal with {decimal_places} places: {e}',
+                exc_info=True
+            )
             raise
-
 
     def get_decimal_format(self, base_decimal: int) -> Decimal:
         """

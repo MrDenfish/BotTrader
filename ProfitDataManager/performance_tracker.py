@@ -3,9 +3,10 @@ from datetime import datetime
 
 
 class PerformanceTracker:
-    def __init__(self, logger, fee_monitor=None):
+    def __init__(self, logger, shared_utils_precision, fee_monitor=None):
         self.logger = logger
         self.fee_monitor = fee_monitor
+        self.shared_utils_precision = shared_utils_precision
         self.completed_trades = []  # list of trade performance dicts
         self.symbol_stats = {}      # aggregate stats per symbol
 
@@ -16,11 +17,12 @@ class PerformanceTracker:
         """
         try:
             symbol = buy_order['symbol']
-            size = Decimal(str(sell_order['size']))
-            entry_price = Decimal(str(buy_order['price']))
-            exit_price = Decimal(str(sell_order['price']))
-            buy_fee = Decimal(str(buy_order.get('total_fees_usd') or 0))
-            sell_fee = Decimal(str(sell_order.get('total_fees_usd') or 0))
+            base_deci, quote_deci,_,_ = self.shared_utils_precision.get_symbol_precision(symbol)
+            size = self.shared_utils_precision.safe_convert(sell_order.get('size'), base_deci)
+            entry_price = self.shared_utils_precision.safe_convert(buy_order.get('price'), quote_deci)
+            exit_price = self.shared_utils_precision.safe_convert(sell_order.get('price'), quote_deci)
+            buy_fee = self.shared_utils_precision.safe_convert(buy_order.get('total_fees_usd'),quote_deci)
+            sell_fee = self.shared_utils_precision.safe_convert(sell_order.get('total_fees_usd'), quote_deci)
             gross_profit = (exit_price - entry_price) * size
             total_fees = buy_fee + sell_fee
             net_profit = gross_profit - total_fees

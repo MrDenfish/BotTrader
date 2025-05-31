@@ -49,6 +49,15 @@ class HoldingsProcessor:
         return self.order_management.get('non_zero_balances')
 
     @property
+    def precision(self):
+        return self.shared_data_manager.market_data.get('filtered_vol')
+
+    @property
+    def market_cache_prices(self):
+        return self.market_data.get('filtered_prices')
+
+
+    @property
     def market_cache_vol(self):
         return self.market_data.get('filtered_vol')
 
@@ -73,7 +82,7 @@ class HoldingsProcessor:
 
             # Convert float to Decimal via string to preserve precision
             if isinstance(value, float):
-                value = Decimal(str(value))
+                value = self.shared_utils_precision.safe_convert(value, decimal_places)
 
             # Ensure value is a Decimal
             if not isinstance(value, Decimal):
@@ -89,48 +98,58 @@ class HoldingsProcessor:
 
     async def _calculate_derived_metrics(self, holding, processed_pairs, trailing_stop_orders):
         """Calculate derived metrics for a single holding using calculate_profitability()."""
-        asset = holding['asset']
-        asset_balance = self._truncate_decimal(holding['total'])
-        price = self._truncate_decimal(holding['price'])
+        try:
 
-        pair_data = processed_pairs.get(asset, {})
-        cost_basis = self._truncate_decimal(pair_data.get('cost_basis', 0))
+            asset = holding['asset']
+            symbol = asset + "/USD"
+            base_deci,quote_deci,_,_ = self.shared_utils_precision.fetch_precision(symbol)
 
-        # Prepare required prices dictionary
-        required_prices = {
-            'avg_price': self._truncate_decimal(pair_data.get('average_price', 0)),
-            'cost_basis': cost_basis,
-            'asset_balance': asset_balance,
-            'current_price': price,
-            'profit': None,
-            'profit_percentage': None,
-            'status_of_order': None
-        }
+            price = Decimal(self.market_data.get('current_prices', {}).get(symbol))
+            price = self.shared_utils_precision.safe_quantize(price, quote_deci)
+            asset_balance = self._truncate_decimal(holding['total_balance_crypto'])
 
-        # Calculate profitability
-        profitability = await self.profit_data_manager.calculate_profitability(asset, required_prices,
-                                                                               self.current_prices, self.usd_pairs)
+            pair_data = processed_pairs.get(asset, {})
+            cost_basis = self._truncate_decimal(pair_data.get('cost_basis', 0))
 
-        trailing_stop = (
-            trailing_stop_orders[trailing_stop_orders['product_id'] == holding['symbol']]
-            .to_dict(orient='records') if not trailing_stop_orders.empty else None
-        )
+            # Prepare required prices dictionary
+            required_prices = {
+                'avg_price': self._truncate_decimal(pair_data.get('average_price', 0)),
+                'cost_basis': cost_basis,
+                'asset_balance': asset_balance,
+                'current_price': price,
+                'profit': None,
+                'profit_percentage': None,
+                'status_of_order': None
+            }
 
-        return {
-            'symbol': holding['symbol'],#✅
-            'quote': holding['quote'],
-            'asset': asset,#✅
-            'amount': self._truncate_decimal(holding['free']),#✅
-            'current_price': price,#✅
-            'weighted_average_price': required_prices['avg_price'],
-            'initial_investment': cost_basis,
-            'unrealized_profit_loss': self._truncate_decimal(profitability.get('profit', 0)),#✅
-            'unrealized_profit_pct': self._truncate_decimal(profitability.get('profit percent', 0)) / 100,  # ✅
-            'trailing_stop': trailing_stop,
-            'current_value': self._truncate_decimal(asset_balance * price),
-        }
+            # Calculate profitability
+            if asset == 'USD':
+                pass
+            profitability = await self.profit_data_manager.calculate_profitability(asset, required_prices,
+                                                                            self.current_prices, self.usd_pairs)
 
-    async def process_holdings(self, open_orders, holdings_list):
+            trailing_stop = (
+                trailing_stop_orders[trailing_stop_orders['product_id'] == holding['symbol']]
+                .to_dict(orient='records') if not trailing_stop_orders.empty else None
+            )
+
+            return {
+                'symbol': holding['asset']+"/USD",#✅
+                'quote': price,
+                'asset': asset,#✅
+                'amount': self._truncate_decimal(holding['available_to_trade_crypto']),#✅
+                'current_price': price,#✅
+                'weighted_average_price': required_prices['avg_price'],
+                'initial_investment': cost_basis,
+                'unrealized_profit_loss': self._truncate_decimal(profitability.get('profit', 0)),#✅
+                'unrealized_profit_pct': self._truncate_decimal(profitability.get('profit percent', 0)) / 100,  # ✅
+                'current_value': self._truncate_decimal(asset_balance * price),
+            }
+        except Exception as e:
+            self.logger.error(f"Error calculating derived metrics for holding {holding}: {e}", exc_info=True)
+            return {}
+
+    async def process_holdings(self, open_orders):
         """Processes holdings data and returns an aggregated DataFrame."""
         try:
             self.logger.info("Processing holdings data...")
@@ -144,25 +163,28 @@ class HoldingsProcessor:
             # Pre-process filtered_pairs for easier lookup
             processed_pairs = {
                 asset: {
-                    'average_price': Decimal(data.get('average_entry_price', {}).get('value', 0)),
-                    'cost_basis': Decimal(data.get('cost_basis', {}).get('value', 0)),
-                    'unrealized_pnl': Decimal(data.get('unrealized_pnl', 0))
+                    'average_price': Decimal(data['average_entry_price']['value']),
+                    'cost_basis': Decimal(data['cost_basis']['value']),
+                    'unrealized_pnl': Decimal(data['unrealized_pnl'])
                 }
-                for asset, data in self.holdings_list.items()
+                for asset, data in self.filtered_balances.items()
             }
 
             # Generate aggregated data
             aggregated_data = [
                 await self._calculate_derived_metrics(holding, processed_pairs, trailing_stop_orders)
-                for holding in holdings_list
+                for holding in self.filtered_balances.values()
+                if holding['asset'] != 'USD'
+                   and holding['asset'] +'/USD' in self.market_data.get('current_prices', {})
             ]
+
             aggregated_df = pd.DataFrame(aggregated_data)
 
             # Ensure expected columns are present
             expected_columns = [
                 'symbol', 'quote', 'asset', 'amount', 'current_price',
                 'weighted_average_price', 'initial_investment', 'unrealized_profit_loss',
-                'unrealized_profit_pct', 'trailing_stop', 'current_value'
+                'unrealized_profit_pct', 'current_value'
             ]
             aggregated_df = aggregated_df.reindex(columns=expected_columns)
 

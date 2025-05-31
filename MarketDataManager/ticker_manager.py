@@ -2,6 +2,7 @@ import asyncio
 from decimal import Decimal
 
 import pandas as pd
+import decimal
 from ccxt.base.errors import BadSymbol
 
 
@@ -184,15 +185,24 @@ class TickerManager:
 
                 for key, value in data_dict.items():
 
-                    if isinstance(value, (float, int, Decimal)) and not isinstance(value, bool):  # Process numeric values
-                        value = str(value)
-                        if key == 'total_balance_crypto':
-                            processed_position[key] = Decimal(value).quantize(Decimal(f'1e-{base_deci}'))
-                        else:
-                            processed_position[key] = Decimal(value).quantize(Decimal(f'1e-{quote_deci}'))
-                    else:
-                        # Retain non-numeric values as-is
-                        processed_position[key] = value
+                    if isinstance(value, (float, int, Decimal)) and not isinstance(value, bool):
+                        value_str = str(value)
+                        try:
+                            decimal_value = Decimal(value_str)
+
+                            if key in ['total_balance_crypto', 'available_to_trade_crypto', 'available_to_transfer_crypto']:
+                                precision = Decimal(f'1e-{base_deci}')
+                            elif key in ['total_balance_fiat', 'available_to_trade_fiat', 'available_to_transfer_fiat']:
+                                precision = Decimal(f'1e-{quote_deci}')
+                            else:
+                                # Use a conservative default precision for any other numerics
+                                precision = Decimal('1.0') if decimal_value == decimal_value.to_integral() else Decimal(f'1e-{quote_deci}')
+
+                            processed_position[key] = self.shared_utils_precision.safe_quantize(decimal_value, precision)
+
+                        except (decimal.InvalidOperation, ValueError) as e:
+                            self.logger.warning(f"⚠️ Failed to quantize {key}={value_str} with precision={precision}: {e}")
+                            processed_position[key] = Decimal("0")
 
                 # Add the processed position to the final dictionary
                 processed_positions[asset] = processed_position

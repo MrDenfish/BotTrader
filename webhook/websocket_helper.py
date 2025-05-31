@@ -475,7 +475,6 @@ class WebSocketHelper:
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
             usd_avail = order_management_snapshot.get('non_zero_balances', {})['USD']['available_to_trade_crypto']
             profit_data_list = []
-            profit_data_list_new = []
 
             async with (self.order_tracker_lock):
                 order_tracker_snapshot = dict(order_management_snapshot.get("order_tracker", {}))
@@ -500,7 +499,7 @@ class WebSocketHelper:
                         order_data.base_decimal = base_deci
                         order_data.product_id = symbol
 
-                        avg_price = spot_positions.get(asset, {}).get('average_entry_price', {}).get('value', 0)
+                        avg_price = order_management_snapshot.get('non_zero_balances', {})[asset]['average_entry_price'].get('value')
                         avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
                         asset_balance = Decimal(spot_positions.get(asset, {}).get('total_balance_crypto', 0))
                         try:
@@ -510,7 +509,7 @@ class WebSocketHelper:
                             self.logger.warning(f"⚠️ Could not quantize asset_balance={asset_balance} with precision={quote_deci}")
                             asset_balance = Decimal(asset_balance).scaleb(-quote_deci).quantize(quantizer)
                         current_price = current_prices.get(symbol, 0)
-                        cost_basis = spot_positions.get(asset, {}).get('cost_basis', {}).get('value', 0)
+                        cost_basis = order_management_snapshot.get('non_zero_balances', {})[asset]['cost_basis'].get('value')
                         cost_basis = Decimal(cost_basis).quantize(Decimal('1.' + '0' * quote_deci))
 
                         required_prices = {
@@ -597,10 +596,6 @@ class WebSocketHelper:
                 profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
                 print(f'Profit Data Open Orders:\n{profit_df.to_string(index=True)}')
 
-            if profit_data_list_new:
-                profit_df_new = self.profit_data_manager.consolidate_profit_data(profit_data_list_new)
-                print(f'Profit Data Open Orders:\n{profit_df_new.to_string(index=True)}')
-
             await self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot)
 
         except Exception as outer_e:
@@ -618,17 +613,18 @@ class WebSocketHelper:
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
 
             usd_prices = usd_pairs.set_index('symbol')['price'].to_dict()
-
-            for asset, position in spot_positions.items():
+            count = 0
+            for asset, position in non_zero_balances.items():
+                count +=1
                 symbol = f"{asset}/USD"
-                if asset == 'BADGER':
+                if asset == '00':
                     pass
                 if symbol in self.currency_pairs_ignored:
                     continue
                 if any(order.get('symbol') == symbol for order in order_tracker.values()):
                     continue
-                average_entry_price = Decimal(position.get('average_entry_price', {}).get('value', '0'))
-                asset_balance = Decimal(position.get('available_to_trade_crypto', '0'))
+                average_entry_price = Decimal(position['average_entry_price']['value'])
+                asset_balance = Decimal(position['available_to_trade_crypto'])
                 asset_value = asset_balance * average_entry_price
 
                 if asset_value < self.min_buy_value:
@@ -646,7 +642,7 @@ class WebSocketHelper:
 
                 current_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, current_price, convert='quote')
 
-                cost_basis = Decimal(position.get('cost_basis', {}).get('value', '0'))
+                cost_basis = Decimal(position['cost_basis']['value'])
 
                 profit_data = await self.profit_data_manager.calculate_profitability(
                     symbol,
@@ -668,18 +664,26 @@ class WebSocketHelper:
                 if profit_percent >= self.take_profit and asset not in self.hodl:
 
                     entry_price = (1 + (profit_percent - self.take_profit)) * average_entry_price
-                    order_data = await self.trade_order_manager.build_order_data('Websocket', 'profit', asset, symbol, entry_price, None, 'tp_sl')
-                    if order_data:
-                        order_data.trigger = 'profit'
-                        order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
-                        self.logger.info(f"Placed sell order for {symbol}: {response_msg}")
+                    try:
+                        order_data = await self.trade_order_manager.build_order_data('Websocket', 'profit', asset, symbol, entry_price, None, 'tp_sl')
+                        if order_data:
+                            order_data.trigger = 'profit'
+                            order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
+                    except asyncio.CancelledError:
+                        self.logger.info("Task was cancelled during build_order_data.")
+                        continue
+                    self.logger.info(f"Placed sell order for {symbol}: {response_msg}")
                 elif profit_percent < self.stop_loss and asset not in self.hodl:
-                    order_data = await self.trade_order_manager.build_order_data('Websocket', 'stop_loss', asset, symbol, None, None)
-                    if order_data:
-                        order_data.trigger = 'stop_loss'
-                        order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
-                        self.logger.info(f"Placed stop-loss order for {symbol}: {response_msg}")
-
+                    try:
+                        order_data = await self.trade_order_manager.build_order_data('Websocket', 'stop_loss', asset, symbol, None, None)
+                        if order_data:
+                            order_data.trigger = 'stop_loss'
+                            order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
+                            self.logger.info(f"Placed stop-loss order for {symbol}: {response_msg}")
+                            continue
+                    except asyncio.CancelledError:
+                        self.logger.info("Task was cancelled during build_order_data.")
+                        continue
             await asyncio.sleep(30)
 
         except Exception as e:

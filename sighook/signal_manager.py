@@ -14,14 +14,15 @@ class SignalManager:
     Manages dynamic and static buy/sell signal thresholds and computes signal scoring.
     """
 
-    def __init__(self, logger, buy_target: float = 7.0, sell_target: float = 7.0):
+    def __init__(self, logger, shared_utils_precision, buy_target: float = 7.0, sell_target: float = 7.0):
         self.logger = logger
+        self.shared_utils_precision= shared_utils_precision
         self.strategy_weights = STRATEGY_WEIGHTS
         if self.strategy_weights:
             self.update_targets(self.strategy_weights)
         else:
-            self._buy_target = Decimal(str(buy_target))
-            self._sell_target = Decimal(str(sell_target))
+            self._buy_target = self.shared_utils_precision.safe_convert(buy_target, 1)
+            self._sell_target = self.shared_utils_precision.safe_convert(sell_target, 1)
 
     def update_targets(self, strategy_weights: dict):
         """
@@ -31,9 +32,9 @@ class SignalManager:
             total_buy_weight = sum(weight for key, weight in strategy_weights.items() if key.startswith("Buy"))
             total_sell_weight = sum(weight for key, weight in strategy_weights.items() if key.startswith("Sell"))
 
-            self._buy_target = (Decimal(str(total_buy_weight)) * Decimal("0.7")).quantize(Decimal('0.01'),
+            self._buy_target = (self.shared_utils_precision.safe_convert(total_buy_weight, 1) * Decimal("0.7")).quantize(Decimal('0.01'),
                                                                                           rounding=ROUND_HALF_UP)
-            self._sell_target = (Decimal(str(total_sell_weight)) * Decimal("0.7")).quantize(Decimal('0.01'),
+            self._sell_target = (self.shared_utils_precision.safe_convert(total_sell_weight, 1) * Decimal("0.7")).quantize(Decimal('0.01'),
                                                                                             rounding=ROUND_HALF_UP)
 
         except Exception as e:

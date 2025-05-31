@@ -99,7 +99,18 @@ class ProfitDataManager:
             current_price = Decimal(current_prices.get(ticker, 0))
             if current_price == 0 and ticker not in ['USD', 'USDC']:
                 print(f"Current price for {ticker} not available.")
-                return None
+                profit_data = {
+                    'asset': asset,
+                    'balance': round(Decimal(required_prices.get('asset_balance', 0)), 2),
+                    'price': round(current_price, 2),
+                    'value': 1,
+                    'cost_basis': 1,
+                    'avg_price': 1,
+                    'profit': 1,
+                    'profit percent': f'0%',
+                    'status': 'na'
+                }
+                return profit_data
 
             # ✅ Fetch Precision Once
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(ticker)

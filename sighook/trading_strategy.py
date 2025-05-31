@@ -33,6 +33,7 @@ class TradingStrategy:
             self, webhook, ticker_manager, exchange, alerts, logger_manager, ccxt_api, metrics,
             max_concurrent_tasks, database_session_mngr, sharded_utils_print, db_tables, shared_utils_precision,
             shared_data_manager):
+
         self.config = config()
         self._version = self.config.program_version
         self.exchange = exchange
@@ -41,6 +42,7 @@ class TradingStrategy:
         self.logger = logger_manager  # 🙂
 
         self.shared_data_manager = shared_data_manager
+        self.shared_utils_precision = shared_utils_precision
         self.ticker_manager = ticker_manager
         self.indicators = Indicators(logger_manager)
         self._buy_rsi = self.config._rsi_buy
@@ -61,7 +63,7 @@ class TradingStrategy:
         self.shared_utils_precision = shared_utils_precision
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self.sharded_utils_print = sharded_utils_print
-        self.signal_manager = SignalManager(logger=self.logger)
+        self.signal_manager = SignalManager( logger=self.logger, shared_utils_precision=shared_utils_precision)
         self.dynamic_indicators = {
             'Buy Touch', 'Sell Touch', 'W-Bottom', 'M-Top',
             'Buy Swing', 'Sell Swing', 'Buy MACD', 'Sell MACD'
@@ -161,12 +163,13 @@ class TradingStrategy:
         """
         Build a standardized strategy order dictionary aligned with webhook payload format.
         """
+        base_deci, quote_deci ,_ , _ = self.shared_utils_precision.fetch_precision(symbol)
         return {
             'asset': asset,
             'symbol': symbol,
             'action': action,
             'type': type,
-            'price': Decimal(str(price)),
+            'price': self.shared_utils_precision.safe_convert(price, quote_deci),
             'trigger': trigger,
             'score': score,
             'volume': None,

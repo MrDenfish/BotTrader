@@ -231,7 +231,7 @@ class PortfolioManager:
         try:
             # Safely convert threshold to Decimal
             try:
-                threshold = Decimal(str(threshold))
+                threshold = self.shared_utils_precision.safe_convert(threshold, 2)
             except (ValueError, TypeError, InvalidOperation):
                 raise ValueError(f"Invalid threshold value: {threshold}")
 

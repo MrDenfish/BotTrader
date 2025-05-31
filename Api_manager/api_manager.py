@@ -158,14 +158,27 @@ class ApiManager:
                         print(f"⚠️ Insufficient balance detected for {func.__name__}. Order could not be placed.")
 
                         # Return a meaningful response
-                        return {'status': 'failed', 'reason': 'insufficient_balance'}
+                        if  caller_function_name == 'place_limit_order':
+                            return {
+                                'message':'priced below the lowest sell price',
+                                'success':False,
+                                'trigger':'limit',
+                                'status': {
+                                    'status': 'failed',
+                                    'message': 'priced below the lowest sell price',
+
+                                }
+                            }
+                        else:
+                            return {'status': 'failed', 'reason': 'insufficient_balance'}
                     elif 'coinbase cancelOrders() has failed' in error_message:
                         self.logger.error(f"Coinbase cancelOrders() has failed: {e}", exc_info=True)
                         return None
                     else:
                         self.logger.error(f"⚠️ Post-only limit buys must be priced below the lowest sell price"
                                                    f"{args}  {func.__name__} from {caller_function_name}",exc_info=True)
-                        break
+                        response['message'] = 'priced below the lowest sell price'
+                        return
                 except asyncio.TimeoutError:
                     print(f'{caller_function_name}')
                     if attempt == retries:

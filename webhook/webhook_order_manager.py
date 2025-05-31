@@ -1,3 +1,4 @@
+
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Tuple, Dict, Union, Optional
 
@@ -201,35 +202,42 @@ class TradeOrderManager:
                 Decimal(f'1e-{base_deci}'),
                 rounding=ROUND_HALF_UP
             )
-            volume_24h = Decimal(volume_24h).quantize(Decimal(1))
-            cost_basis = Decimal(cost_basis).quantize(quote_quantizer, rounding=ROUND_HALF_UP)
-            total_balance_crypto = Decimal(total_balance_crypto).quantize(base_quantizer, rounding=ROUND_HALF_UP)
+            volume_24h = self.shared_utils_precision.safe_decimal(volume_24h)
+            volume_24h = self.shared_utils_precision.safe_quantize(volume_24h, 0)
+            cost_basis = self.shared_utils_precision.safe_quantize(Decimal(cost_basis), quote_quantizer)
+            total_balance_crypto = self.shared_utils_precision.safe_decimal(total_balance_crypto)
+            total_balance_crypto = self.shared_utils_precision.safe_quantize(total_balance_crypto, base_quantizer)
+
             size_of_order_fiat = Decimal('0') # will be set if order is a buy
+
             available_to_trade = Decimal(spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
-            available_to_trade = Decimal(available_to_trade).quantize(base_quantizer, rounding=ROUND_HALF_UP)
+            available_to_trade = self.shared_utils_precision.safe_quantize(available_to_trade, base_quantizer)
+
             usd_bal = self.shared_utils_precision.safe_decimal(
-                spot_position.get("USD", {}).get("total_balance_fiat")).quantize(quote_quantizer, rounding=ROUND_HALF_UP)
-            usd_avail = Decimal(
-                spot_position.get('USD', {}).get('available_to_trade_fiat', 0)).quantize(quote_quantizer,rounding=ROUND_HALF_UP)
+                spot_position.get("USD", {}).get("total_balance_fiat")).quantize(2, rounding=ROUND_HALF_UP)
+
+            usd_avail = self.shared_utils_precision.safe_decimal(
+                spot_position.get("USD", {}).get("available_to_trade_fiat")).quantize(2, rounding=ROUND_HALF_UP)
+
             print(f'‼️ USD Avail: {usd_avail} / USD Bal: {usd_bal}  ‼️')
             pair = product_id.replace('-', '/')  # normalize first
             base_currency, quote_currency = pair.split('/')
             trading_pair = product_id.replace('-', '/')
-            price = Decimal(self.market_data.get('current_prices', {}).get(trading_pair, 0)).quantize(
-                quote_quantizer, rounding=ROUND_HALF_UP
-            )
-
+            current_price = Decimal(self.market_data.get('current_prices', {}).get(trading_pair, 0))
+            price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
             # Determine side
             side = 'buy' if Decimal(
                 spot_position.get(asset, {}).get('total_balance_fiat', 0)
             ) <= self.max_value_of_crypto_to_buy_more else 'sell'
 
             # Set fiat allocation
-            fiat_avail_for_order = Decimal(min(self.order_size, usd_avail)).quantize(quote_quantizer, rounding=ROUND_HALF_UP)
+            fiat_avail_for_order = Decimal(min(self.order_size, usd_avail))
+            fiat_avail_for_order = self.shared_utils_precision.safe_quantize(fiat_avail_for_order, quote_quantizer)
 
             # Calculate order size
             if side == 'buy':
-                size_of_order_qty = (fiat_avail_for_order / price).quantize(base_quantizer) if price > 0 else Decimal(0)
+                size_of_order_qty = (fiat_avail_for_order / price)
+                size_of_order_qty = self.shared_utils_precision.safe_quantize(size_of_order_qty, quote_deci) if price > 0 else Decimal(0)
                 if (price * size_of_order_qty) < self.min_order_amount:
                     print(f'‼️ Insufficient fiat balance to place buy order: {trading_pair}')
                     return None
@@ -302,7 +310,7 @@ class TradeOrderManager:
                 adjusted_price=adjusted_price,
                 adjusted_size=adjusted_size_of_order_qty,
                 stop_loss_price=stop_price,
-                take_profit_price=None,
+               take_profit_price=None,
                 volume_24h=volume_24h,
 
             )
@@ -505,10 +513,11 @@ class TradeOrderManager:
                     # Add more custom 'reason' cases here as needed
 
                 # Step 6: Handle success
-                if response.get('success') and response.get('success_response', {}).get('order_id'):
-                    order_id = response['success_response']['order_id']
+                if response.get('success') and response.get('info', {}).get('order_id'):
+                    order_id = response['info']['order_id']
                     order_data.order_id = order_id
-                    order_data.parent_order_id = order_id
+                    if response.get('side').lower() == 'buy':
+                        order_data.parent_order_id = order_id
                     self.logger.info(f"✅ Successfully placed {order_type} order for {symbol}")
                     return True, self.build_response(True, "Order placed", "200", order_data.__dict__)
 
@@ -539,6 +548,12 @@ class TradeOrderManager:
                     order_data.post_only = False
                     continue
 
+                if error_code == 'Insufficient_USD':
+                    self.logger.warning(f"⚠️ {error_msg}")
+                    order_data.status = 'FAILED'
+                    order_data.post_only = False
+                    break
+
                 if attempt == max_attempts - 1:
                     self.logger.warning(f"🛠️ Last attempt: rebuilding OrderData for {symbol}")
                     rebuilt_order_data = await self.build_order_data(
@@ -567,7 +582,7 @@ class TradeOrderManager:
                                                   error_response=error_response)
 
             except Exception as ex:
-                self.logger.error(f"❌ Exception during attempt #{attempt + 1}: {ex}", exc_info=True)
+             self.logger.error(f"❌ Exception during attempt #{attempt + 1}: {ex}", exc_info=True)
 
         self.logger.info(f"❌ All {max_attempts} attempts to place order for {symbol} failed.")
         return False, self.build_response(False, "Order placement failed after retries", "500", order_data.__dict__)

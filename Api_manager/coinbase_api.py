@@ -1,3 +1,5 @@
+
+
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -14,7 +16,7 @@ from Shared_Utils.logging_manager import LoggerManager
 class CoinbaseAPI:
     """This class is for REST API code and should nt be confused with the websocket code used in WebsocketHelper"""
 
-    def __init__(self, session, shared_utils_utility, logger_manager):
+    def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision,):
         self.config = Config()
         self.api_key = self.config.load_websocket_api_key().get('name')
         self.api_secret = self.config.load_websocket_api_key().get('signing_key')
@@ -29,7 +31,12 @@ class CoinbaseAPI:
 
         self.logger.info("🔹 CoinBaseAPI  initialzed debug.")
 
+        # default fees
+        self.default_maker_fee = self.config.maker_fee
+        self.default_taker_fee = self.config.taker_fee
+
         self.alerts = AlertSystem(logger_manager)
+        self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
 
         self.session = session
@@ -115,7 +122,7 @@ class CoinbaseAPI:
             self.logger.error(f"❗ Unexpected Error in create_order: {e}", exc_info=True)
             return {"error": "Unexpected Error", "details": str(e)}
 
-    async def get_fee_rates(self):
+    async def get_fee_rates(self,):
         """
         Retrieves maker and taker fee rates from Coinbase.
         Returns:
@@ -140,8 +147,8 @@ class CoinbaseAPI:
                     js = await response.json()
                     tier = js.get("fee_tier", {})
                     return {
-                        "maker": Decimal(str(tier.get("maker_fee_rate", "0"))),
-                        "taker": Decimal(str(tier.get("taker_fee_rate", "0"))),
+                        "maker": self.shared_utils_precision.safe_convert(tier.get("maker_fee_rate", self.default_maker_fee ), 4),
+                        "taker": self.shared_utils_precision.safe_convert(tier.get("taker_fee_rate", self.default_taker_fee ), 4),
                         "pricing_tier": tier.get("pricing_tier"),
                         "usd_volume": tier.get("usd_volume"),
                     }

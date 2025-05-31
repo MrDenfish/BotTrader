@@ -51,7 +51,7 @@ class OrderBookManager:
             self.logger.warning(
                 f"⚠️ analyze_spread failed or returned zeros for {trading_pair}. Falling back to calculate_order_book_summary()"
             )
-            order_details = self.calculate_order_book_summary(order_details)
+            order_details = self.calculate_order_book_summary(order_data, order_details)
 
         return order_details
 
@@ -77,7 +77,7 @@ class OrderBookManager:
             self.logger.error(f'analyze_spread: An error occurred: {e}', exc_info=True)
             return None, None, None
 
-    def calculate_order_book_summary(self, order_book_details: dict) -> dict:
+    def calculate_order_book_summary(self, order_data, order_book_details: dict) -> dict:
         try:
             order_book = order_book_details.get("order_book", {})
             bids = order_book.get("bids", [])
@@ -89,8 +89,8 @@ class OrderBookManager:
                 return order_book_details  # Return original, even if incomplete
 
             # Calculate highest bid and lowest ask
-            highest_bid = Decimal(str(max(bid[0] for bid in bids)))
-            lowest_ask = Decimal(str(min(ask[0] for ask in asks)))
+            highest_bid = self.shared_utils_precision.safe_convert(max(bid[0] for bid in bids), order_data.quote_decimal)
+            lowest_ask = self.shared_utils_precision.safe_convert(min(ask[0] for ask in asks), order_data.quote_decimal)
             spread = lowest_ask - highest_bid
 
             # Update the original dictionary with corrected values
