@@ -111,8 +111,8 @@ class WebHookManager:
         """
         try:
 
-            taker_fee = float(fee_info.get('taker_fee', 0.0))
-            maker_fee = float(fee_info.get('maker_fee', 0.0))
+            taker_fee = float(fee_info.get('taker', 0.0))
+            maker_fee = float(fee_info.get('maker', 0.0))
 
             base_order_size_fiat = None
             base_value = Decimal(0)  # Default to zero to avoid NoneType errors
@@ -124,8 +124,7 @@ class WebHookManager:
 
             elif side == 'sell':
                 # Ensure we don't sell more than available
-                base_order_size_fiat = min(order_amount, base_amount)
-                base_value = base_order_size_fiat * base_price  # Convert crypto amount to USD
+                base_value = base_amount * base_price  # Convert crypto amount to USD
 
             # Convert to proper decimal precision
             formatted_base_decimal = self.shared_utils_precision.get_decimal_format(base_deci)

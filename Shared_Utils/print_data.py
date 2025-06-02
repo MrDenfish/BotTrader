@@ -213,7 +213,6 @@ class PrintData:
                     #                stralign='center', numalign='center'))
                     print("")
 
-
             # ✅ PRINT AGGREGATED HOLDINGS
             if aggregated_df is not None and not aggregated_df.empty:
                 column_mapping = {
@@ -224,11 +223,20 @@ class PrintData:
                     'current_value': 'Value $'
                 }
                 aggregated_df = aggregated_df.rename(columns=column_mapping)
-                print(f"� Holdings with Changes - sighook output:\n{aggregated_df.to_string(index=False)}")
+
+                # 👉 Filter rows where 'Value $' > 0.01
+                aggregated_df = aggregated_df[aggregated_df['Value $'] > 0.01]
+
+                # 👉 Sort by 'symbol' column alphabetically
+                if 'symbol' in aggregated_df.columns:
+                    aggregated_df = aggregated_df.sort_values(by='symbol', ascending=True)
+
+                print(f"📊 Holdings with Changes - sighook output:\n{aggregated_df.to_string(index=False)}")
             else:
                 print("❌ No changes to holdings.")
 
             print("\n" + "<><><><<><>" * 20 + "\n")
+
 
         except Exception as e:
             self.logger.error(f"⚠️ Error printing data: {e}", exc_info=True)

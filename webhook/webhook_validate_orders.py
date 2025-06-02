@@ -1,10 +1,11 @@
 
 from dataclasses import asdict
 from dataclasses import dataclass
+from dataclasses import field
 from datetime import datetime
 from decimal import Decimal
 from decimal import InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
 import pandas as pd
 import decimal
@@ -34,7 +35,7 @@ class OrderData:
     open_orders: Union[pd.DataFrame, None] = None
     status: str = 'UNKNOWN'
     source: str = 'UNKNOWN'
-    trigger: str = 'UNKNOWN'
+    trigger: Dict[str, str] = field(default_factory=lambda: {"trigger": "UNKNOWN", "trigger_note": ""})
     base_avail_balance: Decimal = Decimal('0')
     total_balance_crypto: Decimal = Decimal('0')  # spot_position
     available_to_trade_crypto: Decimal = Decimal('0')
@@ -230,7 +231,9 @@ class ValidateOrders:
                 quote_decimal = 2  # sane default – adjust if needed
 
             quote_increment = Decimal("1").scaleb(-quote_decimal)  # 1e-quote_decimal
-            source = details.get("source") or details.get("trigger", "").split('@')[0] or "webhook"
+            trigger=details.get("trigger", "")
+
+            source = details.get("source")
 
             return OrderData(
                 source=source,
@@ -500,6 +503,7 @@ class ValidateOrders:
                 "message": f"Order validation failed for {order_data.trading_pair}",
                 "details": {
                     "Order Id": None,
+                    "source": order_data.source,
                     "asset": order_data.base_currency,
                     "trigger": order_data.trigger,
                     "trading_pair": order_data.trading_pair,

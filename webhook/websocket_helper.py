@@ -479,6 +479,8 @@ class WebSocketHelper:
             async with (self.order_tracker_lock):
                 order_tracker_snapshot = dict(order_management_snapshot.get("order_tracker", {}))
                 for order_id, raw_order in order_tracker_snapshot.items():
+                    raw_order['type'] = raw_order.get('type').lower()
+                    raw_order['side'] = raw_order.get('side').lower()
                     order_id = raw_order.get('id', 'UNKNOWN')
                     order_data = OrderData.from_dict(raw_order)
 
@@ -489,16 +491,17 @@ class WebSocketHelper:
                         precision_data = self.shared_utils_precision.fetch_precision(symbol)
                         order_data.base_decimal = precision_data[0]
                         order_data.quote_decimal = precision_data[1]
-                        if asset == 'FIS':
-                            pass
-
+                        if asset == 'IDEX':
+                           pass
+                        order_duration = raw_order.get('order_duration')
                         base_deci, quote_deci, _, _ = precision_data
 
                         # ✅ Add precision values to order_data
                         order_data.quote_decimal = quote_deci
                         order_data.base_decimal = base_deci
                         order_data.product_id = symbol
-
+                        if asset not in order_management_snapshot.get('non_zero_balances', {}):
+                            continue
                         avg_price = order_management_snapshot.get('non_zero_balances', {})[asset]['average_entry_price'].get('value')
                         avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
                         asset_balance = Decimal(spot_positions.get(asset, {}).get('total_balance_crypto', 0))
@@ -526,7 +529,7 @@ class WebSocketHelper:
                         if order_data.type == 'limit' and order_data.side == 'sell':
                             order_book = await self.order_book_manager.get_order_book(order_data, symbol)
                             highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
-                            if order_data.price < current_price:
+                            if order_data.price < current_price and order_duration > 5 :
                                 # ✅ Update trailing stop with highest bid
                                 await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
                                 new_order_data = await self.trade_order_manager.build_order_data('Websocket',
@@ -559,7 +562,8 @@ class WebSocketHelper:
                                     'Websocket', 'limit_buy_adjusted', asset, symbol, new_limit_price, None
                                 )
                                 if new_order_data:
-                                    new_order_data.trigger = "limit_buy_adjusted"
+                                    trigger = {"trigger": f"limit_buy_adjusted", "trigger_note": f"new limit price:{new_limit_price}"}
+                                    new_order_data.trigger = trigger
 
                         elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
                             full_tracker = order_management_snapshot.get("order_tracker", {})
@@ -596,7 +600,10 @@ class WebSocketHelper:
                 profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
                 print(f'Profit Data Open Orders:\n{profit_df.to_string(index=True)}')
 
+            self.logger.info(f"✅ monitor_untracked_assets is {type(self.monitor_untracked_assets)}")
+            self.logger.info("🧪 About to await monitor_untracked_assets")
             await self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot)
+            self.logger.info("✅ monitor_untracked_assets completed")
 
         except Exception as outer_e:
             self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
@@ -667,19 +674,28 @@ class WebSocketHelper:
                     try:
                         order_data = await self.trade_order_manager.build_order_data('Websocket', 'profit', asset, symbol, entry_price, None, 'tp_sl')
                         if order_data:
-                            order_data.trigger = 'profit'
+                            trigger = {"trigger": f"profit", "trigger_note": f"price:{profit_data.get('profit percent')}"}
+                            order_data.trigger = trigger
                             order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
+                            if order_success:
+                                self.logger.info(f"Placed sell order for {symbol}: {response_msg}")
+                            else:
+                                self.logger.error(f"Failed to place sell order for {symbol}: {response_msg}")
                     except asyncio.CancelledError:
                         self.logger.info("Task was cancelled during build_order_data.")
                         continue
-                    self.logger.info(f"Placed sell order for {symbol}: {response_msg}")
+
                 elif profit_percent < self.stop_loss and asset not in self.hodl:
                     try:
                         order_data = await self.trade_order_manager.build_order_data('Websocket', 'stop_loss', asset, symbol, None, None)
                         if order_data:
-                            order_data.trigger = 'stop_loss'
+                            trigger = {"trigger": f"stop_loss", "trigger_note": f"stop loss price:{self.stop_loss}"}
+                            order_data.trigger = trigger
                             order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
-                            self.logger.info(f"Placed stop-loss order for {symbol}: {response_msg}")
+                            if order_success:
+                                self.logger.info(f"Placed stop_loss order for {symbol}: {response_msg}")
+                            else:
+                                self.logger.error(f"Failed to place stop_loss order for {symbol}: {response_msg}")
                             continue
                     except asyncio.CancelledError:
                         self.logger.info("Task was cancelled during build_order_data.")

@@ -374,7 +374,7 @@ class OrderTypeManager:
 
                 # ✅ Place the order
                 self.exchange.verbose = False
-                self.logger.info(f"Placing {side} limit order: {symbol}, Amount: {amount}, Price: {price}, Params: {params}")
+                self.logger.debug(f"Placing {side} limit order: {symbol}, Amount: {amount}, Price: {price}, Params: {params}")
 
                 print(
                     f" Post-only check — side: {side}, adjusted price: {price}, "

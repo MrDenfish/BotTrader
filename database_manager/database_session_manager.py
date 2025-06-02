@@ -200,3 +200,7 @@ class DatabaseSessionManager:
         except Exception as e:
             self.logger.error(f"❌ Error fetching order_management: {e}", exc_info=True)
             return {}
+
+    def async_session(self) -> AsyncSession:
+        """Returns a new SQLAlchemy async session."""
+        return self.async_session_factory()

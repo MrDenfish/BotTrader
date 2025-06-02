@@ -154,7 +154,7 @@ class SenderWebhook:
                 if response.status in [403, 404]:
                     self.logger.error(f"‼️ Non-recoverable error {response.status}: {response_text}")
                     return response
-                if response.status in [413, 414]:
+                if response.status in [413, 414, 422]:
                     self.logger.error(f" ⚠️ Insufficient balance to complete order {response.status}: {response_text}")
                     return response
                 if response.status in [411]:

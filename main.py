@@ -52,8 +52,10 @@ async def init_shared_data(logger_manager, shared_logger):
         shared_data_manager=shared_data_manager
     )
     shared_utils_precision = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
+    shared_utils_utility = SharedUtility.get_instance(logger_manager)
 
-    shared_data_manager.__init__(shared_logger, database_session_manager, shared_utils_precision)
+    shared_data_manager.__init__(shared_logger, database_session_manager,
+                                 shared_utils_utility,shared_utils_precision)
 
 
     # Initialize utilities
@@ -87,6 +89,8 @@ async def build_websocket_components(config, listener, shared_data_manager):
         ccxt_api=listener.ccxt_api,
         coinbase_api=listener.coinbase_api,
         exchange=listener.exchange,
+        shared_data_manager=shared_data_manager,
+        shared_utils_utility=listener.shared_utils_utility,
         shared_utils_precision=listener.shared_utils_precision,
         ohlcv_manager=listener.ohlcv_manager,
         trade_order_manager=listener.trade_order_manager,
@@ -142,6 +146,9 @@ async def build_websocket_components(config, listener, shared_data_manager):
         shared_data_manager=shared_data_manager
     )
     market_ws_manager.passive_order_manager = passive_order_manager
+    # 🔁 Restore any passive orders
+    await passive_order_manager.reload_persisted_passive_orders()
+
     websocket_manager = WebSocketManager(
         config=Config(),
         coinbase_api=listener.coinbase_api,

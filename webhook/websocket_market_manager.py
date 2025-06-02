@@ -184,31 +184,36 @@ class WebSocketMarketManager:
 
                     # --- Handle filled orders (buy or sell)
                     if status == "FILLED":
-                        order_data = OrderData.from_dict(order)
+                        try:
+                            order_data = OrderData.from_dict(order)
 
-                        if side == "sell":
-                            asset = symbol.split("-")[0]
-                            base_d, quote_d, *_ = self.shared_utils_precision.fetch_precision(symbol)
-                            avg_p = Decimal(order.get("avg_price") or 0)
-                            cost_bs = Decimal(spot_pos.get(asset, {}).get("cost_basis", {}).get("value", 0))
-                            bal = Decimal(spot_pos.get(asset, {}).get("total_balance_crypto", 0))
+                            if side == "sell":
+                                asset = symbol.split("-")[0]
+                                base_d, quote_d, *_ = self.shared_utils_precision.fetch_precision(symbol)
+                                avg_p = Decimal(order.get("avg_price") or 0)
+                                cost_bs = Decimal(spot_pos.get(asset, {}).get("cost_basis", {}).get("value", 0))
+                                bal = Decimal(spot_pos.get(asset, {}).get("total_balance_crypto", 0))
 
-                            req = {
-                                "avg_price": avg_p,
-                                "cost_basis": cost_bs,
-                                "asset_balance": bal,
-                                "current_price": None,
-                                "profit": None,
-                                "profit_percentage": None,
-                                "status_of_order": status,
-                            }
-                            p = await self.profit_data_manager.calculate_profitability(asset, req, cur_prices, usd_pairs)
-                            if p and p.get("profit"):
-                                pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
-                                self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
+                                req = {
+                                    "avg_price": avg_p,
+                                    "cost_basis": cost_bs,
+                                    "asset_balance": bal,
+                                    "current_price": None,
+                                    "profit": None,
+                                    "profit_percentage": None,
+                                    "status_of_order": status,
+                                }
+                                p = await self.profit_data_manager.calculate_profitability(asset, req, cur_prices, usd_pairs)
+                                if p and p.get("profit"):
+                                    pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
+                                    self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
 
                             self.logger.info(f"✅ Order filled: {order_id} at {order.get('avg_price')} with fee {order.get('total_fees')}")
                             await self.listener.handle_order_fill(order_data)
+
+
+                        except Exception:
+                            self.logger.error("❌ Error processing user WebSocket message", exc_info=True)
 
             # Finalize snapshot
             om_snap["order_tracker"] = order_tracker
@@ -266,11 +271,10 @@ class WebSocketMarketManager:
                 print(f"✅ ROC={log_roc:.2f}%, Vol={volatility:.2f} ≥ Adaptive={adaptive_threshold:.2f} — Execute trade")
                 trading_pair = product_id.replace("-", "/")
                 symbol = trading_pair.split("/")[0]
-                trigger_note = f'ROC:{log_roc} %'
-
+                trigger = {"trigger": f"roc", "trigger_note": f"ROC:{log_roc} % "}
                 roc_order_data = await self.trade_order_manager.build_order_data(
                     source='Websocket',
-                    trigger=trigger_note,
+                    trigger=trigger,
                     asset=symbol,
                     trading_pair=trading_pair,
                     limit_price=None,
@@ -278,7 +282,6 @@ class WebSocketMarketManager:
                 )
 
                 if roc_order_data:
-                    roc_order_data.trigger = "roc"
                     print(f'\n� Order Data:\n{roc_order_data.debug_summary(verbose=True)}\n')
                     order_success, response_msg = await self.trade_order_manager.place_order(roc_order_data)
                     print(f"‼️ ROC ALERT: {product_id} increased by {log_roc:.2f}% 5 minutes. A buy order was placed!")
