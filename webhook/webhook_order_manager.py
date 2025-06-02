@@ -589,7 +589,8 @@ class TradeOrderManager:
 
     def order_type_to_use(self, side, order_data):
         # Initial thought for using a trailing stop order is when ROC trigger is met. Signal will come from  sighook.
-        if order_data.trigger and "passive_buy" in order_data.trigger:
+
+        if order_data.trigger and order_data.trigger.get("trigger") == "passive_buy":
             validation_result = 'limit'
             return validation_result
         if side == 'buy':

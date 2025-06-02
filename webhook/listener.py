@@ -669,8 +669,8 @@ class WebhookListener:
 
             # Build order and place it
             source = 'Webhook'
-            trigger = trade_data.get('trigger')
-
+            trigger = trade_data.get('trigger','strategy')
+            trigger = {"trigger": f"{trigger}", "trigger_note": f"from webhook"}
             order_details = await self.trade_order_manager.build_order_data(source, trigger, asset, product_id, None, fee_info)
             if order_details is None:
                 return web.json_response({"success": False, "message": "Failed to build order data"}, status=422)

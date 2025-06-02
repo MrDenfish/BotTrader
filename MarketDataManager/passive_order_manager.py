@@ -93,52 +93,65 @@ class PassiveOrderManager:
     # ------------------------------------------------------------------
 
     async def monitor_passive_position(self, symbol: str, od: OrderData):
-        """Continuously monitor a passive BUY order and simulate stop-limit exit if needed."""
+        """
+        Monitors a passive BUY order. If price moves unfavorably or favorably:
+        - Triggers a stop-loss (SL)
+        - Triggers a take-profit (TP)
+        - Triggers a trailing stop-loss (TSL)
+        """
         try:
-            # Retrieve the latest market price
             ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol)
             current_price = Decimal(ticker_data['last'])
 
-            # Dynamically calculate SL threshold (e.g., 0.75%–1.5% based on spread)
-            dynamic_sl_pct = max(self.fee["taker"] * Decimal(2), od.spread * Decimal(1.25))  # e.g., 1–1.5%
+            entry = self.passive_order_tracker.get(symbol, {})
+            peak_price = entry.get("peak_price", od.limit_price)
+
+            # Update peak price for TSL tracking
+            if current_price > peak_price:
+                entry["peak_price"] = current_price
+                peak_price = current_price
+
+            # ----- STOP-LOSS (SL) -----
+            dynamic_sl_pct = max(self.fee["taker"] * Decimal(2), od.spread * Decimal(1.25))
             stop_price = od.limit_price * (Decimal("1.0") - dynamic_sl_pct)
-
             if current_price <= stop_price:
-                self.logger.warning(f"🔻 {symbol} dropped below dynamic SL threshold. Initiating simulated SL sell...")
-
-                # Cancel the passive BUY
-                order_id = self.passive_order_tracker.get(symbol, {}).get("buy")
-                if order_id:
-                    await self.order_manager.cancel_order(order_id, symbol)
-
-                # Construct new SELL OrderData
-                sl_od = self._clone_order_data(od, side="sell", trigger="simulated_sl", source="PassiveMM")
-                sl_od.type = "limit"
-                sl_od.adjusted_price = current_price.quantize(Decimal(f'1e-{od.quote_decimal}'))
-                sl_od.adjusted_size = od.available_to_trade_crypto
-                sl_od.cost_basis = (sl_od.adjusted_price * sl_od.adjusted_size).quantize(
-                    Decimal(f'1e-{od.quote_decimal}'), rounding=ROUND_HALF_UP
+                self.logger.warning(f"🔻 Stop-loss triggered for {symbol} @ {current_price} (SL threshold: {stop_price})")
+                await self._submit_passive_sell(
+                    symbol,
+                    od,
+                    current_price,
+                    reason="stop_loss",
+                    note=f"SL threshold: {stop_price}"
                 )
+                return
 
-                if not self._passes_balance_check(sl_od):
-                    self.logger.warning(f"⚠️ Not enough balance to place SL SELL for {symbol}")
-                    return
+            # ----- TAKE-PROFIT (TP) -----
+            take_profit_price = od.limit_price * (Decimal("1.0") + self._take_profit)
+            if current_price >= take_profit_price:
+                self.logger.info(f"📈 Take-profit triggered for {symbol} @ {current_price} (TP threshold: {take_profit_price})")
+                await self._submit_passive_sell(
+                    symbol,
+                    od,
+                    current_price,
+                    reason="take_profit",
+                    note=f"TP threshold: {take_profit_price}"
+                )
+                return
 
-                # Place SL order
-                if "sl" in self.passive_order_tracker.get(symbol, {}):
-                    return
-                trigger = {"trigger": f"passive_sl", "trigger_note": f"stop price:{stop_price}"}
-                sl_od.trigger = trigger
+            # ----- TRAILING STOP-LOSS (TSL) -----
+            trailing_stop_price = peak_price * (Decimal("1.0") - self._trailing_percentage)
+            if current_price <= trailing_stop_price:
+                self.logger.warning(
+                    f"🔻 Trailing SL triggered for {symbol} @ {current_price} (peak: {peak_price}, trailing stop: {trailing_stop_price})")
+                await self._submit_passive_sell(
+                    symbol,
+                    od,
+                    current_price,
+                    reason="trailing_stop",
+                    note=f"Peak: {peak_price}, trailing stop: {trailing_stop_price}"
+                )
+                return
 
-                sl_od.source = 'PassiveMM'
-                ok, res = await self.tom.place_order(sl_od)
-                if ok:
-                    sl_order_id = res.get('details', {}).get('order_id')
-                    self.logger.info(f"✅ SL SELL placed for {symbol} @ {sl_od.adjusted_price}")
-                    # Track the SL order
-                    self._track_passive_order(symbol, "sl", sl_order_id)
-                else:
-                    self.logger.error(f"❌ Failed to place SL SELL for {symbol}: {res}")
         except Exception as e:
             self.logger.error(f"❌ Error in monitor_passive_position() for {symbol}: {e}", exc_info=True)
 
@@ -196,6 +209,38 @@ class PassiveOrderManager:
 
         except Exception as exc:
             self.logger.error(f"❌ Error in passive MM for {trading_pair}: {exc}", exc_info=True)
+
+    async def _submit_passive_sell(self, symbol: str, od: OrderData, price: Decimal, reason: str, note: str = ""):
+        try:
+            buy_id = self.passive_order_tracker.get(symbol, {}).get("buy")
+            if buy_id:
+                await self.order_manager.cancel_order(buy_id, symbol)
+
+            sell_od = self._clone_order_data(od, side="sell", trigger=f"passive_{reason}", source="PassiveMM")
+            sell_od.type = "limit"
+            sell_od.adjusted_price = price.quantize(Decimal(f'1e-{od.quote_decimal}'))
+            sell_od.adjusted_size = od.available_to_trade_crypto
+            sell_od.cost_basis = (sell_od.adjusted_price * sell_od.adjusted_size).quantize(
+                Decimal(f'1e-{od.quote_decimal}'), rounding=ROUND_HALF_UP
+            )
+            sell_od.trigger = {"trigger": f"passive_{reason}", "trigger_note": note}
+
+            if not self._passes_balance_check(sell_od):
+                self.logger.warning(f"⚠️ Insufficient balance to place {reason} SELL for {symbol}")
+                return
+
+            if reason in self.passive_order_tracker.get(symbol, {}):
+                return
+
+            ok, res = await self.tom.place_order(sell_od)
+            if ok:
+                sell_id = res.get('details', {}).get('order_id')
+                self.logger.info(f"✅ {reason.upper()} SELL placed for {symbol} @ {sell_od.adjusted_price}")
+                self._track_passive_order(symbol, reason, sell_id)
+            else:
+                self.logger.error(f"❌ Failed to place {reason.upper()} SELL for {symbol}: {res}")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to submit {reason.upper()} SELL for {symbol}: {e}", exc_info=True)
 
     async def reload_persisted_passive_orders(self):
         if not self.shared_data_manager:
@@ -302,7 +347,7 @@ class PassiveOrderManager:
             if od.usd_avail_balance < cost:
                 return False
         else:  # sell
-            if od.order_amount_fiat < od.base_avail_balance:
+            if od.base_avail_balance  <= od.total_balance_crypto:
                 return False
         return True
 
@@ -318,9 +363,9 @@ class PassiveOrderManager:
         entry[side] = order_id
         if od:
             entry["order_data"] = od
+            entry["peak_price"] = od.filled_price or od.limit_price  # initialize to purchase price
         entry["timestamp"] = time.time()
 
-        # 🔄 Save to DB for persistence
         if od and self.shared_data_manager:
             asyncio.create_task(
                 self.shared_data_manager.save_passive_order(order_id, symbol, side, od)
