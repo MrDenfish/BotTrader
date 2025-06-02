@@ -179,13 +179,6 @@ class PassiveOrderManager:
         try:
             tick = self.shared_utils_precision.safe_convert(od.quote_increment, od.quote_decimal)
             pct_nudge = Decimal("0.3") / Decimal("100")
-            adjustment = max(tick, (mid_price * pct_nudge).quantize(tick))
-
-            bias = self._compute_inventory_bias(
-                asset_value=price * od.base_avail_balance,
-                usd_value=od.usd_avail_balance,
-                spread=spread,
-            )
 
             # Fetch OHLCV once for use in SELL side
             try:
