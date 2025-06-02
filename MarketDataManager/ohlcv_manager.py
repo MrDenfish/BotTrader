@@ -87,7 +87,6 @@ class OHLCVManager:
 
                 return oldest_close, newest_close, average_close
             else:
-                self.logger.warning(f"⚠️ No new OHLCV data for {symbol}")
                 return None, None, None
 
         except Exception as e:

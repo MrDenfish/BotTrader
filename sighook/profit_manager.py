@@ -91,7 +91,6 @@ class ProfitabilityManager:
             updated_holdings_list = updated_holdings_df.to_dict('records')  # Convert DataFrame to list of dictionaries
             trigger = None
 
-
             for holding in updated_holdings_list:
                 # Skip assets marked as "hodl"
                 if holding['asset'] in self.hodl:
@@ -122,7 +121,7 @@ class ProfitabilityManager:
         Compatible with webhook payload structure.
         """
         unrealized_profit = holding['unrealized_profit_loss']
-        type = 'tp_sl' if unrealized_profit > 0 else 'limit'
+        type = 'limit'
 
         return {
             'asset': holding['asset'],

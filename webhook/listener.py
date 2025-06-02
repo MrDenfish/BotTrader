@@ -228,6 +228,8 @@ class WebhookListener:
             coinbase_api=None,
             exchange=None,
             ohlcv_manager=None,
+            shared_data_manager=None,
+            shared_utils_utility=None,
             shared_utils_precision=None,
             trade_order_manager=None,
             order_manager = None,
@@ -483,6 +485,7 @@ class WebhookListener:
 
             # Use take profit stop loss
             order_data.source = source
+
             order_success, response_msg = await self.trade_order_manager.place_order(order_data)
             if response_msg:
                 response_data = response_msg
@@ -643,10 +646,10 @@ class WebhookListener:
             if not self.is_valid_precision(precision_data):
                 return web.json_response({"success": False, "message": "Failed to fetch precision data"}, status=422)
 
-            base_price, quote_price = await self.get_prices(trade_data, market_data_snapshot)
+            base_price_in_fiat, quote_price_in_fiat = await self.get_prices(trade_data, market_data_snapshot)
 
             asset_obj = order_management_snapshot.get("non_zero_balances", {}).get(asset)
-            base_balance = getattr(asset_obj, "total_balance_crypto", 0) if asset_obj else 0
+
 
             fee_info = await self.coinbase_api.get_fee_rates()
             new_maker = fee_info.get("maker")
@@ -654,7 +657,7 @@ class WebhookListener:
 
             if new_maker is not None and new_maker != old_maker:
                 await self.passive_order_manager.update_fee_cache(fee_info)
-            _, _, base_value = self.calculate_order_size_fiat(trade_data, base_price, quote_price,
+            _, _, base_value = self.calculate_order_size_fiat(trade_data, base_price_in_fiat, quote_price_in_fiat,
                                                          precision_data, fee_info)
             if trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
                 return web.json_response(
@@ -691,9 +694,9 @@ class WebhookListener:
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
             current_prices = market_data_snapshot.get('current_prices', {})
-            base_price = self.shared_utils_precision.float_to_decimal(current_prices.get(trading_pair, 0), quote_deci)
-            quote_price = Decimal(1.00)
-            return base_price, quote_price
+            base_price_in_fiat = self.shared_utils_precision.float_to_decimal(current_prices.get(trading_pair, 0), quote_deci)
+            quote_price_in_fiat = Decimal(1.00)
+            return base_price_in_fiat, quote_price_in_fiat
         except Exception as e:
             self.logger.error(f"Error fetching prices: {e}", exc_info=True)
             return Decimal(0), Decimal(0)

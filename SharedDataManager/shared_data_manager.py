@@ -3,6 +3,7 @@ import copy
 import json
 import time
 from decimal import Decimal
+import datetime
 from inspect import stack  # debugging
 
 import pandas as pd
@@ -11,7 +12,9 @@ import asyncio
 
 from sqlalchemy.sql import text
 from SharedDataManager.trade_recorder import TradeRecorder
-
+from webhook.webhook_validate_orders import OrderData
+from TableModels.passive_orders import PassiveOrder
+from sqlalchemy import select, delete
 
 class CustomJSONDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
@@ -94,18 +97,20 @@ class SharedDataManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager, database_session_manager, shared_utils_precision):
+    def get_instance(cls, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision):
         """Ensures only one instance of SharedDataManager is created."""
         if cls._instance is None:
-            cls._instance = cls(logger_manager, database_session_manager, shared_utils_precision)
+            cls._instance = cls(logger_manager, database_session_manager,
+                                shared_utils_utility,shared_utils_precision)
         return cls._instance
 
-    def __init__(self, logger_manager, database_session_manager, shared_utils_precision):
+    def __init__(self, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision):
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
         self.logger = logger_manager  # 🙂
 
+        self.shared_utils_utility = shared_utils_utility
         self.database_session_manager = database_session_manager
         self.shared_utils_precision = shared_utils_precision
         self.trade_recorder = TradeRecorder(self.database_session_manager, logger_manager,
@@ -455,3 +460,27 @@ class SharedDataManager:
         except Exception as e:
             self.logger.error(f"Error normalizing raw order: {e}", exc_info=True)
             return {}
+    # PASSIVE ORDER METHODS
+    async def save_passive_order(self, order_id: str, symbol: str, side: str, order_data: OrderData):
+        json_safe = self.shared_utils_utility.convert_json_safe(order_data)
+        async with self.database_session_manager.async_session() as session:
+            async with session.begin():
+                po = PassiveOrder(
+                    order_id=order_id,
+                    symbol=symbol,
+                    side=side,
+                    timestamp=datetime.utcnow(),
+                    order_data=json_safe
+                )
+                session.add(po)
+
+    async def remove_passive_order(self, order_id: str):
+        async with self.database_session_manager.async_session() as session:
+            async with session.begin():
+                await session.execute(delete(PassiveOrder).where(PassiveOrder.order_id == order_id))
+
+    async def load_all_passive_orders(self) -> list[tuple[str, str, dict]]:
+        async with self.database_session_manager.async_session() as session:
+            result = await session.execute(select(PassiveOrder))
+            rows = result.scalars().all()
+            return [(r.symbol, r.side, r.order_data) for r in rows]

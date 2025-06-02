@@ -42,6 +42,7 @@ class PrecisionUtils:
         If decimal_places is invalid, defaults to 4.
         """
         try:
+            self.logger.debug(f"🔍 Converting val={val} with decimal_places={decimal_places}")
             if not isinstance(decimal_places, int) or decimal_places < 0:
                 self.logger.warning(f"⚠️ safe_convert: Invalid decimal_places={decimal_places}. Defaulting to 1.")
                 decimal_places = 1
@@ -147,8 +148,10 @@ class PrecisionUtils:
 
             # Defensive conversion of order book prices
             try:
-                highest_bid = self.safe_convert(order_book.get('highest_bid', '0'))
-                lowest_ask = self.safe_convert(order_book.get('lowest_ask', '0'))
+                highest_bid = self.safe_convert(order_book.get('highest_bid'), quote_decimal)
+
+
+                lowest_ask = self.safe_convert(order_book.get('lowest_ask'), quote_decimal)
             except InvalidOperation as e:
                 self.logger.error(f"❌ InvalidOperation on bid/ask conversion: {e} — Data: {order_book}")
                 return None, None
@@ -189,7 +192,7 @@ class PrecisionUtils:
                     net_proceeds = adjusted_ask * (Decimal("1.0") - fee_rate)
                     adjusted_price = self.safe_quantize(net_proceeds, precision_quote)
 
-                    quote_amount_fiat = self.safe_convert(order_data.get('order_amount_fiat', '0'))
+                    quote_amount_fiat = self.safe_convert(order_data.get('order_amount_fiat'), quote_decimal)
                     if adjusted_price <= 0:
                         raise ValueError("Adjusted price must be > 0 for BUY order.")
 
@@ -200,8 +203,8 @@ class PrecisionUtils:
                     gross_cost = adjusted_bid * (Decimal("1.0") + fee_rate)
                     adjusted_price = self.safe_quantize(gross_cost, precision_quote)
 
-                    base_avail = self.safe_convert(order_data.get('base_avail_to_trade', '0'))
-                    sell_amount = self.safe_convert(order_data.get('sell_amount', '0'))
+                    base_avail = self.safe_convert(order_data.get('base_avail_to_trade'), base_decimal)
+                    sell_amount = self.safe_convert(order_data.get('sell_amount'), base_decimal)
                     raw_size = min(sell_amount, base_avail)
 
                     safety_margin = precision_base * 2  # 2 ticks

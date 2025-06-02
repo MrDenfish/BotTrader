@@ -46,13 +46,15 @@ class PassiveOrderManager:
 
     MIN_ORDER_COST_BASIS = Decimal("25.00")
 
-    def __init__(self, config, ccxt_api, coinbase_api, exchange, shared_utils_precision, ohlcv_manager, trade_order_manager, order_manager, logger, min_spread_pct,
-                 fee_cache: Dict[str, Decimal], *,
+    def __init__(self, config, ccxt_api, coinbase_api, exchange, shared_data_manager, shared_utils_utility, shared_utils_precision,
+                 ohlcv_manager, trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *,
                   max_lifetime: int | None = None,) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
         self.shared_utils_precision = shared_utils_precision
+        self.shared_utils_utility = shared_utils_utility
+        self.shared_data_manager = shared_data_manager
         self.logger = logger
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
@@ -125,6 +127,10 @@ class PassiveOrderManager:
                 # Place SL order
                 if "sl" in self.passive_order_tracker.get(symbol, {}):
                     return
+                trigger = {"trigger": f"passive_sl", "trigger_note": f"stop price:{stop_price}"}
+                sl_od.trigger = trigger
+
+                sl_od.source = 'PassiveMM'
                 ok, res = await self.tom.place_order(sl_od)
                 if ok:
                     sl_order_id = res.get('details', {}).get('order_id')
@@ -165,7 +171,7 @@ class PassiveOrderManager:
         required_edge = self.fee["maker"] * Decimal("2.5")
         min_required_spread = max(required_edge, self.min_spread_pct)
         if spread_pct < min_required_spread:
-            self.logger.info(
+            print(
                 f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < threshold {min_required_spread:.4%}"
             )
             return
@@ -197,6 +203,23 @@ class PassiveOrderManager:
 
         except Exception as exc:
             self.logger.error(f"❌ Error in passive MM for {trading_pair}: {exc}", exc_info=True)
+
+    async def reload_persisted_passive_orders(self):
+        if not self.shared_data_manager:
+            return
+
+        rows = await self.shared_data_manager.load_all_passive_orders()
+        for symbol, side, od_dict in rows:
+            try:
+                od = OrderData.from_dict(od_dict)
+                entry = self.passive_order_tracker.setdefault(symbol, {})
+                entry[side] = od.order_id
+                entry["order_data"] = od
+                entry["timestamp"] = time.time()
+                self.logger.info(f"🔁 Restored passive order: {symbol} {side}")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed to restore passive order for {symbol}/{side}: {e}", exc_info=True)
+
 
     async def _quote_passive_buy(self, od: OrderData, trading_pair: str, tick: Decimal):
         quote_od = self._clone_order_data(od, side="buy", post_only=True)
@@ -242,8 +265,9 @@ class PassiveOrderManager:
         quote_od.cost_basis = (price * quote_od.adjusted_size).quantize(
             Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP
         )
-        quote_od.trigger = f"passive_{quote_od.side}@{price}"
-
+        trigger = {"trigger": f"passive_{quote_od.side}", "trigger_note": f"price:{price}"}
+        quote_od.trigger = trigger
+        quote_od.source = 'PassiveMM'
         if not self._passes_balance_check(quote_od):
             return
 
@@ -303,6 +327,12 @@ class PassiveOrderManager:
             entry["order_data"] = od
         entry["timestamp"] = time.time()
 
+        # 🔄 Save to DB for persistence
+        if od and self.shared_data_manager:
+            asyncio.create_task(
+                self.shared_data_manager.save_passive_order(order_id, symbol, side, od)
+            )
+
     # ------------------------------------------------------------------
     # Housekeeping – cancel and refresh stale quotes
     # ------------------------------------------------------------------
@@ -322,19 +352,21 @@ class PassiveOrderManager:
                         continue
                     # cancel both sides and purge tracker
                     for side in ("buy", "sell"):
-                        oid = entry.get(side)
-                        if isinstance(oid, dict):  # accidental structure
-                            oid = oid.get("order_id")
-                        if oid:
+                        old_id = entry.get(side)
+                        if isinstance(old_id, dict):  # accidental structure
+                            old_id = old_id.get("order_id")
+                        if old_id:
                             try:
-                                await self.order_manager.cancel_order(oid, symbol)
+                                await self.order_manager.cancel_order(old_id, symbol)
+                                # clean up
+                                await self.shared_data_manager.remove_passive_order(old_id)
                             except Exception as exc:  # noqa: BLE001 (broad ok here)
                                 self.logger.warning(
-                                    f"⚠️ Failed to cancel expired {side} {symbol} (ID: {oid}): {exc}", exc_info=True
+                                    f"⚠️ Failed to cancel expired {side} {symbol} (ID: {old_id}): {exc}", exc_info=True
                                 )
                     self.passive_order_tracker.pop(symbol, None)
                     print(f"🔍 Monitoring: {list(self.passive_order_tracker.keys())}")
 
-            except Exception as exc:  # watchdog must never die silently
-                self.logger.error("Watchdog error", exc_info=True)
+            except Exception as ex:  # watchdog must never die silently
+                self.logger.error(f"Watchdog error {ex}", exc_info=True)
 
