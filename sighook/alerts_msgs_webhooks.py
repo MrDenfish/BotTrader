@@ -121,68 +121,32 @@ class SenderWebhook:
         # Prevent duplicate webhooks
         async with self.lock:
             if uuid in self.processed_uuids:
-                self.logger.info(f"� Duplicate webhook ignored: {uuid}")
+                self.logger.info(f"🟡 Duplicate webhook ignored: {uuid}")
                 return None
             self.processed_uuids.add(uuid)
-
-        # Schedule UUID cleanup after delay
-        # asyncio.get_event_loop().call_later(self.cleanup_delay, lambda: self.remove_uuid(webhook_payload['uuid']))
 
         print(f"🔹 Sending webhook: {webhook_payload}")
 
         for attempt in range(1, retries + 1):
             try:
-                # Attempt webhook send
-                self.logger.debug(f"� Attempting webhook ({attempt}/{retries}): {webhook_payload}")
+                self.logger.debug(f"➡️ Attempting webhook ({attempt}/{retries}): {webhook_payload}")
                 response = await http_session.post(
                     self.web_url,
                     data=json.dumps(webhook_payload, default=self.shared_utils_utility.string_default),
                     headers={'Content-Type': 'application/json'},
                     timeout=45
                 )
-                response_text = await response.text()
-                self.logger.debug(f" ✅ Sending webhook: {json.dumps(webhook_payload, indent=2)}", exc_info=True)
 
-                # ✅ Successful request
+                # ✅ Success
                 if response.status == 200:
                     if webhook_payload['side'] == 'buy':
                         self.logger.order_sent(f"✅ Alert webhook sent successfully: {uuid}")
-
                     return response
 
-                # ❌ Handle non-recoverable errors
-                if response.status in [403, 404]:
-                    self.logger.error(f"‼️ Non-recoverable error {response.status}: {response_text}")
+                # 🧼 Delegate structured error handling
+                handled = await self.handle_webhook_error(response, webhook_payload)
+                if handled:
                     return response
-                if response.status in [413, 414, 422]:
-                    self.logger.error(f" ⚠️ Insufficient balance to complete order {response.status}: {response_text}")
-                    return response
-                if response.status in [411]:
-                    self.logger.error(f" ⚠️ Open order, unable to complete order {response.status}: {response_text}")
-                    return response
-                if response.status in [412]:
-                    self.logger.error(f" ⚠️ Unable to adjust price, order was not placed {response.status}: {response_text}")
-                    return response
-                if response.status in [415]:
-                    self.logger.error(
-                        f" ⚠️ Crypto balance value is greater than $1.00, order was not placed {response.status}:"
-                        f" {response_text}"
-                    )
-                    return response
-                if response.status in [416, 417]:
-                    self.logger.error(f" ‼️ Order may be incomplete, order was not placed {response.status}: {response_text}")
-                    return response
-                # ⚠️ Handle recoverable errors with clean logging
-                if response.status in [429, 500, 503]:
-                    error_summary = (response_text[:300] + "...") if len(response_text) > 300 else response_text
-                    self.logger.warning(f"⚠️ Recoverable {response.status} error: {error_summary} (Retrying...)")
-
-                elif response.status == 400 and 'Insufficient balance to sell' in response_text:
-                    self.logger.info(f"� Insufficient balance for {webhook_payload['pair']} {uuid} response text:{response_text}")
-                    return response
-
-                else:
-                    raise Exception(f"Unhandled HTTP ‼️ {response.status}: {response_text}")
 
             except asyncio.TimeoutError:
                 self.logger.error(f"‼️ Request timeout (attempt {attempt}/{retries}): {webhook_payload}")
@@ -193,10 +157,72 @@ class SenderWebhook:
             # ⏳ Retry logic with exponential backoff
             if attempt < retries:
                 sleep_time = delay + random.uniform(0, delay * 0.3)  # Add jitter
-                self.logger.debug(f"� Retrying in {sleep_time:.2f} seconds...")
+                self.logger.debug(f"🔁 Retrying in {sleep_time:.2f} seconds...")
                 await asyncio.sleep(sleep_time)
-                delay = min(delay * 2, max_delay)  # Exponential backoff
+                delay = min(delay * 2, max_delay)
 
         # ❌ Max retries reached
         self.logger.error(f"❌ Max retries reached for webhook: {uuid}")
         return None
+
+    async def handle_webhook_error(self, response, webhook_payload) -> bool:
+        """
+        Handles known non-200 webhook response codes.
+        Returns True if the error was handled and no retry is needed.
+        """
+        response_text = await response.text()
+        try:
+            parsed = json.loads(response_text)
+        except Exception:
+            parsed = {}
+
+        status = response.status
+        uuid = webhook_payload.get('order_id', 'unknown')
+
+        if status in [403, 404]:
+            self.logger.error(f"‼️ Non-recoverable error {status}: {response_text}")
+            return True
+
+        if status in [413, 414, 422]:
+            self.logger.warning(f"⚠️ Order blocked by balance or precision constraints ({status}): {parsed.get('message', response_text)}")
+            return True
+
+        if status == 411:
+            pair = parsed.get("details", {}).get("trading_pair", "unknown")
+            side = parsed.get("details", {}).get("side", "unknown")
+            size = parsed.get("details", {}).get("Order Size", "N/A")
+            trigger_info = parsed.get("details", {}).get("trigger", {})
+            trigger_source = trigger_info.get("trigger", "unknown")
+            trigger_note = trigger_info.get("trigger_note", "")
+            condition = parsed.get("condition", "Open order exists")
+
+            self.logger.warning(
+                f"⏸️ Skipping {side.upper()} order for {pair} — open order already exists (411).\n"
+                f"Reason: {condition}\n"
+                f"Trigger: {trigger_source} ({trigger_note}) | Requested size: {size}"
+            )
+            return True
+
+        if status == 412:
+            self.logger.warning(f"⚠️ Unable to adjust price for order ({status}): {parsed.get('message', response_text)}")
+            return True
+
+        if status == 415:
+            self.logger.warning(f"⚠️ Crypto balance > $1.00 — order rejected ({status}): {parsed.get('message', response_text)}")
+            return True
+
+        if status in [416, 417]:
+            self.logger.warning(f"⚠️ Order may be incomplete ({status}): {parsed.get('message', response_text)}")
+            return True
+
+        if status == 400 and 'Insufficient balance to sell' in response_text:
+            self.logger.info(f"💸 Insufficient balance for {webhook_payload['pair']} {uuid}.")
+            return True
+
+        if status in [429, 500, 503]:
+            short_summary = parsed.get('message') or response_text[:300]
+            self.logger.warning(f"⚠️ Recoverable server error ({status}): {short_summary} (Retrying...)")
+            return False  # retryable
+
+        # Unknown/unhandled status
+        raise Exception(f"Unhandled HTTP error ‼️ {status}: {response_text}")

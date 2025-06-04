@@ -310,7 +310,7 @@ class TradeOrderManager:
                 adjusted_price=adjusted_price,
                 adjusted_size=adjusted_size_of_order_qty,
                 stop_loss_price=stop_price,
-               take_profit_price=None,
+                take_profit_price=None,
                 volume_24h=volume_24h,
 
             )

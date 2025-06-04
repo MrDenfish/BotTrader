@@ -634,13 +634,13 @@ class WebSocketHelper:
                 asset_balance = Decimal(position['available_to_trade_crypto'])
                 asset_value = asset_balance * average_entry_price
 
-                if asset_value < self.min_buy_value:
+                if asset_value > self.min_buy_value: # do not buy more when the value is greater than min_buy_value
                     continue
 
                 precision_data = self.shared_utils_precision.fetch_precision(symbol)
-                base_deci, quote_deci, min_trade_amount, _ = precision_data
+                base_deci, quote_deci, base_increment, _ = precision_data
 
-                if asset_balance < min_trade_amount:
+                if asset_balance < base_increment:
                     continue
 
                 current_price = usd_prices.get(symbol)
@@ -672,7 +672,10 @@ class WebSocketHelper:
 
                     entry_price = (1 + (profit_percent - self.take_profit)) * average_entry_price
                     try:
+                        if asset == 'AVT': # debug
+                            pass
                         order_data = await self.trade_order_manager.build_order_data('Websocket', 'profit', asset, symbol, entry_price, None, 'tp_sl')
+
                         if order_data:
                             trigger = {"trigger": f"profit", "trigger_note": f"price:{profit_data.get('profit percent')}"}
                             order_data.trigger = trigger
@@ -688,6 +691,8 @@ class WebSocketHelper:
                 elif profit_percent < self.stop_loss and asset not in self.hodl:
                     try:
                         order_data = await self.trade_order_manager.build_order_data('Websocket', 'stop_loss', asset, symbol, None, None)
+                        if asset == 'AVT':
+                            pass
                         if order_data:
                             trigger = {"trigger": f"stop_loss", "trigger_note": f"stop loss price:{self.stop_loss}"}
                             order_data.trigger = trigger

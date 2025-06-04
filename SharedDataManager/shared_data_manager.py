@@ -462,18 +462,25 @@ class SharedDataManager:
             self.logger.error(f"Error normalizing raw order: {e}", exc_info=True)
             return {}
     # PASSIVE ORDER METHODS
-    async def save_passive_order(self, order_id: str, symbol: str, side: str, order_data: OrderData):
-        json_safe = self.shared_utils_utility.convert_json_safe(order_data)
-        async with self.database_session_manager.async_session() as session:
-            async with session.begin():
-                po = PassiveOrder(
-                    order_id=order_id,
-                    symbol=symbol,
-                    side=side,
-                    timestamp=datetime.utcnow(),
-                    order_data=json_safe
-                )
-                session.add(po)
+    async def save_passive_order(self, order_id: str, symbol: str, side: str, order_data: dict):
+        try:
+            json_safe = self.shared_utils_utility.convert_json_safe(order_data)
+
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():
+                    po = PassiveOrder(
+                        order_id=order_id,
+                        symbol=symbol,
+                        side=side,
+                        timestamp=datetime.utcnow(),
+                        order_data=json_safe
+                    )
+                    session.add(po)
+
+            self.logger.info(f"✅ Saved passive order: {symbol} {side} {order_id}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to save passive order: {e}", exc_info=True)
 
     async def remove_passive_order(self, order_id: str):
         async with self.database_session_manager.async_session() as session:

@@ -378,12 +378,12 @@ class WebhookListener:
                     # Ensure fetched data is valid before proceeding
                     if not new_market_data:
                         self.logger.error("❌ new_market_data is empty! Skipping update.")
-                        await asyncio.sleep(60)  # Wait before retrying
+                        await asyncio.sleep(30)  # Wait before retrying
                         continue
 
                     if not new_order_management:
                         self.logger.error("❌ new_order_management is empty! Skipping update.")
-                        await asyncio.sleep(60)
+                        await asyncio.sleep(30)
                         continue
 
                     # Refresh open orders and get the updated order_tracker

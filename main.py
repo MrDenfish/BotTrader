@@ -162,7 +162,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
 
     return websocket_helper, websocket_manager, market_ws_manager
 
-async def refresh_loop(shared_data_manager, interval=60):
+async def refresh_loop(shared_data_manager, interval=30):
     """Continuously refresh shared data from the database."""
     while True:
         try:

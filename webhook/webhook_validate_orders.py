@@ -9,6 +9,7 @@ from typing import Optional, Union, Dict
 
 import pandas as pd
 import decimal
+import json
 import re
 from Config.config_manager import CentralConfig as Config
 
@@ -67,8 +68,22 @@ class OrderData:
     def is_valid(self) -> bool:
         return (self.get_effective_amount() > 0 and self.adjusted_price is not None)
 
+    def to_dict(self) -> dict:
+        from dataclasses import asdict
 
-    @classmethod
+        def serialize(obj):
+            # Fallback to your shared serializer
+            return self.shared_utils_utility.string_default(obj)
+
+        raw = asdict(self)
+
+        # Optional: clean DataFrame if present
+        if isinstance(raw.get("open_orders"), pd.DataFrame):
+            raw["open_orders"] = raw["open_orders"].to_dict(orient="records")
+
+        # Convert everything to JSON-safe types using fallback
+        return json.loads(json.dumps(raw, default=serialize))
+
     @classmethod
     def from_dict(cls, data: dict) -> 'OrderData':
         try:

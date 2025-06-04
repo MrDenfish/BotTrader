@@ -26,7 +26,7 @@ import copy
 import time
 from webhook.webhook_validate_orders import OrderData
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 # ---------------------------------------------------------------------------
 # Type aliases – keep it loose here, real project will import your dataclass
@@ -100,12 +100,16 @@ class PassiveOrderManager:
         - Triggers a trailing stop-loss (TSL)
         """
         try:
+            decision = await self.evaluate_exit_conditions(od)
+            if decision:
+                self.logger.info(f"✅ Exit condition met: {decision['trigger']}")
             ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol)
             current_price = Decimal(ticker_data['last'])
 
             entry = self.passive_order_tracker.get(symbol, {})
             peak_price = entry.get("peak_price", od.limit_price)
 
+            print(f" 🔷 Passive Active Order: {symbol} Current price:{current_price}  Entry:{entry}  peak price:{peak_price}  🔷")
             # Update peak price for TSL tracking
             if current_price > peak_price:
                 entry["peak_price"] = current_price
@@ -154,6 +158,55 @@ class PassiveOrderManager:
 
         except Exception as e:
             self.logger.error(f"❌ Error in monitor_passive_position() for {symbol}: {e}", exc_info=True)
+
+    async def evaluate_exit_conditions(self, od: OrderData) -> Optional[dict]:
+        """
+        Evaluates whether a take-profit or stop-loss condition is met for the given OrderData.
+
+        Returns:
+            dict with trigger metadata if exit condition is met, else None.
+        """
+        symbol = od.trading_pair
+        side = od.side.upper()
+        base = od.base_currency
+        filled_price = od.filled_price
+        available_qty = od.available_to_trade_crypto
+        current_price = od.lowest_ask if side == "SELL" else od.highest_bid
+
+        # Safety check
+        if current_price <= 0 or available_qty <= 0:
+            self.logger.warning(f"Skipping {symbol}: invalid current_price or quantity.")
+            return None
+
+        # Calculate estimated value and profit
+        estimated_value = available_qty * current_price
+        original_cost = available_qty * filled_price
+        raw_profit = estimated_value - original_cost
+        profit_pct = (raw_profit / original_cost) * 100 if original_cost > 0 else Decimal(0)
+
+        # Get thresholds
+        min_profit_pct = Decimal(self.tom.config.get("min_profit_pct", "1.0"))
+        max_loss_pct = Decimal(self.tom.config.get("max_loss_pct", "-5.0"))
+
+        # --- Take-Profit ---
+        if profit_pct >= min_profit_pct:
+            return {
+                "trigger": {
+                    "trigger": "take_profit",
+                    "trigger_note": f"Profit +{profit_pct:.2f}% >= {min_profit_pct}%",
+                }
+            }
+
+        # --- Stop-Loss ---
+        if profit_pct <= max_loss_pct:
+            return {
+                "trigger": {
+                    "trigger": "stop_loss",
+                    "trigger_note": f"Loss {profit_pct:.2f}% <= {max_loss_pct}%",
+                }
+            }
+
+        return None
 
     async def place_passive_orders(self, asset: str, product_id: str) -> None:
         """
@@ -236,7 +289,7 @@ class PassiveOrderManager:
             if ok:
                 sell_id = res.get('details', {}).get('order_id')
                 self.logger.info(f"✅ {reason.upper()} SELL placed for {symbol} @ {sell_od.adjusted_price}")
-                self._track_passive_order(symbol, reason, sell_id)
+                await self._track_passive_order(symbol, reason, sell_id)
             else:
                 self.logger.error(f"❌ Failed to place {reason.upper()} SELL for {symbol}: {res}")
         except Exception as e:
@@ -313,7 +366,7 @@ class PassiveOrderManager:
         if ok:
             order_id = res['details'].get('order_id')
             if order_id:
-                self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
+                await self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
             self.logger.info(f"✅ Passive {quote_od.side.upper()} {trading_pair} @ {price}")
         elif res.get('code') in {'411', '414', '415', '500'}:
             print(f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {res.get('error') or res.get('message')}")
@@ -358,18 +411,16 @@ class PassiveOrderManager:
             setattr(cloned, k, v)
         return cloned
 
-    def _track_passive_order(self, symbol: str, side: str, order_id: str, od: OrderData = None) -> None:
+    async def _track_passive_order(self, symbol: str, side: str, order_id: str, od: OrderData = None) -> None:
         entry = self.passive_order_tracker.setdefault(symbol, {})
         entry[side] = order_id
         if od:
             entry["order_data"] = od
-            entry["peak_price"] = od.filled_price or od.limit_price  # initialize to purchase price
+            entry["peak_price"] = od.filled_price or od.limit_price  # Initialize to purchase price
         entry["timestamp"] = time.time()
 
-        if od and self.shared_data_manager:
-            asyncio.create_task(
-                self.shared_data_manager.save_passive_order(order_id, symbol, side, od)
-            )
+        if od:
+            await self.shared_data_manager.save_passive_order(order_id, symbol, side, od.to_dict())
 
     # ------------------------------------------------------------------
     # Housekeeping – cancel and refresh stale quotes
@@ -407,4 +458,5 @@ class PassiveOrderManager:
 
             except Exception as ex:  # watchdog must never die silently
                 self.logger.error(f"Watchdog error {ex}", exc_info=True)
+
 
