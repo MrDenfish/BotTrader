@@ -1,31 +1,558 @@
-2025-06-02 00:00:13,602 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:00:18,485 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 00:05:15,193 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:05:20,379 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 00:10:14,293 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:10:25,137 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 00:15:13,992 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:20:15,986 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:25:16,763 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:30:32,263 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:35:25,720 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:40:19,972 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:40:24,071 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 00:40:27,527 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 00:45:24,445 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:45:28,957 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 00:50:18,045 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:50:22,777 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 00:55:13,429 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 00:55:17,441 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:00:22,173 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:00:27,059 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:00:27,140 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:05:18,702 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:05:23,794 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:05:23,875 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:10:18,900 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:10:28,519 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
+2025-06-03 00:01:57,393 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:01:59,933 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:07:01,971 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:07:18,866 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:07:22,592 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:11:56,310 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:12:00,147 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 00:12:12,369 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:12:16,128 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:16:55,719 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:17:01,501 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:21:53,172 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:21:56,767 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:26:57,372 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:27:01,844 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:32:00,732 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:32:16,564 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): ⚠️ Order Blocked - Existing Open Order for AVT/USD (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:32:20,923 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:36:56,584 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:37:10,274 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:37:13,606 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:41:50,223 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:41:53,162 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:46:51,319 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:47:03,770 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:47:06,070 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:51:57,029 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:52:08,032 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:52:11,183 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 00:57:23,659 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 00:57:32,378 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 00:57:35,360 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:02:09,930 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:02:24,588 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 01:02:27,831 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:07:10,727 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:07:18,953 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:12:11,175 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:12:16,690 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 01:12:29,140 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Insufficient USD (alerts_msgs_webhooks.py:187)
+2025-06-03 01:17:11,913 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:17:18,302 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:22:24,166 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:22:28,239 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:27:19,178 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:27:22,900 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:32:18,628 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:32:21,372 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:37:15,937 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:37:18,984 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 01:42:12,293 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:42:19,167 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 01:42:21,653 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:47:11,707 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:47:14,617 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 01:52:20,233 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:52:22,400 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 01:57:16,549 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 01:57:23,887 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 01:57:26,961 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:02:17,289 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:02:33,326 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): ⚠️ Order Blocked - Existing Open Order for AVT/USD (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:02:36,022 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 49.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:07:29,293 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:07:37,529 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:12:14,390 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:12:20,918 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:12:22,686 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:17:15,609 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:17:22,011 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:22:22,984 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:22:25,584 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:27:19,939 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:27:26,058 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:32:21,799 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:32:24,284 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:37:18,943 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:37:25,292 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:37:27,226 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:42:24,439 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:42:28,178 - sighook_logger - WARNING - ⏸️ Skipping SELL order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:42:28,259 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:47:35,843 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:47:39,778 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 02:47:39,778 - sighook_logger - WARNING - ⏸️ Skipping SELL order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:52:48,009 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:52:55,891 - sighook_logger - WARNING - ⏸️ Skipping SELL order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:53:00,782 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:53:13,777 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:53:25,884 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:53:25,884 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 50867e62-5591-46b5-9c15-854952b94c40 (alerts_msgs_webhooks.py:165)
+2025-06-03 02:57:57,799 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 02:58:04,272 - sighook_logger - WARNING - ⏸️ Skipping SELL order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:58:06,257 - sighook_logger - WARNING - ⏸️ Skipping SELL order for MATH/USD — open order already exists (411).
+Reason: Open order exists for MATH/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 02:58:08,045 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:58:20,584 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:58:39,059 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 02:58:39,059 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 5878fc78-2d22-45f9-bdb4-1cb7947abb0e (alerts_msgs_webhooks.py:165)
+2025-06-03 03:02:55,267 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:03:11,143 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:03:11,224 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:03:27,370 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:03:33,136 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): priced below the lowest sell price (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:03:46,431 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:03:46,431 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 0996d878-b0b5-4ccd-9aa8-3b4557de6bdf (alerts_msgs_webhooks.py:165)
+2025-06-03 03:03:51,672 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:03:51,672 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 144d33de-fc7b-48a2-8e27-439c337d4a58 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:07:39,827 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:07:55,816 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:07:56,598 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): priced below the lowest sell price (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:08:09,032 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:08:14,954 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:08:31,009 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:08:31,009 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 6e9fe579-1dfa-4fd2-a1dc-d86b0f7c73c6 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:08:36,518 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:08:36,518 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 763c1cd6-aec5-42cf-a143-f581c0558cae (alerts_msgs_webhooks.py:165)
+2025-06-03 03:12:55,426 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:13:13,943 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:13:14,699 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:13:27,248 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:13:29,265 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:13:40,703 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:13:40,703 - sighook_logger - ERROR - ❌ Max retries reached for webhook: ed698670-7659-47f6-9dd5-73007dda3b06 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:13:43,440 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:13:43,440 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 95fd2fb1-dec1-4866-9790-24cc12a55455 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:17:45,450 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:17:58,573 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:18:03,217 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:18:03,217 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:18:06,798 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:22:36,558 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:22:42,884 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:22:44,643 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:27:43,749 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:27:54,934 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:27:55,733 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:27:56,992 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:27:57,860 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:32:38,964 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:32:48,254 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:32:48,350 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:32:50,422 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:32:50,904 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:37:40,448 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:37:55,334 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:37:55,894 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:37:57,749 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:38:00,150 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 03:42:38,897 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:42:49,450 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:42:51,704 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:43:05,310 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:43:06,877 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:43:23,227 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:43:23,227 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 1ae78f98-9648-44c2-a820-25ae7e44dcab (alerts_msgs_webhooks.py:165)
+2025-06-03 03:43:25,059 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:43:25,059 - sighook_logger - ERROR - ❌ Max retries reached for webhook: f0a6e389-f9bd-4a4c-8302-622d3a43bede (alerts_msgs_webhooks.py:165)
+2025-06-03 03:47:33,909 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:47:45,154 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:47:46,140 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:47:57,022 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:47:58,840 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:48:10,710 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:48:10,710 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 7315dbff-b6bb-47e1-8205-03cbdf090e40 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:48:13,844 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:48:13,844 - sighook_logger - ERROR - ❌ Max retries reached for webhook: e8ac3218-e2f1-4479-b4bc-58724514d5bb (alerts_msgs_webhooks.py:165)
+2025-06-03 03:52:51,894 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:53:05,500 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:53:05,582 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:53:17,567 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:53:18,459 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:53:33,747 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:53:33,747 - sighook_logger - ERROR - ❌ Max retries reached for webhook: d5590506-1282-438d-9b6d-974981e1e5f0 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:53:33,834 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:53:33,834 - sighook_logger - ERROR - ❌ Max retries reached for webhook: be76acb1-c0ce-4be4-999c-e08f43b6efd9 (alerts_msgs_webhooks.py:165)
+2025-06-03 03:58:01,267 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 03:58:07,517 - sighook_logger - WARNING - ⏸️ Skipping SELL order for MATH/USD — open order already exists (411).
+Reason: Open order exists for MATH/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 03:58:17,103 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:58:18,524 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:58:30,987 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:58:31,068 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:58:47,163 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:58:47,164 - sighook_logger - ERROR - ❌ Max retries reached for webhook: b86dae7a-2d98-4d13-b3b6-792340b6565a (alerts_msgs_webhooks.py:165)
+2025-06-03 03:58:48,648 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 03:58:48,648 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 2e75140d-9682-4e48-b71f-7bbedf375ad7 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:02:51,429 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:02:54,289 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 04:02:54,290 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 04:03:00,515 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 04:03:10,406 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:03:15,856 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:03:15,856 - sighook_logger - ERROR - ❌ Max retries reached for webhook: f5b0cd63-f95b-4a94-b439-7c86fbf3e58d (alerts_msgs_webhooks.py:165)
+2025-06-03 04:03:21,966 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:03:21,966 - sighook_logger - ERROR - ❌ Max retries reached for webhook: c59584a8-b8e0-4151-82e7-4377d4a846b2 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:07:51,067 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:08:12,829 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:08:13,984 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:08:27,607 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:08:28,423 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:08:38,364 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:08:38,364 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 093d95ef-7003-43c6-a66b-6fbee496cefb (alerts_msgs_webhooks.py:165)
+2025-06-03 04:08:41,953 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:08:41,953 - sighook_logger - ERROR - ❌ Max retries reached for webhook: fed5d745-38d5-4e41-91c2-b506027eddde (alerts_msgs_webhooks.py:165)
+2025-06-03 04:12:59,388 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:13:02,724 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:13:08,369 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:13:10,233 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 04:17:37,971 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:17:43,942 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:17:49,606 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:17:57,168 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:18:07,070 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:18:07,070 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 9777530f-09d9-43dc-b91e-ef8b89d6b3f0 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:22:31,215 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:22:52,735 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:22:53,015 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:22:57,502 - sighook_logger - WARNING - ⏸️ Skipping BUY order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:22:58,912 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:27:37,981 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:27:41,881 - sighook_logger - WARNING - ⏸️ Skipping BUY order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:27:48,583 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:28:02,462 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:28:13,890 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:28:13,890 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 9412f14f-b2dc-4974-a3ac-41fe8d054cf5 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:32:51,461 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:33:00,377 - sighook_logger - WARNING - ⏸️ Skipping SELL order for BTRST/USD — open order already exists (411).
+Reason: Open order exists for BTRST/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:33:08,439 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:33:17,857 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:33:28,101 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:33:28,101 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 33055e0c-fdf5-4ec7-b9b2-5a3ed9549ff9 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:37:53,374 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:38:09,491 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:38:17,777 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:38:27,775 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:38:27,775 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 25b7dbac-ae43-47cc-8e42-e102f77f2091 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:42:48,005 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:43:02,923 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:43:11,467 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:43:22,702 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:43:22,702 - sighook_logger - ERROR - ❌ Max retries reached for webhook: de06a208-2c1e-484d-8c0d-cba774dad63c (alerts_msgs_webhooks.py:165)
+2025-06-03 04:47:49,400 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:48:05,225 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:48:12,628 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:48:20,747 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:48:20,747 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 5a24b179-d80c-41ba-952e-f7109ba4e8da (alerts_msgs_webhooks.py:165)
+2025-06-03 04:52:45,295 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:52:50,499 - sighook_logger - WARNING - ⏸️ Skipping SELL order for SHPING/USD — open order already exists (411).
+Reason: Open order exists for SHPING/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 04:52:57,388 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:53:10,592 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:53:20,600 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 04:53:20,600 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 33e8bc55-aa74-4001-979c-f4b86e311263 (alerts_msgs_webhooks.py:165)
+2025-06-03 04:57:53,614 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 04:58:00,562 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:02:53,213 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:02:55,808 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:07:49,457 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:07:53,974 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 05:07:56,370 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:12:55,943 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:12:58,919 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 05:17:53,447 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:17:55,530 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:22:54,500 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:22:57,049 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:27:46,474 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:27:51,134 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 05:27:51,135 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 05:27:54,531 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:27:54,613 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:32:44,142 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:32:46,883 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:32:46,965 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:37:47,558 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:37:53,474 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:42:57,855 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:43:02,843 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:47:41,846 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:47:45,437 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 05:47:48,606 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:52:46,179 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:52:49,333 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 05:57:43,703 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 05:57:46,214 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:02:48,263 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:02:50,666 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:07:46,177 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:07:53,738 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:12:47,373 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:12:49,687 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:17:46,212 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:17:52,977 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:22:51,290 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:22:57,268 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 06:23:00,900 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:28:13,928 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:28:25,184 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 06:28:28,976 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 06:32:55,220 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:33:00,111 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:37:53,233 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:38:12,849 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): ⚠️ Order Blocked - Existing Open Order for AVT/USD (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 06:38:18,939 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 06:42:48,416 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:42:51,388 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:47:50,828 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:47:53,191 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 06:52:56,426 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:52:59,695 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 06:57:59,644 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 06:58:03,767 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:03:00,344 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:03:03,472 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:07:58,442 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:08:00,822 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:13:00,140 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:13:02,555 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:17:58,326 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:18:05,725 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:23:04,914 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:23:08,777 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:28:06,373 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:28:14,658 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:33:01,306 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:33:05,554 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 07:33:07,891 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:38:06,712 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:38:09,604 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:43:03,982 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:43:06,997 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:48:02,706 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:48:05,223 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:53:01,425 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:53:11,610 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 07:58:03,853 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 07:58:24,643 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): ⚠️ Order Blocked - Existing Open Order for AVT/USD (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 07:58:33,173 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 08:03:11,937 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:03:15,628 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:08:04,382 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:08:10,533 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:12:58,727 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:13:05,275 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:18:11,973 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:18:17,941 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 08:18:23,320 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 08:23:07,497 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:23:10,001 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:23:10,087 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:28:06,257 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:28:25,156 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 08:28:29,953 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 08:33:06,569 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:33:09,121 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 08:33:09,121 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 08:33:12,433 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:33:12,514 - sighook_logger - WARNING - ⏸️ Skipping SELL order for POLS/USD — open order already exists (411).
+Reason: Open order exists for POLS/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 08:38:13,441 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:38:16,866 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:43:51,373 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 08:43:56,524 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 08:43:57,631 - sighook_logger - WARNING - ⏸️ Skipping SELL order for POLS/USD — open order already exists (411).
+Reason: Open order exists for POLS/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 09:19:07,394 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 09:19:15,425 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 09:24:03,897 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 09:24:08,836 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 09:24:09,739 - sighook_logger - WARNING - ⏸️ Skipping SELL order for POLS/USD — open order already exists (411).
+Reason: Open order exists for POLS/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 09:29:22,215 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 09:31:19,638 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 09:47:42,826 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 09:47:50,956 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 09:52:09,085 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 09:52:14,470 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 09:52:15,284 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INDEX/USD — open order already exists (411).
+Reason: Open order exists for INDEX/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 10:26:26,216 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 10:26:34,179 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 10:26:35,502 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INDEX/USD — open order already exists (411).
+Reason: Open order exists for INDEX/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 10:47:06,326 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-03 10:47:06,326 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-03 10:47:06,326 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-03 10:47:06,326 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-03 10:47:06,327 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-03 10:47:06,328 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-03 10:49:10,733 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 10:49:34,054 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 10:49:37,518 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 10:53:28,738 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 10:53:41,352 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 10:53:43,326 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 10:58:40,184 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 10:58:53,792 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 10:58:58,031 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:03:38,921 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:03:45,886 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:08:31,519 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:08:50,675 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 11:09:08,217 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 11:09:12,026 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:13:33,889 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:13:48,108 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 11:14:01,218 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 11:14:07,471 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:18:46,370 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:18:52,378 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:23:51,294 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:23:56,090 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:28:52,976 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:28:58,289 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:33:45,076 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:33:49,464 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 11:33:53,875 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:38:37,539 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:38:43,348 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:43:27,648 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:43:34,906 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 11:43:46,690 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:48:27,697 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:48:32,878 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:48:32,956 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INDEX/USD — open order already exists (411).
+Reason: Open order exists for INDEX/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 11:53:43,608 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:53:48,999 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:53:49,079 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INDEX/USD — open order already exists (411).
+Reason: Open order exists for INDEX/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 11:58:42,447 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 11:58:48,572 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 11:58:49,039 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INDEX/USD — open order already exists (411).
+Reason: Open order exists for INDEX/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 12:03:41,233 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:03:45,847 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:03:46,991 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INDEX/USD — open order already exists (411).
+Reason: Open order exists for INDEX/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 12:08:35,559 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:08:39,563 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:13:37,600 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:13:41,966 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:18:38,211 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:18:42,410 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:23:37,228 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:23:41,356 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:28:42,629 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:28:46,786 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:33:56,642 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:34:00,789 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:38:49,230 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:38:53,510 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:43:45,933 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:43:50,079 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:48:43,533 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:48:47,921 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:53:44,459 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:53:48,853 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 12:58:47,671 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 12:58:51,783 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:03:43,719 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:03:47,900 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:09:14,737 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:09:23,168 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
 <html class="h-full" lang="en-US" dir="ltr">
   <head>
     <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
@@ -50,62 +577,197 @@
     <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
   </body>
 </html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 01:10:28,522 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 01:10:32,670 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:15:28,049 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:15:35,282 - sighook_logger - INFO - � Insufficient balance for METIS/USD 0b71fec2-048b-4cbf-a8fd-825c59833946 response text:{"success": false, "message": "Insufficient balance to sell METIS (requires 1.01 USD)"} (alerts_msgs_webhooks.py:181)
-2025-06-02 01:15:35,527 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:15:37,512 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:20:51,171 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:21:00,082 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 01:21:00,083 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 01:21:00,083 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 01:21:03,899 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:21:03,900 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:21:03,981 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:25:33,760 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:25:48,674 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:25:48,911 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:30:37,971 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:30:44,440 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:30:44,443 - sighook_logger - INFO - � Insufficient balance for METIS/USD 9a2261c3-e9fd-4286-9d7d-d18449913e11 response text:{"success": false, "message": "Insufficient balance to sell METIS (requires 1.01 USD)"} (alerts_msgs_webhooks.py:181)
-2025-06-02 01:35:40,080 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:35:44,405 - sighook_logger - INFO - � Insufficient balance for METIS/USD a63994c1-6544-49eb-805e-08afafe3ee73 response text:{"success": false, "message": "Insufficient balance to sell METIS (requires 1.01 USD)"} (alerts_msgs_webhooks.py:181)
-2025-06-02 01:35:44,482 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:35:45,106 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:40:38,748 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:40:44,176 - sighook_logger - INFO - � Insufficient balance for METIS/USD 5972dd5b-869f-409f-90ef-a8f63af5f62a response text:{"success": false, "message": "Insufficient balance to sell METIS (requires 1.01 USD)"} (alerts_msgs_webhooks.py:181)
-2025-06-02 01:40:44,179 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:40:44,259 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:45:39,148 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:45:43,226 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:45:45,658 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:50:48,355 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:51:19,376 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Insufficient balance in source account", "code": "500", "details": {"trading_pair": "AVT/USD", "time_order_placed": "2025-06-02T01:51:17.907156", "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "AVT", "quote_currency": "USD", "usd_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 01:51:26,266 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 01:55:52,540 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 01:56:06,146 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 02:00:39,109 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:00:46,119 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 02:00:49,665 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 02:05:37,509 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:05:42,596 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 02:10:41,728 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:10:47,078 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for BTRST/USD", "details": {"Order Id": null, "Order Type": null, "asset": "BTRST", "trading_pair": "BTRST/USD", "side": "sell", "usd_balance": 18.0, "base_avail_to_trade": 26.21, "base_balance": 220.0, "Order Size": 0.0, "trigger": null, "condition": null}, "condition": "Open order exists for BTRST/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 02:15:38,594 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:20:40,899 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:25:36,646 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:30:38,825 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:30:45,185 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for AVT/USD", "details": {"Order Id": null, "Order Type": null, "asset": "AVT", "trading_pair": "AVT/USD", "side": "buy", "usd_balance": 68.0, "base_avail_to_trade": 1.72, "base_balance": 1.73, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for AVT/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 02:35:41,469 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:35:47,085 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 02:40:59,388 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:41:03,899 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 02:45:45,123 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:45:50,583 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 02:50:41,625 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:50:51,739 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
+ (alerts_msgs_webhooks.py:183)
+2025-06-03 13:13:38,694 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:13:50,775 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:13:52,788 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:19:18,708 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:19:38,358 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:19:59,025 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:20:19,352 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Insufficient balance in source account (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:20:19,352 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 86d03c77-2bd5-4531-81b6-a93fbefd736a (alerts_msgs_webhooks.py:165)
+2025-06-03 13:24:09,498 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:24:21,617 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:24:34,789 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:24:51,688 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 13:24:51,688 - sighook_logger - ERROR - ❌ Max retries reached for webhook: ec650d0c-5ff4-47ee-b21a-61bab6172824 (alerts_msgs_webhooks.py:165)
+2025-06-03 13:28:28,047 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:28:40,882 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:33:25,899 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:33:35,620 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:38:31,334 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:38:42,142 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:43:37,138 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:43:42,775 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 13:43:42,776 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 13:43:47,025 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:43:52,429 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (414): Order validation failed for INV/USD (alerts_msgs_webhooks.py:187)
+2025-06-03 13:48:32,000 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:48:40,634 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 13:48:45,466 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:53:38,883 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:53:46,263 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 13:58:34,013 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 13:58:49,131 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:03:34,346 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:03:38,747 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:08:35,168 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:08:46,196 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:13:41,590 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:13:48,235 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:18:24,341 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:18:30,805 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 14:18:30,806 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 14:18:39,428 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:18:54,334 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 14:19:00,923 - sighook_logger - WARNING - ⏸️ Skipping BUY order for AVT/USD — open order already exists (411).
+Reason: Open order exists for AVT/USD.
+Trigger: strategy (from webhook) | Requested size: 50.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:23:30,581 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:23:36,287 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:23:37,068 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:28:32,267 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:28:38,207 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:28:40,314 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:33:25,120 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:33:30,208 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:33:31,853 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:38:30,713 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:38:37,019 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:38:37,098 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:43:32,476 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:43:38,261 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:43:38,343 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:48:44,282 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:48:51,287 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:48:55,759 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:53:29,264 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:53:40,430 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 14:53:44,040 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:53:51,701 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 14:58:36,070 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 14:58:43,294 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 14:58:43,375 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 15:03:50,147 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:03:59,383 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:04:00,248 - sighook_logger - WARNING - ⏸️ Skipping SELL order for INV/USD — open order already exists (411).
+Reason: Open order exists for INV/USD.
+Trigger: strategy (from webhook) | Requested size: 0.0 (alerts_msgs_webhooks.py:199)
+2025-06-03 15:08:58,646 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:09:08,481 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:14:20,017 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:14:30,416 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 15:14:50,420 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:15:14,189 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:15:14,189 - sighook_logger - ERROR - ❌ Max retries reached for webhook: aaf3a0f8-4300-46ff-a480-47abffd9f95c (alerts_msgs_webhooks.py:165)
+2025-06-03 15:18:50,916 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:19:20,760 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:19:44,950 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:20:04,208 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:20:04,208 - sighook_logger - ERROR - ❌ Max retries reached for webhook: f3242e80-52b5-4930-a022-986d2264b2c4 (alerts_msgs_webhooks.py:165)
+2025-06-03 15:23:52,654 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:23:58,309 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:29:05,152 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:29:29,192 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:29:34,191 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:33:58,833 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:34:07,344 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:38:53,779 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:39:11,488 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 15:39:14,397 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:44:01,690 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:44:06,327 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:48:52,136 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:48:57,839 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:53:40,903 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:53:47,418 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 15:58:40,656 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 15:58:46,556 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:03:54,701 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:04:02,083 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:08:53,095 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:08:58,837 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:13:52,102 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:13:58,855 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:18:49,281 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:18:54,871 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:23:47,554 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:23:55,087 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:28:48,695 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:28:53,428 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:33:46,912 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:33:52,401 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:38:42,796 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:38:47,177 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:43:45,295 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:43:50,426 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:48:38,877 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:48:44,585 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:53:41,933 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:53:47,748 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 16:58:47,698 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 16:58:59,832 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:06:44,914 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:07:23,935 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:09:00,233 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:09:11,814 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:14:07,593 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:27:01,659 - sighook_logger - ERROR - ‼️ Request timeout (attempt 1/3): {'timestamp': 1748999649958, 'pair': 'AVT/USD', 'order_id': 'dc9040c2-772a-421f-97ed-7d26ebd63975', 'action': 'sell', 'order_type': 'limit', 'order_amount_fiat': 1.72, 'side': 'sell', 'quote_avail_balance': 0.09, 'base_avail_to_trade': 1.72, 'limit_price': 1.62, 'origin': 'SIGHOOK', 'trigger': 'profit', 'verified': 'valid'} (alerts_msgs_webhooks.py:152)
+2025-06-03 17:27:05,247 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:27:53,756 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:28:00,641 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:32:58,822 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:33:06,400 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:40:17,098 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:40:28,540 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 17:48:37,757 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 17:48:49,864 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 18:08:25,748 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 18:08:39,670 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 18:13:25,957 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 18:13:33,354 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 18:18:20,708 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 18:18:26,625 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 18:23:22,234 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 18:23:26,579 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 18:28:21,847 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 18:28:33,942 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 19:13:09,576 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 19:13:14,411 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 19:15:50,754 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 19:15:56,098 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 19:20:50,145 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 19:21:00,336 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 19:35:23,773 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 19:35:28,945 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 19:37:24,916 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 19:37:32,911 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 20:02:13,857 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 20:02:25,649 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:02:25,650 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:02:25,651 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:02:25,651 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:02:33,010 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:02:33,011 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:02:33,100 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
 <html class="h-full" lang="en-US" dir="ltr">
   <head>
     <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
@@ -130,56 +792,8 @@
     <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
   </body>
 </html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 02:55:42,936 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 02:55:48,350 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:00:42,304 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:00:46,419 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:05:51,654 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:05:56,683 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:05:58,170 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "sell", "usd_balance": 17.0, "base_avail_to_trade": 11.99, "base_balance": 254.7, "Order Size": 0.0, "trigger": null, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 03:10:47,366 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:10:53,267 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:15:41,942 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:15:46,678 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:20:43,485 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:20:48,626 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:25:45,386 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:25:51,419 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:30:48,624 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:30:53,958 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:35:46,841 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:35:51,842 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:40:47,290 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:40:52,067 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 03:40:54,247 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:45:52,483 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:45:58,144 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:45:58,229 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:50:59,570 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:51:04,447 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:51:05,365 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:55:51,514 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 03:55:55,470 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 03:55:56,111 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:01:04,630 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:01:10,633 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:06:17,040 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:06:25,602 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:06:25,684 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:10:55,799 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:11:00,036 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:15:56,930 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:16:03,661 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:16:03,661 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:16:06,105 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:16:06,106 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:16:11,830 - sighook_logger - ERROR - ‼️ Client error (attempt 3/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:16:11,830 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 4303c6db-bab6-45b2-b33e-69aa221c1f41 (alerts_msgs_webhooks.py:201)
-2025-06-02 04:16:11,831 - sighook_logger - ERROR - ‼️ Client error (attempt 3/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:16:11,831 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 8ff7d3e3-0f86-4555-86c5-366afaac395e (alerts_msgs_webhooks.py:201)
-2025-06-02 04:21:07,996 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:21:17,312 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
+ (alerts_msgs_webhooks.py:183)
+2025-06-03 20:02:33,103 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
 <html class="h-full" lang="en-US" dir="ltr">
   <head>
     <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
@@ -204,316 +818,22 @@
     <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
   </body>
 </html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 04:21:17,314 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
-<html class="h-full" lang="en-US" dir="ltr">
-  <head>
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <meta charset="utf-8">
-    <meta name="author" content="ngrok">
-    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
-    <meta name="robots" content="noindex, nofollow">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
-    <noscript>The endpoint  is offline. (ERR_NGROK_3200)</noscript>
-    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
-  </head>
-  <body class="h-full" id="ngrok">
-    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
-  </body>
-</html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 04:26:00,586 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:26:05,071 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:26:05,186 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:31:00,271 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:31:04,923 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:36:07,394 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:36:13,896 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for AVT/USD", "details": {"Order Id": null, "Order Type": null, "asset": "AVT", "trading_pair": "AVT/USD", "side": "buy", "usd_balance": 68.0, "base_avail_to_trade": 1.72, "base_balance": 1.73, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for AVT/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 04:36:13,978 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for BTRST/USD", "details": {"Order Id": null, "Order Type": null, "asset": "BTRST", "trading_pair": "BTRST/USD", "side": "buy", "usd_balance": 68.0, "base_avail_to_trade": 26.21, "base_balance": 26.21, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for BTRST/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 04:41:02,173 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:41:08,796 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:41:08,797 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 04:41:13,151 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:41:14,294 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:46:28,046 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:46:38,437 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:46:40,055 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:51:08,928 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:51:14,922 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:51:15,003 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 04:56:05,834 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 04:56:11,136 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for AVT/USD", "details": {"Order Id": null, "Order Type": null, "asset": "AVT", "trading_pair": "AVT/USD", "side": "buy", "usd_balance": 70.0, "base_avail_to_trade": 1.72, "base_balance": 1.73, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for AVT/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 04:56:12,045 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for BTRST/USD", "details": {"Order Id": null, "Order Type": null, "asset": "BTRST", "trading_pair": "BTRST/USD", "side": "buy", "usd_balance": 70.0, "base_avail_to_trade": 26.21, "base_balance": 26.21, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for BTRST/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 05:01:21,216 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:01:27,237 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:01:27,701 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:06:24,614 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:06:31,488 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 05:06:35,115 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:11:02,370 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:11:09,560 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 05:11:13,606 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:11:15,648 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:16:08,012 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:16:16,430 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:16:17,011 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:21:04,605 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:21:10,766 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for BTRST/USD", "details": {"Order Id": null, "Order Type": null, "asset": "BTRST", "trading_pair": "BTRST/USD", "side": "buy", "usd_balance": 70.0, "base_avail_to_trade": 26.21, "base_balance": 26.21, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for BTRST/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 05:21:10,846 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for AVT/USD", "details": {"Order Id": null, "Order Type": null, "asset": "AVT", "trading_pair": "AVT/USD", "side": "buy", "usd_balance": 70.0, "base_avail_to_trade": 1.72, "base_balance": 1.73, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for AVT/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 05:26:08,271 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:26:12,731 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:26:13,338 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:31:15,868 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:31:33,693 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for BTRST/USD", "details": {"Order Id": null, "Order Type": null, "asset": "BTRST", "trading_pair": "BTRST/USD", "side": "buy", "usd_balance": 70.0, "base_avail_to_trade": 26.21, "base_balance": 26.21, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for BTRST/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 05:31:36,662 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for AVT/USD", "details": {"Order Id": null, "Order Type": null, "asset": "AVT", "trading_pair": "AVT/USD", "side": "buy", "usd_balance": 70.0, "base_avail_to_trade": 1.72, "base_balance": 1.73, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for AVT/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 05:36:14,453 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:36:19,081 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:41:14,365 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:41:18,897 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:41:18,978 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:46:09,827 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:46:14,088 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:46:14,712 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:51:06,029 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:51:10,534 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:56:07,599 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 05:56:12,981 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 05:56:13,062 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:01:08,760 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:01:12,797 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:01:13,760 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:06:07,786 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:06:12,448 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:06:12,529 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:11:08,963 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:11:13,004 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:16:16,982 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:16:27,645 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for BTRST/USD", "details": {"Order Id": null, "Order Type": null, "asset": "BTRST", "trading_pair": "BTRST/USD", "side": "buy", "usd_balance": 68.0, "base_avail_to_trade": 26.21, "base_balance": 26.21, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for BTRST/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 06:16:38,431 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed", "code": "500", "details": {"trading_pair": "AVT/USD", "time_order_placed": "2025-06-02T06:16:37.616501", "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "AVT", "quote_currency": "USD", "usd_balance": 146.0,... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 06:16:40,998 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for AVT/USD", "details": {"Order Id": null, "Order Type": null, "asset": "AVT", "trading_pair": "AVT/USD", "side": "buy", "usd_balance": 68.0, "base_avail_to_trade": 1.73, "base_balance": 1.73, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for AVT/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 06:21:10,616 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:21:15,895 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:21:15,976 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:26:24,409 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:26:29,162 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:26:29,817 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:31:17,759 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:31:22,036 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:36:17,067 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:36:22,041 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:41:21,420 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:41:25,686 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:46:15,683 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:46:20,639 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 06:51:12,135 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 06:56:18,303 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:01:20,943 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:06:20,836 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:11:22,863 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:16:26,814 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:21:24,685 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:26:26,078 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:31:43,091 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:36:31,785 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:41:31,861 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:46:29,750 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:51:33,935 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 07:56:30,875 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 08:01:23,940 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 08:06:27,838 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 08:11:22,435 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 09:06:36,679 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 09:15:32,979 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 09:20:12,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 09:20:12,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 09:20:12,611 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 09:20:12,612 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 09:20:12,612 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 09:20:12,613 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 09:20:29,332 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 09:25:31,422 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 09:31:02,442 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:01:03,026 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:10:05,393 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:14:40,643 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:19:44,072 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:27:50,141 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:27:57,455 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 108.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 10:28:05,469 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed", "code": "500", "details": {"trading_pair": "C98/USD", "time_order_placed": "2025-06-02T10:28:05.022270", "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "C98", "quote_currency": "USD", "usd_balance": 108.0,... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 10:28:11,207 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for C98/USD", "details": {"Order Id": null, "Order Type": null, "asset": "C98", "trading_pair": "C98/USD", "side": "buy", "usd_balance": 58.0, "base_avail_to_trade": 81.57, "base_balance": 81.57, "Order Size": 50.0, "trigger": null, "condition": null}, "condition": "Open order exists for C98/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 10:34:47,240 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:35:05,578 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 10:40:09,607 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:40:23,031 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Insufficient balance in source account", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": "2025-06-02T10:40:22.668999", "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 10:40:26,077 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 10:45:15,636 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 10:45:25,980 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 10:45:28,912 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 11:14:46,177 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:14:52,675 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for C98/USD", "details": {"Order Id": null, "Order Type": null, "asset": "C98", "trading_pair": "C98/USD", "side": "sell", "usd_balance": 20.0, "base_avail_to_trade": 81.57, "base_balance": 1058.13, "Order Size": 0.0, "trigger": null, "condition": null}, "condition": "Open order exists for C98/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 11:19:49,270 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:24:02,227 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,227 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,227 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,227 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,227 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,228 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,228 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:02,228 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
-2025-06-02 11:24:24,462 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:24:29,112 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 11:28:35,762 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:28:41,687 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for C98/USD", "details": {"Order Id": null, "Order Type": null, "asset": "C98", "trading_pair": "C98/USD", "side": "sell", "usd_balance": 69.0, "base_avail_to_trade": 81.56, "base_balance": 1058.13, "Order Size": 0.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for C98/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 11:33:27,942 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:33:33,680 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for C98/USD", "details": {"Order Id": null, "Order Type": null, "asset": "C98", "trading_pair": "C98/USD", "side": "sell", "usd_balance": 69.0, "base_avail_to_trade": 81.56, "base_balance": 1058.13, "Order Size": 0.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for C98/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 11:38:25,951 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:38:32,514 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for C98/USD", "details": {"Order Id": null, "Order Type": null, "asset": "C98", "trading_pair": "C98/USD", "side": "sell", "usd_balance": 69.0, "base_avail_to_trade": 81.56, "base_balance": 1058.13, "Order Size": 0.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for C98/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 11:43:26,590 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 11:43:31,340 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for C98/USD", "details": {"Order Id": null, "Order Type": null, "asset": "C98", "trading_pair": "C98/USD", "side": "sell", "usd_balance": 69.0, "base_avail_to_trade": 81.56, "base_balance": 1058.13, "Order Size": 0.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for C98/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 13:17:24,970 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 13:17:34,471 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
-<html class="h-full" lang="en-US" dir="ltr">
-  <head>
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <meta charset="utf-8">
-    <meta name="author" content="ngrok">
-    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
-    <meta name="robots" content="noindex, nofollow">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
-    <noscript>The endpoint  is offline. (ERR_NGROK_3200)</noscript>
-    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
-  </head>
-  <body class="h-full" id="ngrok">
-    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
-  </body>
-</html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 13:17:34,472 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
-<html class="h-full" lang="en-US" dir="ltr">
-  <head>
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <meta charset="utf-8">
-    <meta name="author" content="ngrok">
-    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
-    <meta name="robots" content="noindex, nofollow">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
-    <noscript>The endpoint  is offline. (ERR_NGROK_3200)</noscript>
-    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
-  </head>
-  <body class="h-full" id="ngrok">
-    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
-  </body>
-</html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 13:17:34,474 - sighook_logger - ERROR - ‼️ Non-recoverable error 404: <!DOCTYPE html>
-<html class="h-full" lang="en-US" dir="ltr">
-  <head>
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Regular-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-RegularItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Medium-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-Semibold-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/euclid-square/EuclidSquare-MediumItalic-WebS.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-Text.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-TextItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <link rel="preload" href="https://cdn.ngrok.com/static/fonts/ibm-plex-mono/IBMPlexMono-SemiBoldItalic.woff" as="font" type="font/woff" crossorigin="anonymous" />
-    <meta charset="utf-8">
-    <meta name="author" content="ngrok">
-    <meta name="description" content="ngrok is the fastest way to put anything on the internet with a single command.">
-    <meta name="robots" content="noindex, nofollow">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link id="style" rel="stylesheet" href="https://cdn.ngrok.com/static/css/error.css">
-    <noscript>The endpoint  is offline. (ERR_NGROK_3200)</noscript>
-    <script id="script" src="https://cdn.ngrok.com/static/js/error.js" type="text/javascript"></script>
-  </head>
-  <body class="h-full" id="ngrok">
-    <div id="root" data-payload="eyJjZG5CYXNlIjoiaHR0cHM6Ly9jZG4ubmdyb2suY29tLyIsImNvZGUiOiIzMjAwIiwibWVzc2FnZSI6IlRoZSBlbmRwb2ludCAgaXMgb2ZmbGluZS4iLCJ0aXRsZSI6Ik5vdCBGb3VuZCJ9"></div>
-  </body>
-</html>
- (alerts_msgs_webhooks.py:155)
-2025-06-02 13:21:08,370 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 300 (trading_strategy.py:311)
-2025-06-02 13:21:22,598 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 13:21:29,438 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 13:21:29,507 - sighook_logger - ERROR -  ⚠️ Insufficient balance to complete order 422: {"success": false, "message": "Failed to build order data"} (alerts_msgs_webhooks.py:158)
-2025-06-02 13:40:08,801 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 319 (trading_strategy.py:311)
-2025-06-02 13:40:20,572 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 13:40:31,727 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:40:41,193 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:40:52,628 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:40:52,628 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 72868200-2856-4c4a-a373-68b40abe41ac (alerts_msgs_webhooks.py:201)
-2025-06-02 13:45:07,932 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 324 (trading_strategy.py:311)
-2025-06-02 13:45:22,471 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 13:45:39,726 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:45:50,043 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:46:01,108 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:46:01,108 - sighook_logger - ERROR - ❌ Max retries reached for webhook: c2344434-63fb-4aa6-ba24-58dfac228adb (alerts_msgs_webhooks.py:201)
-2025-06-02 13:50:06,316 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 329 (trading_strategy.py:311)
-2025-06-02 13:50:22,061 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 13:50:39,124 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:50:51,137 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:51:05,558 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:51:05,559 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 1e2d236e-836d-4b4e-8ed6-75a2218e58ef (alerts_msgs_webhooks.py:201)
-2025-06-02 13:55:09,072 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 334 (trading_strategy.py:311)
-2025-06-02 13:55:26,257 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 13:55:45,670 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:56:00,514 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:56:12,097 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 13:56:12,097 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 7c924a88-a8f7-4107-872c-6dbbca2d7cc8 (alerts_msgs_webhooks.py:201)
-2025-06-02 14:00:17,533 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 339 (trading_strategy.py:311)
-2025-06-02 14:00:32,757 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:00:46,696 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 14:00:55,111 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 14:01:07,056 - sighook_logger - WARNING - ⚠️ Recoverable 500 error: {"success": false, "message": "Order placement failed after retries", "code": "500", "details": {"trading_pair": "1INCH/USD", "time_order_placed": null, "type": "limit", "order_id": "", "side": "buy", "filled_price": 0.0, "base_currency": "1INCH", "quote_currency": "USD", "usd_balance": 27.0, "base_... (Retrying...) (alerts_msgs_webhooks.py:178)
-2025-06-02 14:01:07,057 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 35c74bfc-4053-4e58-bc7e-fd8bf4f9c414 (alerts_msgs_webhooks.py:201)
-2025-06-02 14:05:07,211 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 344 (trading_strategy.py:311)
-2025-06-02 14:05:21,924 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:05:28,839 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 43.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 43.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:10:34,302 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 349 (trading_strategy.py:311)
-2025-06-02 14:10:51,816 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:10:58,575 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 32.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 32.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:15:15,560 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 354 (trading_strategy.py:311)
-2025-06-02 14:15:32,771 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:15:38,529 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 32.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 32.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:20:09,825 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 359 (trading_strategy.py:311)
-2025-06-02 14:20:27,678 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:20:35,043 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 83.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 50.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:25:22,399 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 364 (trading_strategy.py:311)
-2025-06-02 14:25:41,575 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:25:48,987 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:191)
-2025-06-02 14:25:55,202 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 87.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 50.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:30:14,062 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 369 (trading_strategy.py:311)
-2025-06-02 14:30:37,022 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:30:48,410 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 37.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 37.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:35:12,256 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 374 (trading_strategy.py:311)
-2025-06-02 14:35:35,288 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:35:47,378 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 87.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 50.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
-2025-06-02 14:37:08,562 - sighook_logger - WARNING - Insufficient OHLCV data for L3/USD. Rows fetched: 376 (trading_strategy.py:311)
-2025-06-02 14:37:28,799 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
-2025-06-02 14:37:34,897 - sighook_logger - ERROR -  ⚠️ Open order, unable to complete order 411: {"is_valid": false, "error": "OPEN_ORDER", "code": "411", "message": "Validation failed for 1INCH/USD", "details": {"Order Id": null, "Order Type": null, "asset": "1INCH", "trading_pair": "1INCH/USD", "side": "buy", "usd_balance": 87.0, "base_avail_to_trade": 11.99, "base_balance": 11.99, "Order Size": 50.0, "trigger": {"trigger": "strategy", "trigger_note": "from webhook"}, "condition": null}, "condition": "Open order exists for 1INCH/USD."} (alerts_msgs_webhooks.py:161)
+ (alerts_msgs_webhooks.py:183)
+2025-06-03 20:03:00,557 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 20:03:00,557 - sighook_logger - ERROR - ❌ Max retries reached for webhook: a834ee88-c9a7-43c6-8878-b8c33a40e371 (alerts_msgs_webhooks.py:165)
+2025-06-03 20:03:01,566 - sighook_logger - WARNING - ⚠️ Recoverable server error (500): Order placement failed after retries (Retrying...) (alerts_msgs_webhooks.py:224)
+2025-06-03 20:03:01,566 - sighook_logger - ERROR - ❌ Max retries reached for webhook: 8c05583c-fec8-41cf-ac93-1fd73cdb39e9 (alerts_msgs_webhooks.py:165)
+2025-06-03 20:13:19,134 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 20:13:39,701 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:13:39,703 - sighook_logger - ERROR - ‼️ Client error (attempt 1/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:13:58,468 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:13:58,469 - sighook_logger - ERROR - ‼️ Client error (attempt 2/3): Server disconnected (alerts_msgs_webhooks.py:155)
+2025-06-03 20:14:08,427 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 20:14:08,428 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (414): Order validation failed for INV/USD (alerts_msgs_webhooks.py:187)
+2025-06-03 20:15:14,238 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 20:15:20,268 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 20:15:22,723 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (414): Order validation failed for INV/USD (alerts_msgs_webhooks.py:187)
+2025-06-03 20:20:38,184 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:155)
+2025-06-03 20:20:48,861 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 20:20:48,862 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
+2025-06-03 20:20:49,598 - sighook_logger - WARNING - ⚠️ Order blocked by balance or precision constraints (422): Failed to build order data (alerts_msgs_webhooks.py:187)
