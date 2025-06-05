@@ -10,6 +10,7 @@ import aiohttp
 from decimal import Decimal
 from aiohttp import web
 
+from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
@@ -326,7 +327,7 @@ async def run_webhook(config, session, shared_data_manager, logger_manager, aler
     )
 
     background_tasks = [
-        asyncio.create_task(listener.refresh_market_data(), name="Market Data Refresher"),
+        asyncio.create_task(periodic_runner(listener.refresh_market_data, 30, name="Market Data Refresher")),
         asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
         asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
     ]

@@ -76,6 +76,10 @@ class OrderTypeManager:
         return self._hodl
 
     @property
+    def open_orders(self):
+        return self.shared_data_manager.order_management.get('order_tracker', {})
+
+    @property
     def stop_loss(self):
         return self._stop_loss
 
@@ -136,7 +140,6 @@ class OrderTypeManager:
             # ✅ Step 1: Check for existing open orders
             all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=trading_pair)
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
-
             if has_open_order:
                 return {
                     'error': 'open_order',
@@ -249,222 +252,138 @@ class OrderTypeManager:
 
     async def place_limit_order(self, source, order_data: OrderData):
         """
-        Places a limit order and returns the order response or None if it fails.
-        Handles price validation in fast-moving markets.
+        Places a limit order with retries and dynamic buffer adjustment to avoid post-only rejections.
         """
-        try:
-            attempts = 0
-            order_not_placed = True
-            response = None
-            while order_not_placed:
-                attempts += 1
-                if attempts > 3: #safety net
-                    order_not_placed = False
-                    response = {
-                        'error': 'order_not_valid',
-                        'code': f"ERROR WAS NOT PLACED",
-                        'message': f"⚠️ NOT PLACED"
-                    }
 
-                self.logger.debug(f"Placing limit order from {source} with data: {order_data}")
-                caller_function_name = stack()[1].function
+        def is_post_only_rejection(resp: dict) -> bool:
+            msg = (resp.get('message') or "").lower()
+            return "priced below the lowest sell price" in msg or "would match existing order" in msg
+
+        try:
+            symbol = order_data.trading_pair.replace('/', '-')
+            asset = symbol.split('-')[0]
+            side = order_data.side.upper()
+            caller_function_name = stack()[1].function
+
+            amount = self.shared_utils_precision.safe_convert(order_data.adjusted_size, order_data.base_decimal)
+            price = self.shared_utils_precision.safe_convert(order_data.highest_bid,
+                                                             order_data.quote_decimal) if side == 'SELL' else order_data.lowest_ask
+            available_crypto = self.shared_utils_precision.safe_convert(order_data.available_to_trade_crypto, order_data.base_decimal)
+            usd_available = self.shared_utils_precision.safe_convert(order_data.usd_balance, order_data.quote_decimal)
+
+            params = {'post_only': True}
+            attempts = 0
+            response = None
+            price_buffer_pct = Decimal('0.001')  # Initial buffer: 0.1%
+            min_buffer = Decimal('0.0000001')
+
+            while attempts < 3:
+                attempts += 1
 
                 # ✅ Required fields check
-                required_fields = ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask', 'available_to_trade_crypto']
-                missing_fields = [field for field in required_fields if order_data is None]
-                if missing_fields:
-                    self.logger.error(f"Missing required fields: {missing_fields} called by: {caller_function_name}")
-                    order_not_placed = False
-                    response = {
+                if not all([getattr(order_data, f) for f in ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask']]):
+                    self.logger.error(f"Missing required fields in OrderData: {order_data}")
+                    return {
                         'error': 'order_not_valid',
-                        'code': f"missing fields:{missing_fields}",
-                        'message': f"⚠️ Order Blocked - Required Fields Violation: order incomplete {order_data}"
+                        'code': 'MISSING_FIELDS',
+                        'message': f"⚠️ Order Blocked - Incomplete OrderData: {order_data}"
                     }
 
-                # ✅  Step 1: Extracting values
-                symbol = order_data.trading_pair.replace('/', '-')
-                asset = symbol.split('-')[0]
-                side = order_data.side.upper()
-                amount = self.shared_utils_precision.safe_convert(order_data.adjusted_size, order_data.base_decimal)
-                price =  self.shared_utils_precision.safe_convert(order_data.highest_bid, order_data.quote_decimal) if side == 'sell' else order_data.lowest_ask
-                available_crypto = self.shared_utils_precision.safe_convert(order_data.available_to_trade_crypto, order_data.base_decimal)
-
-                # ✅ Step 2: Revalidate
+                # ✅ Revalidate
                 validation_result = self.validate.fetch_and_validate_rules(order_data)
-
                 if not validation_result.get('is_valid'):
-                    condition = validation_result.details.get("condition", validation_result.get('error'))
-                    order_not_placed = False
-                    response = {
+                    return {
                         'error': 'order_not_valid',
                         'code': validation_result.get('code'),
-                        'message': f"⚠️ Order Blocked {asset} - Trading Rules Violation: {condition}"
+                        'message': f"⚠️ Order Blocked {asset} - Trading Rules Violation: {validation_result.details.get('condition')}"
                     }
 
-                if order_data.side == 'buy':
-                    usd_available = self.shared_utils_precision.safe_convert(order_data.usd_avail_balance, order_data.quote_decimal)
+                # ✅ USD balance check for BUY
+                if side == 'BUY':
                     usd_required = amount * price * (1 + order_data.maker)
-                    if usd_required > Decimal(order_data.usd_balance):
-                        order_not_placed = False
-                        response = {
+                    if usd_required > usd_available:
+                        return {
                             'error': 'Insufficient_USD',
-                            'code': validation_result.get('code'),
-                            'message': f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_balance}) for {asset} BUY. Required: ${usd_required}"
+                            'code': 'INSUFFICIENT_FUNDS',
+                            'message': f"⚠️ Not enough USD (${order_data.usd_balance}) for BUY. Required: ${usd_required}"
                         }
                 else:
-                    usd_available = self.shared_utils_precision.safe_convert(order_data.usd_balance, order_data.quote_decimal)
+                    if amount > available_crypto:
+                        return {
+                            'error': 'Insufficient_Balance',
+                            'code': 'INSUFFICIENT_CRYPTO',
+                            'message': f"⚠️ Not enough {asset} for SELL. Trying to sell: {amount}, Available: {available_crypto}"
+                        }
 
-                params = {'post_only': True}
-
-                # ✅ Ensure valid price
-                if price <= 0:
-                    self.logger.error(f"Invalid price ({price}) for {side} order on {symbol}. Order data: {order_data}")
-                    order_not_placed = False
-                    response = {
-                        'error': 'Invalid price in order',
-                        'code': validation_result.get('code'),
-                        'message': f"⚠️ Order Blocked - Invalid price (${order_data.price}) for {asset} BUY. Required: $'ADD PRICE_STRUCTURE "
-                    }
-
-                # ✅ Ensure sufficient balance
-                if side == 'BUY' and (amount * price) > usd_available:
-                    self.logger.info(f"Insufficient USD for BUY order on {symbol}. Required: {amount * price}, Available: {usd_available}")
-                    order_not_placed = False
-                    response = {
-                        'error': 'Insufficient USD for BUY order',
-                        'code': validation_result.get('code'),
-                        'message': f"⚠️ Order Blocked - Insufficient USD for BUY (${order_data.usd_avail_balance}) for {asset} BUY. Required: $'ADD CORRECT ORDER_AMOUNT "
-                    }
-                if side == 'SELL' and amount > available_crypto:
-                    self.logger.info(f"Insufficient {symbol} balance for SELL order. Trying to sell: {amount}, Available: {available_crypto}")
-                    order_not_placed = False
-                    response = {
-                        'error': 'Insufficient Balance to Sell',
-                        'code': validation_result.get('code'),
-                        'message': f"⚠️ Order Blocked - Required Balance to sell ({asset}:{amount}). Crypto Balance: {available_crypto}"
-                    }
-
-                # ✅ Refresh order book to get latest bid/ask
+                # ✅ Refresh market data before placing
                 latest_order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-                latest_lowest_ask = self.shared_utils_precision.safe_convert(latest_order_book['order_book']['asks'][0][0], order_data.quote_decimal) \
-                    if latest_order_book['order_book']['asks'] else price
-                latest_highest_bid = self.shared_utils_precision.safe_convert(latest_order_book['order_book']['bids'][0][0], order_data.quote_decimal) \
-                    if latest_order_book['order_book']['bids'] else price
+                latest_ask = self.shared_utils_precision.safe_convert(
+                    latest_order_book['order_book']['asks'][0][0], order_data.quote_decimal
+                ) if latest_order_book['order_book']['asks'] else price
+                latest_bid = self.shared_utils_precision.safe_convert(
+                    latest_order_book['order_book']['bids'][0][0], order_data.quote_decimal
+                ) if latest_order_book['order_book']['bids'] else price
 
-                # ✅ Define dynamic buffer as a percentage of the price
-                price_buffer_pct = Decimal('0.001')  # 0.1% buffer
-                min_buffer = Decimal('0.0000001')  # Minimum buffer for micro-priced assets
+                if side == 'BUY' and price >= latest_ask:
+                    price = max(latest_ask * (1 - price_buffer_pct), latest_ask - min_buffer).quantize(
+                        Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_DOWN)
+                elif side == 'SELL' and price <= latest_bid:
+                    price = min(latest_bid * (1 + price_buffer_pct), latest_bid + min_buffer).quantize(
+                        Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_UP)
 
-                # ✅ Adjust price dynamically to avoid post-only rejection
-                if side == 'BUY' and price >= latest_lowest_ask:
-                    # lower than the ask to ensure no match
-                    adjusted = latest_lowest_ask * (Decimal('1') - price_buffer_pct)
-                    price = (max(adjusted, latest_lowest_ask - min_buffer)).quantize(
-                        Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_DOWN
-                    )
+                self.logger.info(f"🟡 Adjusted {side} limit price for {symbol}: {price} (Attempt {attempts})")
 
-                elif side == 'SELL' and price <= latest_highest_bid:
-                    # higher than the bid to ensure no match
-                    adjusted = latest_highest_bid * (Decimal('1') + price_buffer_pct)
-                    price = (min(adjusted, latest_highest_bid + min_buffer)).quantize(
-                        Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_UP
-                    )
-
-                self.logger.info(f"✅ Adjusted {side} limit order price: {price} for {symbol}")
-
-                # ✅ Place the order
-                self.exchange.verbose = False
-                self.logger.debug(f"Placing {side} limit order: {symbol}, Amount: {amount}, Price: {price}, Params: {params}")
-
-                print(
-                    f" Post-only check — side: {side}, adjusted price: {price}, "
-                    f"lowest_ask: {latest_lowest_ask}, highest_bid: {latest_highest_bid}"
-                )
                 formatted_price = f"{price:.{order_data.quote_decimal}f}"
                 formatted_amount = f"{amount:.{order_data.base_decimal}f}"
+
                 response = await self.ccxt_api.ccxt_api_call(
                     self.exchange.create_order, 'private', symbol, 'limit', side, formatted_amount, formatted_price, params=params
                 )
-                if not response:
-                    self.logger.error("❌ Order placement failed — response is None")
-                    response = {
-                        "success": False,
-                        "code": "NULL_RESPONSE",
-                        "message": "No response returned from ccxt API (likely rejected preflight)",
-                        "error": "NoResponse",
-                    }
-                if response.get('message'):
-                    if response['message'] == 'priced below the lowest sell price':
-                        response['success'] = False
-                        response['trigger'] = 'limit'
-                        response['status'] = {
-                            'status': 'failed',
-                            'message': 'priced below the lowest sell price',
 
-                        }
-                        order_not_placed = False
-                else:
-                    pass
-                if response and response.get('success'):
-                    print(f"✅ Order placed successfully: {response.get('side')} {response.get('symbol')} ✅")
-                    # 📝 Record the trade
-                    trade_data = {
+                if not response:
+                    self.logger.warning("❌ No response from exchange when placing order.")
+                    break
+
+                if response.get('success'):
+                    self.logger.info(f"✅ Order placed successfully: {response.get('side')} {symbol}")
+                    await self.shared_data_manager.trade_recorder.record_trade({
                         'symbol': response.get('success_response', {}).get('product_id'),
-                        'side': response.get('success_response', {}).get('side').lower(),
+                        'side': response.get('success_response', {}).get('side', '').lower(),
                         'amount': response.get('order_configuration', {}).get('limit_limit_gtc', {}).get('base_size'),
                         'price': response.get('order_configuration', {}).get('limit_limit_gtc', {}).get('limit_price'),
-                        'order_id': response.get('success_response', {}).get('order_id'),  # or client_order_id
-                        'order_time': datetime.now(),  # Or response.get('timestamp') if exists
+                        'order_id': response.get('success_response', {}).get('order_id'),
+                        'order_time': datetime.now(),
                         'trigger': 'limit',
                         'status': 'placed'
-                    }
-                    response['success'] = True
+                    })
                     response['trigger'] = 'limit'
                     response['status'] = 'placed'
-                    await self.shared_data_manager.trade_recorder.record_trade(trade_data)
-                    order_not_placed = False
+                    return response
 
-                elif response.get('info', {}).get('order_id') is not None:
-                    info = response.get('info')
-                    print(f"✅ Order placed successfully: {info.get('side')} {info.get('symbol')} ✅")
-                    # 📝 Record the trade
-                    trade_data = {
-                        'symbol': response.get('symbol'),
-                        'side': info.get('side').lower(),
-                        'amount':formatted_amount,
-                        'price': formatted_price,
-                        'order_id': info.get('order_id'),  # or client_order_id
-                        'order_time': datetime.now(),  # Or response.get('timestamp') if exists
-                        'trigger': 'limit',
-                        'status': 'placed'
-                    }
-                    response['success'] = True
-                    response['trigger'] = 'limit'
-                    response['status'] = 'placed'
-                    response['price'] = formatted_price
-                    response['amount'] = formatted_amount
-                    order_not_placed = False
-                    # do not record orders without sufficient information
-                    # await self.shared_data_manager.trade_recorder.record_trade(trade_data)
+                if is_post_only_rejection(response):
+                    self.logger.warning(f"🔁 Post-only rejection on attempt {attempts}: {response.get('message')}")
+                    price_buffer_pct += Decimal('0.0005')  # widen buffer slightly
+                    continue
 
-                else:
+                # 🚫 Some other failure, break the loop
+                break
 
-                    self.logger.warning(f"❗️ Order Rejected Limit Order: {response.get('status')}:{response.get('reason') }❗️")
-                    print(f"❗️ Order Rejected Limit Order: {response.get('status')}:{response.get('reason') }❗️")
-                    response['success'] = False
-                    response['trigger'] = 'limit'
-                    response['status'] = {
-                        'status': 'placed',
-                        'message': response.get('reason',"unknown"),
+            self.logger.warning(f"❗️ Order Rejected Limit Order: {symbol}:{order_data.trigger}", exc_info=True)
+            print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}   ⚠️')  # Debug
 
-                    }
-
-                    order_not_placed = False
-            return response
+            return {
+                'success': False,
+                'error': 'OrderRejected',
+                'trigger': 'limit',
+                'status': response.get('status', 'failed'),
+                'message': response.get('message', 'unknown'),
+                'reason': response.get('reason')
+            }
+            # Final fallback
 
         except Exception as ex:
             self.logger.error(f"❌ Error in place_limit_order: {ex}", exc_info=True)
-            return None
+            return {'success': False, 'error': str(ex), 'trigger': 'limit'}
 
     async def place_trailing_stop_order(self, order_book, order_data, market_price):
         """

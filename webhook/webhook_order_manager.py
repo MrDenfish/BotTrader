@@ -85,31 +85,32 @@ class TradeOrderManager:
 
     @property
     def ticker_cache(self):
-        return self.market_data.get('ticker_cache')
+        return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
     def non_zero_balances(self):
-        return self.order_management.get('non_zero_balances')
+        return self.shared_data_manager.order_management.get('non_zero_balances')
 
     @property
     def market_cache_vol(self):
-        return self.market_data.get('filtered_vol')
+        return self.shared_data_manager.market_data.get('filtered_vol')
 
     @property
     def usd_pairs(self):
-        return self.market_data.get('usd_pairs_cache')
+        return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
     def current_prices(self):
-        return self.market_data.get('current_prices')
+        return self.shared_data_manager.market_data.get('current_prices')
 
     @property
     def open_orders(self):
-        return self.order_management.get('order_tracker')
+        return self.shared_data_manager.order_management.get("order_tracker")
+
 
     @property
     def avg_quote_volume(self):
-        return Decimal(self.market_data['avg_quote_volume'])
+        return Decimal(self.shared_data_manager.market_data['avg_quote_volume'])
 
     @property
     def hodl(self):
@@ -187,7 +188,7 @@ class TradeOrderManager:
 
             # Fetch fees
             if not fee_info:
-                fee_info = await self.coinbase_api.get_fee_rates()
+                fee_info = await self.coinbase_api.get_fee_rates() # <--- _place_tp_order() raises an error here
             if fee_info.get('error'):
                 maker_fee = self.default_maker_fee
                 taker_fee = self.default_taker_fee
@@ -237,7 +238,7 @@ class TradeOrderManager:
             # Calculate order size
             if side == 'buy':
                 size_of_order_qty = (fiat_avail_for_order / price)
-                size_of_order_qty = self.shared_utils_precision.safe_quantize(size_of_order_qty, quote_deci) if price > 0 else Decimal(0)
+                size_of_order_qty = self.shared_utils_precision.safe_quantize(size_of_order_qty, quote_quantizer) if price > 0 else Decimal(0)
                 if (price * size_of_order_qty) < self.min_order_amount:
                     print(f'‼️ Insufficient fiat balance to place buy order: {trading_pair}')
                     return None

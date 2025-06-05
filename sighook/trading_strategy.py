@@ -79,19 +79,19 @@ class TradingStrategy:
 
     @property
     def ticker_cache(self):
-        return self.market_data.get('ticker_cache')
+        return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
     def holdings_list(self):
-        return self.market_data.get('spot_positions')
+        return self.shared_data_manager.market_data.get('spot_positions')
 
     @property
     def market_cache_vol(self):
-        return self.market_data.get('filtered_vol')
+        return self.shared_data_manager.market_data.get('filtered_vol')
 
     @property
     def usd_pairs(self):
-        return self.market_data.get('usd_pairs_cache')
+        return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
     def hodl(self):

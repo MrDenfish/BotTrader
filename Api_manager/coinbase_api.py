@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import aiohttp
 from coinbase import jwt_generator
-
+from Shared_Utils.enum import ValidationCode
 from Config.config_manager import CentralConfig as Config
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.logging_manager import LoggerManager
@@ -74,53 +74,87 @@ class CoinbaseAPI:
             jwt_token = self.generate_rest_jwt('POST', request_path)
             headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
 
-            # ✅ Always fetch the active loop
-            current_loop = asyncio.get_running_loop()
-
             if self.session.closed:
                 self.session = aiohttp.ClientSession()
 
             async with self.session.post(f'{self.rest_url}{request_path}', headers=headers, json=payload) as response:
                 error_message = await response.text()
+                status = response.status
 
-                if response.status == 200:
+                if status == 200:
                     return await response.json()
 
-                elif response.status == 401:
+                elif status == 401:
                     self.logger.error(f"� [401] Unauthorized Order Creation: {error_message}")
-                    return {"error": "Unauthorized", "details": error_message}
+                    return {
+                        "error": "Unauthorized",
+                        "details": error_message,
+                        "code": ValidationCode.UNAUTHORIZED.value
+                    }
 
-                elif response.status == 400:
+                elif status == 400:
                     self.logger.error(f"⚠️ [400] Bad Request: {error_message}")
-                    return {"error": "Bad Request", "details": error_message}
+                    return {
+                        "error": "Bad Request",
+                        "details": error_message,
+                        "code": ValidationCode.BAD_REQUEST.value
+                    }
 
-                elif response.status == 403:
+                elif status == 403:
                     self.logger.error(f"⛔ [403] Forbidden: {error_message} ⛔")
-                    return {"error": "Forbidden", "details": error_message}
+                    return {
+                        "error": "Forbidden",
+                        "details": error_message,
+                        "code": ValidationCode.FORBIDDEN.value
+                    }
 
-                elif response.status == 429:
+                elif status == 429:
                     self.logger.warning(f"⏳ [429] Rate Limit Exceeded: {error_message}")
-                    return {"error": "Rate Limit Exceeded", "details": error_message}
+                    return {
+                        "error": "Rate Limit",
+                        "details": error_message,
+                        "code": ValidationCode.RATE_LIMIT.value
+                    }
 
-                elif response.status == 500:
+                elif status == 500:
                     self.logger.error(f"� [500] Internal Server Error: {error_message}")
-                    return {"error": "Internal Server Error", "details": error_message}
+                    return {
+                        "error": "Server Error",
+                        "details": error_message,
+                        "code": ValidationCode.INTERNAL_SERVER_ERROR.value
+                    }
 
                 else:
-                    self.logger.error(f"❌ [{response.status}] Unexpected Error: {error_message}")
-                    return {"error": f"Unexpected error {response.status}", "details": error_message}
+                    self.logger.error(f"❌ [{status}] Unexpected Error: {error_message}")
+                    return {
+                        "error": f"Unexpected error {status}",
+                        "details": error_message,
+                        "code": ValidationCode.UNKNOWN_ERROR.value
+                    }
 
         except aiohttp.ClientError as e:
             self.logger.error(f"� Network Error while creating order: {e}", exc_info=True)
-            return {"error": "Network Error", "details": str(e)}
+            return {
+                "error": "Network Error",
+                "details": str(e),
+                "code": ValidationCode.NETWORK_ERROR.value
+            }
 
         except asyncio.TimeoutError:
             self.logger.error("⌛ Timeout while creating order")
-            return {"error": "Timeout", "details": "Order request timed out"}
+            return {
+                "error": "Timeout",
+                "details": "Order request timed out",
+                "code": ValidationCode.TIMEOUT.value
+            }
 
         except Exception as e:
             self.logger.error(f"❗ Unexpected Error in create_order: {e}", exc_info=True)
-            return {"error": "Unexpected Error", "details": str(e)}
+            return {
+                "error": "Unexpected Error",
+                "details": str(e),
+                "code": ValidationCode.UNHANDLED_EXCEPTION.value
+            }
 
     async def get_fee_rates(self,):
         """

@@ -12,6 +12,9 @@ from coinbase import jwt_generator
 from Config.config_manager import CentralConfig as Config
 from webhook.webhook_validate_orders import OrderData
 
+BATCH_SIZE = 10
+TASK_TIMEOUT = 10  # per asset
+TOTAL_TIMEOUT = 180  # total for the full monitor_untracked_assets cycle
 
 class WebSocketHelper:
     """
@@ -63,6 +66,7 @@ class WebSocketHelper:
         self.connection_stable = True
         self.connection_lock = asyncio.Lock()
         self.subscription_lock = asyncio.Lock()
+        self.asset_semaphore = asyncio.Semaphore(5)
 
         self.reconnect_attempts = 0
         self.background_tasks = []
@@ -110,6 +114,8 @@ class WebSocketHelper:
         # self.ohlcv_manager = ohlcv_manager
         self.received_channels = set()  # Track first-time messages per channel
         self.market_channel_activity = {}  # key = channel, value = last_received_timestamp
+
+
 
     @property
     def market_data(self):
@@ -479,9 +485,10 @@ class WebSocketHelper:
             async with (self.order_tracker_lock):
                 order_tracker_snapshot = dict(order_management_snapshot.get("order_tracker", {}))
                 for order_id, raw_order in order_tracker_snapshot.items():
+
                     raw_order['type'] = raw_order.get('type').lower()
                     raw_order['side'] = raw_order.get('side').lower()
-                    order_id = raw_order.get('id', 'UNKNOWN')
+                    order_id = raw_order.get('order_id', 'UNKNOWN')
                     order_data = OrderData.from_dict(raw_order)
 
                     try:
@@ -501,6 +508,7 @@ class WebSocketHelper:
                         order_data.base_decimal = base_deci
                         order_data.product_id = symbol
                         if asset not in order_management_snapshot.get('non_zero_balances', {}):
+
                             continue
                         avg_price = order_management_snapshot.get('non_zero_balances', {})[asset]['average_entry_price'].get('value')
                         avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
@@ -592,7 +600,6 @@ class WebSocketHelper:
                             profit_data_list.append(profit)
                         if Decimal(profit.get('profit percent', '0').replace('%', '')) / 100 <= self.stop_loss:
                             await self.listener.handle_order_fill(order_data)
-
                     except Exception as inner_ex:
                         self.logger.error(f"Error handling tracked order {order_id}: {inner_ex}", exc_info=True)
 
@@ -602,113 +609,181 @@ class WebSocketHelper:
 
             self.logger.info(f"✅ monitor_untracked_assets is {type(self.monitor_untracked_assets)}")
             self.logger.info("🧪 About to await monitor_untracked_assets")
-            await self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot)
+
+            try:
+                await asyncio.wait_for(
+                    self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot),
+                    timeout=30  # seconds, or 60 if needed
+                )
+            except asyncio.TimeoutError:
+                self.logger.warning("⚠️ monitor_untracked_assets timed out — skipping.")
+
             self.logger.info("✅ monitor_untracked_assets completed")
 
         except Exception as outer_e:
             self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
 
-    async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any],
-                                       order_management_snapshot: Dict[str,Any]):
+    # async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any],
+    #                                    order_management_snapshot: Dict[str, Any]) -> None:
+    #     """
+    #     Monitors untracked assets and places TP/SL orders if thresholds are hit.
+    #     Uses batching, merging, and per-task timeout to improve performance.
+    #     """
+    #     BATCH_SIZE = 25
+    #     TIMEOUT_PER_BATCH = 30  # Total timeout per batch
+    #     YIELD_DELAY = 0.25  # Small sleep to let event loop catch up
+    #
+    #     try:
+    #         start_time = time.time()
+    #         order_tracker = order_management_snapshot.get('order_tracker', {})
+    #         spot_positions = market_data_snapshot.get('spot_positions', {})
+    #         usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
+    #         non_zero_balances = order_management_snapshot.get('non_zero_balances', {})
+    #
+    #         if usd_pairs.empty or not spot_positions:
+    #             self.logger.warning("🚫 No market data or spot positions available.")
+    #             return
+    #
+    #         usd_prices = usd_pairs.set_index('symbol')['price'].to_dict()
+    #
+    #         # Filter to assets without active orders
+    #         untracked_assets = [
+    #             (asset, position) for asset, position in non_zero_balances.items()
+    #             if not any(order.get('symbol') == f"{asset}/USD" for order in order_tracker.values())
+    #         ]
+    #
+    #         total_assets = len(untracked_assets)
+    #         processed_assets = 0
+    #
+    #         for batch_start in range(0, total_assets, BATCH_SIZE):
+    #             batch = untracked_assets[batch_start:batch_start + BATCH_SIZE]
+    #             tasks = []
+    #
+    #             for asset, position in batch:
+    #                 symbol = f"{asset}/USD"
+    #                 if symbol not in usd_prices:
+    #                     continue
+    #                 tasks.append(self._process_untracked_asset(asset, symbol, position, usd_prices, usd_pairs))
+    #
+    #             try:
+    #                 await asyncio.wait_for(asyncio.gather(*tasks), timeout=TIMEOUT_PER_BATCH)
+    #             except asyncio.TimeoutError:
+    #                 self.logger.warning(f"⚠️ Asset batch {batch_start}-{batch_start + BATCH_SIZE} timed out.")
+    #
+    #             processed_assets += len(batch)
+    #             await asyncio.sleep(YIELD_DELAY)  # Prevents event loop starvation
+    #
+    #         elapsed = time.time() - start_time
+    #         self.logger.info(f"✅ monitor_untracked_assets completed in {elapsed:.2f}s "
+    #                          f"({processed_assets} assets across {((total_assets - 1) // BATCH_SIZE + 1)} batches)")
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ monitor_untracked_assets crashed: {e}", exc_info=True)
+    async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any], order_management_snapshot: Dict[str, Any]):
         """
-        Monitors untracked assets (no active orders to buy or sell) and places sell orders if they are profitable.
+        Simplified and robust: evaluate held assets for TP/SL conditions and place orders.
+        No per-asset timeout. No nested async logic. Clear logs for decision path.
         """
         try:
-            order_tracker = order_management_snapshot.get('order_tracker', {})
-            spot_positions = market_data_snapshot.get('spot_positions', {})
-            non_zero_balances = order_management_snapshot.get('non_zero_balances', {})
-            usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
+            self.logger.info("📱 Starting monitor_untracked_assets")
 
-            usd_prices = usd_pairs.set_index('symbol')['price'].to_dict()
-            count = 0
-            for asset, position in non_zero_balances.items():
-                count +=1
-                symbol = f"{asset}/USD"
-                if asset == '00':
-                    pass
-                if symbol in self.currency_pairs_ignored:
-                    continue
-                if any(order.get('symbol') == symbol for order in order_tracker.values()):
-                    continue
-                average_entry_price = Decimal(position['average_entry_price']['value'])
-                asset_balance = Decimal(position['available_to_trade_crypto'])
-                asset_value = asset_balance * average_entry_price
+            spot_positions = market_data_snapshot.get("spot_positions", {})
+            usd_pairs = market_data_snapshot.get("usd_pairs_cache", {})
+            usd_prices = usd_pairs.set_index("symbol")["price"].to_dict() if not usd_pairs.empty else {}
 
-                if asset_value > self.min_buy_value: # do not buy more when the value is greater than min_buy_value
-                    continue
+            raw_balances = order_management_snapshot.get("non_zero_balances", {})
+            if not usd_prices or not raw_balances:
+                self.logger.warning("⚠️ Skipping due to missing prices or balances")
+                return
 
-                precision_data = self.shared_utils_precision.fetch_precision(symbol)
-                base_deci, quote_deci, base_increment, _ = precision_data
+            for asset, position in raw_balances.items():
+                try:
+                    precision = spot_positions.get(asset,{}).get('precision')
+                    base_deci = precision.get('amount', 8)
+                    quote_deci = precision.get('price', 8)
 
-                if asset_balance < base_increment:
-                    continue
+                    pos = position.to_dict() if hasattr(position, "to_dict") else position
+                    if not isinstance(pos, dict):
+                        raise TypeError(f"Invalid position type: {type(pos)}")
 
-                current_price = usd_prices.get(symbol)
-                if current_price is None:
-                    continue
+                    symbol = f"{asset}/USD"
+                    if symbol =='USD/USD':
+                        continue
+                    current_price = usd_prices.get(symbol)
+                    if not current_price:
+                        self.logger.debug(f"🔍 Skipping {symbol}: price unavailable")
+                        continue
+                    quote_quantizer = Decimal("1").scaleb(-quote_deci)
+                    base_quantizer = Decimal("1").scaleb(-base_deci)
+                    average_entry = Decimal(pos.get("average_entry_price", {}).get("value"))
+                    average_entry = self.shared_utils_precision.safe_quantize(average_entry, quote_quantizer)
+                    cost_basis = Decimal(pos.get("cost_basis", {}).get("value"))
+                    cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_quantizer)
 
-                current_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, current_price, convert='quote')
+                    available_qty = Decimal(pos.get("available_to_trade_crypto"))
+                    available_qty = self.shared_utils_precision.safe_quantize(available_qty, base_quantizer)
 
-                cost_basis = Decimal(position['cost_basis']['value'])
-
-                profit_data = await self.profit_data_manager.calculate_profitability(
-                    symbol,
-                    {
-                        'avg_price': average_entry_price,
-                        'cost_basis': cost_basis,
-                        'asset_balance': asset_balance,
-                        'current_price': current_price
-                    },
-                    usd_prices,
-                    usd_pairs
-                )
-
-                if not profit_data:
-                    continue
-
-                profit_percent = Decimal(profit_data.get('profit percent', '0').strip('%')) / Decimal('100')
-
-                if profit_percent >= self.take_profit and asset not in self.hodl:
-
-                    entry_price = (1 + (profit_percent - self.take_profit)) * average_entry_price
-                    try:
-                        if asset == 'AVT': # debug
-                            pass
-                        order_data = await self.trade_order_manager.build_order_data('Websocket', 'profit', asset, symbol, entry_price, None, 'tp_sl')
-
-                        if order_data:
-                            trigger = {"trigger": f"profit", "trigger_note": f"price:{profit_data.get('profit percent')}"}
-                            order_data.trigger = trigger
-                            order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
-                            if order_success:
-                                self.logger.info(f"Placed sell order for {symbol}: {response_msg}")
-                            else:
-                                self.logger.error(f"Failed to place sell order for {symbol}: {response_msg}")
-                    except asyncio.CancelledError:
-                        self.logger.info("Task was cancelled during build_order_data.")
+                    if average_entry == 0 or available_qty == 0:
                         continue
 
-                elif profit_percent < self.stop_loss and asset not in self.hodl:
-                    try:
-                        order_data = await self.trade_order_manager.build_order_data('Websocket', 'stop_loss', asset, symbol, None, None)
-                        if asset == 'AVT':
-                            pass
-                        if order_data:
-                            trigger = {"trigger": f"stop_loss", "trigger_note": f"stop loss price:{self.stop_loss}"}
-                            order_data.trigger = trigger
-                            order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
-                            if order_success:
-                                self.logger.info(f"Placed stop_loss order for {symbol}: {response_msg}")
-                            else:
-                                self.logger.error(f"Failed to place stop_loss order for {symbol}: {response_msg}")
-                            continue
-                    except asyncio.CancelledError:
-                        self.logger.info("Task was cancelled during build_order_data.")
-                        continue
-            await asyncio.sleep(30)
+                    # Evaluate PnL
+                    profit = (Decimal(current_price) - average_entry) * available_qty
+                    profit_pct = ((Decimal(current_price) - average_entry) / average_entry) if average_entry else Decimal("0")
+
+                    self.logger.info(f"🔎 {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, PnL%={profit_pct:.2%}")
+
+                    if profit_pct >= self.take_profit and asset not in self.hodl:
+                        self.logger.info(f"💰 TP trigger for {symbol}: {profit_pct:.2%}")
+                        await self._place_tp_order('websocket','profit',asset, symbol, current_price)
+                    elif profit_pct <= -self.stop_loss and asset not in self.hodl:
+                        self.logger.info(f"🛑 SL trigger for {symbol}: {profit_pct:.2%}")
+                        await self._place_sl_order(asset, symbol)
+
+                except Exception as e:
+                    self.logger.error(f"❌ monitor_untracked_assets error for {asset}: {e}", exc_info=True)
 
         except Exception as e:
-            self.logger.error(f"Error in monitor_untracked_assets: {e}", exc_info=True)
+            self.logger.error(f"❌ monitor_untracked_assets crashed: {e}", exc_info=True)
+        finally:
+            self.logger.info("✅ monitor_untracked_assets completed")
+
+    async def _place_tp_order(self, source, trigger, asset: str, symbol: str, price: Decimal):
+        precision_data = self.shared_utils_precision.fetch_precision(symbol)
+
+        order_data = await self.trade_order_manager.build_order_data(
+            source='websocket', trigger='take_profit', asset=asset, product_id=symbol
+        )
+        if order_data:
+            order_data.trigger = {"trigger": "TP", "trigger_note": f"price={price}"}
+
+            # Check if there's already an open order
+            open_orders = self.shared_data_manager.order_management.get("order_tracker", {})
+            if any(o.get("symbol") == symbol for o in open_orders.values()):
+                self.logger.info(f"⏸️ Skipping TP order for {symbol}: open order exists")
+                return
+
+            success, response = await self.trade_order_manager.place_order(order_data, precision_data)
+            log_method = self.logger.info if success else self.logger.error
+            log_method(f"{'✅' if success else '❌'} TP order for {symbol}: {response}")
+
+    async def _place_sl_order(self, asset: str, symbol: str):
+        precision_data = self.shared_utils_precision.fetch_precision(symbol)
+        order_data = await self.trade_order_manager.build_order_data(
+            source='websocket', trigger='stop_loss', asset=asset, product_id=symbol
+        )
+        if order_data:
+            order_data.trigger = {"trigger": "SL", "trigger_note": f"stop_loss={self.stop_loss}"}
+
+            # Check if there's already an open order
+            open_orders = self.shared_data_manager.order_management.get("order_tracker", {})
+            if any(o.get("symbol") == symbol for o in open_orders.values()):
+                self.logger.info(f"⏸️ Skipping SL order for {symbol}: open order exists")
+                return
+
+            success, response = await self.trade_order_manager.place_order(order_data, precision_data)
+            log_method = self.logger.info if success else self.logger.error
+            log_method(f"{'✅' if success else '❌'} SL order for {symbol}: {response}")
+
 
     async def refresh_open_orders(self, trading_pair=None):
         """
@@ -741,7 +816,10 @@ class WebSocketHelper:
                 await asyncio.sleep(2)  # Small delay before retrying
 
             # ✅ Retrieve the existing order tracker
+
+
             order_tracker_master = self.listener.order_management.get('order_tracker', {})
+
 
             # � If API fails to return orders, DO NOT remove everything—fallback to `order_tracker`
             if not all_open_orders:
@@ -804,6 +882,8 @@ class WebSocketHelper:
 
             # ✅ Save updated tracker
             self.listener.order_management['order_tracker'] = order_tracker_master
+            # 🔄 Push updated order management into shared_data_manager
+            await self.shared_data_manager.update_shared_data(self.listener.market_data, self.listener.order_management) # <--added to ensure update
 
             # ✅ Check if there is an open order for the specific `trading_pair`
             has_open_order = any(order['symbol'] == trading_pair for order in all_open_orders) if trading_pair else bool(
@@ -814,3 +894,106 @@ class WebSocketHelper:
         except Exception as e:
             self.logger.error(f"Failed to refresh open orders: {e}", exc_info=True)
             return pd.DataFrame(), False, self.listener.order_management['order_tracker']
+
+    # async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any],
+    #                                    order_management_snapshot: Dict[str,Any]):
+    #     """
+    #     Monitors untracked assets (no active orders to buy or sell) and places sell orders if they are profitable.
+    #     """
+    #     try:
+    #         order_tracker = order_management_snapshot.get('order_tracker', {})
+    #         spot_positions = market_data_snapshot.get('spot_positions', {})
+    #         non_zero_balances = order_management_snapshot.get('non_zero_balances', {})
+    #         usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
+    #
+    #         usd_prices = usd_pairs.set_index('symbol')['price'].to_dict()
+    #         count = 0
+    #         start = time.monotonic()
+    #         for asset, position in non_zero_balances.items():
+    #             count +=1
+    #             symbol = f"{asset}/USD"
+    #             if asset == '00':
+    #                 pass
+    #             if symbol in self.currency_pairs_ignored:
+    #                 continue
+    #             if any(order.get('symbol') == symbol for order in order_tracker.values()):
+    #                 continue
+    #             average_entry_price = Decimal(position['average_entry_price']['value'])
+    #             asset_balance = Decimal(position['available_to_trade_crypto'])
+    #             asset_value = asset_balance * average_entry_price
+    #
+    #             if asset_value > self.min_buy_value: # do not buy more when the value is greater than min_buy_value
+    #                 continue
+    #
+    #             precision_data = self.shared_utils_precision.fetch_precision(symbol)
+    #             base_deci, quote_deci, base_increment, _ = precision_data
+    #
+    #             if asset_balance < base_increment:
+    #                 continue
+    #
+    #             current_price = usd_prices.get(symbol)
+    #             if current_price is None:
+    #                 continue
+    #
+    #             current_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, current_price, convert='quote')
+    #
+    #             cost_basis = Decimal(position['cost_basis']['value'])
+    #
+    #             profit_data = await self.profit_data_manager.calculate_profitability(
+    #                 symbol,
+    #                 {
+    #                     'avg_price': average_entry_price,
+    #                     'cost_basis': cost_basis,
+    #                     'asset_balance': asset_balance,
+    #                     'current_price': current_price
+    #                 },
+    #                 usd_prices,
+    #                 usd_pairs
+    #             )
+    #
+    #             if not profit_data:
+    #                 continue
+    #
+    #             profit_percent = Decimal(profit_data.get('profit percent', '0').strip('%')) / Decimal('100')
+    #
+    #             if profit_percent >= self.take_profit and asset not in self.hodl:
+    #
+    #                 entry_price = (1 + (profit_percent - self.take_profit)) * average_entry_price
+    #                 try:
+    #                     if asset == 'AVT': # debug
+    #                         pass
+    #                     order_data = await self.trade_order_manager.build_order_data('Websocket', 'profit', asset, symbol, entry_price, None, 'tp_sl')
+    #
+    #                     if order_data:
+    #                         trigger = {"trigger": f"profit", "trigger_note": f"price:{profit_data.get('profit percent')}"}
+    #                         order_data.trigger = trigger
+    #                         order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
+    #                         if order_success:
+    #                             self.logger.info(f"Placed sell order for {symbol}: {response_msg}")
+    #                         else:
+    #                             self.logger.error(f"Failed to place sell order for {symbol}: {response_msg}")
+    #                 except asyncio.CancelledError:
+    #                     self.logger.info("Task was cancelled during build_order_data.")
+    #                     continue
+    #
+    #             elif profit_percent < self.stop_loss and asset not in self.hodl:
+    #                 try:
+    #                     order_data = await self.trade_order_manager.build_order_data('Websocket', 'stop_loss', asset, symbol, None, None)
+    #                     if asset == 'AVT':
+    #                         pass
+    #                     if order_data:
+    #                         trigger = {"trigger": f"stop_loss", "trigger_note": f"stop loss price:{self.stop_loss}"}
+    #                         order_data.trigger = trigger
+    #                         order_success, response_msg = await self.trade_order_manager.place_order(order_data, precision_data)
+    #                         if order_success:
+    #                             self.logger.info(f"Placed stop_loss order for {symbol}: {response_msg}")
+    #                         else:
+    #                             self.logger.error(f"Failed to place stop_loss order for {symbol}: {response_msg}")
+    #                         continue
+    #                 except asyncio.CancelledError:
+    #                     self.logger.info("Task was cancelled during build_order_data.")
+    #                     continue
+    #             self.logger.info(f"⏱ Finished processing {count} untracked assets in {time.monotonic() - start:.2f}s")
+    #             pass
+    #     except Exception as e:
+    #         self.logger.error(f"Error in monitor_untracked_assets: {e}", exc_info=True)

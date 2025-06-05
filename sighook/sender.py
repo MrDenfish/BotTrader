@@ -135,8 +135,7 @@ class TradeBot:
             await self.shared_data_manager.validate_startup_state(self.ticker_manager)
 
         market_data, order_management = await self.shared_data_manager.initialize_shared_data()
-        # self.market_data = market_data
-        # self.order_management = order_management
+
 
         # ✅ Final data prep
         await self.load_initial_data()

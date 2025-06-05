@@ -6,7 +6,7 @@ import decimal
 from ccxt.base.errors import BadSymbol
 
 
-class PortfolioPosition:
+class MyPortfolioPosition:
     def __init__(self, asset, available_to_trade, total_balance):
         self.asset = asset
         self.available_to_trade = Decimal(available_to_trade)
@@ -41,6 +41,7 @@ class TickerManager:
         self.min_volume = None
         self.last_ticker_update = None
         self.shill_coins = self.bot_config._shill_coins
+        self._min_value_to_monitor = self.bot_config.min_value_to_monitor
         self.logger_manager = logger_manager  # 🙂
         if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
             self.logger = logger_manager.loggers['shared_logger']
@@ -55,6 +56,10 @@ class TickerManager:
     @property
     def market_data(self):
         return self.shared_data_manager.market_data
+
+    @property
+    def min_value_to_monitor(self):
+        return self._min_value_to_monitor  # Minimum order amount
 
     @property
     def ticker_cache(self):
@@ -143,7 +148,7 @@ class TickerManager:
             non_zero_balances = {
                 pos["asset"]: pos
                 for pos in spot_positions
-                if Decimal(pos["total_balance_crypto"]) > 0
+                if Decimal(pos["total_balance_fiat"]) > self.min_value_to_monitor
             }
             return non_zero_balances
         except Exception as e:

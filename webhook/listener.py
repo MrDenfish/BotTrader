@@ -20,6 +20,7 @@ from ProfitDataManager.profit_data_manager import ProfitDataManager
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.dates_and_times import DatesAndTimes
 from Shared_Utils.debugger import Debugging
+from Shared_Utils.enum import ValidationCode
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
@@ -94,6 +95,7 @@ class WebSocketManager:
             try:
                 async with websockets.connect(ws_url, max_size=2 ** 20) as ws:
                     self.logger.info(f"Connected to {ws_url}")
+                    self.reconnect_attempts = 0
 
                     if is_user_ws:
                         self.websocket_helper.user_ws = ws
@@ -131,15 +133,13 @@ class WebSocketManager:
 
                         except Exception as msg_error:
                             self.logger.error(f"Error processing message: {msg_error}", exc_info=True)
-
+            except asyncio.CancelledError:
+                self.logger.warning("⚠️ WebSocket connection task was cancelled.")
+                raise  # re-raise to allow upstream shutdown handling
             except websockets.exceptions.ConnectionClosedError as e:
                 self.logger.warning(f"WebSocket closed unexpectedly: {e}. Reconnecting...")
                 await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
                 self.reconnect_attempts += 1
-
-            except asyncio.CancelledError:
-                self.logger.warning("⚠️ WebSocket connection task was cancelled.")
-                raise  # re-raise to allow upstream shutdown handling
             except Exception as general_error:
                 self.logger.error(f"Unexpected WebSocket error, check NGROK connection: {general_error}", exc_info=True)
                 await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
@@ -369,44 +369,46 @@ class WebhookListener:
     async def refresh_market_data(self):
         """Refresh market_data and manage orders periodically."""
         try:
-            while True:
-                try:
-                    # Fetch new market data
 
-                    new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
+            try:
+                # Fetch new market data
+                start = time.monotonic()
+                new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
+                self.logger.info(f"⏱ update_market_data took {time.monotonic() - start:.2f}s")
 
-                    # Ensure fetched data is valid before proceeding
-                    if not new_market_data:
-                        self.logger.error("❌ new_market_data is empty! Skipping update.")
-                        await asyncio.sleep(30)  # Wait before retrying
-                        continue
+                # Ensure fetched data is valid before proceeding
+                if not new_market_data:
+                    self.logger.error("❌ new_market_data is empty! Skipping update.")
 
-                    if not new_order_management:
-                        self.logger.error("❌ new_order_management is empty! Skipping update.")
-                        await asyncio.sleep(30)
-                        continue
+                if not new_order_management:
+                    self.logger.error("❌ new_order_management is empty! Skipping update.")
 
-                    # Refresh open orders and get the updated order_tracker
+                # Refresh open orders and get the updated order_tracker
+                start = time.monotonic()
+                _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
+                self.logger.info(f"⏱ refresh_open_orders took {time.monotonic() - start:.2f}s")
 
-                    _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
+                # Reflect the updated order_tracker in the shared state
+                if updated_order_tracker:
+                    new_order_management['order_tracker'] = updated_order_tracker
+                # Update shared state via SharedDataManager
 
-                    # Reflect the updated order_tracker in the shared state
-                    if updated_order_tracker:
-                        new_order_management['order_tracker'] = updated_order_tracker
-                    # Update shared state via SharedDataManager
+                start = time.monotonic()
+                await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
+                self.logger.info(f"⏱ update_market_data (shared_data_manager) took {time.monotonic() - start:.2f}s")
 
-                    await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
+                print("⚠️ Market data and order management updated successfully. ⚠️")
+                # Monitor and update active orders
+
+                start = time.monotonic()
+                await self.websocket_helper.monitor_and_update_active_orders(new_market_data, new_order_management)
+                self.logger.info(f"⏱ monitor_and_update_active_orders took {time.monotonic() - start:.2f}s")
+                pass
 
 
-                    print("⚠️ Market data and order management updated successfully. ⚠️")
-                    # Monitor and update active orders
+            except Exception as e:
+                self.logger.error(f"❌ refresh_market_data inner loop error: {e}", exc_info=True)
 
-                    await self.websocket_helper.monitor_and_update_active_orders(new_market_data,
-                                                                                 new_order_management)
-                    await asyncio.sleep(30)
-                except Exception as e:
-                    self.logger.error(f"❌ refresh_market_data inner loop error: {e}", exc_info=True)
-                    await asyncio.sleep(60)
 
         except asyncio.CancelledError:
             self.logger.warning("⚠️ refresh_market_data was cancelled by the event loop.", exc_info=True)
@@ -565,11 +567,17 @@ class WebhookListener:
 
         except json.JSONDecodeError:
             self.logger.error("⚠️ JSON Decode Error: Invalid JSON received")
-            return web.json_response({"success": False, "message": "Invalid JSON format"}, status=400)
+            return web.json_response(
+                {"success": False, "message": f"Invalid JSON format"},
+                status=int(ValidationCode.INVALID_JSON_FORMAT.value)
+            )
 
         except Exception as e:
             self.logger.error(f"⚠️ Unhandled exception in handle_webhook: {str(e)}", exc_info=True)
-            return web.json_response({"success": False, "message": "Internal server error"}, status=500)
+            return web.json_response(
+                {"success": False, "message": f"Internal error {e}"},
+                status=int(ValidationCode.INTERNAL_SERVER_ERROR.value)
+            )
 
     async def add_uuid_to_cache(self, check_uuid: str) -> None:
         """
@@ -613,22 +621,37 @@ class WebhookListener:
         try:
             webhook_uuid = request_json.get('uuid')
             if not webhook_uuid:
-                return web.json_response({"success": False, "message": "Missing 'uuid' in request"}, status=410)
+                return web.json_response(
+                    {"success": False, "message": "Missing 'uuid' in request"},
+                    status=int(ValidationCode.MISSING_UUID.value)
+                )
 
             if webhook_uuid in self.processed_uuids:
                 self.logger.info(f"Duplicate webhook detected: {webhook_uuid}")
-                return web.json_response({"success": False, "message": "Duplicate webhook ignored"}, status=410)
+                return web.json_response(
+                    {"success": False, "message": "Duplicate 'uuid' detected"},
+                    status=int(ValidationCode.DUPLICATE_UUID.value)
+                )
 
             await self.add_uuid_to_cache(webhook_uuid)
 
             if not request_json.get('action'):
-                return web.json_response({"success": False, "message": "Missing 'action' in request"}, status=410)
+                return web.json_response(
+                    {"success": False, "message": "Missing action"},
+                    status=int(ValidationCode.MISSING_ACTION.value)
+                )
 
             if not self.is_ip_whitelisted(ip_address):
-                return web.json_response({"success": False, "message": "Unauthorized"}, status=401)
+                return web.json_response(
+                    {"success": False, "message": "Unauthorized"},
+                    status=int(ValidationCode.UNAUTHORIZED.value)
+                )
 
             if not WebhookListener.is_valid_origin(request_json.get('origin', '')):
-                return web.json_response({"success": False, "message": "Invalid origin"}, status=403)
+                return web.json_response(
+                    {"success": False, "message": "FORBIDDEN"},
+                    status=int(ValidationCode.FORBIDDEN.value)
+                )
 
             # Parse trade data and fetch market/order snapshots
             trade_data = self.webhook_manager.parse_webhook_request(request_json)
@@ -644,7 +667,10 @@ class WebhookListener:
 
 
             if not self.is_valid_precision(precision_data):
-                return web.json_response({"success": False, "message": "Failed to fetch precision data"}, status=422)
+                return web.json_response(
+                    {"success": False, "message": "Failed to fetch precision data"},
+                    status=int(ValidationCode.PRECISION_ERROR.value)
+                )
 
             base_price_in_fiat, quote_price_in_fiat = await self.get_prices(trade_data, market_data_snapshot)
 
@@ -661,11 +687,10 @@ class WebhookListener:
                                                          precision_data, fee_info)
             if trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
                 return web.json_response(
-                    {
-                        "success": False,
-                        "message": f"Insufficient balance to sell {asset} (requires {self.min_sell_value} USD)"
-                    }, status=400
+                    {"success": False, "message": f"Insufficient balance to sell {asset} (requires {self.min_sell_value} USD)"},
+                    status=int(ValidationCode.INSUFFICIENT_BASE.value)
                 )
+
 
             # Build order and place it
             source = 'Webhook'
@@ -673,7 +698,10 @@ class WebhookListener:
             trigger = {"trigger": f"{trigger}", "trigger_note": f"from webhook"}
             order_details = await self.trade_order_manager.build_order_data(source, trigger, asset, product_id, None, fee_info)
             if order_details is None:
-                return web.json_response({"success": False, "message": "Failed to build order data"}, status=422)
+                return web.json_response(
+                    {"success": False, "message": f"Order build failed"},
+                    status=int(ValidationCode.ORDER_BUILD_FAILED.value)
+                )
             order_details.trigger = trigger
             print(f'')
             print(f' 🟠️ process_webhook - Order Data: 🟠   {order_details.debug_summary(verbose=True)}  ')  # Debug
@@ -685,7 +713,10 @@ class WebhookListener:
             return self.shared_utils_utility.safe_json_response(response, status=code)
         except Exception as e:
             self.logger.error(f"Error processing webhook: {e}", exc_info=True)
-            return web.json_response({"success": False, "message": f"Internal error: {e}"}, status=500)
+            return web.json_response(
+                {"success": False, "message": f"Internal error {e}"},
+                status=int(ValidationCode.INTERNAL_SERVER_ERROR.value)
+            )
 
     async def get_prices(self, trade_data: dict, market_data_snapshot: dict) -> tuple:
         try:
@@ -726,7 +757,7 @@ class WebhookListener:
                 market_data_snapshot, order_management_snapshot = await self.shared_data_manager.get_snapshots()
 
                 # Update shared data with the latest snapshots
-                await self.shared_data_manager.update_market_data(
+                await self.shared_data_manager.update_shared_data(
                     new_market_data=market_data_snapshot,
                     new_order_management=order_management_snapshot
                 )
@@ -953,7 +984,7 @@ def handle_global_exception(loop, context):
 # async def initialize_market_data(listener, market_data_manager, shared_data_manager):
 #     """Fetch and initialize market data safely after the event loop starts."""
 #     await asyncio.sleep(1)  # Prevents race conditions
-#     market_data_master, order_mgmnt_master = await market_data_manager.update_market_data(time.time())
+#     market_data_master, order_mgmnt_master = await market_data_manager.update_shared_data(time.time())
 #     listener.initialize_listener_components(market_data_master, order_mgmnt_master, shared_data_manager)
 
 async def supervised_task(task_coro, name):
