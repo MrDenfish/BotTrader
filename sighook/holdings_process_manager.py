@@ -34,19 +34,19 @@ class HoldingsProcessor:
 
     @property
     def ticker_cache(self):
-        return self.market_data.get('ticker_cache')
+        return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
     def current_prices(self):
-        return self.market_data.get('current_prices')
+        return self.shared_data_manager.market_data.get('current_prices')
 
     @property
     def usd_pairs(self):
-        return self.market_data.get('usd_pairs_cache')
+        return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
     def filtered_balances(self):
-        return self.order_management.get('non_zero_balances')
+        return self.shared_data_manager.order_management.get('non_zero_balances')
 
     @property
     def precision(self):
@@ -54,16 +54,16 @@ class HoldingsProcessor:
 
     @property
     def market_cache_prices(self):
-        return self.market_data.get('filtered_prices')
+        return self.shared_data_manager.market_data.get('filtered_prices')
 
 
     @property
     def market_cache_vol(self):
-        return self.market_data.get('filtered_vol')
+        return self.shared_data_manager.market_data.get('filtered_vol')
 
     @property
     def holdings_list(self):
-        return self.market_data.get('spot_positions')
+        return self.shared_data_manager.market_data.get('spot_positions')
 
     def _truncate_decimal(self, value, decimal_places=8):
         """
@@ -103,9 +103,10 @@ class HoldingsProcessor:
             asset = holding['asset']
             symbol = asset + "/USD"
             base_deci,quote_deci,_,_ = self.shared_utils_precision.fetch_precision(symbol)
-
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            base_quantizer = Decimal("1").scaleb(-base_deci)
             price = Decimal(self.market_data.get('current_prices', {}).get(symbol))
-            price = self.shared_utils_precision.safe_quantize(price, quote_deci)
+            price = self.shared_utils_precision.safe_quantize(price, quote_quantizer)
             asset_balance = self._truncate_decimal(holding['total_balance_crypto'])
 
             pair_data = processed_pairs.get(asset, {})

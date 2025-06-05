@@ -4,43 +4,9 @@ import random
 
 import aiohttp
 
+from Shared_Utils.enum import ValidationCode
 from Config.config_manager import CentralConfig
 
-
-# class AlertSystem:
-#     _instance = None
-#
-#     @classmethod
-#     def get_instance(cls, logger_manager):
-#         """
-#         Singleton method to ensure only one instance of AlertSystem exists.
-#         """
-#         if cls._instance is None:
-#             cls._instance = cls(logger_manager)
-#         return cls._instance
-#
-#     def __init__(self, logger_manager):
-#         """
-#         Initializes the AlertSystem.
-#         """
-#         if AlertSystem._instance is not None:
-#             raise Exception("This class is a singleton! Use get_instance().")
-#
-#         self.config = CentralConfig()
-#         self._phone = self.config.phone
-#         self._email = self.config.email
-#         self._e_mailpass = self.config.e_mailpass
-#         self._my_email = self.config.my_email
-#         self._email_alerts_on =self.config.email_alerts
-#         self._order_size_fiat = self.config.order_size_fiat
-#         self._smtp_host = 'smtp.gmail.com'
-#         self._smtp_port = 465
-#         self.logger = logger_manager
-#
-#         self.semaphore = asyncio.Semaphore(10)
-#
-#         # Set the instance
-#         AlertSystem._instance = self
 
 
 class SenderWebhook:
@@ -89,11 +55,11 @@ class SenderWebhook:
 
     @property
     def ticker_cache(self):
-        return self.market_data.get('ticker_cache')
+        return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
     def market_cache_vol(self):
-        return self.market_data.get('filtered_vol')
+        return self.shared_data_manager.market_data.get('filtered_vol')
 
     @property
     def order_size(self):
@@ -179,15 +145,22 @@ class SenderWebhook:
         status = response.status
         uuid = webhook_payload.get('order_id', 'unknown')
 
-        if status in [403, 404]:
+        # Convert Enum values to integers for comparison
+        code = str(status)
+
+        if code in {"403", "404"}:
             self.logger.error(f"‼️ Non-recoverable error {status}: {response_text}")
             return True
 
-        if status in [413, 414, 422]:
+        if code in {
+            ValidationCode.INSUFFICIENT_QUOTE.value,
+            ValidationCode.INSUFFICIENT_BASE.value,
+            "313",  # still raw unless you map this to an Enum later
+        }:
             self.logger.warning(f"⚠️ Order blocked by balance or precision constraints ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if status == 411:
+        if code == ValidationCode.SKIPPED_OPEN_ORDER.value:
             pair = parsed.get("details", {}).get("trading_pair", "unknown")
             side = parsed.get("details", {}).get("side", "unknown")
             size = parsed.get("details", {}).get("Order Size", "N/A")
@@ -197,32 +170,33 @@ class SenderWebhook:
             condition = parsed.get("condition", "Open order exists")
 
             self.logger.warning(
-                f"⏸️ Skipping {side.upper()} order for {pair} — open order already exists (411).\n"
+                f"⏸️ Skipping {side.upper()} order for {pair} — open order already exists ({status}).\n"
                 f"Reason: {condition}\n"
                 f"Trigger: {trigger_source} ({trigger_note}) | Requested size: {size}"
             )
             return True
 
-        if status == 412:
+        if code == "412":
             self.logger.warning(f"⚠️ Unable to adjust price for order ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if status == 415:
+        if code == "415":
             self.logger.warning(f"⚠️ Crypto balance > $1.00 — order rejected ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if status in [416, 417]:
+        if code in {"416", "417"}:
             self.logger.warning(f"⚠️ Order may be incomplete ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if status == 400 and 'Insufficient balance to sell' in response_text:
+        if status == 314 and 'Insufficient balance to sell' in response_text:
             self.logger.info(f"💸 Insufficient balance for {webhook_payload['pair']} {uuid}.")
             return True
 
-        if status in [429, 500, 503]:
+        if code in {"429", "500", "503"}:
             short_summary = parsed.get('message') or response_text[:300]
             self.logger.warning(f"⚠️ Recoverable server error ({status}): {short_summary} (Retrying...)")
             return False  # retryable
 
         # Unknown/unhandled status
         raise Exception(f"Unhandled HTTP error ‼️ {status}: {response_text}")
+

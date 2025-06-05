@@ -25,6 +25,7 @@ import asyncio
 import copy
 import time
 from webhook.webhook_validate_orders import OrderData
+from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from typing import Dict, Any, Tuple, Optional
 
@@ -161,10 +162,7 @@ class PassiveOrderManager:
 
     async def evaluate_exit_conditions(self, od: OrderData) -> Optional[dict]:
         """
-        Evaluates whether a take-profit or stop-loss condition is met for the given OrderData.
-
-        Returns:
-            dict with trigger metadata if exit condition is met, else None.
+        Evaluate stop-loss, take-profit, and return trigger info if any conditions are met.
         """
         symbol = od.trading_pair
         side = od.side.upper()
@@ -173,35 +171,30 @@ class PassiveOrderManager:
         available_qty = od.available_to_trade_crypto
         current_price = od.lowest_ask if side == "SELL" else od.highest_bid
 
-        # Safety check
         if current_price <= 0 or available_qty <= 0:
             self.logger.warning(f"Skipping {symbol}: invalid current_price or quantity.")
             return None
 
-        # Calculate estimated value and profit
         estimated_value = available_qty * current_price
         original_cost = available_qty * filled_price
         raw_profit = estimated_value - original_cost
         profit_pct = (raw_profit / original_cost) * 100 if original_cost > 0 else Decimal(0)
 
-        # Get thresholds
         min_profit_pct = Decimal(self.tom.config.get("min_profit_pct", "1.0"))
         max_loss_pct = Decimal(self.tom.config.get("max_loss_pct", "-5.0"))
 
-        # --- Take-Profit ---
         if profit_pct >= min_profit_pct:
             return {
                 "trigger": {
-                    "trigger": "take_profit",
+                    "trigger": ExitCondition.TAKE_PROFIT.value,
                     "trigger_note": f"Profit +{profit_pct:.2f}% >= {min_profit_pct}%",
                 }
             }
 
-        # --- Stop-Loss ---
         if profit_pct <= max_loss_pct:
             return {
                 "trigger": {
-                    "trigger": "stop_loss",
+                    "trigger": ExitCondition.STOP_LOSS.value,
                     "trigger_note": f"Loss {profit_pct:.2f}% <= {max_loss_pct}%",
                 }
             }

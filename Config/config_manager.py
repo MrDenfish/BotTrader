@@ -48,7 +48,7 @@ class CentralConfig:
         self._sighook_api_key_path = self._websocket_api_key_path = None
         self._webhook_api_key_path = self._api_key = self._api_secret = None
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
-        self._assets_ignored = self._buy_target = self._sell_target = None
+        self._assets_ignored = self._buy_target = self._sell_target = self._min_value_to_monitor = None
         self._quote_currency = self._trailing_percentage = self._min_volume = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
@@ -93,6 +93,7 @@ class CentralConfig:
             "_order_size_fiat": "ORDER_SIZE_FIAT", # in USD
             "_trailing_percentage": "TRAILING_PERCENTAGE",
             "_min_order_amount_fiat":"MIN_ORDER_AMOUNT_FIAT", # in USD
+            "_min_value_to_monitor": "MIN_VALUE_TO_MONITOR", # in USD
             "_min_buy_value": "MIN_BUY_VALUE",
             "_min_sell_value": "MIN_SELL_VALUE",
             "_max_value_of_crypto_to_buy_more":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
@@ -395,6 +396,10 @@ class CentralConfig:
     @property
     def min_order_amount_fiat(self):
         return Decimal(self._min_order_amount_fiat)
+
+    @property
+    def min_value_to_monitor(self):
+        return Decimal(self._min_value_to_monitor)
 
     @property
     def min_sell_value(self):

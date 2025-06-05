@@ -44,7 +44,7 @@ class DecimalEncoderIn(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)  # Convert Decimal to float
-        elif isinstance(obj, PortfolioPosition):
+        elif isinstance(obj, ThePortfolioPosition):
             return {
                 "attribute1": obj.attribute1,
                 "attribute2": obj.attribute2,
@@ -86,7 +86,7 @@ def preprocess_market_data(data):
     return processed_data
 
 
-class PortfolioPosition:
+class ThePortfolioPosition:
     def __init__(self, asset, account_uuid, total_balance_fiat, total_balance_crypto):
         self.asset = asset
         self.account_uuid = account_uuid
@@ -134,7 +134,7 @@ class SharedDataManager:
             new_market_data, new_order_mgmt = await ticker_manager.update_ticker_cache(start_time=start_time)
 
             # Apply the new data to internal state
-            await self.update_market_data(
+            await self.update_shared_data(
                 new_market_data=new_market_data,
                 new_order_management=new_order_mgmt
             )
@@ -159,7 +159,7 @@ class SharedDataManager:
     async def wait_until_initialized(self):
         await self._initialized_event.wait()
 
-    async def update_market_data(self, new_market_data, new_order_management):
+    async def update_shared_data(self, new_market_data, new_order_management):
         try:
             async with self.lock:
                 if new_market_data:
@@ -388,7 +388,7 @@ class SharedDataManager:
         # Convert each dict in non_zero_balances back into a PortfolioPosition
         for asset, position_dict in dismantled.get("non_zero_balances", {}).items():
             if isinstance(position_dict, dict):  # Convert back to PortfolioPosition
-                reassembled["non_zero_balances"][asset] = PortfolioPosition(
+                reassembled["non_zero_balances"][asset] = ThePortfolioPosition(
                     asset=position_dict["asset"],
                     account_uuid=position_dict["account_uuid"],
                     total_balance_fiat=position_dict["total_balance_fiat"],

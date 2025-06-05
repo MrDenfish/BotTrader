@@ -56,7 +56,6 @@ class PrecisionUtils:
             return Decimal('0').quantize(fallback_format)
 
     def safe_quantize(self, value: Decimal, precision: Decimal, rounding=ROUND_DOWN) -> Decimal:
-        from decimal import InvalidOperation
         try:
             return value.quantize(precision, rounding=rounding)
         except InvalidOperation:

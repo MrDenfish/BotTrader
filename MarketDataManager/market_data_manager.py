@@ -55,7 +55,7 @@ class MarketDataUpdater:
             _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
             if updated_order_tracker:
                 new_order_management['order_tracker'] = updated_order_tracker
-            await self.shared_data_manager.update_market_data(new_market_data, new_order_management)
+            await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
             self.logger.info("✅ One-time market data refresh complete.")
         except Exception as e:
             self.logger.error(f"❌ Error in one-time refresh: {e}", exc_info=True)

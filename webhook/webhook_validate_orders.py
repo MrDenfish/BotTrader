@@ -5,12 +5,13 @@ from dataclasses import field
 from datetime import datetime
 from decimal import Decimal
 from decimal import InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, Callable
 
 import pandas as pd
 import decimal
 import json
 import re
+from Shared_Utils.enum import ValidationCode
 from Config.config_manager import CentralConfig as Config
 
 
@@ -68,21 +69,23 @@ class OrderData:
     def is_valid(self) -> bool:
         return (self.get_effective_amount() > 0 and self.adjusted_price is not None)
 
-    def to_dict(self) -> dict:
+    def to_dict(self, serializer: Callable = None) -> dict:
         from dataclasses import asdict
 
-        def serialize(obj):
-            # Fallback to your shared serializer
-            return self.shared_utils_utility.string_default(obj)
+        def default_serializer(obj):
+            if isinstance(obj, Decimal):
+                return str(obj)
+            elif isinstance(obj, pd.DataFrame):
+                return obj.to_dict(orient="records")
+            elif hasattr(obj, "isoformat"):
+                return obj.isoformat()
+            return str(obj)
 
         raw = asdict(self)
-
-        # Optional: clean DataFrame if present
         if isinstance(raw.get("open_orders"), pd.DataFrame):
             raw["open_orders"] = raw["open_orders"].to_dict(orient="records")
 
-        # Convert everything to JSON-safe types using fallback
-        return json.loads(json.dumps(raw, default=serialize))
+        return json.loads(json.dumps(raw, default=serializer or default_serializer))
 
     @classmethod
     def from_dict(cls, data: dict) -> 'OrderData':
@@ -292,38 +295,29 @@ class ValidateOrders:
         except Exception as e:
             raise Exception(f"Error creating OrderData object: {e}")
 
-    def validate_order_conditions(self, order_details: OrderData, open_orders):
+    def validate_order_conditions(self, order_details: OrderData, open_orders) -> dict:
         """
         Validates order conditions based on account balances and active open orders.
-        called from:
-        place_order()
-        process_limit_and_tp_sl_orders(()
+
         Args:
-            order_details (dict): Data about the order to validate.
+            order_details (OrderData): Normalized order data.
             open_orders (DataFrame): DataFrame of active open orders.
 
         Returns:
-            dict: Contains validation status, error messages, and detailed information.
+            dict: Contains validation status, code, and details.
         """
-
         side = order_details.side
         usd_balance = order_details.usd_avail_balance
         order_size = order_details.get_effective_amount()
-
-        #order_size = order_details.order_amount_fiat if side == 'buy' else order_details.order_amount_crypto
         base_balance = order_details.base_avail_balance
         symbol = order_details.trading_pair
-        asset =symbol.split('/')[0]
-
-
-
-        trailing_stop_active = False  # Flag for trailing stop orders
+        asset = symbol.split('/')[0]
 
         response_msg = {
             "is_valid": False,
             "error": None,
-            "code": "200",
-            "message": f"Validation failed for {symbol}",
+            "code": ValidationCode.ORDER_BUILD_FAILED.value,
+            "message": f"Validation failed for {symbol} order build incomplete",
             "details": {
                 "Order Id": None,
                 "Order Type": order_details.type,
@@ -339,50 +333,47 @@ class ValidateOrders:
             }
         }
 
-        if order_details.type == 'market':
-            if side == 'buy':
-                if usd_balance < order_size:
-                    response = {
-                        "base_balance": base_balance,
-                        "Order Size": order_size,
-                        "condition": None
-                    }
-
         try:
             if open_orders.empty:
                 if side == 'buy' and usd_balance < order_size:
-                    response_msg["error"] = f"INSUFFICIENT_QUOTE. Required: {order_size}, Available: {usd_balance}"
-                    response_msg["code"] = "413"
+                    response_msg["error"] = "INSUFFICIENT_QUOTE"
+                    response_msg["code"] = ValidationCode.INSUFFICIENT_QUOTE.value
                     return response_msg
 
                 if side == 'sell' and base_balance <= 0:
-                    response_msg["error"] = f"INSUFFICIENT_BASE balance to sell {symbol}."
-                    response_msg["code"] = "414"
+                    response_msg["error"] = "INSUFFICIENT_BASE"
+                    response_msg["code"] = ValidationCode.INSUFFICIENT_BASE.value
                     return response_msg
+
                 if side == 'sell' and asset in self.hodl:
-                    response_msg["error"] = f"HODLing {symbol} sell order rejected."
-                    response_msg["code"] = "424"
+                    response_msg["error"] = "HODL_REJECT"
+                    response_msg["code"] = ValidationCode.HODL_REJECT.value
+                    response_msg["condition"] = f"HODLing {symbol}, sell blocked."
                     return response_msg
+
+                # ✅ Success case
                 response_msg["is_valid"] = True
                 response_msg["message"] = "Order validated successfully."
-                response_msg["code"] = "200"
+                response_msg["code"] = ValidationCode.SUCCESS.value
                 return response_msg
 
+            # 🔁 Order exists for symbol
             if symbol in open_orders.symbol.values:
-                response_msg["error"] = f"OPEN_ORDER"
-                response_msg["code"] = "411"
+                response_msg["error"] = "SKIPPED_OPEN_ORDER"
+                response_msg["code"] = ValidationCode.SKIPPED_OPEN_ORDER.value
                 response_msg["condition"] = f"Open order exists for {symbol}."
+                response_msg["message"] = f"Skipping {symbol}: open order already exists."
                 return response_msg
 
+            # ✅ No issue, allow order
             response_msg["is_valid"] = True
             response_msg["message"] = "Order validated successfully."
-            response_msg["code"] = "200"
-
+            response_msg["code"] = ValidationCode.SUCCESS.value
             return response_msg
 
         except KeyError as e:
-            response_msg["error"] = f" ❌ KEY_ERROR: Missing key in order_details or open_orders: {e}"
-            response_msg["code"] = "500"
+            response_msg["error"] = f"❌ KEY_ERROR: {e}"
+            response_msg["code"] = ValidationCode.INTERNAL_SERVER_ERROR.value
             return response_msg
 
     @staticmethod
@@ -589,7 +580,7 @@ class ValidateOrders:
                         {
                             "is_valid": False,
                             "error": f"Open order exists for {order_data.trading_pair} on side {order_side}.",
-                            "code": "416",
+                            "code": "300",
                             "details": {**response_msg["details"], "Open Orders": order_side}
                         }
                     )
@@ -602,7 +593,7 @@ class ValidateOrders:
                     {
                         "is_valid": False,
                         "error": f"Insufficient balance to place {order_data.side} order.",
-                        "code": "413" if order_data.side == 'buy' else "414",
+                        "code": "313" if order_data.side == 'buy' else "314",
                     }
                 )
                 return response_msg
