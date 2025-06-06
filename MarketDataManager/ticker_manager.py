@@ -20,17 +20,17 @@ class TickerManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, config, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
+    async def get_instance(cls, config, coinbase_api, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
                            shared_data_manager, shared_utils_precision):
         """Ensures only one instance of TickerManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
-                    cls._instance = cls(config, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange,
+                    cls._instance = cls(config, coinbase_api, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange,
                                         ccxt_api, shared_data_manager, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, config, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
+    def __init__(self, config, coinbase_api, shared_utils_debugger, shared_utils_print, logger_manager, rest_client, portfolio_uuid, exchange, ccxt_api,
                  shared_data_manager, shared_utils_precision):
         if TickerManager._instance is not None:
             raise Exception("TickerManager is a singleton and has already been initialized!")
@@ -46,6 +46,7 @@ class TickerManager:
         if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
             self.logger = logger_manager.loggers['shared_logger']
         self.ccxt_api = ccxt_api
+        self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_manager
         self.shared_utils_print = shared_utils_print
         self.shared_utils_debugger = shared_utils_debugger
@@ -381,16 +382,31 @@ class TickerManager:
             PART VI: Profitability Analysis and Order Generation """
         current_prices = {}
         try:
-            tickers = await self.fetch_bids_asks()
+            #tickers = await self.fetch_bids_asks()
+            product_ids = await self.coinbase_api.get_all_usd_pairs()
+            tickers = await self.coinbase_api.get_best_bid_ask(product_ids)
             if not tickers:
                 self.logger.error("Failed to fetch bids and asks.")
                 return df, current_prices
+
+            formatted_tickers = {}
+            for entry in tickers.get("pricebooks", []):
+                product_id = entry.get("product_id")
+                symbol = product_id.replace("-", "/")
+                try:
+                    bid = float(entry.get("bids", [{}])[0].get("price"))
+                    ask = float(entry.get("asks", [{}])[0].get("price"))
+                    if bid and ask:
+                        formatted_tickers[symbol] = {"bid": bid, "ask": ask}
+                except (IndexError, TypeError, ValueError):
+                    self.logger.warning(f"⚠️ Malformed pricebook for {product_id}")
+
             if not callable(self.logger.info):
                 self.logger.error("log_manager.info is not callable, check for possible overwriting.")
             #for symbol in df['symbol'].tolist():
             for symbol in usd_pairs['symbol'].tolist():
                 try:
-                    ticker = tickers.get(symbol)
+                    ticker = formatted_tickers.get(symbol)
                     if ticker:
                         bid = ticker.get('bid')
                         ask = ticker.get('ask')
@@ -453,13 +469,13 @@ class TickerManager:
         try:
             endpoint = 'public'
             params = {
-                'paginate': True,
+                'paginate': False,
                 'paginationCalls': 10,
                 'limit': 300
             }
-            tickers = await self.ccxt_api.ccxt_api_call(self.exchange.fetchBidsAsks, endpoint, params=params)
+            tickers = await self.ccxt_api.ccxt_api_call(self.exchange.fetchTickers, endpoint, params=params)
             if not tickers:
-                self.logger.info("fetch_bids_asks: Received empty tickers list.")
+                self.logger.info("fetch_bids_asks: Received empty tickers list. Will pause for 5 minutes")
                 return None
 
             return tickers

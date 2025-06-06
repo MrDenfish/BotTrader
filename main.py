@@ -12,6 +12,7 @@ from aiohttp import web
 
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
+from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
 from SharedDataManager.shared_data_manager import SharedDataManager
@@ -185,8 +186,10 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
     print(f"✅ Shared data is initialized. Proceeding with sighook setup.")
 
     websocket_helper = listener.websocket_helper if listener else None
+    coinbase_api = listener.coinbase_api if listener else None
     exchange = config.exchange
     trade_bot = TradeBot(
+        coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
@@ -215,10 +218,11 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
     finally:
         sighook_logger.info("sighook shutdown complete.")
 
-async def create_trade_bot(config, shared_data_manager, logger_manager,
+async def create_trade_bot(config, coinbase_api, shared_data_manager, logger_manager,
                            shared_utils_debugger, shared_utils_print,
                            websocket_helper=None) -> TradeBot:
     trade_bot = TradeBot(
+        coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
@@ -255,6 +259,7 @@ async def init_webhook(config, session, shared_data_manager, logger_manager, ale
     if trade_bot is None:
         trade_bot = await create_trade_bot(
             config=config,
+            coinbase_api=listener.coinbase_api,
             shared_data_manager=shared_data_manager,
             logger_manager=logger_manager,
             shared_utils_debugger=shared_utils_debugger,
@@ -286,6 +291,14 @@ async def init_webhook(config, session, shared_data_manager, logger_manager, ale
     listener.trade_order_manager.market_data_updater = listener.market_data_updater
 
     await listener.market_data_updater.update_market_data(time.time())
+    # Start the watchdog
+    asyncio.create_task(
+        market_data_watchdog(
+            shared_data_manager=shared_data_manager,
+            listener=listener,
+            logger=logger_manager.loggers["shared_logger"]
+        )
+    )
     print(f"✅ Market Data Keys: {list(shared_data_manager.market_data.keys())}")
 
     if startup_event:

@@ -280,3 +280,72 @@ class CoinbaseAPI:
         except Exception as exc:
             self.logger.error("list_historical_orders exception", exc_info=True)
             return {"error": "Exception", "details": str(exc)}
+
+    async def get_best_bid_ask(self, product_ids: list[str]) -> dict:
+        """
+        Fetch best bid/ask for a list of products using Coinbase Advanced Trade API.
+        """
+        try:
+            request_path = '/api/v3/brokerage/best_bid_ask'
+            jwt_token = self.generate_rest_jwt('GET', request_path)
+            payload = {'product_ids': product_ids}
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {jwt_token}'
+            }
+
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+            async with self.session.get(f"{self.rest_url}{request_path}",params=payload,headers=headers) as response:
+                text = await response.text()
+                status = response.status
+
+                if status == 200:
+                    return await response.json()
+                elif status == 401:
+                    self.logger.error(f"❌ [401] Unauthorized Best Bid/Ask: {text}")
+                elif status == 429:
+                    self.logger.warning(f"⏳ [429] Rate Limited on Best Bid/Ask: {text}")
+                elif status >= 500:
+                    self.logger.error(f"❌ [{status}] Server error fetching best bid/ask: {text}")
+                else:
+                    self.logger.error(f"❌ [{status}] Unexpected response from best_bid_ask: {text}")
+                return {}
+        except Exception as e:
+            self.logger.error(f"❗ Exception in get_best_bid_ask: {e}", exc_info=True)
+            return {}
+
+    async def get_all_usd_pairs(self) -> list[str]:
+        """
+        Fetch all trading pairs from Coinbase and return only USD pairs.
+        """
+        try:
+            request_path = '/api/v3/brokerage/products'
+            jwt_token = self.generate_rest_jwt('GET', request_path)
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {jwt_token}'
+            }
+
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.get(f"{self.rest_url}{request_path}", headers=headers) as response:
+                text = await response.text()
+                status = response.status
+
+                if status == 200:
+                    data = await response.json()
+                    usd_pairs = [
+                        product['product_id']
+                        for product in data.get('products', [])
+                        if product.get('quote_currency_id') == 'USD'
+                    ]
+                    return usd_pairs
+
+                self.logger.error(f"❌ Failed to fetch product list: {status} {text}")
+                return []
+
+        except Exception as e:
+            self.logger.error(f"❗ Exception in get_all_usd_pairs: {e}", exc_info=True)
+            return []
