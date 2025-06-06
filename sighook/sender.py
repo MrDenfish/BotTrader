@@ -278,9 +278,9 @@ class TradeBot:
 
         self.market_manager = MarketManager.get_instance(
             self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
-            self.logger_manager, self.ccxt_api, self.ticker_manager, self.portfolio_manager,
-            self.max_concurrent_tasks, self.database_session_mngr.database, self.db_tables,
-            self.shared_data_manager
+            self.logger_manager, self.coinbase_api, self.ccxt_api, self.ticker_manager,
+            self.portfolio_manager, self.max_concurrent_tasks, self.database_session_mngr.database,
+            self.db_tables, self.shared_data_manager
         )
 
         self.market_data_updater = await MarketDataUpdater.get_instance(

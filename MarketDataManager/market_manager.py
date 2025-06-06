@@ -1,7 +1,7 @@
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-
+from typing import Union
 import pandas as pd
 from databases import Database
 from sqlalchemy import select, func, delete
@@ -15,18 +15,21 @@ class MarketManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
+    def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api, ticker_manager,
                      portfolio_manager, max_concurrent_tasks, database, db_tables, shared_data_manager):
         if cls._instance is None:
-            cls._instance = cls(tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
-                                portfolio_manager, max_concurrent_tasks, database, db_tables, shared_data_manager)
+            cls._instance = cls(tradebot, exchange, order_manager, trading_strategy,
+                                logger_manager, coinbase_api, ccxt_api, ticker_manager,
+                                portfolio_manager, max_concurrent_tasks, database,
+                                db_tables, shared_data_manager)
         return cls._instance
 
-    def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, ccxt_api, ticker_manager,
+    def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api, ticker_manager,
                  portfolio_manager, max_concurrent_tasks, database: Database, db_tables, shared_data_manager):
         self.app_config = CentralConfig()
         self.exchange = exchange
         self.ccxt_api = ccxt_api
+        self.coinbase_api = coinbase_api
         self._max_ohlcv_rows = int(self.app_config.max_ohlcv_rows)
         self.max_concurrent_tasks = max_concurrent_tasks
         self.shared_data_manager = shared_data_manager
@@ -83,36 +86,49 @@ class MarketManager:
         async def fetch_store(symbol):
             """PART III:
             Fetch and store OHLCV data for a single symbol.
-            """
+
+        """
             try:
-                # Determine the `since` parameter based on mode
-                if mode == 'update':
-                    last_timestamp = await self.get_last_timestamp(symbol)
-                    since = last_timestamp + 1 if last_timestamp else None
-                else:  # Initialization mode
-                    since = int((datetime.now() - timedelta(days=1)).timestamp() * 1000)
-                # Dynamically adjust pagination
-                pagination_calls = min(10, self.exchange.rateLimit // total_symbols)
-                params = {'paginate': True, 'paginationCalls': pagination_calls}
-                endpoint = 'public'
+                # Start and end time for 24 hours
+                end_dt = datetime.now(timezone.utc)
+                start_dt = end_dt - timedelta(minutes=1440)
 
-                # Fetch OHLCV data
-                ohlcv_result = await self.fetch_ohlcv(endpoint, symbol, timeframe, since, params=params)
+                # Initialize empty DataFrame to accumulate
+                all_dfs = []
 
-                if ohlcv_result and not ohlcv_result['data'].empty:
-                    df = ohlcv_result['data']
+                # Break 1440 min into 350-candle chunks (≈ 6 batches max)
+                chunk_minutes = 350  # Coinbase max per call
+                for i in range(0, 1440, chunk_minutes):
+                    chunk_start = start_dt + timedelta(minutes=i)
+                    chunk_end = min(chunk_start + timedelta(minutes=chunk_minutes), end_dt)
 
-                    # Resample to ensure consistent 1-minute intervals
+                    params = {
+                        "start": int(chunk_start.timestamp()),
+                        "end": int(chunk_end.timestamp()),
+                        "granularity": "ONE_MINUTE",
+                        "limit": 350
+                    }
+
+                    ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol, params=params)
+                    if ohlcv_result and not ohlcv_result['data'].empty:
+                        all_dfs.append(ohlcv_result['data'])
+                    else:
+                        print(f"⚠️ No data returned for {symbol} during chunk: {chunk_start} to {chunk_end}")
+
+                    await asyncio.sleep(0.2)  # Gentle pacing
+
+                # Merge all chunks
+                if all_dfs:
+                    df = pd.concat(all_dfs)
                     df['time'] = pd.to_datetime(df['time'], unit='ms')
                     df = df.set_index('time')
-                    df = df.resample('1min').asfreq()  # Fill gaps for 1-minute data
-                    df = df.ffill()  # Forward-fill missing data
+                    df = df.resample('1min').asfreq()
+                    df = df.ffill()
                     df = df.reset_index()
 
-                    # Store the processed OHLCV data
                     await self.store_ohlcv_data({'symbol': symbol, 'data': df})
                 else:
-                    print(f"No new data fetched for {symbol}")
+                    print(f"❌ No OHLCV data fetched for {symbol} over 24h window")
 
             except Exception as e_process:
                 self.logger.error(f"❌ Error processing OHLCV data for {symbol}: {e_process}", exc_info=True)
@@ -154,7 +170,7 @@ class MarketManager:
         pagination_calls = params.get('paginationCalls', 10)
         try:
             for _ in range(pagination_calls):
-                await asyncio.sleep(self.exchange.rateLimit / 1000 + 2)  # Respect API rate limit
+                await asyncio.sleep(self.exchange.rateLimit / 1000 + 3)  # Respect API rate limit
                 # Correctly await `ccxt_api_call`
                 ohlcv_page = await self.rate_limited_request(
                     self.ccxt_api.ccxt_api_call,

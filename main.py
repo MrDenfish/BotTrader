@@ -131,9 +131,9 @@ async def build_websocket_components(config, listener, shared_data_manager):
     market_ws_manager = WebSocketMarketManager(
         listener=listener,
         exchange=listener.exchange,
+        coinbase_api=listener.coinbase_api,
         ccxt_api=listener.ccxt_api,
         logger_manager=listener.logger,
-        coinbase_api=listener.coinbase_api,
         profit_data_manager=listener.profit_data_manager,
         order_type_manager=listener.order_type_manager,
         shared_utils_print=listener.shared_utils_print,
