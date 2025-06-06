@@ -4,7 +4,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-
+from typing import Union
+import pandas as pd
 import aiohttp
 from coinbase import jwt_generator
 from Shared_Utils.enum import ValidationCode
@@ -349,3 +350,79 @@ class CoinbaseAPI:
         except Exception as e:
             self.logger.error(f"❗ Exception in get_all_usd_pairs: {e}", exc_info=True)
             return []
+
+    async def fetch_ohlcv(self, symbol: str, params ):
+        """
+        Fetch OHLCV data from Coinbase REST API for a given product_id (symbol).
+        timeframe: str, since: int, until: int, limit: int = 300
+        Args:
+            symbol (str): e.g., 'BTC/USD' or 'BTC-USD'
+            timeframe (str): Coinbase granularity (e.g., 'ONE_MINUTE')
+            since (int): start timestamp (UNIX)
+            until (int): end timestamp (UNIX)
+            limit (int): number of candles (max 350)
+
+        Returns:
+            dict: {'symbol': symbol, 'data': DataFrame}
+        """
+        try:
+            start =params.get('start')
+            end = params.get('end')
+            timeframe = params.get('granularity')
+            limit = params.get('limit', 300)
+
+
+
+            # Coinbase format is "BTC-USD"
+            product_id = symbol.replace('/', '-')
+            url = f"https://api.coinbase.com/api/v3/brokerage/market/products/{product_id}/candles"
+            params = {
+                "start": str(start),
+                "end": str(end),
+                "granularity": timeframe,
+                "limit": limit
+            }
+
+            headers = {
+                "Content-Type": "application/json"
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params, headers=headers) as response:
+                    if response.status != 200:
+                        self.logger.error(f"❌ Failed to fetch OHLCV data: {response.status}")
+                        return None
+
+                    response_json = await response.json()
+                    self.logger.debug(f"Raw OHLCV response for {product_id}: {response_json}")
+
+                    candles = response_json.get("candles", [])
+
+                    if not candles:
+                        self.logger.warning(f"⚠️ No OHLCV data returned for {symbol}")
+                        return None
+
+                    # Normalize candle format: convert to list of lists
+                    all_ohlcv = []
+                    for candle in candles:
+                        all_ohlcv.append([
+                            int(candle['start']) * 1000,  # milliseconds
+                            float(candle['open']),
+                            float(candle['high']),
+                            float(candle['low']),
+                            float(candle['close']),
+                            float(candle['volume']),
+                        ])
+
+                    df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
+
+                    # Format timestamp
+                    df['time'] = pd.to_datetime(df['time'], unit='ms', utc=True)
+                    df = df.sort_values(by='time')
+                    print(f'OHLCV data {len(df)} rows, have been downloaded for {symbol}')
+                    return {'symbol': symbol, 'data': df}
+
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
+
+        return None

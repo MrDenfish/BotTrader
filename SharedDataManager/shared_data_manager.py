@@ -123,23 +123,44 @@ class SharedDataManager:
 
     async def validate_startup_state(self, ticker_manager):
         """Ensure required shared data exists, or initialize it if missing."""
-        market_data = await self.database_session_manager.fetch_market_data()
-        order_mgmt = await self.database_session_manager.fetch_order_management()
+        raw_market_data = await self.database_session_manager.fetch_market_data()
+        raw_order_mgmt = await self.database_session_manager.fetch_order_management()
 
+        market_data = None
+        order_mgmt = None
+
+        # Attempt to decode and validate JSON fields
+        try:
+            raw_md = raw_market_data.get("data")
+            raw_om = raw_order_mgmt.get("data")
+
+            # Check for invalid strings like 'null' or empty
+            if raw_md and raw_md.strip().lower() != "null":
+                market_data = json.loads(raw_md, cls=CustomJSONDecoder)
+
+            if raw_om and raw_om.strip().lower() != "null":
+                order_mgmt = json.loads(raw_om, cls=CustomJSONDecoder)
+
+        except Exception as e:
+            self.logger.error(f"❌ Error decoding startup data: {e}", exc_info=True)
+
+        # ✅ Logging the state
+        if isinstance(market_data, dict):
+            tc = market_data.get("ticker_cache")
+            if isinstance(tc, pd.DataFrame):
+                self.logger.info(f"📊 ticker_cache rows: {len(tc)}")
+
+        # ✅ Check if startup snapshot is usable
         if not market_data or not order_mgmt:
             self.logger.warning("⚠️ No startup snapshot found. Attempting fresh data fetch...")
 
-            # Load fresh data using the existing live update method
             start_time = time.time()
             new_market_data, new_order_mgmt = await ticker_manager.update_ticker_cache(start_time=start_time)
 
-            # Apply the new data to internal state
             await self.update_shared_data(
                 new_market_data=new_market_data,
                 new_order_management=new_order_mgmt
             )
-
-            # Save immediately to ensure database is populated
             await self.save_data()
 
             self.logger.info("✅ Startup data initialized and saved.")
@@ -215,13 +236,19 @@ class SharedDataManager:
 
     @staticmethod
     def validate_market_data(market_data):
-        if not isinstance(market_data.get("ticker_cache"), pd.DataFrame):
-            raise TypeError("ticker_cache is not a DataFrame.")
-        if not isinstance(market_data.get("usd_pairs_cache"), pd.DataFrame):
-            raise TypeError("usd_pairs_cache is not a DataFrame.")
-        if not isinstance(market_data.get("avg_quote_volume"), Decimal):
-            raise TypeError("avg_quote_volume is not a Decimal.")
-        return market_data
+        if not isinstance(market_data, dict):
+            raise TypeError("market_data must be a dictionary, got NoneType.")
+
+        if not isinstance(market_data, dict):
+            market_data = {}
+
+        validated = {
+            "ticker_cache": market_data.get("ticker_cache") if isinstance(market_data.get("ticker_cache"), pd.DataFrame) else pd.DataFrame(),
+            "usd_pairs_cache": market_data.get("usd_pairs_cache") if isinstance(market_data.get("usd_pairs_cache"),
+                                                                                pd.DataFrame) else pd.DataFrame(),
+            "avg_quote_volume": market_data.get("avg_quote_volume") if isinstance(market_data.get("avg_quote_volume"), Decimal) else Decimal("0")
+        }
+        return validated
 
     @staticmethod
     def validate_order_management_data(order_management_data):
@@ -239,8 +266,19 @@ class SharedDataManager:
         """Fetch market_data from the database via DatabaseSessionManager."""
         try:
             result = await self.database_session_manager.fetch_market_data()
-            market_data = json.loads(result["data"], cls=CustomJSONDecoder) if result else {}
+
+            if result is None:
+                return {}
+
+            # Convert Record to native dict
+            result_dict = dict(result)
+
+            # Parse the JSON stored in the 'data' field
+            raw_data = result_dict.get("data")
+            market_data = json.loads(raw_data, cls=CustomJSONDecoder) if raw_data else {}
+
             return self.validate_market_data(market_data)
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"❌ Error fetching market data: {e}", exc_info=True)

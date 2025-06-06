@@ -11,20 +11,21 @@ class OHLCVManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, exchange, ccxt_api, logger_manager, shared_utiles_data_time, market_manager):
+    async def get_instance(cls, exchange, coinbase_api,ccxt_api, logger_manager, shared_utiles_data_time, market_manager):
         """Ensures only one instance of OHLCVManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
-                    cls._instance = cls(exchange, ccxt_api, logger_manager, shared_utiles_data_time, market_manager)
+                    cls._instance = cls(exchange, coinbase_api,ccxt_api, logger_manager, shared_utiles_data_time, market_manager)
         return cls._instance
 
-    def __init__(self, exchange, ccxt_api, logger_manager, shared_utiles_data_time, market_manager):
+    def __init__(self, exchange, coinbase_api, ccxt_api, logger_manager, shared_utiles_data_time, market_manager):
         if OHLCVManager._instance is not None:
             raise Exception("OHLCVManager is a singleton and has already been initialized!")
 
         self.exchange = exchange
         self.ccxt_api = ccxt_api
+        self.coinbase_api = coinbase_api
         self.logger_manager = logger_manager  # 🙂
         if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
             self.logger = logger_manager.loggers['shared_logger']
@@ -71,7 +72,7 @@ class OHLCVManager:
             params = {'paginate': False}
 
             self.logger.debug(f"📉 Fetching fresh OHLCV data for {symbol} (Last 5 min)")
-            ohlcv_result = await self.market_manager.fetch_ohlcv(endpoint, symbol, timeframe, safe_since, params=params)
+            ohlcv_result = await self.coinbase_api.fetch_ohlcv(endpoint, symbol, timeframe, safe_since, params=params)
 
             if ohlcv_result and not ohlcv_result['data'].empty:
                 df = ohlcv_result['data']

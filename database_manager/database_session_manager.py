@@ -180,23 +180,23 @@ class DatabaseSessionManager:
                 self.logger.warning("No data found for market_data.")
                 return {}
 
-            return result
+            return dict(result)  # Convert Record to native dict
         except Exception as e:
             self.logger.error(f"❌ Error fetching market data: {e}", exc_info=True)
             return {}
 
     async def fetch_order_management(self):
-        """Fetch market_data from the database."""
+        """Fetch order_management from the database."""
         try:
             if not self.database.is_connected:
                 await self.connect()
             query = "SELECT data FROM shared_data WHERE data_type = 'order_management'"
             result = await self.database.fetch_one(query)
             if not result or "data" not in result:
-                self.logger.warning("No data found for market_data.")
+                self.logger.warning("No data found for order_management.")
                 return {}
 
-            return result
+            return dict(result)  # Convert Record to native dict
         except Exception as e:
             self.logger.error(f"❌ Error fetching order_management: {e}", exc_info=True)
             return {}
