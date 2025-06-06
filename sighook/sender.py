@@ -40,8 +40,9 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, shared_data_mgr, rest_client, portfolio_uuid, exchange, logger_manager=None, websocket_helper=None, shared_utils_debugger=None,
+    def __init__(self, coinbase_api, shared_data_mgr, rest_client, portfolio_uuid, exchange, logger_manager=None, websocket_helper=None, shared_utils_debugger=None,
                  shared_utils_print=None):
+        self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_mgr
         self.websocket_helper = websocket_helper
         self.app_config = bot_config()
@@ -119,6 +120,7 @@ class TradeBot:
         # ✅ Load core components required for validation or data refresh
         self.ticker_manager = await TickerManager.get_instance(
             self.app_config,
+            self.coinbase_api,
             self.shared_utils_debugger,
             self.shared_utils_print,
             self.logger_manager,
@@ -231,7 +233,7 @@ class TradeBot:
         )
 
         self.ticker_manager = await TickerManager.get_instance(
-            self.app_config, self.shared_utils_debugger, self.shared_utils_print,
+            self.app_config, self.coinbase_api, self.shared_utils_debugger, self.shared_utils_print,
             self.logger_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api,
             self.shared_data_manager, self.shared_utils_precision
         )

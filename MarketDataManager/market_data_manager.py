@@ -1,6 +1,39 @@
 import asyncio
+from datetime import datetime
+import pandas as pd
 import  time
 
+async def market_data_watchdog(shared_data_manager, listener, logger, check_interval=60, max_age_sec=180):
+    """
+    Monitors shared_data_manager.market_data["current_prices"] for staleness.
+    If data hasn't updated in `max_age_sec`, automatically calls listener.refresh_market_data().
+    """
+    last_prices = None
+    last_update_time = datetime.utcnow()
+
+    while True:
+        await asyncio.sleep(check_interval)
+
+        try:
+            current_prices = shared_data_manager.market_data.get("current_prices", {})
+            if not current_prices:
+                logger.warning("⚠️ [Watchdog] current_prices is empty. Attempting manual refresh...")
+                await listener.refresh_market_data()
+                continue
+
+            if current_prices != last_prices:
+                last_prices = current_prices.copy()
+                last_update_time = datetime.utcnow()
+            else:
+                age = (datetime.utcnow() - last_update_time).total_seconds()
+                if age > max_age_sec:
+                    logger.warning(
+                        f"⚠️ [Watchdog] Market prices haven't updated for {int(age)} seconds. Triggering refresh..."
+                    )
+                    await listener.refresh_market_data()
+                    last_update_time = datetime.utcnow()  # Reset after recovery attempt
+        except Exception as e:
+            logger.error(f"❌ [Watchdog] Unexpected error: {e}", exc_info=True)
 
 class MarketDataUpdater:
     _instance = None
@@ -60,4 +93,13 @@ class MarketDataUpdater:
         except Exception as e:
             self.logger.error(f"❌ Error in one-time refresh: {e}", exc_info=True)
 
-
+    def get_empty_keys(self,data: dict) -> list:
+        empty_keys = []
+        for key, value in data.items():
+            if value is None:
+                empty_keys.append(key)
+            elif isinstance(value, (dict, list, set, tuple)) and len(value) == 0:
+                empty_keys.append(key)
+            elif isinstance(value, pd.DataFrame) and value.empty:
+                empty_keys.append(key)
+        return empty_keys

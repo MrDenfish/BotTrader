@@ -382,19 +382,6 @@ class WebSocketMarketManager:
         except Exception as e:
             self.logger.error(f"Error processing order in process_order_for_tracker: {e}", exc_info=True)
 
-    def get_best_bid_ask(self, symbol: str):
-        """Return best bid and ask prices for a symbol."""
-        book = self.order_books.get(symbol)
-        if not book:
-            return None, None
-
-        try:
-            best_bid = max(book["bids"].items(), key=lambda x: float(x[0]))
-            best_ask = min(book["asks"].items(), key=lambda x: float(x[0]))
-            return best_bid, best_ask
-        except (ValueError, KeyError):
-            return None, None
-
     async def _handle_received(self, message):
         # Received = order accepted by engine, not on book yet
         client_oid = message.get("client_oid")

@@ -99,8 +99,8 @@ class ApiManager:
             for attempt in range(1, retries + 1):
                 try:
                     caller_function_name = stack()[1].function
-                    if caller_function_name == 'fetch_bids_asks':
-                        caller_function_name = stack()[2].function
+                    # if caller_function_name == 'fetch_bids_asks':
+                    #     caller_function_name = stack()[2].function
                     self.logger.debug(f"Attempt {attempt} for {func.__name__} from {caller_function_name}")
                     # Add delay for public endpoints
                     if endpoint_type == 'public':
@@ -108,10 +108,13 @@ class ApiManager:
                     #print(f"‼️ Verbose: *args: {args}, **kwargs: {kwargs}")
                     response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
                     self.consecutive_failures = 0 # reset consecutive failures
-                    if response is None:
+                    if not response:
                         self.logger.error(
                             f"� CCXT API returned None for {func.__name__} | Args: {args} | Kwargs: {kwargs}")
-
+                        continue
+                    elif isinstance(response, dict) and not response:
+                        self.logger.warning(f"⚠️ Empty dict received from {func.__name__}. Exchange may be filtering markets.")
+                        return None
                     return response
 
                 except (ClientConnectionError, RemoteDisconnected) as e:

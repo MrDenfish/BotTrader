@@ -244,7 +244,6 @@ class WebhookListener:
 
         self.websocket_helper.websocket_manager = self.websocket_manager
 
-        # self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, self.logger)
 
         self.snapshot_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.shared_utils_precision,
                                                               self.logger_manager)
@@ -338,8 +337,9 @@ class WebhookListener:
         """Initialize async components after __init__."""
         self.ohlcv_manager = await OHLCVManager.get_instance(self.exchange, self.ccxt_api, self.logger_manager,
                                                              self.shared_utiles_data_time, self.market_manager)
-        self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.shared_utils_debugger,
-                                                               self.shared_utils_print, self.logger_manager,
+        self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
+                                                               self.shared_utils_debugger,self.shared_utils_print,
+                                                               self.logger_manager,
                                                                self.rest_client, self.portfolio_uuid, self.exchange,
                                                                self.ccxt_api, self.shared_data_manager,
                                                                self.shared_utils_precision
@@ -394,6 +394,7 @@ class WebhookListener:
                 # Update shared state via SharedDataManager
 
                 start = time.monotonic()
+                new_market_data["last_updated"] = datetime.utcnow()
                 await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
                 self.logger.info(f"⏱ update_market_data (shared_data_manager) took {time.monotonic() - start:.2f}s")
 
