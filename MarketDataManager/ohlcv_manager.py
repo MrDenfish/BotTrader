@@ -33,14 +33,13 @@ class OHLCVManager:
         self.shared_utiles_data_time = shared_utiles_data_time
         self.ohlcv_cache = {}  # Temporary storage for OHLCV data
 
-    async def fetch_last_5min_ohlcv(self, symbol, timeframe='1m', limit=5):
+    async def fetch_last_5min_ohlcv(self, symbol, timeframe='ONE_MINUTE', limit=5):
         """
         Fetches the last 5 minutes of OHLCV data dynamically from the REST API.
         Uses a cache to prevent excessive API requests.
-
         Args:
             symbol (str): Trading pair (e.g., 'BTC-USD').
-            timeframe (str): OHLCV timeframe ('1m' for 1-minute candles).
+            timeframe (str): OHLCV timeframe ('ONE_MINUTE' for 1-minute candles).
             limit (int): Number of candles to retrieve (default: 5).
 
         Returns:
@@ -51,28 +50,29 @@ class OHLCVManager:
             now = datetime.now(timezone.utc).replace(microsecond=0)
             five_min_ago = now - timedelta(minutes=5)
 
-            # ✅ Step 1: Check Cache (If Fresh, Use It)
+            # ✅ Step 1: Check Cache
             if symbol in self.ohlcv_cache:
                 cached_data = self.ohlcv_cache[symbol]
-                last_cached_time = cached_data["timestamp"]
-                if last_cached_time >= five_min_ago:
+                if cached_data["timestamp"] >= five_min_ago:
                     self.logger.debug(f"✅ Using cached OHLCV data for {symbol}")
                     df = cached_data['data']
-                    oldest_close = df.iloc[0]['close']
-                    newest_close = df.iloc[-1]['close']
-                    average_close = df['close'].mean()
-                    return oldest_close, newest_close, average_close
+                    return df.iloc[0]['close'], df.iloc[-1]['close'], df['close'].mean()
 
-            # ✅ Step 2: Prepare safe `since` timestamp
-            safe_since = int((five_min_ago - timedelta(seconds=10)).timestamp() * 1000)
+            # ✅ Step 2: Prepare timestamp range
+            safe_since = int((five_min_ago - timedelta(seconds=10)).timestamp())
             safe_since = self.shared_utiles_data_time.time_sanity_check(safe_since)
-            safe_since -= 1000  # final buffer
+            safe_since -= 1  # final buffer in seconds
 
-            endpoint = 'public'
-            params = {'paginate': False}
+            now_ts = int(now.timestamp())
 
-            self.logger.debug(f"📉 Fetching fresh OHLCV data for {symbol} (Last 5 min)")
-            ohlcv_result = await self.coinbase_api.fetch_ohlcv(endpoint, symbol, timeframe, safe_since, params=params)
+            params = {
+                'start': safe_since,
+                'end': now_ts,
+                'granularity': timeframe,
+                'limit': limit
+            }
+
+            ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol, params=params)
 
             if ohlcv_result and not ohlcv_result['data'].empty:
                 df = ohlcv_result['data']

@@ -1,8 +1,15 @@
-from datetime import datetime, timezone
 
-import pandas as pd
+
 import pytz
+import pandas as pd
+
 from dateutil import parser
+from typing import Union
+from dateutil.parser import isoparse
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
+
+
 
 
 class DatesAndTimes:
@@ -105,3 +112,20 @@ class DatesAndTimes:
             # Log unexpected errors
             self.logger.error(f"❌ Error converting timestamp to unix: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def parse_iso_time(timestamp: str) -> datetime:
+        """Safely parse ISO 8601 timestamps with variable microsecond precision."""
+        try:
+            return isoparse(timestamp)
+        except Exception as e:
+            raise ValueError(f"❌ Invalid timestamp format: {timestamp} ({e})")
+
+
+    def compute_order_duration(self,order_time: Union[str, datetime]) -> int:
+        if isinstance(order_time, str):
+            order_time = self.parse_iso_time(order_time)
+        if isinstance(order_time, datetime):
+            now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
+            return int((now - order_time).total_seconds() // 60)
+        return 0

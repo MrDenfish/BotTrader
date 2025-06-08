@@ -4,9 +4,11 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Union
+from typing import Union, List
 import pandas as pd
 import aiohttp
+import requests
+import json
 from coinbase import jwt_generator
 from Shared_Utils.enum import ValidationCode
 from Config.config_manager import CentralConfig as Config
@@ -44,8 +46,19 @@ class CoinbaseAPI:
 
         self.api_algo = self.config.load_websocket_api_key().get('algorithm')
 
+        # low volume coins that produce no candles get cached
+        self.empty_ohlcv_cache = set()
+        self.last_cache_clear_time = datetime.utcnow()
+
         self.jwt_token = None
         self.jwt_expiry = None
+
+    def clear_ohlcv_cache_if_stale(self):
+        now = datetime.utcnow()
+        if now - self.last_cache_clear_time >= timedelta(hours=1):
+            self.empty_ohlcv_cache.clear()
+            self.last_cache_clear_time = now
+            self.logger.debug("🧹 Cleared empty OHLCV cache after 1 hour.")
 
     def generate_rest_jwt(self, method='GET', request_path='/api/v3/brokerage/orders'):
         try:
@@ -238,7 +251,7 @@ class CoinbaseAPI:
         All params are optional; pass only the ones you need.
         """
         try:
-            request_path = "/api/v3/brokerage/orders/historical/batch"
+            request_path = '/api/v3/brokerage/orders/historical/batch'
             jwt_token = self.generate_rest_jwt("GET", request_path)
             headers = {
                 "Content-Type": "application/json",
@@ -351,32 +364,20 @@ class CoinbaseAPI:
             self.logger.error(f"❗ Exception in get_all_usd_pairs: {e}", exc_info=True)
             return []
 
-    async def fetch_ohlcv(self, symbol: str, params ):
+    async def fetch_ohlcv(self, symbol: str, params):
         """
         Fetch OHLCV data from Coinbase REST API for a given product_id (symbol).
-        timeframe: str, since: int, until: int, limit: int = 300
-        Args:
-            symbol (str): e.g., 'BTC/USD' or 'BTC-USD'
-            timeframe (str): Coinbase granularity (e.g., 'ONE_MINUTE')
-            since (int): start timestamp (UNIX)
-            until (int): end timestamp (UNIX)
-            limit (int): number of candles (max 350)
-
-        Returns:
-            dict: {'symbol': symbol, 'data': DataFrame}
         """
+        self.clear_ohlcv_cache_if_stale()  # clears the cache once per hour.
         try:
-            start =params.get('start')
+            start = params.get('start')
             end = params.get('end')
             timeframe = params.get('granularity')
-            limit = params.get('limit', 300)
+            limit = params.get('limit', 5)
 
-
-
-            # Coinbase format is "BTC-USD"
             product_id = symbol.replace('/', '-')
             url = f"https://api.coinbase.com/api/v3/brokerage/market/products/{product_id}/candles"
-            params = {
+            query_params = {
                 "start": str(start),
                 "end": str(end),
                 "granularity": timeframe,
@@ -388,41 +389,119 @@ class CoinbaseAPI:
             }
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, headers=headers) as response:
-                    if response.status != 200:
-                        self.logger.error(f"❌ Failed to fetch OHLCV data: {response.status}")
-                        return None
+                async with session.get(url, params=query_params, headers=headers) as response:
+                    if response.status == 200:
+                        response_json = await response.json()
+                        candles = response_json.get("candles", [])
 
-                    response_json = await response.json()
-                    self.logger.debug(f"Raw OHLCV response for {product_id}: {response_json}")
+                        if not candles:
+                            if symbol not in self.empty_ohlcv_cache:
+                                self.logger.info(f"🟡 No OHLCV data for {symbol} (market inactivity)")
+                                self.empty_ohlcv_cache.add(symbol)
+                            return {'symbol': symbol, 'data': pd.DataFrame()}
 
-                    candles = response_json.get("candles", [])
+                        # Process valid data
+                        all_ohlcv = [
+                            [
+                                int(candle['start']) * 1000,  # to milliseconds
+                                float(candle['open']),
+                                float(candle['high']),
+                                float(candle['low']),
+                                float(candle['close']),
+                                float(candle['volume']),
+                            ]
+                            for candle in candles
+                        ]
 
-                    if not candles:
-                        self.logger.warning(f"⚠️ No OHLCV data returned for {symbol}")
-                        return None
+                        df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
+                        df['time'] = pd.to_datetime(df['time'], unit='ms', utc=True)
+                        df = df.sort_values(by='time')
 
-                    # Normalize candle format: convert to list of lists
-                    all_ohlcv = []
-                    for candle in candles:
-                        all_ohlcv.append([
-                            int(candle['start']) * 1000,  # milliseconds
-                            float(candle['open']),
-                            float(candle['high']),
-                            float(candle['low']),
-                            float(candle['close']),
-                            float(candle['volume']),
-                        ])
+                        return {'symbol': symbol, 'data': df}
 
-                    df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
-
-                    # Format timestamp
-                    df['time'] = pd.to_datetime(df['time'], unit='ms', utc=True)
-                    df = df.sort_values(by='time')
-                    print(f'OHLCV data {len(df)} rows, have been downloaded for {symbol}')
-                    return {'symbol': symbol, 'data': df}
+                    else:
+                        self.logger.warning(
+                            f"⚠️ Coinbase returned {response.status} for {symbol}. Possibly no trade history or invalid request.")
+                        return {'symbol': symbol, 'data': pd.DataFrame()}  # Also return empty DataFrame
 
         except Exception as e:
-            self.logger.error(f"❌ Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
+            self.logger.error(f"❌ Unexpected error fetching OHLCV for {symbol}: {e}", exc_info=True)
+            return None
 
-        return None
+    async def fetch_open_orders(self, product_id: str = None, limit: int = 100) -> List[dict]:
+        """
+        Fetch open orders using Coinbase Advanced Trade REST API.
+
+        Args:
+            product_id (str): Optional trading pair (e.g., 'BTC-USD')
+            limit (int): Max number of orders per page (default: 100, max: 100)
+
+        Returns:
+            List[dict]: A list of open order dicts
+        """
+        try:
+            request_path = '/api/v3/brokerage/orders/historical/batch'
+            jwt_token = self.generate_rest_jwt('GET', request_path)
+            payload = {
+                "status": "OPEN",  # Adjust this based on your needs
+                "limit": 100  # Number of orders to fetch
+
+            }
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {jwt_token}'
+            }
+
+            params = {
+                # "order_status": ["OPEN"],
+                "limit": str(limit)
+            }
+            if product_id:
+                params["product_id"] = product_id
+
+            all_orders = []
+            async with aiohttp.ClientSession() as session:
+                while True:
+                    async with self.session.get(f"{self.rest_url}{request_path}",params=payload,headers=headers) as resp:
+                        data = await resp.json()
+                        results = data.get("orders", [])
+                        all_orders.extend(results)
+
+                        if not data.get("has_next"):
+                            break
+                        params["cursor"] = data.get("cursor")  # paginate if needed
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching open orders: {e}", exc_info=True)
+            return []
+        try:
+            # Format each order to match expected structure
+            formatted_orders = []
+            for order in all_orders:
+                # Ensure we're only including truly open orders
+                status = order.get("status", "").upper()
+                completion_pct = order.get("completion_percentage", "0")
+
+                if status in {"FILLED", "CANCELLED"} or completion_pct == "100.00":
+                    continue  # Skip non-open orders
+
+                formatted_orders.append({
+                    "id": order.get("order_id"),
+                    "symbol": order.get("product_id"),
+                    "side": order.get("side", "").upper(),
+                    "type": order.get("order_type", "").upper(),
+                    "status": status,
+                    "filled": float(order.get("filled_size", 0)),
+                    "remaining": float(order.get("size", 0)) - float(order.get("filled_size", 0)),
+                    "amount": float(order.get("size", 0)),
+                    "price": float(order.get("price", 0)),
+                    "triggerPrice": None,
+                    "stopPrice": None,
+                    "datetime": order.get("created_time"),
+                    "info": order,
+                    "clientOrderId": order.get("client_order_id"),
+                })
+
+            return formatted_orders
+        except Exception as e:
+            self.logger.error(f"❌ Error formatting open orders: {e}", exc_info=True)
+            return []

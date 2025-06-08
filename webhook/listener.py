@@ -108,28 +108,14 @@ class WebSocketManager:
 
                     self.logger.info(f"Listening on {ws_url}")
 
-                    # Setup dispatch map for known channel handlers
-                    handlers = {
-                        "user": self.websocket_helper._on_user_message_wrapper,
-                        "ticker_batch": self.websocket_helper._on_market_message_wrapper,
-                        "heartbeats": self.websocket_helper._on_market_message_wrapper,
-                        "subscriptions": self.websocket_helper._on_market_message_wrapper
-                    }
+                    # Setup dispatch map for known channel handler
 
                     async for message in ws:
                         try:
-                            # print(f" ⚠️ Raw WebSocket message:\n{message} ⚠️")
-                            data = json.loads(message)
-                            channel = data.get("channel", "")
-
-                            handler = handlers.get(channel)
-                            if handler:
-                                await handler(message)
+                            if is_user_ws:
+                                await self.websocket_helper._on_user_message_wrapper(message)
                             else:
-                                self.logger.warning(
-                                    f"⚠️ Unknown or unsupported WebSocket channel: "
-                                    f"{channel}.\nFull message:\n{json.dumps(data, indent=2)}"
-                                )
+                                await self.websocket_helper._on_market_message_wrapper(message)
 
                         except Exception as msg_error:
                             self.logger.error(f"Error processing message: {msg_error}", exc_info=True)
@@ -181,7 +167,7 @@ class WebhookListener:
         self.shared_utils_exchange = self.exchange
         self.shared_utils_precision = PrecisionUtils.get_instance(self.logger_manager, self.shared_data_manager)
 
-        self.shared_utiles_data_time = DatesAndTimes.get_instance(self.logger_manager)
+        self.shared_utils_date_time = DatesAndTimes.get_instance(self.logger_manager)
         self.shared_utils_utility = SharedUtility.get_instance(self.logger_manager)
         self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
         self.shared_utils_debugger = Debugging()
@@ -207,6 +193,7 @@ class WebhookListener:
             coinbase_api=self.coinbase_api,
             profit_data_manager=None,  # Placeholder
             order_type_manager=None,  # Placeholder
+            shared_utils_date_time=self.shared_utils_date_time,
             shared_utils_print=self.shared_utils_print, # Placeholder
             shared_utils_precision=self.shared_utils_precision,
             shared_utils_utility=self.shared_utils_utility, # Placeholder
@@ -318,10 +305,10 @@ class WebhookListener:
         self.websocket_helper = WebSocketHelper(
             self, self.websocket_manager, self.exchange, self.ccxt_api, self.logger,
             self.coinbase_api, self.profit_data_manager, self.order_type_manager,
-            self.shared_utils_print, self.shared_utils_precision, self.shared_utils_utility,
-            self.shared_utils_debugger, self.trailing_stop_manager, self.order_book_manager,
-            self.snapshot_manager, self.trade_order_manager, None,
-            self.shared_data_manager, self.session, None
+            self.shared_utils_date_time, self.shared_utils_print, self.shared_utils_precision,
+            self.shared_utils_utility,self.shared_utils_debugger, self.trailing_stop_manager,
+            self.order_book_manager, self.snapshot_manager, self.trade_order_manager,
+            None, self.shared_data_manager, self.session, None
 
         )
         self.market_ws_manager = WebSocketMarketManager(
@@ -336,7 +323,7 @@ class WebhookListener:
     async def async_init(self):
         """Initialize async components after __init__."""
         self.ohlcv_manager = await OHLCVManager.get_instance(self.exchange, self.coinbase_api, self.ccxt_api, self.logger_manager,
-                                                             self.shared_utiles_data_time, self.market_manager)
+                                                             self.shared_utils_date_time, self.market_manager)
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
                                                                self.shared_utils_debugger,self.shared_utils_print,
                                                                self.logger_manager,
