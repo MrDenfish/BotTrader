@@ -3,8 +3,7 @@ import math
 from inspect import stack  # debugging
 
 import pandas as pd
-import decimal
-from decimal import Decimal, ROUND_DOWN, InvalidOperation
+from decimal import localcontext, Decimal, ROUND_DOWN, InvalidOperation
 
 
 class PrecisionUtils:
@@ -59,8 +58,13 @@ class PrecisionUtils:
         try:
             return value.quantize(precision, rounding=rounding)
         except InvalidOperation:
-            # Normalize then re-quantize as a safe fallback
-            return value.normalize().quantize(precision, rounding=rounding)
+            try:
+                with localcontext() as ctx:
+                    ctx.prec = max(len(str(value).replace('.', '').replace('-', '')), 28)  # generous precision
+                    return value.quantize(precision, rounding=rounding)
+            except Exception as fallback_error:
+                self.logger.error(f"❌ safe_quantize failed for value={value}, precision={precision}: {fallback_error}")
+                return Decimal(0)  # Or raise, depending on your policy
 
     def fetch_precision(self, symbol: str) -> tuple:
         """

@@ -22,7 +22,7 @@ class WebSocketHelper:
             """
     def __init__(
             self, listener, websocket_manager, exchange, ccxt_api, logger_manager, coinbase_api, profit_data_manager,
-            order_type_manager, shared_utils_print, shared_utils_precision, shared_utils_utility, shared_utils_debugger,
+            order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_precision, shared_utils_utility, shared_utils_debugger,
             trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager,
             shared_data_manager, market_ws_manager, order_manager, passive_order_manager=None
             ):
@@ -97,6 +97,7 @@ class WebSocketHelper:
         self.snapshot_manager = snapshot_manager
 
         # Utility functions
+        self.shared_utils_date_time = shared_utils_date_time
         self.sharded_utils_print = shared_utils_print
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
@@ -363,8 +364,7 @@ class WebSocketHelper:
                 snapshot = await self.snapshot_manager.get_market_data_snapshot()
                 snapshot = await self.snapshot_manager.get_market_data_snapshot()
                 market_data = snapshot.get("market_data", {})
-                self.product_ids = [key.replace('/', '-') for key in
-                               market_data.get('current_prices', {}).keys()] or ["BTC-USD"]
+                self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
 
                 # ✅ Subscribe to each user channel separately
                 for channel in new_channels:
@@ -399,6 +399,12 @@ class WebSocketHelper:
 
             self.reconnect_attempts = 0
             self.logger.info("Reconnected successfully.")
+            # 🔁 Resynchronize open orders from REST to restore baseline state
+            try:
+                self.logger.info("🔄 Syncing open orders after reconnect...")
+                await self.refresh_open_orders()
+            except Exception as e:
+                self.logger.warning(f"⚠️ Open orders sync failed after reconnect: {e}")
         except Exception as e:
             self.reconnect_attempts += 1
             self.logger.error(f"Reconnection failed: {e}", exc_info=True)
@@ -501,6 +507,19 @@ class WebSocketHelper:
                         if asset == 'IDEX':
                            pass
                         order_duration = raw_order.get('order_duration')
+
+                        # If missing, compute duration from datetime
+                        if order_duration is None:
+                            order_time = raw_order.get('datetime')
+                            if isinstance(order_time, str):
+                                # Parse if it's a string
+                                order_time = self.shared_utils_date_time.parse_iso_time(order_time)
+                            if isinstance(order_time, datetime):
+                                now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
+                                elapsed = now - order_time
+                                order_duration = int(elapsed.total_seconds() // 60)  # whole minutes
+                            else:
+                                order_duration = 0
                         base_deci, quote_deci, _, _ = precision_data
 
                         # ✅ Add precision values to order_data
@@ -533,17 +552,17 @@ class WebSocketHelper:
                             'usd_avail': usd_avail,
                             'status_of_order': order_data.status
                         }
-
+                        # if limit sell price < the min(current price, highest bid) and the order is > than 5 minutes old resubmit order
                         if order_data.type == 'limit' and order_data.side == 'sell':
                             order_book = await self.order_book_manager.get_order_book(order_data, symbol)
                             highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
-                            if order_data.price < current_price and order_duration > 5 :
+                            if order_data.price < min(current_price,highest_bid) and order_duration > 5 :
                                 # ✅ Update trailing stop with highest bid
+                                old_ts_limit_price = order_data.price
                                 await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-                                new_order_data = await self.trade_order_manager.build_order_data('Websocket',
-                                                                                                 'trailing_stop',
-                                                                                                 asset, symbol,
-                                                                                                 old_limit_price, None)
+                                new_order_data = await self.trade_order_manager.build_order_data('Websocket','trailing_stop',
+                                                                                                 asset, symbol, old_ts_limit_price, None)
+                                await self.listener.handle_order_fill(new_order_data)
                                 continue
                             else:  # for testing purposes
                                 pass
@@ -712,47 +731,75 @@ class WebSocketHelper:
 
     async def _place_sl_order(self, asset: str, symbol: str, current_price: Decimal, profit: Decimal, profit_pct: Decimal):
         precision_data = self.shared_utils_precision.fetch_precision(symbol)
-
         order_not_placed = True
+
         while order_not_placed:
             try:
-                # Build order data
+                # Step 1: Build OrderData
                 order_data = await self.trade_order_manager.build_order_data(
                     source='websocket', trigger='stop_loss', asset=asset, product_id=symbol
                 )
-                if order_data:
-                    order_data.trigger = {"trigger": "SL", "trigger_note": f"stop_loss={self.stop_loss}%"}
+                if not order_data:
+                    return
 
-                    # Check if there's already an open order, currently does not evaluate if order should be canceled and SL submitted
-                    open_orders = self.shared_data_manager.order_management.get("order_tracker", {})
-                    if any(o.get("symbol") == symbol for o in open_orders.values()):
-                        for order in open_orders.values():
-                            if order.get("symbol") == symbol:
-                                order_id =  order.get("order_id")
-                                info = order.get("info")
-                                order_details_sl = info.get("order_configuration", {}).get("trigger_bracket_gtc")
-                                order_details_limit = info.get("order_configuration", {}).get("limit_limit_gtc")
-                                order_details = order_details_sl or order_details_limit
-                                if order_details_sl:
-                                    sl_price = Decimal(max(order_details.get('stop_loss_price'),order_details.get('stop_trigger_price')))
-                                elif order_details_limit:
-                                    sl_price = Decimal(order_details.get('limit_price'))
-                                else:
-                                    sl_price = Decimal(order_details.get('stop_loss_price')) # temporary fill
-                                if order.get("type") == "TAKE_PROFIT_STOP_LOSS" and current_price <= sl_price :
-                                    await self.listener.order_manager.cancel_order(order_id, symbol)
-                                    order_not_placed = False
-                                else:
-                                    return
-                if not order_data.open_orders.get('open_order'):
+                order_data.trigger = {"trigger": "SL", "trigger_note": f"stop_loss={self.stop_loss}%"}
+
+                # Step 2: Check existing open orders
+                open_orders = self.shared_data_manager.order_management.get("order_tracker", {})
+                for o in open_orders.values():
+                    if o.get("symbol") != symbol:
+                        continue
+
+                    order_id = o.get("order_id")
+                    order_type = o.get("type", "").upper()
+                    limit_price = self._extract_price(o)
+
+                    if order_type == "TAKE_PROFIT_STOP_LOSS" and current_price <= limit_price:
+                        await self.listener.order_manager.cancel_order(order_id, symbol)
+                        self.logger.info(f"🛑 Canceled SL order {order_id} at limit {limit_price}")
+                        order_not_placed = False
+                        break  # Only cancel one matching SL order
+                    else:
+                        return  # Don't place a new order if one is active and valid
+
+                # Step 3: Place SL order if no active one exists
+                if not order_data.open_orders.get("open_order"):
                     success, response = await self.trade_order_manager.place_order(order_data, precision_data)
                     log_method = self.logger.info if success else self.logger.error
                     log_method(f"{'✅' if success else '❌'} SL order for {symbol}: {response}")
+                    return
+
             except Exception as e:
-                self.logger.error(f"Error building SL order data: {e}", exc_info=True)
+                self.logger.error(f"Error building or submitting SL order for {symbol}: {e}", exc_info=True)
                 return
 
+    def _extract_price(self, order: dict) -> Decimal:
+        """
+        Extracts the appropriate SL/limit price from various open order structures.
+        """
+        try:
+            info = order.get("info", {}) or {}
+            order_config = info.get("order_configuration", {})
 
+            if "trigger_bracket_gtc" in order_config:
+                sl_price = order_config["trigger_bracket_gtc"].get("stop_loss_price") \
+                           or order_config["trigger_bracket_gtc"].get("stop_trigger_price")
+                return Decimal(sl_price)
+
+            if "limit_limit_gtc" in order_config:
+                return Decimal(order_config["limit_limit_gtc"].get("limit_price"))
+
+            # Fallback to legacy formats or simplified views
+            return Decimal(
+                order.get("stop_loss_price")
+                or order.get("stop_trigger_price")
+                or order.get("limit_price")
+                or order.get("price")
+                or "0"
+            )
+        except Exception:
+            self.logger.warning(f"⚠️ Failed to extract SL price from order: {order}")
+            return Decimal("0")
 
     async def refresh_open_orders(self, trading_pair=None):
         """
@@ -766,16 +813,15 @@ class WebSocketHelper:
             tuple: (DataFrame of all open orders, has_open_order (bool), updated order tracker)
         """
         try:
-            print(f"  🟪   refresh_open_orders  🟪  ")  # debug
-            # � Attempt to fetch open orders with retries
-            endpoint = 'private'
-            params = {'paginate': True, 'paginationCalls': 10}
+            print(f"  🟪   REST refresh_open_orders  API   🟪  ")  # debug
+            return pd.DataFrame(), False, self.listener.order_management.get('order_tracker', {}) # debug remove when websocket feature is working
+
             max_retries = 3
             all_open_orders = []
 
             for attempt in range(max_retries):
-                all_open_orders = await self.ccxt_api.ccxt_api_call(
-                    self.exchange.fetch_open_orders, endpoint, params=params
+                all_open_orders = await self.coinbase_api.fetch_open_orders(
+                    product_id=trading_pair.replace("/", "-") if trading_pair else None
                 )
 
                 if all_open_orders or len(all_open_orders) == 0:

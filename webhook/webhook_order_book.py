@@ -25,35 +25,39 @@ class OrderBookManager:
         self.ccxt_api = ccxt_api  # ✅ Renamed for clarity
 
     async def get_order_book(self, order_data: OrderData, symbol=None):
-        if symbol:
-            trading_pair = symbol
-        else:
-            trading_pair = order_data.trading_pair
+        try:
+            if symbol:
+                trading_pair = symbol
+            else:
+                trading_pair = order_data.trading_pair
 
-        endpoint = 'public'
-        order_book = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order_book, endpoint, trading_pair, limit=50)
+            endpoint = 'public'
+            order_book = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order_book, endpoint, trading_pair, limit=50)
 
-        highest_bid, lowest_ask, spread = self.analyze_spread(order_data.quote_decimal, order_book)
+            highest_bid, lowest_ask, spread = self.analyze_spread(order_data.quote_decimal, order_book)
 
-        order_details = {
-            'order_book': order_book,
-            'highest_bid': highest_bid,
-            'lowest_ask': lowest_ask,
-            'spread': spread
-        }
+            order_details = {
+                'order_book': order_book,
+                'highest_bid': highest_bid,
+                'lowest_ask': lowest_ask,
+                'spread': spread
+            }
 
-        # ✅ Patch only if results from analyze_spread are clearly invalid
-        if (
-                highest_bid is None or highest_bid == Decimal('0.0') or
-                lowest_ask is None or lowest_ask == Decimal('0.0') or
-                spread is None or spread == Decimal('0.0')
-        ):
-            self.logger.warning(
-                f"⚠️ analyze_spread failed or returned zeros for {trading_pair}. Falling back to calculate_order_book_summary()"
-            )
-            order_details = self.calculate_order_book_summary(order_data, order_details)
+            # ✅ Patch only if results from analyze_spread are clearly invalid
+            if (
+                    highest_bid is None or highest_bid == Decimal('0.0') or
+                    lowest_ask is None or lowest_ask == Decimal('0.0') or
+                    spread is None or spread == Decimal('0.0')
+            ):
+                self.logger.warning(
+                    f"⚠️ analyze_spread failed or returned zeros for {trading_pair}. Falling back to calculate_order_book_summary()"
+                )
+                order_details = self.calculate_order_book_summary(order_data, order_details)
 
-        return order_details
+            return order_details
+        except Exception as e:
+            self.logger.error(f"Error in get_order_book: {e}", exc_info=True)
+            return None
 
     def analyze_spread(self, quote_deci, order_book):
         # Convert quote_deci to a format string for quantization

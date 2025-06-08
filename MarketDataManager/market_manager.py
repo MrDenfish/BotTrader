@@ -78,7 +78,7 @@ class MarketManager:
             return await func(*args, **kwargs)
 
 
-    async def fetch_and_store_ohlcv_data(self, symbols, mode='update', timeframe='1m', limit=300):
+    async def fetch_and_store_ohlcv_data(self, symbols, mode='update', timeframe='ONE_MINUTE', limit=300):
         """PART III:
         Fetch and store OHLCV data in parallel for all symbols, handling initialization or updates.
         """
@@ -100,13 +100,18 @@ class MarketManager:
                 chunk_minutes = 350  # Coinbase max per call
                 for i in range(0, 1440, chunk_minutes):
                     chunk_start = start_dt + timedelta(minutes=i)
-                    chunk_end = min(chunk_start + timedelta(minutes=chunk_minutes), end_dt)
+                    chunk_duration_seconds = limit * 60
+                    chunk_end = chunk_start + timedelta(seconds=chunk_duration_seconds)
+
+                    # If chunk_end goes beyond the end_dt, skip it
+                    if chunk_end > end_dt:
+                        break
 
                     params = {
                         "start": int(chunk_start.timestamp()),
                         "end": int(chunk_end.timestamp()),
-                        "granularity": "ONE_MINUTE",
-                        "limit": 350
+                        "granularity": timeframe,
+                        "limit": limit
                     }
 
                     ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol, params=params)

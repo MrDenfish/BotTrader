@@ -4,7 +4,7 @@ import json
 import time
 from decimal import Decimal
 import datetime
-from datetime import datetime
+from datetime import datetime, date
 from inspect import stack  # debugging
 
 import pandas as pd
@@ -43,7 +43,9 @@ class CustomJSONDecoder(json.JSONDecoder):
 class DecimalEncoderIn(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
-            return float(obj)  # Convert Decimal to float
+            return float(obj)  # or str(obj) if you prefer precision
+        elif isinstance(obj, (datetime, date)):
+            return obj.isoformat()  # Convert to ISO 8601 string
         elif isinstance(obj, ThePortfolioPosition):
             return {
                 "attribute1": obj.attribute1,
@@ -235,19 +237,22 @@ class SharedDataManager:
                 self.logger.error(f"❌ Error refreshing shared data: {e}", exc_info=True)
 
     @staticmethod
-    def validate_market_data(market_data):
+    def validate_market_data(market_data: dict) -> dict:
         if not isinstance(market_data, dict):
-            raise TypeError("market_data must be a dictionary, got NoneType.")
+            raise TypeError("market_data must be a dictionary.")
 
-        if not isinstance(market_data, dict):
-            market_data = {}
+        validated = dict(market_data)  # Start with a shallow copy of all keys
 
-        validated = {
-            "ticker_cache": market_data.get("ticker_cache") if isinstance(market_data.get("ticker_cache"), pd.DataFrame) else pd.DataFrame(),
-            "usd_pairs_cache": market_data.get("usd_pairs_cache") if isinstance(market_data.get("usd_pairs_cache"),
-                                                                                pd.DataFrame) else pd.DataFrame(),
-            "avg_quote_volume": market_data.get("avg_quote_volume") if isinstance(market_data.get("avg_quote_volume"), Decimal) else Decimal("0")
-        }
+        # Validate and coerce known expected keys
+        if not isinstance(validated.get("ticker_cache"), pd.DataFrame):
+            validated["ticker_cache"] = pd.DataFrame()
+
+        if not isinstance(validated.get("usd_pairs_cache"), pd.DataFrame):
+            validated["usd_pairs_cache"] = pd.DataFrame()
+
+        if not isinstance(validated.get("avg_quote_volume"), Decimal):
+            validated["avg_quote_volume"] = Decimal("0")
+
         return validated
 
     @staticmethod

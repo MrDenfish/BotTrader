@@ -113,6 +113,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
         coinbase_api=listener.coinbase_api,
         profit_data_manager=listener.profit_data_manager,
         order_type_manager=listener.order_type_manager,
+        shared_utils_date_time=listener.shared_utils_date_time,
         shared_utils_print=listener.shared_utils_print,
         shared_utils_precision=listener.shared_utils_precision,
         shared_utils_utility=listener.shared_utils_utility,

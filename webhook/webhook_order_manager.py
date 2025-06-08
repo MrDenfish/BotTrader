@@ -149,6 +149,8 @@ class TradeOrderManager:
             endpoint = 'private'
             params = {'paginate': True, 'paginationCalls': 2}
             # check market_data integrity
+            if asset == 'TURBO':
+                pass
             market_data_status = self.market_data_updater.get_empty_keys(self.market_data)
             if len(market_data_status) < 1:
                 spot_position = self.market_data.get('spot_positions', {})
@@ -227,7 +229,7 @@ class TradeOrderManager:
                 pair = product_id.replace('-', '/')  # normalize first
                 base_currency, quote_currency = pair.split('/')
                 trading_pair = product_id.replace('-', '/')
-                current_price = Decimal(self.market_data.get('current_prices', {}).get(trading_pair, 0))
+                current_price = Decimal(self.current_prices.get(trading_pair))
                 price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
                 # Determine side
                 side = 'buy' if Decimal(
@@ -321,7 +323,7 @@ class TradeOrderManager:
             self.logger.warning(f"The following market_data dictionaries are incomplete: {market_data_status} ")
 
         except Exception as e:
-            self.logger.error(f"Error in build_order_data: {e}", exc_info=True)
+            self.logger.error(f"Error in build_order_data for  {asset} {trigger}: {e}", exc_info=True)
             return None
 
     def build_response(self, success: bool, message: str, code: Union[str, int],

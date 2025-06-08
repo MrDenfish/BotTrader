@@ -83,7 +83,7 @@ class WebSocketMarketManager:
         self.snapshot_manager = snapshot_manager
 
         # Utility functions
-        self.sharded_utils_print = shared_utils_print
+        self.shared_utils_print = shared_utils_print
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
         self.shared_utils_debugger = shared_utils_debugger
@@ -132,8 +132,25 @@ class WebSocketMarketManager:
             for ev in events:
                 ev_type = ev.get("type", "")
                 orders = ev.get("orders", [])
-                if not isinstance(orders, list):
+                if ev_type == "snapshot":
+                    self.logger.info("📸 Received snapshot with open orders")
+                if not isinstance(orders, list) or not orders:
                     continue
+
+                # Special handling for snapshot orders
+                if ev_type == "snapshot":
+                    for order in orders:
+                        order_id = order.get("order_id")
+                        symbol = order.get("product_id")
+                        status = (order.get("status") or "").upper()
+                        if not order_id or not symbol:
+                            continue
+
+                        normalized = self.shared_data_manager.normalize_raw_order(order)
+                        if normalized and status in {"PENDING", "OPEN", "ACTIVE"}:
+                            order_tracker[order_id] = normalized
+                            self.logger.info(f"📥 Snapshot order tracked: {order_id} | {symbol} | {status}")
+                    continue  # Skip rest of the loop for snapshot
 
                 for order in orders:
                     order_id = order.get("order_id")
@@ -157,10 +174,10 @@ class WebSocketMarketManager:
                         continue
 
                     # --- Delete on cancel
-                    if status == "CANCELLED":
+                    if status in {"CANCELLED", "CANCEL_QUEUED"}:
                         try:
                             await self.shared_data_manager.trade_recorder.delete_trade(order_id)
-                            self.logger.info(f"❎ {order_id} CANCELLED → deleted from DB")
+                            self.logger.info(f"❎ {order_id} {status} → deleted from DB")
                         except Exception:
                             self.logger.error("❌ delete_trade failed", exc_info=True)
                         order_tracker.pop(order_id, None)
@@ -180,6 +197,7 @@ class WebSocketMarketManager:
                         if status in {"PENDING", "OPEN", "ACTIVE"}:
                             order_tracker[order_id] = normalized
                         elif status == "FILLED":
+                            self.shared_utils_print.print_data(None, order_tracker, None, None,None)
                             order_tracker.pop(order_id, None)
 
                     # --- Handle filled orders (buy or sell)
