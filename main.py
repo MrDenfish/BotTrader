@@ -12,6 +12,9 @@ from aiohttp import web
 
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
+from Api_manager.coinbase_api import CoinbaseAPI
+from Api_manager.api_manager import ApiManager
+from MarketDataManager.ticker_manager import TickerManager
 from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
@@ -46,6 +49,23 @@ print(f"   DB: {_.machine_type}@{_.db_host}/{_.db_name}")
 async def load_config():
     return Config(is_docker=is_docker_env())
 
+async def preload_market_data(logger_manager, shared_data_manager, market_data_updater,  ):
+    try:
+        logger = logger_manager.get_logger("shared_logger")
+        logger.info("⏳ Checking startup snapshot state...")
+
+        await shared_data_manager.validate_startup_state(market_data_updater)
+
+    except Exception as e:
+        logger.error(f"❌ Failed to preload market/order data: {e}", exc_info=True)
+        raise
+
+
+async def graceful_shutdown(listener, runner):
+    if hasattr(listener, 'shutdown'):
+        await listener.shutdown()
+    await runner.cleanup()
+    shutdown_event.set()
 
 async def init_shared_data(logger_manager, shared_logger):
     shared_data_manager = SharedDataManager.__new__(SharedDataManager)
@@ -54,19 +74,20 @@ async def init_shared_data(logger_manager, shared_logger):
         logger_manager=shared_logger,
         shared_data_manager=shared_data_manager
     )
-    shared_utils_precision = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
-    shared_utils_utility = SharedUtility.get_instance(logger_manager)
 
-    shared_data_manager.__init__(shared_logger, database_session_manager,
-                                 shared_utils_utility,shared_utils_precision)
 
 
     # Initialize utilities
-    snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, shared_utils_precision,shared_logger)
+
     shared_utils_debugger = Debugging()
+    shared_utils_precision = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
+    snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, shared_utils_precision,
+                                                     shared_logger)
     shared_utils_utility = SharedUtility.get_instance(logger_manager)
     shared_utils_print = PrintData.get_instance(logger_manager, shared_utils_utility)
-    shared_utils_precision = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
+
+    shared_data_manager.__init__(shared_logger, database_session_manager,
+                                 shared_utils_utility, shared_utils_precision)
 
 
     # Set attributes on the shared data manager
@@ -76,7 +97,7 @@ async def init_shared_data(logger_manager, shared_logger):
     shared_data_manager.shared_utils_precision = shared_utils_precision
 
     await shared_data_manager.initialize()
-    return shared_data_manager, shared_utils_debugger, shared_utils_print
+    return shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_utility, shared_utils_precision
 
 
 async def build_websocket_components(config, listener, shared_data_manager):
@@ -240,7 +261,7 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, order_book
     return trade_bot
 
 
-async def init_webhook(config, session, shared_data_manager, logger_manager,shared_utils_debugger, shared_utils_print, alert,
+async def init_webhook(config, session, coinbase_api, shared_data_manager, logger_manager,shared_utils_debugger, shared_utils_print, alert,
                        startup_event=None, trade_bot=None, order_book_manager=None):
 
 
@@ -251,6 +272,7 @@ async def init_webhook(config, session, shared_data_manager, logger_manager,shar
         shared_data_manager=shared_data_manager,
         database_session_manager=shared_data_manager.database_session_manager,
         logger_manager=logger_manager,
+        coinbase_api=coinbase_api,
         session=session,
         market_manager=None,
         market_data_updater=None,
@@ -332,13 +354,14 @@ async def init_webhook(config, session, shared_data_manager, logger_manager,shar
 
 
 
-async def run_webhook(config, session, shared_data_manager, logger_manager, alert, shared_utils_debugger, shared_utils_print,
+async def run_webhook(config, session, coinbase_api, shared_data_manager, logger_manager, alert, shared_utils_debugger, shared_utils_print,
                       order_book_manager, startup_event=None, ccxt_api=None, trade_bot=None):
 
 
     listener, websocket_manager, app, runner = await init_webhook(
         config=config,
         session=session,
+        coinbase_api=coinbase_api,
         shared_data_manager=shared_data_manager,
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
@@ -372,13 +395,8 @@ async def run_webhook(config, session, shared_data_manager, logger_manager, aler
     await graceful_shutdown(listener, runner)
     return listener
 
-async def graceful_shutdown(listener, runner):
-    if hasattr(listener, 'shutdown'):
-        await listener.shutdown()
-    await runner.cleanup()
-    shutdown_event.set()
 
-import aiohttp  # Make sure this import is present at the top
+
 
 async def main():
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
@@ -393,15 +411,12 @@ async def main():
     sighook_logger = logger_manager.get_logger("sighook_logger")
     shared_logger = logger_manager.get_logger("shared_logger")
 
-    if args.run in ["sighook", "both"]:
-        alert = AlertSystem(logger_manager)
-    else:
-        alert = None
+    alert = AlertSystem(logger_manager) if args.run != 'webhook' else None
 
     config.exchange = ExchangeManager.get_instance(config.load_webhook_api_key()).get_exchange()
     startup_event = asyncio.Event()
 
-    shared_data_manager, shared_utils_debugger, shared_utils_print = await init_shared_data(
+    shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_utility, shared_utils_precision = await init_shared_data(
         logger_manager, shared_logger,
     )
 
@@ -414,9 +429,54 @@ async def main():
         ccxt_api=None  # Pass your existing ccxt_api if available
     )
 
+
+
     try:
-        async with aiohttp.ClientSession() as session:
-            if args.run == 'sighook':
+        async with (aiohttp.ClientSession() as session):
+
+            coinbase_api = CoinbaseAPI(session, shared_utils_utility, logger_manager,
+                                       shared_utils_precision)
+            ticker_manager = TickerManager(
+                config=config,
+                coinbase_api=coinbase_api,
+                shared_utils_debugger=shared_data_manager.shared_utils_debugger,
+                shared_utils_print=shared_data_manager.shared_utils_print,
+                logger_manager=logger_manager,
+                order_book_manager=order_book_manager,
+                rest_client=config.rest_client,
+                portfolio_uuid=config.portfolio_uuid,
+                exchange=config.exchange,
+                ccxt_api=None,
+                shared_data_manager=shared_data_manager,
+                shared_utils_precision=shared_data_manager.shared_utils_precision
+            )
+
+            market_data_updater = await MarketDataUpdater.get_instance(
+                ticker_manager=ticker_manager,
+                logger_manager=logger_manager,
+                websocket_helper=None,
+                shared_data_manager=shared_data_manager
+            )
+
+            await preload_market_data(
+                logger_manager=logger_manager,
+                shared_data_manager=shared_data_manager,
+                market_data_updater=market_data_updater  # ✅ pass it in
+            )
+
+            if args.run == 'webhook':
+                await run_webhook(
+                    config=config,
+                    session=session,
+                    coinbase_api=coinbase_api,
+                    shared_data_manager=shared_data_manager,
+                    logger_manager=logger_manager,
+                    alert=alert,
+                    shared_utils_debugger=shared_utils_debugger,
+                    shared_utils_print=shared_utils_print,
+                    order_book_manager=order_book_manager
+                )
+            elif   args.run == 'sighook':
                 await run_sighook(
                     config=config,
                     shared_data_manager=shared_data_manager,
@@ -429,23 +489,12 @@ async def main():
                     shared_utils_print=shared_utils_print
                 )
 
-            elif args.run == 'webhook':
-                await run_webhook(
-                    config=config,
-                    session=session,
-                    shared_data_manager=shared_data_manager,
-                    logger_manager=logger_manager,
-                    alert=alert,
-                    shared_utils_debugger=shared_utils_debugger,
-                    shared_utils_print=shared_utils_print,
-                    order_book_manager=order_book_manager
-                )
-
             elif args.run == 'both':
                 # ✅ Step 1: Start Webhook first and get the listener instance
                 listener, websocket_manager, app, runner = await init_webhook(
                     config=config,
                     session=session,
+                    coinbase_api=coinbase_api,
                     shared_data_manager=shared_data_manager,
                     logger_manager=logger_manager,
                     shared_utils_debugger=shared_utils_debugger,
@@ -455,8 +504,6 @@ async def main():
                     alert=alert,
                     order_book_manager=order_book_manager  # ✅ pass it in
                 )
-
-
 
                 # ✅ Step 2: Run sighook now that order_book_manager is available
                 sighook_task = asyncio.create_task(run_sighook(

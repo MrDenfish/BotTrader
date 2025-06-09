@@ -170,7 +170,7 @@ class TradeOrderManager:
                     print(f"{asset} not found in usd_pairs.")
 
 
-                product_id = product_id.replace('-', '/')
+                product_id = product_id.replace('/', '-') # normalize
 
                 # Open orders
                 # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=product_id)
@@ -189,7 +189,7 @@ class TradeOrderManager:
                 if 'symbol' in open_orders.columns and 'info' in open_orders.columns:
                     for _, row in open_orders.iterrows():
                         info = row.get('info', {})
-                        symbol = info.get('product_id', '').replace('-', '/')
+                        symbol = info.get('product_id', '').replace('/', '-')
 
                         if product_id == symbol:  # `symbol` should be in format 'XXX/USD'
                             active_open_order = True
@@ -232,12 +232,10 @@ class TradeOrderManager:
                     self.spot_position.get("USD", {}).get("available_to_trade_fiat")).quantize(2, rounding=ROUND_HALF_UP)
 
                 print(f'‼️ USD Avail: {usd_avail} / USD Bal: {usd_bal}  ‼️')
-                pair = product_id.replace('-', '/')  # normalize first
-                base_currency, quote_currency = pair.split('/')
-                trading_pair = product_id.replace('-', '/')
-                current_ask = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('ask'))
-                current_bid = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('bid'))
-                spread = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('spread'))
+                base_currency, quote_currency = product_id.split('-')
+                current_ask = Decimal(self.bid_ask_spread.get(product_id,{}).get('ask'))
+                current_bid = Decimal(self.bid_ask_spread.get(product_id,{}).get('bid'))
+                spread = Decimal(self.bid_ask_spread.get(product_id,{}).get('spread'))
 
                 # Calculate current price
                 current_price = (current_ask + current_bid) / 2
@@ -256,14 +254,14 @@ class TradeOrderManager:
                     size_of_order_qty = (fiat_avail_for_order / price)
                     size_of_order_qty = self.shared_utils_precision.safe_quantize(size_of_order_qty, quote_quantizer) if price > 0 else Decimal(0)
                     if (price * size_of_order_qty) < self.min_order_amount:
-                        print(f'‼️ Insufficient fiat balance to place buy order: {trading_pair}')
+                        print(f'‼️ Insufficient fiat balance to place buy order: {product_id}')
                         return None
 
                 else:
                     size_of_order_qty = available_to_trade
 
                 # Fetch order book
-                temp_data = {'quote_decimal': quote_deci, 'base_decimal': base_deci, 'trading_pair': trading_pair}
+                temp_data = {'quote_decimal': quote_deci, 'base_decimal': base_deci, 'trading_pair': product_id}
                 temp_data = OrderData.from_dict(temp_data)
                 # order_book = await self.order_book_manager.get_order_book(temp_data, trading_pair, self.bid_ask_spread)
                 temp_order = {
@@ -293,7 +291,7 @@ class TradeOrderManager:
                 usd_avail = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_avail, 'quote')
                 spread = Decimal(spread)
                 return OrderData(
-                    trading_pair=trading_pair,
+                    trading_pair=product_id,
                     time_order_placed=None,
                     type= 'limit' if trigger in ('ROC', 'market_making') else None,
                     order_id='UNKNOWN',

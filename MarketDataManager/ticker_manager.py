@@ -3,6 +3,9 @@ from decimal import Decimal
 
 import pandas as pd
 import decimal
+import random
+from aiohttp import ClientError
+from requests.exceptions import HTTPError
 from ccxt.base.errors import BadSymbol
 
 
@@ -84,11 +87,7 @@ class TickerManager:
         """
         try:
             # Fetch market data and portfolio balances concurrently
-            market_data_task = self.ccxt_api.ccxt_api_call(
-                self.exchange.fetch_markets,
-                'public',
-                params={'paginate': True, 'limit': 1000}
-            )
+            market_data_task = self.coinbase_api.fetch_all_products()
             balances_task = self.fetch_and_filter_balances(self.portfolio_uuid)
             market_data, non_zero_balances = await asyncio.gather(market_data_task, balances_task)
             if not market_data:
@@ -230,57 +229,69 @@ class TickerManager:
 
     def filter_volume_for_market_data(self, market_data):
         """
-        Filters market data based on volume criteria.
-        - First pass: calculate average quote volume
-        - Second pass: filter data based on that average
+        Filters market data from Coinbase REST /products endpoint.
+
+        Returns:
+            - filtered_data: markets with quote volume >= average
+            - usd_pairs: all USD-quoted pairs regardless of volume
+            - average_quote_volume: mean of valid quote volumes
         """
         try:
             filtered_data = []
             usd_pairs = []
             valid_volumes = []
 
-            # First pass: Gather valid volumes for averaging
+            # First pass: collect all valid USD quote volumes
             for item in market_data:
-                info = item.get('info', {})
-                if info.get('new') and info.get('quote') == 'USD':
-                    print(f"\n< -------- New market found: {item.get('symbol')} -------- >\n")
-                    # TODO: Insert/remove from 'new_markets' DB table as needed
+                try:
+                    if item.get('quote_currency_id') != 'USD':
+                        continue
 
-                quote_volume = self.safe_float(info.get('approximate_quote_24h_volume'))
-                if quote_volume > 0:
-                    valid_volumes.append(quote_volume)
+                    quote_volume = self.safe_float(item.get('approximate_quote_24h_volume'))
+                    if quote_volume > 0:
+                        valid_volumes.append(quote_volume)
+                except Exception as e:
+                    self.logger.debug(f"⏩ Skipping item during volume average scan: {e}")
+                    continue
 
             if not valid_volumes:
-                self.logger.debug("No valid quote volumes found for averaging.")
+                self.logger.debug("⚠️ No valid quote volumes found for averaging.")
                 return [], [], None
 
             average_quote_volume = sum(valid_volumes) / len(valid_volumes)
 
-            # Second pass: Build filtered datasets
+            # Second pass: filter and format usable entries
             for item in market_data:
                 try:
-                    info = item.get('info', {})
-                    quote_volume = self.safe_float(info.get('approximate_quote_24h_volume'))
-                    volume_24h = self.safe_float(info.get('volume_24h'))
-                    price = self.safe_float(info.get('price'))
-                    price_change = self.safe_float(info.get('price_percentage_change_24h'))
-
-                    if item.get('quote') != 'USD' or not item.get('active') or item.get('type') != 'spot':
+                    if (
+                            item.get('quote_currency_id') != 'USD'
+                            or item.get('product_type') != 'SPOT'
+                            or item.get('status') != 'online'
+                    ):
                         continue
 
+                    quote_volume = self.safe_float(item.get('approximate_quote_24h_volume'))
+                    volume_24h = self.safe_float(item.get('volume_24h'))
+                    price = self.safe_float(item.get('price'))
+                    price_change = self.safe_float(item.get('price_percentage_change_24h'))
+
                     common_entry = {
-                        'asset': item.get('base'),
-                        'quote': item.get('quote'),
-                        'symbol': item.get('symbol'),
-                        'precision': item.get('precision'),
+                        'asset': item.get('base_currency_id'),
+                        'quote': item.get('quote_currency_id'),
+                        'symbol': item.get('product_id'),
+                        'precision': {
+                            'base_increment': item.get('base_increment'),
+                            'quote_increment': item.get('quote_increment'),
+                            'price_increment': item.get('price_increment')
+                        },
                         'info': {
-                            'product_id': info.get('product_id'),
-                            'type': item.get('type'),
+                            'product_id': item.get('product_id'),
+                            'type': item.get('product_type'),
                             'price': price,
                             'volume_24h': volume_24h,
                             '24h_quote_volume': quote_volume,
                             'price_percentage_change_24h': price_change,
-                            'average_min_vol': average_quote_volume  # ✅ Added here
+                            'average_min_vol': average_quote_volume
                         }
                     }
 
@@ -290,13 +301,13 @@ class TickerManager:
                         filtered_data.append(common_entry)
 
                 except Exception as e:
-                    self.logger.debug(f"Skipping market due to error: {e}, item: {item}")
+                    self.logger.debug(f"⏩ Skipping item during filter: {e}")
                     continue
 
             return filtered_data, usd_pairs, average_quote_volume
 
         except Exception as e:
-            self.logger.error(f"❌ Error in filter_market_data: {e}")
+            self.logger.error(f"❌ Error in filter_volume_for_market_data: {e}", exc_info=True)
             return [], [], 0
 
     async def filter_markets_by_criteria(self, minimum_volume_market_data, usd_pairs):
@@ -395,8 +406,8 @@ class TickerManager:
             formatted_tickers = {}
             for entry in tickers.get("pricebooks", []):
                 product_id = entry.get("product_id")
-                symbol = product_id.replace("-", "/")
-                asset = symbol.split("/")[0]
+
+                asset = product_id.split("-")[0]
                 base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
 
                 try:
@@ -405,9 +416,9 @@ class TickerManager:
                     if bid and ask:
                         bid_ask =  {'bid':bid, 'ask':ask}
                         #bid_ask = self.order_book_manager.calculate_bid_ask(bid
-                        bid_ask_spread[symbol] = bid_ask
+                        bid_ask_spread[product_id] = bid_ask
                         bid,ask,spread = self.order_book_manager.analyze_spread(quote_deci, bid_ask)
-                        formatted_tickers[symbol] = {"bid": bid, "ask": ask, "spread":spread}
+                        formatted_tickers[product_id] = {"bid": bid, "ask": ask, "spread":spread}
                 except (IndexError, TypeError, ValueError):
                     self.logger.warning(f"⚠️ Malformed pricebook for {product_id}")
 
@@ -465,19 +476,23 @@ class TickerManager:
         max_retries = 3
         retry_delay = 2  # Seconds
 
-        for attempt in range(max_retries):
+        for attempt in range(1, max_retries + 1):
             try:
-                response = self.rest_client.get_portfolio_breakdown(portfolio_uuid, currency)
-                if not response or not hasattr(response, "breakdown"):
-                    raise ValueError("Invalid response structure from portfolio breakdown API.")
-
-                return response  # Return valid response
+                self.logger.debug(f"🔁 Attempt {attempt} to fetch portfolio breakdown.")
+                return self.rest_client.get_portfolio_breakdown(portfolio_uuid, currency)
+            except HTTPError as e:
+                if "429" in str(e):
+                    wait = min(2 ** attempt, 60) + random.uniform(0, 1)
+                    self.logger.warning(f"⏳ Rate limit hit. Sleeping for {wait:.2f}s...")
+                    await asyncio.sleep(wait)
+                else:
+                    self.logger.error(f"❌ HTTP error during get_portfolio_breakdown: {e}")
+                    break
             except Exception as e:
-                self.logger.error(f"❌ Attempt {attempt + 1} failed: {e}", exc_info=True)
-                if attempt == max_retries - 1:
-                    self.logger.error("Max retries reached for get_portfolio_breakdown.")
-                    return None
-                await asyncio.sleep(retry_delay * (2 ** attempt))
+                self.logger.error(f"❌ Unexpected error: {e}", exc_info=True)
+                break
+        self.logger.error("❌ All retry attempts failed for get_portfolio_breakdown.")
+        return None
 
     async def fetch_bids_asks(self):
         try:
