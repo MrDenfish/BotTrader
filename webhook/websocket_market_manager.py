@@ -115,7 +115,6 @@ class WebSocketMarketManager:
         ▸ Deletes DB rows when orders are CANCELLED
         ▸ Triggers handle_order_fill on filled orders
         """
-        #  print(f"📥 Received user message: {json.dumps(data, indent=2)}")  # debug
         try:
             events = data.get("events", [])
             if not isinstance(events, list):
@@ -125,9 +124,11 @@ class WebSocketMarketManager:
             # Snapshots and shared state
             mkt_snap, om_snap = await self.snapshot_manager.get_snapshots()
             spot_pos = mkt_snap.get("spot_positions", {})
-            cur_prices = mkt_snap.get("current_prices", {})
+            cur_prices = mkt_snap.get("bid_ask_spread", {})
             usd_pairs = mkt_snap.get("usd_pairs_cache", {})
-            order_tracker = om_snap.get("order_tracker", {})
+
+            # Ensure order_tracker is initialized
+            om_snap.setdefault("order_tracker", {})
 
             for ev in events:
                 ev_type = ev.get("type", "")
@@ -137,7 +138,7 @@ class WebSocketMarketManager:
                 if not isinstance(orders, list) or not orders:
                     continue
 
-                # Special handling for snapshot orders
+                # --- Handle snapshot batch ---
                 if ev_type == "snapshot":
                     for order in orders:
                         order_id = order.get("order_id")
@@ -148,10 +149,11 @@ class WebSocketMarketManager:
 
                         normalized = self.shared_data_manager.normalize_raw_order(order)
                         if normalized and status in {"PENDING", "OPEN", "ACTIVE"}:
-                            order_tracker[order_id] = normalized
+                            om_snap["order_tracker"][order_id] = normalized
                             self.logger.info(f"📥 Snapshot order tracked: {order_id} | {symbol} | {status}")
-                    continue  # Skip rest of the loop for snapshot
+                    continue  # skip remainder of loop for snapshots
 
+                # --- Process normal (non-snapshot) events ---
                 for order in orders:
                     order_id = order.get("order_id")
                     parent_id = order.get("parent_order_id") or order.get("parent_id")
@@ -167,23 +169,24 @@ class WebSocketMarketManager:
                         "price": order.get("limit_price") or order.get("price"),
                         "amount": order.get("size") or order.get("filled_size") or order.get("order_size") or 0,
                         "status": status.lower(),
-                        "order_time": order.get("event_time") or order.get("created_time") or  datetime.utcnow().isoformat(),
+                        "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
                         "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
                     }
+
                     if not order_id or not symbol:
                         continue
 
-                    # --- Delete on cancel
+                    # --- Handle cancel events ---
                     if status in {"CANCELLED", "CANCEL_QUEUED"}:
                         try:
                             await self.shared_data_manager.trade_recorder.delete_trade(order_id)
                             self.logger.info(f"❎ {order_id} {status} → deleted from DB")
                         except Exception:
                             self.logger.error("❌ delete_trade failed", exc_info=True)
-                        order_tracker.pop(order_id, None)
+                        om_snap["order_tracker"].pop(order_id, None)
                         continue
 
-                    # --- Record TP/SL child sells
+                    # --- Record TP/SL child sell orders ---
                     if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
                         try:
                             await self.shared_data_manager.trade_recorder.record_trade(trade)
@@ -191,14 +194,14 @@ class WebSocketMarketManager:
                         except Exception:
                             self.logger.error("record_trade failed", exc_info=True)
 
-                    # --- Maintain in-memory tracker
+                    # --- Normalize and update tracker
                     normalized = self.shared_data_manager.normalize_raw_order(order)
                     if normalized:
                         if status in {"PENDING", "OPEN", "ACTIVE"}:
-                            order_tracker[order_id] = normalized
+                            om_snap["order_tracker"][order_id] = normalized
                         elif status == "FILLED":
-                            self.shared_utils_print.print_data(None, order_tracker, None, None,None)
-                            order_tracker.pop(order_id, None)
+                            self.shared_utils_print.print_data(None, om_snap["order_tracker"], None, None, None)
+                            om_snap["order_tracker"].pop(order_id, None)
 
                     # --- Handle filled orders (buy or sell)
                     if status == "FILLED":
@@ -229,12 +232,10 @@ class WebSocketMarketManager:
                             self.logger.info(f"✅ Order filled: {order_id} at {order.get('avg_price')} with fee {order.get('total_fees')}")
                             await self.listener.handle_order_fill(order_data)
 
-
                         except Exception:
                             self.logger.error("❌ Error processing user WebSocket message", exc_info=True)
 
-            # Finalize snapshot
-            om_snap["order_tracker"] = order_tracker
+            # ✅ Finalize by pushing updated tracker into shared state
             await self.shared_data_manager.set_order_management(om_snap)
 
         except Exception:
@@ -321,7 +322,7 @@ class WebSocketMarketManager:
                 # Step 2: Work with order_tracker inside the snapshot
                 order_tracker = order_management_snapshot.get('order_tracker', {})
                 spot_position = market_data_snapshot.get('spot_positions', {})
-                current_prices = market_data_snapshot.get('current_prices', {})
+                bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
                 usd_pairs = market_data_snapshot.get('usd_pairs', {})
 
                 normalized = self.shared_data_manager.normalize_raw_order(order)
@@ -374,7 +375,7 @@ class WebSocketMarketManager:
                 }
 
                 profit = await self.profit_data_manager.calculate_profitability(
-                    asset, required_prices, current_prices, usd_pairs)
+                    asset, required_prices, bid_ask_spread, usd_pairs)
                 if profit and profit.get("profit"):
                     normalized["profit"] = profit
                     profit_data_list.append(profit)

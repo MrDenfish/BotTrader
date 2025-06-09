@@ -1,7 +1,135 @@
-2025-06-08 00:43:25,978 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 00:43:25,987 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 00:43:25,996 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 00:43:40,787 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:130)
+2025-06-09 09:01:37,838 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
+2025-06-09 09:01:37,840 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
+2025-06-09 09:01:37,858 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:775)
+2025-06-09 09:01:38,193 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
+2025-06-09 09:01:38,193 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
+2025-06-09 09:01:40,411 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (0 open / 250 recent) (listener.py:902)
+2025-06-09 09:01:40,663 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:98)
+2025-06-09 09:01:40,666 - webhook_logger - ERROR - User subscription error: 'symbol' (websocket_helper.py:388)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/websocket_helper.py", line 372, in subscribe_user
+    self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/range.py", line 417, in get_loc
+    raise KeyError(key)
+KeyError: 'symbol'
+2025-06-09 09:01:40,672 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:110)
+2025-06-09 09:01:40,679 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:98)
+2025-06-09 09:01:40,688 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:98)
+2025-06-09 09:01:40,754 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:98)
+2025-06-09 09:01:40,756 - webhook_logger - ERROR - User subscription error: 'symbol' (websocket_helper.py:388)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/websocket_helper.py", line 372, in subscribe_user
+    self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/range.py", line 417, in get_loc
+    raise KeyError(key)
+KeyError: 'symbol'
+2025-06-09 09:01:40,757 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:110)
+2025-06-09 09:01:41,570 - webhook_logger - INFO - ⚠️⚠️⚠️  update_market_data took 3.71s    ⚠️⚠️⚠️ (listener.py:364)
+2025-06-09 09:01:41,570 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:387)
+2025-06-09 09:01:41,570 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:634)
+2025-06-09 09:01:41,571 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:635)
+2025-06-09 09:01:41,572 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:656)
+2025-06-09 09:01:41,573 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.21, Qty=43.1049, PnL%=3.42% (websocket_helper.py:701)
+2025-06-09 09:01:41,574 - webhook_logger - INFO - 💰 TP trigger for INDEX/USD: 3.42% (websocket_helper.py:704)
+2025-06-09 09:01:41,680 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:107)
+2025-06-09 09:01:41,680 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:320)
+2025-06-09 09:01:41,681 - webhook_logger - WARNING - ⚠️ No valid product IDs found. Subscription aborted. (websocket_helper.py:323)
+2025-06-09 09:01:41,681 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:110)
+2025-06-09 09:01:41,690 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:107)
+2025-06-09 09:01:41,691 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:320)
+2025-06-09 09:01:41,691 - webhook_logger - WARNING - ⚠️ No valid product IDs found. Subscription aborted. (websocket_helper.py:323)
+2025-06-09 09:01:41,691 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:110)
+2025-06-09 09:24:00,319 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
+2025-06-09 09:24:00,319 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
+2025-06-09 09:24:17,690 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:775)
+2025-06-09 09:24:17,694 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:131)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 654, in __await_impl__
+    _transport, protocol = await self._create_connection()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1036, in create_connection
+    infos = await self._ensure_resolved(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1418, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 863, in getaddrinfo
+    return await self.run_in_executor(
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 97, in connect_websocket
+    async with websockets.connect(ws_url, max_size = 2 ** 24 ) as ws:   # 16 MB
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 635, in __aenter__
+    return await self
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 652, in __await_impl__
+    async with asyncio_timeout(self.open_timeout):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 181, in __aexit__
+    self._do_exit(exc_type)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 268, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-06-09 09:24:17,696 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:131)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 654, in __await_impl__
+    _transport, protocol = await self._create_connection()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1036, in create_connection
+    infos = await self._ensure_resolved(
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 1418, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/base_events.py", line 863, in getaddrinfo
+    return await self.run_in_executor(
+asyncio.exceptions.CancelledError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 97, in connect_websocket
+    async with websockets.connect(ws_url, max_size = 2 ** 24 ) as ws:   # 16 MB
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 635, in __aenter__
+    return await self
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 652, in __await_impl__
+    async with asyncio_timeout(self.open_timeout):
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 181, in __aexit__
+    self._do_exit(exc_type)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 268, in _do_exit
+    raise asyncio.TimeoutError
+asyncio.exceptions.TimeoutError
+2025-06-09 09:24:18,369 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
+2025-06-09 09:24:18,370 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
+2025-06-09 09:24:24,901 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:98)
+2025-06-09 09:24:24,908 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:98)
+2025-06-09 09:24:24,911 - webhook_logger - ERROR - User subscription error: 'symbol' (websocket_helper.py:388)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/websocket_helper.py", line 372, in subscribe_user
+    self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/range.py", line 417, in get_loc
+    raise KeyError(key)
+KeyError: 'symbol'
+2025-06-09 09:24:24,914 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:110)
+2025-06-09 09:24:25,052 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:98)
+2025-06-09 09:24:25,054 - webhook_logger - ERROR - User subscription error: 'symbol' (websocket_helper.py:388)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/websocket_helper.py", line 372, in subscribe_user
+    self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/range.py", line 417, in get_loc
+    raise KeyError(key)
+KeyError: 'symbol'
+2025-06-09 09:24:25,054 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:110)
+2025-06-09 09:24:25,075 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:98)
+2025-06-09 09:36:21,269 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
+2025-06-09 09:36:21,269 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
+2025-06-09 09:36:22,996 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:775)
+2025-06-09 09:36:23,615 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
+2025-06-09 09:36:23,615 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
+2025-06-09 09:36:31,494 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:131)
 Traceback (most recent call last):
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 654, in __await_impl__
     _transport, protocol = await self._create_connection()
@@ -14,8 +142,8 @@ asyncio.exceptions.CancelledError
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 96, in connect_websocket
-    async with websockets.connect(ws_url, max_size=2 ** 20) as ws:
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 97, in connect_websocket
+    async with websockets.connect(ws_url, max_size = 2 ** 24 ) as ws:   # 16 MB
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 635, in __aenter__
     return await self
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 652, in __await_impl__
@@ -25,7 +153,7 @@ Traceback (most recent call last):
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 268, in _do_exit
     raise asyncio.TimeoutError
 asyncio.exceptions.TimeoutError
-2025-06-08 00:43:40,792 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:130)
+2025-06-09 09:36:31,495 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:131)
 Traceback (most recent call last):
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 654, in __await_impl__
     _transport, protocol = await self._create_connection()
@@ -38,8 +166,8 @@ asyncio.exceptions.CancelledError
 During handling of the above exception, another exception occurred:
 
 Traceback (most recent call last):
-  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 96, in connect_websocket
-    async with websockets.connect(ws_url, max_size=2 ** 20) as ws:
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 97, in connect_websocket
+    async with websockets.connect(ws_url, max_size = 2 ** 24 ) as ws:   # 16 MB
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 635, in __aenter__
     return await self
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 652, in __await_impl__
@@ -49,685 +177,15 @@ Traceback (most recent call last):
   File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 268, in _do_exit
     raise asyncio.TimeoutError
 asyncio.exceptions.TimeoutError
-2025-06-08 00:43:41,106 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (3 open / 250 recent) (listener.py:901)
-2025-06-08 00:43:49,501 - webhook_logger - INFO - ⏱ update_market_data took 23.51s (listener.py:364)
-2025-06-08 00:43:49,502 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:43:49,589 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.09s (listener.py:386)
-2025-06-08 00:43:50,182 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:97)
-2025-06-08 00:43:50,198 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:109)
-2025-06-08 00:43:50,201 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 00:43:50,477 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:43:50,477 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:43:50,480 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:43:50,483 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:43:50,483 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.98, Qty=0.002, PnL%=-2.00% (websocket_helper.py:696)
-2025-06-08 00:43:50,484 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -2.00% (websocket_helper.py:702)
-2025-06-08 00:43:50,540 - webhook_logger - INFO - ✅ First message received from user channel: user (websocket_helper.py:219)
-2025-06-08 00:43:50,540 - webhook_logger - INFO - 📸 Received snapshot with open orders (websocket_market_manager.py:136)
-2025-06-08 00:43:50,540 - webhook_logger - INFO - 📥 Snapshot order tracked: 749ae3bd-5289-4857-b437-62436c34e79b | BADGER-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:43:50,541 - webhook_logger - INFO - 📥 Snapshot order tracked: 0f40b965-b3f4-4037-9c80-be433c026144 | SHDW-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:43:50,541 - webhook_logger - INFO - 📥 Snapshot order tracked: 9e3e62b6-6195-4e8a-91c0-ccb6cb5e85e5 | GTC-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:43:50,541 - webhook_logger - INFO - ✅ First message received from user channel: subscriptions (websocket_helper.py:219)
-2025-06-08 00:43:50,939 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2517.19, Qty=0.06703810, PnL%=40.47% (websocket_helper.py:696)
-2025-06-08 00:43:50,939 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105506.06, Qty=0.00257846, PnL%=10.98% (websocket_helper.py:696)
-2025-06-08 00:43:50,940 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=400.01, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:43:50,940 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:43:51,214 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 00:43:51,214 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 00:43:51,215 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 00:43:51,238 - webhook_logger - INFO - ✅ First message received from user channel: heartbeats (websocket_helper.py:219)
-2025-06-08 00:43:51,658 - webhook_logger - INFO - ✅ First message received from market channel: ticker_batch (websocket_helper.py:276)
-2025-06-08 00:43:54,695 - webhook_logger - INFO - 🟡 Adjusted SELL limit price for TNSR-USD: 0.126 (Attempt 1) (webhook_order_types.py:334)
-2025-06-08 00:43:55,209 - webhook_logger - WARNING - ❗️ Order Rejected Limit Order: TNSR-USD:{'trigger': 'SL', 'trigger_note': 'stop_loss=-0.0075%'} (webhook_order_types.py:371)
-NoneType: None
-2025-06-08 00:43:55,211 - webhook_logger - ERROR - ❌ SL order for TNSR/USD: {'success': False, 'message': 'unknown', 'code': '500', 'details': {'trading_pair': 'TNSR/USD', 'time_order_placed': None, 'type': 'limit', 'order_id': '', 'side': 'sell', 'filled_price': Decimal('0'), 'base_currency': 'TNSR', 'quote_currency': 'USD', 'usd_balance': Decimal('176.000'), 'base_decimal': 2, 'quote_decimal': 3, 'quote_increment': Decimal('0.001'), 'highest_bid': Decimal('0.125'), 'lowest_ask': Decimal('0.126'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.001'), 'open_orders': Empty DataFrame
-Columns: []
-Index: [], 'status': 'VALID', 'source': 'websocket', 'trigger': {'trigger': 'SL', 'trigger_note': 'stop_loss=-0.0075%'}, 'base_avail_balance': Decimal('400.02'), 'total_balance_crypto': Decimal('400.02'), 'available_to_trade_crypto': Decimal('400.02'), 'usd_avail_balance': Decimal('73.000'), 'order_amount_fiat': 0, 'order_amount_crypto': Decimal('400.02'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.127'), 'adjusted_size': Decimal('400.00'), 'stop_loss_price': Decimal('0.125'), 'take_profit_price': Decimal('0.130'), 'volume_24h': None}, 'error_response': {}} (websocket_helper.py:769)
-2025-06-08 00:43:55,211 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:43:55,215 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:43:55,215 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 5.63s (listener.py:393)
-2025-06-08 00:43:55,216 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:43:58,963 - webhook_logger - INFO - ⏱ update_market_data took 2.96s (listener.py:364)
-2025-06-08 00:43:58,964 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:43:58,964 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:44:00,408 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:44:00,408 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:44:00,410 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:44:00,412 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:44:00,412 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.98, Qty=0.002, PnL%=-2.00% (websocket_helper.py:696)
-2025-06-08 00:44:00,413 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -2.00% (websocket_helper.py:702)
-2025-06-08 00:44:00,921 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2517.0, Qty=0.06703810, PnL%=40.46% (websocket_helper.py:696)
-2025-06-08 00:44:00,922 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105506.05, Qty=0.00257846, PnL%=10.98% (websocket_helper.py:696)
-2025-06-08 00:44:00,922 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=400.01, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:44:00,922 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:44:02,136 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:44:02,340 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:44:02,340 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 3.38s (listener.py:393)
-2025-06-08 00:44:02,341 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:44:11,629 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for C98-USD: 0.0486 (Attempt 1) (webhook_order_types.py:334)
-2025-06-08 00:44:12,344 - webhook_logger - WARNING - ❗️ Order Rejected Limit Order: C98-USD:{'trigger': 'passive_buy', 'trigger_note': 'price:0.0485'} (webhook_order_types.py:371)
-NoneType: None
-2025-06-08 00:44:23,821 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ERN-USD: 1.3189 (Attempt 1) (webhook_order_types.py:334)
-2025-06-08 00:44:24,261 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 1: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:44:24,455 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ERN-USD: 1.3189 (Attempt 2) (webhook_order_types.py:334)
-2025-06-08 00:44:24,917 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 2: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:44:25,212 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ERN-USD: 1.3189 (Attempt 3) (webhook_order_types.py:334)
-2025-06-08 00:44:25,627 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 3: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:44:25,627 - webhook_logger - WARNING - ❗️ Order Rejected Limit Order: ERN-USD:{'trigger': 'passive_buy', 'trigger_note': 'price:1.3130'} (webhook_order_types.py:371)
-NoneType: None
-2025-06-08 00:44:28,469 - webhook_logger - INFO - ⏱ update_market_data took 2.45s (listener.py:364)
-2025-06-08 00:44:28,470 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:44:28,470 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:44:29,701 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:44:29,701 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:44:29,702 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:44:29,704 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:44:29,704 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.98, Qty=0.002, PnL%=-2.00% (websocket_helper.py:696)
-2025-06-08 00:44:29,704 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -2.00% (websocket_helper.py:702)
-2025-06-08 00:44:30,403 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2517.2, Qty=0.06703810, PnL%=40.47% (websocket_helper.py:696)
-2025-06-08 00:44:30,403 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105506.04, Qty=0.00257846, PnL%=10.98% (websocket_helper.py:696)
-2025-06-08 00:44:30,403 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:44:30,403 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:44:31,252 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:44:31,265 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:44:31,266 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.79s (listener.py:393)
-2025-06-08 00:44:31,266 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:48:11,635 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 00:48:11,635 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 00:48:11,647 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 00:54:29,520 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 00:54:29,520 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 00:54:29,529 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 00:54:31,738 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (5 open / 250 recent) (listener.py:901)
-2025-06-08 00:54:35,825 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:97)
-2025-06-08 00:54:35,839 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:109)
-2025-06-08 00:54:35,842 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 00:54:36,499 - webhook_logger - INFO - ⏱ update_market_data took 6.97s (listener.py:364)
-2025-06-08 00:54:36,501 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:54:36,501 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:54:36,516 - webhook_logger - INFO - ✅ First message received from user channel: user (websocket_helper.py:219)
-2025-06-08 00:54:36,517 - webhook_logger - INFO - 📸 Received snapshot with open orders (websocket_market_manager.py:136)
-2025-06-08 00:54:36,517 - webhook_logger - INFO - 📥 Snapshot order tracked: 749ae3bd-5289-4857-b437-62436c34e79b | BADGER-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:54:36,517 - webhook_logger - INFO - 📥 Snapshot order tracked: 0f40b965-b3f4-4037-9c80-be433c026144 | SHDW-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:54:36,517 - webhook_logger - INFO - 📥 Snapshot order tracked: 9e3e62b6-6195-4e8a-91c0-ccb6cb5e85e5 | GTC-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:54:36,517 - webhook_logger - INFO - 📥 Snapshot order tracked: eb681699-af38-4497-9ca6-907c58e5d3e0 | TNSR-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:54:36,518 - webhook_logger - INFO - 📥 Snapshot order tracked: 2db1c9c9-41d6-4ed4-a64c-b0cacf430569 | C98-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 00:54:36,518 - webhook_logger - INFO - ✅ First message received from user channel: subscriptions (websocket_helper.py:219)
-2025-06-08 00:54:36,854 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 00:54:36,855 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 00:54:36,856 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 00:54:36,923 - webhook_logger - INFO - ✅ First message received from user channel: heartbeats (websocket_helper.py:219)
-2025-06-08 00:54:37,219 - webhook_logger - INFO - ✅ First message received from market channel: ticker_batch (websocket_helper.py:276)
-2025-06-08 00:54:37,456 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:54:37,456 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:54:37,458 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:54:37,461 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:54:37,462 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:54:37,462 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:54:42,752 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2518.9, Qty=0.06703810, PnL%=40.56% (websocket_helper.py:696)
-2025-06-08 00:54:42,752 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105490.35, Qty=0.00257846, PnL%=10.97% (websocket_helper.py:696)
-2025-06-08 00:54:42,753 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:54:42,753 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:54:44,802 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:54:44,813 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:54:44,813 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 8.31s (listener.py:393)
-2025-06-08 00:54:44,814 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:55:02,255 - webhook_logger - INFO - ⏱ update_market_data took 2.72s (listener.py:364)
-2025-06-08 00:55:02,256 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:55:02,257 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:55:03,605 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:55:03,605 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:55:03,607 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:55:03,609 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:55:03,609 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:55:03,610 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:55:04,184 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2518.74, Qty=0.06703810, PnL%=40.56% (websocket_helper.py:696)
-2025-06-08 00:55:04,184 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105490.33, Qty=0.00257846, PnL%=10.97% (websocket_helper.py:696)
-2025-06-08 00:55:04,184 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:55:04,184 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:55:04,863 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:55:04,873 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:55:04,873 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.62s (listener.py:393)
-2025-06-08 00:55:04,874 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:55:31,958 - webhook_logger - INFO - ⏱ update_market_data took 2.42s (listener.py:364)
-2025-06-08 00:55:31,959 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:55:31,959 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:55:33,444 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:55:33,445 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:55:33,447 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:55:33,448 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:55:33,449 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:55:33,449 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:55:34,086 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2519.29, Qty=0.06703810, PnL%=40.59% (websocket_helper.py:696)
-2025-06-08 00:55:34,086 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105485.28, Qty=0.00257846, PnL%=10.96% (websocket_helper.py:696)
-2025-06-08 00:55:34,087 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:55:34,087 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:55:34,562 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:55:34,564 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:55:34,564 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.60s (listener.py:393)
-2025-06-08 00:55:34,564 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:55:40,529 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0069 (Attempt 1) (webhook_order_types.py:334)
-2025-06-08 00:55:41,028 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 1: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:55:41,223 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0069 (Attempt 2) (webhook_order_types.py:334)
-2025-06-08 00:55:41,687 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 2: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:55:41,887 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0069 (Attempt 3) (webhook_order_types.py:334)
-2025-06-08 00:55:42,432 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 3: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:55:42,432 - webhook_logger - WARNING - ❗️ Order Rejected Limit Order: PAX-USD:{'trigger': 'passive_buy', 'trigger_note': 'price:0.9977'} (webhook_order_types.py:371)
-NoneType: None
-2025-06-08 00:55:52,244 - webhook_logger - INFO - 📉 Skipping passive SELL for BADGER/USD — average_close (0.99) < current_price (0.99) (passive_order_manager.py:329)
-2025-06-08 00:55:52,662 - webhook_logger - WARNING - WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:126)
-2025-06-08 00:55:54,363 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 00:55:55,364 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 00:55:55,365 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 00:55:55,366 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 00:56:01,905 - webhook_logger - INFO - ⏱ update_market_data took 2.37s (listener.py:364)
-2025-06-08 00:56:01,906 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:56:01,907 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:56:03,138 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:56:03,138 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:56:03,146 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:56:03,148 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:56:03,148 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:56:03,149 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:56:03,688 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2519.5, Qty=0.06703810, PnL%=40.60% (websocket_helper.py:696)
-2025-06-08 00:56:03,688 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105474.57, Qty=0.00257846, PnL%=10.95% (websocket_helper.py:696)
-2025-06-08 00:56:03,688 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:56:03,688 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:56:04,210 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:56:04,212 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:56:04,212 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.31s (listener.py:393)
-2025-06-08 00:56:04,212 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:56:32,216 - webhook_logger - INFO - ⏱ update_market_data took 2.68s (listener.py:364)
-2025-06-08 00:56:32,218 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:56:32,218 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:56:33,528 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:56:33,528 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:56:33,529 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:56:33,531 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:56:33,531 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:56:33,531 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:56:34,122 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2519.3, Qty=0.06703810, PnL%=40.59% (websocket_helper.py:696)
-2025-06-08 00:56:34,123 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105474.58, Qty=0.00257846, PnL%=10.95% (websocket_helper.py:696)
-2025-06-08 00:56:34,123 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:56:34,123 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:56:34,696 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:56:34,697 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:56:34,697 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.48s (listener.py:393)
-2025-06-08 00:56:34,697 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:56:40,051 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MASK-USD: 1.83 (Attempt 1) (webhook_order_types.py:334)
-2025-06-08 00:56:40,467 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 1: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:56:40,666 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MASK-USD: 1.83 (Attempt 2) (webhook_order_types.py:334)
-2025-06-08 00:56:41,087 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 2: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:56:41,524 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MASK-USD: 1.83 (Attempt 3) (webhook_order_types.py:334)
-2025-06-08 00:56:42,540 - webhook_logger - WARNING - 🔁 Post-only rejection on attempt 3: priced below the lowest sell price (webhook_order_types.py:364)
-2025-06-08 00:56:42,541 - webhook_logger - WARNING - ❗️ Order Rejected Limit Order: MASK-USD:{'trigger': 'passive_buy', 'trigger_note': 'price:1.83'} (webhook_order_types.py:371)
-NoneType: None
-2025-06-08 00:56:58,824 - webhook_logger - WARNING - WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:126)
-2025-06-08 00:57:01,926 - webhook_logger - INFO - ⏱ update_market_data took 2.39s (listener.py:364)
-2025-06-08 00:57:01,928 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:57:01,929 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:57:01,971 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 00:57:02,869 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:57:02,870 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:57:02,871 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:57:02,873 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:57:02,873 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:57:02,973 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 00:57:02,973 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 00:57:02,975 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 00:57:03,327 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2519.43, Qty=0.06703810, PnL%=40.59% (websocket_helper.py:696)
-2025-06-08 00:57:03,327 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105471.71, Qty=0.00257846, PnL%=10.95% (websocket_helper.py:696)
-2025-06-08 00:57:03,328 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:57:03,328 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:57:04,118 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:57:04,122 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:57:04,122 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.19s (listener.py:393)
-2025-06-08 00:57:04,122 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:57:10,824 - webhook_logger - INFO - 📉 Skipping passive SELL for BADGER/USD — average_close (0.99) < current_price (0.99) (passive_order_manager.py:329)
-2025-06-08 00:57:32,215 - webhook_logger - INFO - ⏱ update_market_data took 2.67s (listener.py:364)
-2025-06-08 00:57:32,216 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 00:57:32,216 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 00:57:33,403 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 00:57:33,403 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 00:57:33,404 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 00:57:33,406 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 00:57:33,406 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 00:57:33,407 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 00:57:33,849 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2520.37, Qty=0.06703810, PnL%=40.65% (websocket_helper.py:696)
-2025-06-08 00:57:33,849 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105471.71, Qty=0.00257846, PnL%=10.95% (websocket_helper.py:696)
-2025-06-08 00:57:33,849 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 00:57:33,850 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 00:57:34,588 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 00:57:34,598 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 00:57:34,599 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.38s (listener.py:393)
-2025-06-08 00:57:34,599 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 00:57:37,387 - webhook_logger - ERROR - Error in get_order_book: coinbase GET https://api.coinbase.com/api/v3/brokerage/market/product_book?product_id=OSMO-USD&limit=50 403 Forbidden Too many errors (webhook_order_book.py:59)
+2025-06-09 09:36:31,927 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:98)
+2025-06-09 09:36:31,943 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:98)
+2025-06-09 09:36:31,945 - webhook_logger - ERROR - User subscription error: 'symbol' (websocket_helper.py:388)
 Traceback (most recent call last):
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 582, in fetch
-    response.raise_for_status()
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/requests/models.py", line 1024, in raise_for_status
-    raise HTTPError(http_error_msg, response=self)
-requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: https://api.coinbase.com/api/v3/brokerage/market/product_book?product_id=OSMO-USD&limit=50
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_book.py", line 35, in get_order_book
-    order_book = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_order_book, endpoint, trading_pair, limit=50)
-  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/api_manager.py", line 109, in ccxt_api_call
-    response = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/coinbase.py", line 3797, in fetch_order_book
-    response = self.v3PublicGetBrokerageMarketProductBook(self.extend(request, params))
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/types.py", line 35, in unbound_method
-    return _self.request(self.path, self.api, self.method, params, config=self.config)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4491, in request
-    return self.fetch2(path, api, method, params, headers, body, config)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4485, in fetch2
-    raise e
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 4476, in fetch2
-    return self.fetch(request['url'], request['method'], request['headers'], request['body'])
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 600, in fetch
-    self.handle_http_status_code(http_status_code, http_status_text, url, method, http_response)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/ccxt/base/exchange.py", line 1718, in handle_http_status_code
-    raise ErrorClass(self.id + ' ' + method + ' ' + url + ' ' + codeAsString + ' ' + reason + ' ' + body)
-ccxt.base.errors.ExchangeNotAvailable: coinbase GET https://api.coinbase.com/api/v3/brokerage/market/product_book?product_id=OSMO-USD&limit=50 403 Forbidden Too many errors
-2025-06-08 01:00:53,304 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 01:00:53,305 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 01:00:53,315 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 01:00:55,969 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:00:55,970 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (5 open / 250 recent) (listener.py:901)
-2025-06-08 01:00:56,005 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:97)
-2025-06-08 01:00:56,021 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:109)
-2025-06-08 01:00:59,600 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:00:59,600 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:00:59,601 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:00:59,605 - webhook_logger - INFO - ✅ First message received from user channel: user (websocket_helper.py:219)
-2025-06-08 01:00:59,605 - webhook_logger - INFO - 📸 Received snapshot with open orders (websocket_market_manager.py:136)
-2025-06-08 01:00:59,605 - webhook_logger - INFO - 📥 Snapshot order tracked: 749ae3bd-5289-4857-b437-62436c34e79b | BADGER-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:00:59,605 - webhook_logger - INFO - 📥 Snapshot order tracked: 0f40b965-b3f4-4037-9c80-be433c026144 | SHDW-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:00:59,606 - webhook_logger - INFO - 📥 Snapshot order tracked: 9e3e62b6-6195-4e8a-91c0-ccb6cb5e85e5 | GTC-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:00:59,606 - webhook_logger - INFO - 📥 Snapshot order tracked: eb681699-af38-4497-9ca6-907c58e5d3e0 | TNSR-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:00:59,606 - webhook_logger - INFO - 📥 Snapshot order tracked: 2db1c9c9-41d6-4ed4-a64c-b0cacf430569 | C98-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:00:59,606 - webhook_logger - INFO - ✅ First message received from user channel: subscriptions (websocket_helper.py:219)
-2025-06-08 01:00:59,607 - webhook_logger - INFO - ✅ First message received from user channel: heartbeats (websocket_helper.py:219)
-2025-06-08 01:00:59,772 - webhook_logger - INFO - ⏱ update_market_data took 6.46s (listener.py:364)
-2025-06-08 01:00:59,773 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:00:59,773 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:00:59,892 - webhook_logger - INFO - ✅ First message received from market channel: ticker_batch (websocket_helper.py:276)
-2025-06-08 01:01:00,972 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:01:00,973 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:01:00,974 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:01:00,975 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 01:01:00,975 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:01:00,975 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:01:01,420 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2518.36, Qty=0.06703810, PnL%=40.53% (websocket_helper.py:696)
-2025-06-08 01:01:01,420 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105452.63, Qty=0.00257846, PnL%=10.93% (websocket_helper.py:696)
-2025-06-08 01:01:01,420 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 01:01:01,421 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 01:01:01,898 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:01:01,901 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:01:01,901 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 2.13s (listener.py:393)
-2025-06-08 01:01:01,901 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:04:04,270 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 01:04:04,271 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 01:04:04,279 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 01:04:06,729 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (4 open / 250 recent) (listener.py:901)
-2025-06-08 01:04:06,814 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:04:10,133 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:97)
-2025-06-08 01:04:10,147 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:109)
-2025-06-08 01:04:11,096 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:04:11,096 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:04:11,097 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:04:11,292 - webhook_logger - INFO - ⏱ update_market_data took 7.02s (listener.py:364)
-2025-06-08 01:04:11,293 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:04:11,293 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:04:11,316 - webhook_logger - INFO - ✅ First message received from user channel: subscriptions (websocket_helper.py:219)
-2025-06-08 01:04:11,317 - webhook_logger - INFO - ✅ First message received from user channel: user (websocket_helper.py:219)
-2025-06-08 01:04:11,317 - webhook_logger - INFO - 📸 Received snapshot with open orders (websocket_market_manager.py:136)
-2025-06-08 01:04:11,317 - webhook_logger - INFO - 📥 Snapshot order tracked: 749ae3bd-5289-4857-b437-62436c34e79b | BADGER-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:04:11,317 - webhook_logger - INFO - 📥 Snapshot order tracked: 0f40b965-b3f4-4037-9c80-be433c026144 | SHDW-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:04:11,317 - webhook_logger - INFO - 📥 Snapshot order tracked: 9e3e62b6-6195-4e8a-91c0-ccb6cb5e85e5 | GTC-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:04:11,318 - webhook_logger - INFO - 📥 Snapshot order tracked: eb681699-af38-4497-9ca6-907c58e5d3e0 | TNSR-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:04:11,319 - webhook_logger - INFO - ✅ First message received from user channel: heartbeats (websocket_helper.py:219)
-2025-06-08 01:04:11,334 - webhook_logger - INFO - ✅ First message received from market channel: ticker_batch (websocket_helper.py:276)
-2025-06-08 01:04:27,729 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:04:27,730 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:04:27,731 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:04:27,733 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 01:04:27,733 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0486, Qty=1030.94, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:04:27,733 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:04:33,752 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:04:33,752 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:04:34,554 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2517.67, Qty=0.06703810, PnL%=40.50% (websocket_helper.py:696)
-2025-06-08 01:04:34,554 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105452.69, Qty=0.00257846, PnL%=10.93% (websocket_helper.py:696)
-2025-06-08 01:04:34,555 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 01:04:34,555 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 01:04:35,382 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:04:35,386 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:04:35,386 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 24.09s (listener.py:393)
-2025-06-08 01:04:35,387 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:12:40,305 - webhook_logger - ERROR - Unexpected WebSocket error, check NGROK connection:  (listener.py:130)
-Traceback (most recent call last):
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 656, in __await_impl__
-    await protocol.handshake(
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 316, in handshake
-    status_code, response_headers = await self.read_http_response()
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 134, in read_http_response
-    status_code, reason, headers = await read_response(self.reader)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/http.py", line 120, in read_response
-    status_line = await read_line(stream)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/http.py", line 194, in read_line
-    line = await stream.readline()
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/streams.py", line 524, in readline
-    line = await self.readuntil(sep)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/streams.py", line 616, in readuntil
-    await self._wait_for_data('readuntil')
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/asyncio/streams.py", line 501, in _wait_for_data
-    await self._waiter
-asyncio.exceptions.CancelledError
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 96, in connect_websocket
-    async with websockets.connect(ws_url, max_size=2 ** 20) as ws:
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 635, in __aenter__
-    return await self
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/legacy/client.py", line 652, in __await_impl__
-    async with asyncio_timeout(self.open_timeout):
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 181, in __aexit__
-    self._do_exit(exc_type)
-  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/websockets/asyncio/async_timeout.py", line 268, in _do_exit
-    raise asyncio.TimeoutError
-asyncio.exceptions.TimeoutError
-2025-06-08 01:12:42,734 - webhook_logger - INFO - ⏱ update_market_data took 395.09s (listener.py:364)
-2025-06-08 01:12:42,735 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:12:42,736 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:12:50,900 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:12:51,243 - webhook_logger - INFO - ⏱ update_market_data took 11.57s (listener.py:364)
-2025-06-08 01:12:51,244 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:12:51,931 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.69s (listener.py:386)
-2025-06-08 01:12:52,109 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:12:52,109 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:12:52,110 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:13:01,596 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:13:01,597 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:13:01,616 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:13:01,618 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 01:13:01,618 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0486, Qty=1030.94, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:13:01,618 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:15:15,380 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:15:15,380 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:15:15,420 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:15:15,674 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:638)
-2025-06-08 01:15:15,675 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:15:15,675 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 152.94s (listener.py:393)
-2025-06-08 01:15:15,675 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:15:24,243 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:15:24,243 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:15:24,258 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:15:24,260 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 01:15:24,260 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0486, Qty=1030.94, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:15:24,260 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:18:52,726 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 01:18:52,726 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 01:18:52,735 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 01:18:55,064 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (4 open / 250 recent) (listener.py:901)
-2025-06-08 01:18:55,136 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:97)
-2025-06-08 01:18:55,147 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:18:55,167 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:109)
-2025-06-08 01:19:00,187 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:19:00,188 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:19:00,189 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:19:00,192 - webhook_logger - INFO - ✅ First message received from user channel: subscriptions (websocket_helper.py:219)
-2025-06-08 01:19:00,193 - webhook_logger - INFO - ✅ First message received from user channel: user (websocket_helper.py:219)
-2025-06-08 01:19:00,193 - webhook_logger - INFO - 📸 Received snapshot with open orders (websocket_market_manager.py:136)
-2025-06-08 01:19:00,193 - webhook_logger - INFO - 📥 Snapshot order tracked: 749ae3bd-5289-4857-b437-62436c34e79b | BADGER-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:19:00,193 - webhook_logger - INFO - 📥 Snapshot order tracked: 0f40b965-b3f4-4037-9c80-be433c026144 | SHDW-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:19:00,193 - webhook_logger - INFO - 📥 Snapshot order tracked: 9e3e62b6-6195-4e8a-91c0-ccb6cb5e85e5 | GTC-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:19:00,194 - webhook_logger - INFO - 📥 Snapshot order tracked: eb681699-af38-4497-9ca6-907c58e5d3e0 | TNSR-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:19:00,194 - webhook_logger - INFO - ✅ First message received from user channel: heartbeats (websocket_helper.py:219)
-2025-06-08 01:19:00,345 - webhook_logger - INFO - ✅ First message received from market channel: ticker_batch (websocket_helper.py:276)
-2025-06-08 01:19:42,966 - webhook_logger - INFO - ⏱ update_market_data took 50.23s (listener.py:364)
-2025-06-08 01:19:42,967 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:19:42,968 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:19:47,727 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:19:47,727 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:19:47,730 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:19:47,732 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.18, Qty=43.104, PnL%=0.85% (websocket_helper.py:696)
-2025-06-08 01:19:47,732 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0482, Qty=1030.94, PnL%=-0.82% (websocket_helper.py:696)
-2025-06-08 01:19:47,733 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.82% (websocket_helper.py:702)
-2025-06-08 01:19:48,228 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:19:48,229 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:19:48,824 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2511.3, Qty=0.06703810, PnL%=40.14% (websocket_helper.py:696)
-2025-06-08 01:19:48,824 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105340.95, Qty=0.00257846, PnL%=10.81% (websocket_helper.py:696)
-2025-06-08 01:19:48,824 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.125, Qty=0.02, PnL%=-0.79% (websocket_helper.py:696)
-2025-06-08 01:19:48,824 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -0.79% (websocket_helper.py:702)
-2025-06-08 01:19:49,510 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:19:49,513 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:19:49,514 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 6.55s (listener.py:393)
-2025-06-08 01:19:49,514 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:28:23,280 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'ticker_batch' (websocket_helper.py:246)
-2025-06-08 01:28:23,280 - webhook_logger - WARNING - ⚠️ No message ever received from market channel 'heartbeats' (websocket_helper.py:246)
-2025-06-08 01:28:23,288 - webhook_logger - INFO - 🔄 Starting sync_open_orders cycle… (listener.py:774)
-2025-06-08 01:28:25,764 - webhook_logger - INFO - ✅ sync_open_orders → upserted 250 rows (3 open / 250 recent) (listener.py:901)
-2025-06-08 01:28:25,841 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:28:25,844 - webhook_logger - INFO - Connected to wss://advanced-trade-ws-user.coinbase.com (listener.py:97)
-2025-06-08 01:28:30,142 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:28:30,390 - webhook_logger - INFO - ⏱ update_market_data took 7.10s (listener.py:364)
-2025-06-08 01:28:30,391 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:28:30,408 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.02s (listener.py:386)
-2025-06-08 01:28:30,430 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:109)
-2025-06-08 01:28:30,432 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:28:30,433 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:28:30,860 - webhook_logger - INFO - ✅ First message received from user channel: user (websocket_helper.py:219)
-2025-06-08 01:28:30,861 - webhook_logger - INFO - 📸 Received snapshot with open orders (websocket_market_manager.py:136)
-2025-06-08 01:28:30,861 - webhook_logger - INFO - 📥 Snapshot order tracked: 749ae3bd-5289-4857-b437-62436c34e79b | BADGER-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:28:30,861 - webhook_logger - INFO - 📥 Snapshot order tracked: 0f40b965-b3f4-4037-9c80-be433c026144 | SHDW-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:28:30,861 - webhook_logger - INFO - 📥 Snapshot order tracked: eb681699-af38-4497-9ca6-907c58e5d3e0 | TNSR-USD | OPEN (websocket_market_manager.py:152)
-2025-06-08 01:28:30,862 - webhook_logger - INFO - ✅ First message received from user channel: subscriptions (websocket_helper.py:219)
-2025-06-08 01:28:30,863 - webhook_logger - INFO - ✅ First message received from user channel: heartbeats (websocket_helper.py:219)
-2025-06-08 01:28:30,864 - webhook_logger - INFO - ✅ First message received from market channel: ticker_batch (websocket_helper.py:276)
-2025-06-08 01:28:33,565 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:28:33,566 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:28:33,567 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:28:33,569 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:28:33,569 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:28:34,298 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:28:34,299 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:28:34,771 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:28:34,771 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:28:35,819 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2501.043, Qty=0.06703810, PnL%=39.57% (websocket_helper.py:696)
-2025-06-08 01:28:35,819 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:28:35,819 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:28:36,358 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105234.79, Qty=0.00257846, PnL%=10.70% (websocket_helper.py:696)
-2025-06-08 01:28:36,358 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:28:36,359 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:28:36,966 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:28:36,973 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:28:36,973 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 6.57s (listener.py:393)
-2025-06-08 01:28:36,974 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:28:42,478 - webhook_logger - INFO - 📉 Skipping passive SELL for GTC/USD — average_close (0.26) < current_price (0.27) (passive_order_manager.py:329)
-2025-06-08 01:28:59,877 - webhook_logger - INFO - ⏱ update_market_data took 2.62s (listener.py:364)
-2025-06-08 01:28:59,878 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:28:59,878 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:29:03,022 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:29:03,023 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:29:03,025 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:29:03,027 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:29:03,027 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:29:03,579 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:29:03,580 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:29:04,030 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:29:04,030 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:29:04,552 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2500.17, Qty=0.06703810, PnL%=39.52% (websocket_helper.py:696)
-2025-06-08 01:29:04,552 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:29:04,553 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:29:05,319 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105260.7, Qty=0.00257846, PnL%=10.72% (websocket_helper.py:696)
-2025-06-08 01:29:05,320 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:29:05,320 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:29:05,880 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:29:05,882 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:29:05,882 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 6.00s (listener.py:393)
-2025-06-08 01:29:05,882 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:29:25,928 - webhook_logger - WARNING - WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:126)
-2025-06-08 01:29:28,832 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:29:29,425 - webhook_logger - INFO - ⏱ update_market_data took 2.17s (listener.py:364)
-2025-06-08 01:29:29,431 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:29:29,431 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:29:30,066 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:29:30,066 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:29:30,067 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:29:32,345 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:29:32,345 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:29:32,346 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:29:32,348 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:29:32,348 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:29:33,065 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:29:33,065 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:29:33,733 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:29:33,733 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:29:34,379 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2500.61, Qty=0.06703810, PnL%=39.54% (websocket_helper.py:696)
-2025-06-08 01:29:34,379 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:29:34,379 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:29:34,923 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105259.09, Qty=0.00257846, PnL%=10.72% (websocket_helper.py:696)
-2025-06-08 01:29:34,923 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:29:34,924 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:29:35,479 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:29:35,480 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:29:35,480 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 6.05s (listener.py:393)
-2025-06-08 01:29:35,480 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:30:00,171 - webhook_logger - INFO - ⏱ update_market_data took 2.91s (listener.py:364)
-2025-06-08 01:30:00,171 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:30:00,172 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:30:03,389 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:30:03,389 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:30:03,390 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:30:03,393 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:30:03,393 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:30:03,932 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:30:03,932 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:30:04,407 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:30:04,407 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:30:05,040 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2500.48, Qty=0.06703810, PnL%=39.54% (websocket_helper.py:696)
-2025-06-08 01:30:05,040 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:30:05,041 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:30:05,643 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105241.58, Qty=0.00257846, PnL%=10.70% (websocket_helper.py:696)
-2025-06-08 01:30:05,643 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:30:05,643 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:30:06,361 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:30:06,363 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:30:06,363 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 6.19s (listener.py:393)
-2025-06-08 01:30:06,363 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:30:29,172 - webhook_logger - WARNING - WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:126)
-2025-06-08 01:30:29,804 - webhook_logger - INFO - ⏱ update_market_data took 2.55s (listener.py:364)
-2025-06-08 01:30:29,805 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:30:29,805 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:30:31,430 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:30:32,432 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:30:32,433 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:30:32,434 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:30:32,720 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:30:32,720 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:30:32,722 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:30:32,724 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:30:32,724 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:30:33,259 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:30:33,259 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:30:33,714 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:30:33,715 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:30:34,229 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2500.92, Qty=0.06703810, PnL%=39.56% (websocket_helper.py:696)
-2025-06-08 01:30:34,229 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:30:34,230 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:30:34,739 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105299.0, Qty=0.00257846, PnL%=10.76% (websocket_helper.py:696)
-2025-06-08 01:30:34,739 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:30:34,739 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:30:35,426 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:30:35,428 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:30:35,428 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 5.62s (listener.py:393)
-2025-06-08 01:30:35,428 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:30:43,056 - webhook_logger - INFO - 📉 Skipping passive SELL for INDEX/USD — average_close (1.17) < current_price (1.18) (passive_order_manager.py:329)
-2025-06-08 01:30:53,204 - webhook_logger - INFO - 📉 Skipping passive SELL for GTC/USD — average_close (0.26) < current_price (0.27) (passive_order_manager.py:329)
-2025-06-08 01:31:00,198 - webhook_logger - INFO - ⏱ update_market_data took 2.94s (listener.py:364)
-2025-06-08 01:31:00,199 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:31:00,199 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:31:03,219 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:31:03,219 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:31:03,221 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:31:03,222 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:31:03,222 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:31:03,766 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:31:03,766 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:31:04,220 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:31:04,220 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:31:04,770 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2501.7, Qty=0.06703810, PnL%=39.60% (websocket_helper.py:696)
-2025-06-08 01:31:04,771 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:31:04,771 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:31:05,334 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105298.62, Qty=0.00257846, PnL%=10.76% (websocket_helper.py:696)
-2025-06-08 01:31:05,334 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:31:05,334 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:31:05,899 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:31:05,901 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:31:05,901 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 5.70s (listener.py:393)
-2025-06-08 01:31:05,901 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:31:29,612 - webhook_logger - INFO - ⏱ update_market_data took 2.35s (listener.py:364)
-2025-06-08 01:31:29,613 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:31:29,614 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:31:31,443 - webhook_logger - WARNING - WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:126)
-2025-06-08 01:31:32,536 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:629)
-2025-06-08 01:31:32,536 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:630)
-2025-06-08 01:31:32,537 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:651)
-2025-06-08 01:31:32,539 - webhook_logger - INFO - 🔎 INDEX/USD: Entry=1.17, Now=1.17, Qty=43.104, PnL%=-0.00% (websocket_helper.py:696)
-2025-06-08 01:31:32,539 - webhook_logger - INFO - 🛑 SL trigger for INDEX/USD: -0.00% (websocket_helper.py:702)
-2025-06-08 01:31:33,070 - webhook_logger - INFO - 🔎 C98/USD: Entry=0.0486, Now=0.0484, Qty=1030.94, PnL%=-0.41% (websocket_helper.py:696)
-2025-06-08 01:31:33,070 - webhook_logger - INFO - 🛑 SL trigger for C98/USD: -0.41% (websocket_helper.py:702)
-2025-06-08 01:31:33,119 - webhook_logger - INFO - Connected to wss://advanced-trade-ws.coinbase.com (listener.py:97)
-2025-06-08 01:31:33,527 - webhook_logger - INFO - 🔎 BADGER/USD: Entry=1.00, Now=0.99, Qty=0.002, PnL%=-1.00% (websocket_helper.py:696)
-2025-06-08 01:31:33,528 - webhook_logger - INFO - 🛑 SL trigger for BADGER/USD: -1.00% (websocket_helper.py:702)
-2025-06-08 01:31:34,108 - webhook_logger - INFO - 🔎 ETH/USD: Entry=1791.99, Now=2501.05, Qty=0.06703810, PnL%=39.57% (websocket_helper.py:696)
-2025-06-08 01:31:34,108 - webhook_logger - INFO - 🔎 GTC/USD: Entry=0.26, Now=0.26, Qty=200.02, PnL%=0.00% (websocket_helper.py:696)
-2025-06-08 01:31:34,109 - webhook_logger - INFO - 🛑 SL trigger for GTC/USD: 0.00% (websocket_helper.py:702)
-2025-06-08 01:31:34,153 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:106)
-2025-06-08 01:31:34,153 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:315)
-2025-06-08 01:31:34,154 - webhook_logger - INFO - Listening on wss://advanced-trade-ws.coinbase.com (listener.py:109)
-2025-06-08 01:31:34,714 - webhook_logger - INFO - 🔎 BTC/USD: Entry=95065.47, Now=105261.69, Qty=0.00257846, PnL%=10.73% (websocket_helper.py:696)
-2025-06-08 01:31:34,715 - webhook_logger - INFO - 🔎 TNSR/USD: Entry=0.126, Now=0.124, Qty=0.02, PnL%=-1.59% (websocket_helper.py:696)
-2025-06-08 01:31:34,715 - webhook_logger - INFO - 🛑 SL trigger for TNSR/USD: -1.59% (websocket_helper.py:702)
-2025-06-08 01:31:35,451 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:711)
-2025-06-08 01:31:35,454 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:640)
-2025-06-08 01:31:35,455 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 5.84s (listener.py:393)
-2025-06-08 01:31:35,455 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
-2025-06-08 01:31:58,357 - webhook_logger - INFO - ⏱ update_market_data took 1.09s (listener.py:364)
-2025-06-08 01:31:58,357 - webhook_logger - ERROR - ❌ new_market_data is empty! Skipping update. (listener.py:368)
-2025-06-08 01:31:58,357 - webhook_logger - ERROR - ❌ new_order_management is empty! Skipping update. (listener.py:371)
-2025-06-08 01:31:58,358 - webhook_logger - INFO - ⏱ refresh_open_orders took 0.00s (listener.py:376)
-2025-06-08 01:31:58,358 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:386)
-2025-06-08 01:31:58,358 - webhook_logger - ERROR - Error in monitor_and_update_active_orders: 'USD' (websocket_helper.py:643)
-Traceback (most recent call last):
-  File "/Users/Manny/Python_Projects/BotTrader/webhook/websocket_helper.py", line 488, in monitor_and_update_active_orders
-    usd_avail = order_management_snapshot.get('non_zero_balances', {})['USD']['available_to_trade_crypto']
-KeyError: 'USD'
-2025-06-08 01:31:58,359 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.00s (listener.py:393)
-2025-06-08 01:31:58,359 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:409)
-NoneType: None
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/websocket_helper.py", line 372, in subscribe_user
+    self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/frame.py", line 4102, in __getitem__
+    indexer = self.columns.get_loc(key)
+  File "/Users/Manny/opt/anaconda3/envs/TradeBot/lib/python3.10/site-packages/pandas/core/indexes/range.py", line 417, in get_loc
+    raise KeyError(key)
+KeyError: 'symbol'
+2025-06-09 09:36:31,948 - webhook_logger - INFO - Listening on wss://advanced-trade-ws-user.coinbase.com (listener.py:110)

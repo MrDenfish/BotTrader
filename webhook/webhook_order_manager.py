@@ -80,6 +80,11 @@ class TradeOrderManager:
         return self.shared_data_manager.market_data
 
     @property
+    def spot_position(self):
+        return self.shared_data_manager.market_data.get('spot_positions')
+
+
+    @property
     def order_management(self):
         return self.shared_data_manager.order_management
 
@@ -100,8 +105,8 @@ class TradeOrderManager:
         return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
-    def current_prices(self):
-        return self.shared_data_manager.market_data.get('current_prices')
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread')
 
     @property
     def open_orders(self):
@@ -146,19 +151,15 @@ class TradeOrderManager:
             # Fetch data
             type = None
             volume_24h = 0
-            endpoint = 'private'
-            params = {'paginate': True, 'paginationCalls': 2}
             # check market_data integrity
             if asset == 'TURBO':
                 pass
-            market_data_status = self.market_data_updater.get_empty_keys(self.market_data)
+            market_data_status = self.market_data_updater.get_empty_keys(self.market_data) # dictionary integrity check
             if len(market_data_status) < 1:
-                spot_position = self.market_data.get('spot_positions', {})
-                usd_pairs = self.market_data.get('usd_pairs_cache', {})
-                cost_basis = spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0)
-                total_balance_crypto = spot_position.get(asset, {}).get('total_balance_crypto', 0)
+                cost_basis = self.spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0)
+                total_balance_crypto = self.spot_position.get(asset, {}).get('total_balance_crypto', 0)
                 # volume_leaders = self.market_data.get('filtered_vol', {})
-                for index, row in usd_pairs.iterrows():
+                for index, row in self.usd_pairs.iterrows():
                     if row["asset"] == asset:
                         volume_24h = row["24h_quote_volume"]
                         break
@@ -172,7 +173,12 @@ class TradeOrderManager:
                 product_id = product_id.replace('-', '/')
 
                 # Open orders
-                all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=product_id)
+                # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=product_id)
+                all_open_orders = self.open_orders  # shared state
+                has_open_order = any(
+                    isinstance(order, dict) and order.get('symbol') == product_id
+                    for order in all_open_orders.values()
+                ) if product_id else bool(all_open_orders)
 
                 open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
                 active_open_order = False
@@ -204,7 +210,7 @@ class TradeOrderManager:
                 base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
                 quote_quantizer = Decimal("1").scaleb(-quote_deci)
                 base_quantizer = Decimal("1").scaleb(-base_deci)
-                balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0)).quantize(
+                balance = Decimal(self.spot_position.get(asset, {}).get('total_balance_crypto', 0)).quantize(
                     Decimal(f'1e-{base_deci}'),
                     rounding=ROUND_HALF_UP
                 )
@@ -216,24 +222,29 @@ class TradeOrderManager:
 
                 size_of_order_fiat = Decimal('0') # will be set if order is a buy
 
-                available_to_trade = Decimal(spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
+                available_to_trade = Decimal(self.spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
                 available_to_trade = self.shared_utils_precision.safe_quantize(available_to_trade, base_quantizer)
 
                 usd_bal = self.shared_utils_precision.safe_decimal(
-                    spot_position.get("USD", {}).get("total_balance_fiat")).quantize(2, rounding=ROUND_HALF_UP)
+                    self.spot_position.get("USD", {}).get("total_balance_fiat")).quantize(2, rounding=ROUND_HALF_UP)
 
                 usd_avail = self.shared_utils_precision.safe_decimal(
-                    spot_position.get("USD", {}).get("available_to_trade_fiat")).quantize(2, rounding=ROUND_HALF_UP)
+                    self.spot_position.get("USD", {}).get("available_to_trade_fiat")).quantize(2, rounding=ROUND_HALF_UP)
 
                 print(f'‼️ USD Avail: {usd_avail} / USD Bal: {usd_bal}  ‼️')
                 pair = product_id.replace('-', '/')  # normalize first
                 base_currency, quote_currency = pair.split('/')
                 trading_pair = product_id.replace('-', '/')
-                current_price = Decimal(self.current_prices.get(trading_pair))
+                current_ask = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('ask'))
+                current_bid = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('bid'))
+                spread = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('spread'))
+
+                # Calculate current price
+                current_price = (current_ask + current_bid) / 2
                 price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
                 # Determine side
                 side = 'buy' if Decimal(
-                    spot_position.get(asset, {}).get('total_balance_fiat', 0)
+                    self.spot_position.get(asset, {}).get('total_balance_fiat', 0)
                 ) <= self.max_value_of_crypto_to_buy_more and trigger != 'stop_loss' else 'sell'
 
                 # Set fiat allocation
@@ -254,7 +265,7 @@ class TradeOrderManager:
                 # Fetch order book
                 temp_data = {'quote_decimal': quote_deci, 'base_decimal': base_deci, 'trading_pair': trading_pair}
                 temp_data = OrderData.from_dict(temp_data)
-                order_book = await self.order_book_manager.get_order_book(temp_data, trading_pair)
+                # order_book = await self.order_book_manager.get_order_book(temp_data, trading_pair, self.bid_ask_spread)
                 temp_order = {
                     'side': side,
                     'type': order_type,
@@ -270,8 +281,8 @@ class TradeOrderManager:
                     'base_decimal': base_deci
                 }
                 temp_book = {
-                    'highest_bid': float(order_book.get('highest_bid', 0)),
-                    'lowest_ask': float(order_book.get('lowest_ask', 0))
+                    'highest_bid': float(current_bid),
+                    'lowest_ask': float(current_ask)
                 }
 
                 adjusted_price, adjusted_size_of_order_qty = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book)
@@ -280,7 +291,7 @@ class TradeOrderManager:
                 fiat_avail_for_order = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, fiat_avail_for_order, 'quote')
                 usd_bal = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_bal, 'quote')
                 usd_avail = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_avail, 'quote')
-                spread = Decimal(order_book.get('spread'))
+                spread = Decimal(spread)
                 return OrderData(
                     trading_pair=trading_pair,
                     time_order_placed=None,
@@ -300,8 +311,8 @@ class TradeOrderManager:
                     base_decimal=base_deci,
                     quote_decimal=quote_deci,
                     quote_increment=Decimal("1") / (Decimal("10") ** quote_deci),
-                    highest_bid=Decimal(temp_book['highest_bid']).quantize(quote_quantizer),
-                    lowest_ask=Decimal(temp_book['lowest_ask']).quantize(quote_quantizer),
+                    highest_bid=Decimal(current_bid).quantize(quote_quantizer),
+                    lowest_ask=Decimal(current_ask).quantize(quote_quantizer),
                     maker=maker_fee,
                     taker=taker_fee,
                     spread=spread,
@@ -339,10 +350,14 @@ class TradeOrderManager:
     async def place_order(self, raw_order_data: OrderData, precision_data=None) -> tuple[bool, dict]:
         try:
             self.shared_utils_utility.log_event_loop("place_order")
+            trading_pair = raw_order_data.trading_pair
+            all_open_orders = self.open_orders  # shared state
+            # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=raw_order_data.trading_pair)
+            has_open_order = any(
+                isinstance(order, dict) and order.get('symbol') == trading_pair
+                for order in all_open_orders.values()
+            ) if trading_pair else bool(all_open_orders)
 
-            all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(
-                trading_pair=raw_order_data.trading_pair
-            )
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
             raw_order_data.open_orders = not open_orders.empty and raw_order_data.trading_pair in open_orders.symbol.values
 
@@ -360,7 +375,7 @@ class TradeOrderManager:
                 return False, validation_result
 
             # Step 2: Get order book
-            order_book_details = await self.order_book_manager.get_order_book(raw_order_data)
+            order_book_details = self.bid_ask_spread.get(trading_pair) #await self.order_book_manager.get_order_book(raw_order_data)
 
             # Step 3: Full validation
             validation_result = self.validate.fetch_and_validate_rules(raw_order_data)
@@ -459,9 +474,9 @@ class TradeOrderManager:
                 self.logger.debug(f"📤 Attempt #{attempt + 1} to place {order_type} order for {symbol}...")
 
                 # Step 1: Refresh order book
-                order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-                highest_bid = Decimal(order_book['highest_bid'])
-                lowest_ask = Decimal(order_book['lowest_ask'])
+                order_book = self.bid_ask_spread.get(symbol)#await self.order_book_manager.get_order_book(order_data, symbol)
+                highest_bid = Decimal(order_book['bid'])
+                lowest_ask = Decimal(order_book['ask'])
 
                 # Step 1.1: Adjust price
                 side = order_data.side.lower()

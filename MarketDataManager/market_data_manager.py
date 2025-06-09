@@ -5,7 +5,7 @@ import  time
 
 async def market_data_watchdog(shared_data_manager, listener, logger, check_interval=60, max_age_sec=180):
     """
-    Monitors shared_data_manager.market_data["current_prices"] for staleness.
+    Monitors shared_data_manager.market_data["bid_ask_spread"] for staleness.
     If data hasn't updated in `max_age_sec`, automatically calls listener.refresh_market_data().
     """
     last_prices = None
@@ -15,14 +15,14 @@ async def market_data_watchdog(shared_data_manager, listener, logger, check_inte
         await asyncio.sleep(check_interval)
 
         try:
-            current_prices = shared_data_manager.market_data.get("current_prices", {})
-            if not current_prices:
-                logger.warning("⚠️ [Watchdog] current_prices is empty. Attempting manual refresh...")
+            bid_ask_spread = shared_data_manager.market_data.get("bid_ask_spread", {})
+            if not bid_ask_spread:
+                logger.warning("⚠️ [Watchdog] bid_ask_spread is empty. Attempting manual refresh...")
                 await listener.refresh_market_data()
                 continue
 
-            if current_prices != last_prices:
-                last_prices = current_prices.copy()
+            if bid_ask_spread != last_prices:
+                last_prices = bid_ask_spread.copy()
                 last_update_time = datetime.utcnow()
             else:
                 age = (datetime.utcnow() - last_update_time).total_seconds()
@@ -66,6 +66,10 @@ class MarketDataUpdater:
         self.logger = logger_manager.loggers.get('shared_logger', None)
         self.start_time = None
 
+    @property
+    def open_orders(self):
+        return self.shared_data_manager.order_management.get('order_tracker', {})
+
     async def update_market_data(self, start_time, open_orders=None):
         """Fetch and prepare updated market data."""
         try:
@@ -85,9 +89,9 @@ class MarketDataUpdater:
             if not new_market_data or not new_order_management:
                 self.logger.error("⚠️ One-time refresh failed — no market or order data.")
                 return
-            _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
-            if updated_order_tracker:
-                new_order_management['order_tracker'] = updated_order_tracker
+            # _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
+            # if updated_order_tracker:
+            #     new_order_management['order_tracker'] = updated_order_tracker
             await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
             self.logger.info("✅ One-time market data refresh complete.")
         except Exception as e:
@@ -95,6 +99,7 @@ class MarketDataUpdater:
 
     def get_empty_keys(self,data: dict) -> list:
         empty_keys = []
+
         for key, value in data.items():
             if value is None:
                 empty_keys.append(key)

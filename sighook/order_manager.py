@@ -72,8 +72,8 @@ class OrderManager:
         return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
-    def current_prices(self):
-        return self.shared_data_manager.market_data.get('current_prices')
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread')
 
     @property
     def open_orders(self):

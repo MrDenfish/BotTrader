@@ -59,8 +59,8 @@ class ProfitDataManager:
         return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
-    def current_prices(self):
-        return self.shared_data_manager.market_data.get('current_prices')
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread')
 
     @property
     def open_orders(self):
@@ -84,7 +84,7 @@ class ProfitDataManager:
         return self._take_profit
 
 
-    async def calculate_profitability(self, symbol, required_prices, current_prices, usd_pairs):
+    async def calculate_profitability(self, symbol, required_prices, bid_ask_spread, usd_pairs):
         """
         Calculate profitability for a given asset using current balances and market prices.
         Returns a consolidated profit data dictionary.
@@ -97,7 +97,7 @@ class ProfitDataManager:
             asset = ticker.split('/')[0]
 
             # ✅ Get Market Price
-            current_price = Decimal(current_prices.get(ticker, 0))
+            current_price = Decimal(bid_ask_spread.get(ticker, 0))
             if current_price == 0 and ticker not in ['USD', 'USDC']:
                 print(f"Current price for {ticker} not available.")
                 profit_data = {

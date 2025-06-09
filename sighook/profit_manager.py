@@ -48,8 +48,8 @@ class ProfitabilityManager:
         return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
-    def current_prices(self):
-        return self.shared_data_manager.market_data.get('current_prices')
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread')
 
     @property
     def market_cache_vol(self):
@@ -98,7 +98,9 @@ class ProfitabilityManager:
 
                 # Extract asset and current market price
                 asset = holding['asset']
-                current_market_price = Decimal(self.current_prices.get(holding['symbol'], 0))
+                trading_pair =  f"{asset}/USD"
+
+                current_market_price = Decimal(self.bid_ask_spread.get(trading_pair,{}).get('ask'))
 
                 # Determine if a sell order should be placed
                 if self.profit_data_manager.should_place_sell_order(holding, current_market_price):

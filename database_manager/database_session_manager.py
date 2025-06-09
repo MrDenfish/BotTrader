@@ -90,8 +90,8 @@ class DatabaseSessionManager:
         return self.shared_data_manager.market_data.get('spot_positions')
 
     @property
-    def current_prices(self):
-        return self.shared_data_manager.market_data.get('current_prices')
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread')
 
     async def connect(self, retries=3):
         """Establish the database connection."""

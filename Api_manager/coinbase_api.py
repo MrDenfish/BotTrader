@@ -1,19 +1,18 @@
 
 
 import asyncio
+
 import logging
-from datetime import datetime, timedelta
-from decimal import Decimal
-from typing import Union, List
 import pandas as pd
 import aiohttp
-import requests
-import json
+
+from typing import Optional, List
 from coinbase import jwt_generator
+from datetime import datetime, timedelta
 from Shared_Utils.enum import ValidationCode
-from Config.config_manager import CentralConfig as Config
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.logging_manager import LoggerManager
+from Config.config_manager import CentralConfig as Config
 
 
 class CoinbaseAPI:
@@ -428,65 +427,90 @@ class CoinbaseAPI:
             self.logger.error(f"❌ Unexpected error fetching OHLCV for {symbol}: {e}", exc_info=True)
             return None
 
-    async def fetch_open_orders(self, product_id: str = None, limit: int = 100) -> List[dict]:
+    async def fetch_open_orders(self, product_id: Optional[str] = None, limit: int = 100) -> List[dict]:
         """
-        Fetch open orders using Coinbase Advanced Trade REST API.
+        Fetch all open orders from Coinbase Advanced Trade API.
 
         Args:
-            product_id (str): Optional trading pair (e.g., 'BTC-USD')
-            limit (int): Max number of orders per page (default: 100, max: 100)
+            product_id (Optional[str]): Filter orders by this trading pair (e.g., 'BTC-USD').
+            limit (int): Max number of orders per page (max: 100).
 
         Returns:
-            List[dict]: A list of open order dicts
+            List[dict]: Filtered and normalized list of open orders.
         """
+        request_path = '/api/v3/brokerage/orders/historical/batch'
+        jwt_token = self.generate_rest_jwt('GET', request_path)
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {jwt_token}',
+        }
+
+        params = {
+            "limit": str(limit),
+        }
+
+        all_orders = []
+        retries = 0
+        cursor = None
+
         try:
-            request_path = '/api/v3/brokerage/orders/historical/batch'
-            jwt_token = self.generate_rest_jwt('GET', request_path)
-            payload = {
-                "status": "OPEN",  # Adjust this based on your needs
-                "limit": 100  # Number of orders to fetch
-
-            }
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {jwt_token}'
-            }
-
-            params = {
-                # "order_status": ["OPEN"],
-                "limit": str(limit)
-            }
-            if product_id:
-                params["product_id"] = product_id
-
-            all_orders = []
             async with aiohttp.ClientSession() as session:
                 while True:
-                    async with self.session.get(f"{self.rest_url}{request_path}",params=payload,headers=headers) as resp:
-                        data = await resp.json()
-                        results = data.get("orders", [])
-                        all_orders.extend(results)
+                    if cursor:
+                        params["cursor"] = cursor
 
-                        if not data.get("has_next"):
-                            break
-                        params["cursor"] = data.get("cursor")  # paginate if needed
-        except Exception as e:
-            self.logger.error(f"❌ Error fetching open orders: {e}", exc_info=True)
-            return []
-        try:
-            # Format each order to match expected structure
+                    try:
+                        async with self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers) as resp:
+                            if resp.status == 429:
+                                retries += 1
+                                if retries > 3:
+                                    self.logger.error("❌ Max retries exceeded due to rate limits.")
+                                    return []
+                                wait_time = 2 ** retries
+                                self.logger.warning(f"⚠️ Rate limited (429). Retrying in {wait_time}s...")
+                                await asyncio.sleep(wait_time)
+                                continue
+
+                            if resp.status != 200:
+                                self.logger.error(f"❌ Failed to fetch orders: HTTP {resp.status}")
+                                text = await resp.text()
+                                self.logger.debug(f"↩️ Response: {text}")
+                                return []
+
+                            try:
+                                data = await resp.json()
+                            except aiohttp.ContentTypeError:
+                                self.logger.error("❌ Invalid content-type. Could not parse JSON.")
+                                return []
+
+                            orders = data.get("orders", [])
+                            all_orders.extend(orders)
+
+                            if not data.get("has_next"):
+                                break
+
+                            cursor = data.get("cursor")  # continue pagination
+
+                    except Exception as e:
+                        self.logger.error(f"❌ Exception during open orders fetch: {e}", exc_info=True)
+                        return []
+
+            # Final filtering in Python
             formatted_orders = []
             for order in all_orders:
-                # Ensure we're only including truly open orders
                 status = order.get("status", "").upper()
                 completion_pct = order.get("completion_percentage", "0")
+                product = order.get("product_id", "")
+
+                if product_id and product != product_id:
+                    continue  # Client-side filtering
 
                 if status in {"FILLED", "CANCELLED"} or completion_pct == "100.00":
-                    continue  # Skip non-open orders
+                    continue  # Not open anymore
 
                 formatted_orders.append({
                     "id": order.get("order_id"),
-                    "symbol": order.get("product_id"),
+                    "symbol": product,
                     "side": order.get("side", "").upper(),
                     "type": order.get("order_type", "").upper(),
                     "status": status,
@@ -502,6 +526,7 @@ class CoinbaseAPI:
                 })
 
             return formatted_orders
+
         except Exception as e:
-            self.logger.error(f"❌ Error formatting open orders: {e}", exc_info=True)
+            self.logger.error(f"❌ Error fetching open orders: {e}", exc_info=True)
             return []
