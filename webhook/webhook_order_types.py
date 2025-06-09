@@ -80,6 +80,10 @@ class OrderTypeManager:
         return self.shared_data_manager.order_management.get('order_tracker', {})
 
     @property
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get("bid_ask_spread", {})
+
+    @property
     def stop_loss(self):
         return self._stop_loss
 
@@ -138,7 +142,13 @@ class OrderTypeManager:
             print(f"✅ Processing TP SL Order from {source}: {print_order_data}")
 
             # ✅ Step 1: Check for existing open orders
-            all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=trading_pair)
+            # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=trading_pair)
+            all_open_orders = self.open_orders # shared state
+            # ✅ Check if there is an open order for the specific `trading_pair`
+            has_open_order = any(isinstance(order, dict) and order.get('symbol') == trading_pair
+                for order in all_open_orders.values()
+            ) if trading_pair else bool(all_open_orders)
+
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
             if has_open_order:
                 return {
@@ -316,13 +326,13 @@ class OrderTypeManager:
                         }
 
                 # ✅ Refresh market data before placing
-                latest_order_book = await self.order_book_manager.get_order_book(order_data, symbol)
+                latest_order_book = self.bid_ask_spread.get(order_data.trading_pair)# shared state
                 latest_ask = self.shared_utils_precision.safe_convert(
-                    latest_order_book['order_book']['asks'][0][0], order_data.quote_decimal
-                ) if latest_order_book['order_book']['asks'] else price
+                    latest_order_book['ask'], order_data.quote_decimal
+                ) if latest_order_book['ask'] else price
                 latest_bid = self.shared_utils_precision.safe_convert(
-                    latest_order_book['order_book']['bids'][0][0], order_data.quote_decimal
-                ) if latest_order_book['order_book']['bids'] else price
+                    latest_order_book['bid'], order_data.quote_decimal
+                ) if latest_order_book['bid'] else price
 
                 if side == 'BUY' and price >= latest_ask:
                     price = max(latest_ask * (1 - price_buffer_pct), latest_ask - min_buffer).quantize(

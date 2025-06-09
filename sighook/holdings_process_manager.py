@@ -37,8 +37,8 @@ class HoldingsProcessor:
         return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
-    def current_prices(self):
-        return self.shared_data_manager.market_data.get('current_prices')
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread')
 
     @property
     def usd_pairs(self):
@@ -105,7 +105,7 @@ class HoldingsProcessor:
             base_deci,quote_deci,_,_ = self.shared_utils_precision.fetch_precision(symbol)
             quote_quantizer = Decimal("1").scaleb(-quote_deci)
             base_quantizer = Decimal("1").scaleb(-base_deci)
-            price = Decimal(self.market_data.get('current_prices', {}).get(symbol))
+            price = Decimal(self.market_data.get('bid_ask_spread', {}).get(symbol))
             price = self.shared_utils_precision.safe_quantize(price, quote_quantizer)
             asset_balance = self._truncate_decimal(holding['total_balance_crypto'])
 
@@ -127,7 +127,7 @@ class HoldingsProcessor:
             if asset == 'USD':
                 pass
             profitability = await self.profit_data_manager.calculate_profitability(asset, required_prices,
-                                                                            self.current_prices, self.usd_pairs)
+                                                                            self.bid_ask_spread, self.usd_pairs)
 
             trailing_stop = (
                 trailing_stop_orders[trailing_stop_orders['product_id'] == holding['symbol']]
@@ -176,7 +176,7 @@ class HoldingsProcessor:
                 await self._calculate_derived_metrics(holding, processed_pairs, trailing_stop_orders)
                 for holding in self.filtered_balances.values()
                 if holding['asset'] != 'USD'
-                   and holding['asset'] +'/USD' in self.market_data.get('current_prices', {})
+                   and holding['asset'] +'/USD' in self.market_data.get('bid_ask_spread', {})
             ]
 
             aggregated_df = pd.DataFrame(aggregated_data)

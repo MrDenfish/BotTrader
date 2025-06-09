@@ -40,8 +40,8 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, coinbase_api, shared_data_mgr, rest_client, portfolio_uuid, exchange, logger_manager=None, websocket_helper=None, shared_utils_debugger=None,
-                 shared_utils_print=None):
+    def __init__(self, coinbase_api, shared_data_mgr, rest_client, portfolio_uuid, exchange, order_book_manager, logger_manager=None, websocket_helper=None,
+                 shared_utils_debugger=None, shared_utils_print=None):
         self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_mgr
         self.websocket_helper = websocket_helper
@@ -65,10 +65,11 @@ class TradeBot:
         self.profit_extras = self.async_func = self.indicators = self.debug_data_loader = None
         self.ticker_manager = self.portfolio_manager = self.webhook = self.trading_strategy = None
         self.profit_manager = self.profit_helper = self.order_manager = self.market_manager = None
-        self.market_data = self.ticker_cache = self.market_cache_vol = self.current_prices = None
+        self.market_data = self.ticker_cache = self.market_cache_vol = self.bid_ask_spread = None
         self.filtered_balances = self.start_time = self.exchange_class = self.session = None
         self.sharded_utils = self.profit_data_manager = self.snapshots_manager =  self.ticker_manager = None
         self.sleep_time = self.app_config.sleep_time
+        self.order_book_manager = order_book_manager
         self.web_url = self.app_config.web_url
         # Initialize components to None
         self.initialize_components()
@@ -124,6 +125,7 @@ class TradeBot:
             self.shared_utils_debugger,
             self.shared_utils_print,
             self.logger_manager,
+            self.order_book_manager,
             self.rest_client,
             self.portfolio_uuid,
             self.exchange,
@@ -234,7 +236,7 @@ class TradeBot:
 
         self.ticker_manager = await TickerManager.get_instance(
             self.app_config, self.coinbase_api, self.shared_utils_debugger, self.shared_utils_print,
-            self.logger_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api,
+            self.logger_manager, self.order_book_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api,
             self.shared_data_manager, self.shared_utils_precision
         )
 

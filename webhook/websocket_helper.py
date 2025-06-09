@@ -124,11 +124,11 @@ class WebSocketHelper:
 
     @property
     def ticker_cache(self):
-        return self.market_data.get("ticker_cache", {})
+        return self.shared_data_manager.market_data.get("ticker_cache", {})
 
     @property
-    def current_prices(self):
-        return self.market_data.get("current_prices", {})
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get("bid_ask_spread", {})
 
     @property
     def currency_pairs_ignored(self):
@@ -286,9 +286,13 @@ class WebSocketHelper:
         """Process parsed market WebSocket message."""
         try:
             channel = data.get("channel")
+            print(f"💙 MARKET channel: {channel}")
 
             if channel == "ticker_batch":
                 await self.market_ws_manager.process_ticker_batch_update(data)
+            elif channel == "level2":
+                print(f"💙 MARKET level2: {data}") #debug
+                pass # debug
             elif channel == "heartbeats":
                 self.last_heartbeat = time.time()
                 self.count += 1
@@ -297,7 +301,7 @@ class WebSocketHelper:
                     print(f"💙 MARKET heartbeat: Counter={heartbeat_counter}")
                     self.count = 0
             elif channel == "subscriptions":
-                self.logger.info(f"💙 Confirmed Market Subscriptions: ")
+                self.logger.info(f"💙 Confirmed Market Subscriptions: {data}")
             else:
                 self.logger.warning(f"⚠️ Unhandled market WebSocket channel: {channel} | Message: {json.dumps(data)}")
 
@@ -308,27 +312,29 @@ class WebSocketHelper:
         """Subscribe to the ticker_batch market channel for all product IDs."""
         try:
             async with (self.subscription_lock):
+                self.coinbase_api.refresh_jwt_if_needed()
                 if not self.market_ws:
                     self.logger.error("❌ Market WebSocket is None! Subscription aborted.")
                     return
 
                 self.logger.info(f"� Subscribing to Market Channels: {list(self.market_channels)}")
 
-                # snapshot = await self.snapshot_manager.get_market_data_snapshot()
-                # market_data = snapshot.get("market_data", {})
-                # product_ids = [key.replace('/', '-') for key in
-                #                market_data.get('current_prices', {}).keys()] or ["BTC-USD"]
-
                 if not self.product_ids:
                     self.logger.warning("⚠️ No valid product IDs found. Subscription aborted.")
                     return
 
+
                 for channel in self.market_channels:
                     subscription_message = {
                         "type": "subscribe",
-                        "product_ids": self.product_ids,
+                        "product_ids": ['BTC-USD'],  #self.product_ids,
                         "channel": channel
                     }
+                    # Inject JWT ONLY for level2
+                    if channel == "level2_batch":
+                        # ✅ Refresh JWT before subscribing
+                        jwt_token = await self.generate_jwt()
+                        subscription_message["jwt"] = jwt_token
                     try:
                         await self.market_ws.send(json.dumps(subscription_message))
                         self.logger.debug(f"✅ Sent subscription for {channel} with: {self.product_ids}")
@@ -361,7 +367,6 @@ class WebSocketHelper:
                 jwt_token = await self.generate_jwt()
 
                 # ✅ Fetch active product IDs
-                snapshot = await self.snapshot_manager.get_market_data_snapshot()
                 snapshot = await self.snapshot_manager.get_market_data_snapshot()
                 market_data = snapshot.get("market_data", {})
                 self.product_ids = market_data.get('usd_pairs_cache')['symbol'].str.replace('/', '-', regex=False).tolist()
@@ -483,7 +488,7 @@ class WebSocketHelper:
         try:
             spot_positions = market_data_snapshot.get('spot_positions', {})
             coin_info = market_data_snapshot.get('filtered_vol', {})
-            current_prices = market_data_snapshot.get('current_prices', {})
+            bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
             usd_avail = order_management_snapshot.get('non_zero_balances', {})['USD']['available_to_trade_crypto']
             profit_data_list = []
@@ -538,7 +543,7 @@ class WebSocketHelper:
                         except decimal.InvalidOperation:
                             self.logger.warning(f"⚠️ Could not quantize asset_balance={asset_balance} with precision={quote_deci}")
                             asset_balance = Decimal(asset_balance).scaleb(-quote_deci).quantize(quantizer)
-                        current_price = current_prices.get(symbol, 0)
+                        current_price = bid_ask_spread.get(symbol, 0)
                         cost_basis = order_management_snapshot.get('non_zero_balances', {})[asset]['cost_basis'].get('value')
                         cost_basis = Decimal(cost_basis).quantize(Decimal('1.' + '0' * quote_deci))
 
@@ -599,7 +604,7 @@ class WebSocketHelper:
                                 # Extract old limit price and current price
                                 trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
                                 old_limit_price = Decimal(trigger_config.get('limit_price', '0'))
-                                current_price = Decimal(current_prices.get(symbol, Decimal('0')))
+                                current_price = Decimal(bid_ask_spread.get(symbol, Decimal('0')))
                                 # If we're above the original limit price, reconfigure
                                 if current_price > old_limit_price:
                                     print(f"🔆TP adjustment: Current price {current_price} > TP {old_limit_price}, "
@@ -612,7 +617,7 @@ class WebSocketHelper:
                                     continue
 
                         profit = await self.profit_data_manager.calculate_profitability(
-                            symbol, required_prices, current_prices, usd_pairs
+                            symbol, required_prices, bid_ask_spread, usd_pairs
                         )
 
                         if profit and profit.get('profit', 0) != 0:
@@ -801,112 +806,129 @@ class WebSocketHelper:
             self.logger.warning(f"⚠️ Failed to extract SL price from order: {order}")
             return Decimal("0")
 
-    async def refresh_open_orders(self, trading_pair=None):
-        """
-        Refresh open orders using the REST API, cross-check them with order_tracker,
-        and remove obsolete orders from the tracker.
-
-        Args:
-            trading_pair (str): Specific trading pair to check for open orders (e.g., 'BTC/USD').
-
-        Returns:
-            tuple: (DataFrame of all open orders, has_open_order (bool), updated order tracker)
-        """
-        try:
-            print(f"  🟪   REST refresh_open_orders  API   🟪  ")  # debug
-            return pd.DataFrame(), False, self.listener.order_management.get('order_tracker', {}) # debug remove when websocket feature is working
-
-            max_retries = 3
-            all_open_orders = []
-
-            for attempt in range(max_retries):
-                all_open_orders = await self.coinbase_api.fetch_open_orders(
-                    product_id=trading_pair.replace("/", "-") if trading_pair else None
-                )
-
-                if all_open_orders or len(all_open_orders) == 0:
-                    if len(all_open_orders) == 0:
-                        print(f"⚠️ Attempt {attempt + 1}: No open orders found.")
-                    break  # ✅ Stop retrying if orders are found or there are no open orders
-                await asyncio.sleep(2)  # Small delay before retrying
-
-            # ✅ Retrieve the existing order tracker
-
-
-            order_tracker_master = self.listener.order_management.get('order_tracker', {})
-
-
-            # � If API fails to return orders, DO NOT remove everything—fallback to `order_tracker`
-            if not all_open_orders:
-                print("❌ No open orders found from API! Using cached order_tracker...")
-                all_open_orders = list(order_tracker_master.values())
-
-            # ✅ Cross-check API-fetched order IDs with existing order_tracker IDs
-            fetched_order_ids = {order.get('id') for order in all_open_orders if order.get('id')}
-            existing_order_ids = set(order_tracker_master.keys())
-
-            # ✅ Identify obsolete orders to remove (only if API was successful)
-            if all_open_orders:
-                obsolete_order_ids = existing_order_ids - fetched_order_ids
-                for obsolete_order_id in obsolete_order_ids:
-                    #print(f"� Removing obsolete order: {obsolete_order_id}")# debug
-                    del order_tracker_master[obsolete_order_id]
-
-            def parse_float(value, default=0.0):
-                try:
-                    return float(value) if value not in (None, '', 'null') else default
-                except (ValueError, TypeError):
-                    return default
-
-            # ✅ Update order tracker with new API data
-            for order in all_open_orders:
-                order_id = order.get('id')
-                if order_id:
-                    created_time_str = order.get('info', {}).get('created_time')
-                    if created_time_str:
-                        created_time = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
-                        now = datetime.now(timezone.utc)
-                        order_duration = round((now - created_time).total_seconds() / 60, 2)
-                    else:
-                        order_duration = None
-
-                    # Updated structure for consistency
-                    order_tracker_master[order_id] = {
-                        'order_id': order_id,
-                        'symbol': order.get('symbol'),
-                        'side': order.get('side').upper(),
-                        'type': order.get('type').upper() if order.get('type') else 'LIMIT',
-                        'status': order.get('status').upper(),
-                        'filled': parse_float(order.get('filled', 0)),
-                        'remaining': parse_float(order.get('remaining')),
-                        'amount': parse_float(order.get('amount', 0)),
-                        'price': parse_float(order.get('price', 0)),
-                        'triggerPrice': parse_float(order.get('triggerPrice')),
-                        'stopPrice': parse_float(order.get('stopPrice')),
-                        'datetime': order.get('datetime'),
-                        'order_duration': order_duration,
-                        'trigger_status': order.get('info', {}).get('trigger_status', 'Not Active'),
-                        'clientOrderId': order.get('clientOrderId'),
-                        'info': order.get('info', {}),
-                        'limit_price': parse_float(order.get('info', {}).get('order_configuration', {})
-                                                   .get('limit_limit_gtc', {})
-                                                   .get('limit_price'))
-                    }
-
-            # ✅ Ensure latest data is stored
-
-            # ✅ Save updated tracker
-            self.listener.order_management['order_tracker'] = order_tracker_master
-            # 🔄 Push updated order management into shared_data_manager
-            await self.shared_data_manager.update_shared_data(self.listener.market_data, self.listener.order_management) # <--added to ensure update
-
-            # ✅ Check if there is an open order for the specific `trading_pair`
-            has_open_order = any(order['symbol'] == trading_pair for order in all_open_orders) if trading_pair else bool(
-                all_open_orders)
-
-            return pd.DataFrame(all_open_orders), has_open_order, order_tracker_master
-
-        except Exception as e:
-            self.logger.error(f"Failed to refresh open orders: {e}", exc_info=True)
-            return pd.DataFrame(), False, self.listener.order_management['order_tracker']
+    # async def reconcile_with_rest(self, trading_pair: str = None):
+    #     rest_orders = await self.coinbase_api.fetch_open_orders(product_id=trading_pair.replace("/", "-") if trading_pair else None)
+    #     tracker_orders = await self.get_open_orders_from_tracker(trading_pair)
+    #
+    #     rest_ids = {o["id"] for o in rest_orders if "id" in o}
+    #     tracker_ids = {o["order_id"] for o in tracker_orders if "order_id" in o}
+    #
+    #     extra = tracker_ids - rest_ids
+    #     missing = rest_ids - tracker_ids
+    #
+    #     self.logger.info(f"🧾 Reconciliation result: extra_in_tracker={extra}, missing_in_tracker={missing}")
+    #
+    # async def refresh_open_orders(self, trading_pair=None):
+    #     """
+    #     Retain the method but mark as a "manual reconciliation" tool (only use if desync suspected)
+    #
+    #     Refresh open orders using the REST API, cross-check them with order_tracker,
+    #     and remove obsolete orders from the tracker.
+    #     Responsibilities:
+    #     -Fetches open orders via REST API
+    #     -Compares API orders with order_tracker
+    #     -Updates order_tracker with normalized data
+    #     -Saves the updated order_tracker
+    #     -Returns a DataFrame of open orders
+    #
+    #     Args:
+    #         trading_pair (str): Specific trading pair to check for open orders (e.g., 'BTC/USD').
+    #
+    #     Returns:
+    #         tuple: (DataFrame of all open orders, has_open_order (bool), updated order tracker)
+    #     """
+    #     try:
+    #         max_retries = 3
+    #         all_open_orders = []
+    #
+    #         for attempt in range(max_retries):
+    #             all_open_orders = await self.coinbase_api.fetch_open_orders(
+    #                 product_id=trading_pair.replace("/", "-") if trading_pair else None
+    #             )
+    #
+    #             if all_open_orders or len(all_open_orders) == 0:
+    #                 if len(all_open_orders) == 0:
+    #                     print(f"⚠️ Attempt {attempt + 1}: No open orders found.")
+    #                 break  # ✅ Stop retrying if orders are found or there are no open orders
+    #             await asyncio.sleep(2)  # Small delay before retrying
+    #
+    #         # ✅ Retrieve the existing order tracker
+    #
+    #
+    #         order_tracker_master = self.listener.order_management.get('order_tracker', {})
+    #
+    #
+    #         # � If API fails to return orders, DO NOT remove everything—fallback to `order_tracker`
+    #         if not all_open_orders:
+    #             print("❌ No open orders found from API! Using cached order_tracker...")
+    #             all_open_orders = list(order_tracker_master.values())
+    #
+    #         # ✅ Cross-check API-fetched order IDs with existing order_tracker IDs
+    #         fetched_order_ids = {order.get('id') for order in all_open_orders if order.get('id')}
+    #         existing_order_ids = set(order_tracker_master.keys())
+    #
+    #         # ✅ Identify obsolete orders to remove (only if API was successful)
+    #         if all_open_orders:
+    #             obsolete_order_ids = existing_order_ids - fetched_order_ids
+    #             for obsolete_order_id in obsolete_order_ids:
+    #                 #print(f"� Removing obsolete order: {obsolete_order_id}")# debug
+    #                 del order_tracker_master[obsolete_order_id]
+    #
+    #         def parse_float(value, default=0.0):
+    #             try:
+    #                 return float(value) if value not in (None, '', 'null') else default
+    #             except (ValueError, TypeError):
+    #                 return default
+    #
+    #         # ✅ Update order tracker with new API data
+    #         for order in order_tracker_master.values():
+    #             order_id = order.get('order_id')
+    #             if order_id:
+    #                 created_time_str = order.get('datetime') or order.get('info', {}).get('created_time')
+    #                 if created_time_str:
+    #                     created_time = datetime.fromisoformat(created_time_str.replace("Z", "+00:00"))
+    #                     now = datetime.now(timezone.utc)
+    #                     order_duration = round((now - created_time).total_seconds() / 60, 2)
+    #                 else:
+    #                     order_duration = None
+    #
+    #                 # Updated structure for consistency
+    #                 order_tracker_master[order_id] = {
+    #                     'order_id': order_id,
+    #                     'symbol': order.get('symbol'),
+    #                     'side': order.get('side').upper(),
+    #                     'type': order.get('type').upper() if order.get('type') else 'LIMIT',
+    #                     'status': order.get('status').upper(),
+    #                     'filled': parse_float(order.get('filled', 0)),
+    #                     'remaining': parse_float(order.get('remaining')),
+    #                     'amount': parse_float(order.get('amount', 0)),
+    #                     'price': parse_float(order.get('price', 0)),
+    #                     'triggerPrice': parse_float(order.get('triggerPrice')),
+    #                     'stopPrice': parse_float(order.get('stopPrice')),
+    #                     'datetime': order.get('datetime'),
+    #                     'order_duration': order_duration,
+    #                     'trigger_status': order.get('info', {}).get('trigger_status', 'Not Active'),
+    #                     'clientOrderId': order.get('clientOrderId'),
+    #                     'info': order.get('info', {}),
+    #                     'limit_price': parse_float(order.get('info', {}).get('order_configuration', {})
+    #                                                .get('limit_limit_gtc', {})
+    #                                                .get('limit_price'))
+    #                 }
+    #
+    #         # ✅ Ensure latest data is stored
+    #
+    #         # ✅ Save updated tracker
+    #         self.listener.order_management['order_tracker'] = order_tracker_master
+    #         # 🔄 Push updated order management into shared_data_manager
+    #         await self.shared_data_manager.update_shared_data(self.listener.market_data, self.listener.order_management) # <--added to ensure update
+    #
+    #         # ✅ Check if there is an open order for the specific `trading_pair`
+    #         has_open_order = any(order['symbol'] == trading_pair for order in all_open_orders) if trading_pair else bool(
+    #             all_open_orders)
+    #
+    #         return pd.DataFrame(all_open_orders), has_open_order, order_tracker_master
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to refresh open orders: {e}", exc_info=True)
+    #         return pd.DataFrame(), False, self.listener.order_management['order_tracker']
 

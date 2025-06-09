@@ -15,6 +15,7 @@ from Api_manager.api_manager import ApiManager
 from Api_manager.coinbase_api import CoinbaseAPI
 from MarketDataManager.ohlcv_manager import OHLCVManager
 from MarketDataManager.ticker_manager import TickerManager
+from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.passive_order_manager import PassiveOrderManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from Shared_Utils.alert_system import AlertSystem
@@ -27,7 +28,7 @@ from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
 from webhook.trailing_stop_manager import TrailingStopManager
 from webhook.webhook_manager import WebHookManager
-from webhook.webhook_order_book import OrderBookManager
+from MarketDataManager.webhook_order_book import OrderBookManager
 from webhook.webhook_order_manager import TradeOrderManager
 from webhook.webhook_order_types import OrderTypeManager
 from webhook.webhook_utils import TradeBotUtils
@@ -93,7 +94,7 @@ class WebSocketManager:
         """Establish and manage a WebSocket connection."""
         while True:
             try:
-                async with websockets.connect(ws_url, max_size=2 ** 20) as ws:
+                async with websockets.connect(ws_url, max_size = 2 ** 24 ) as ws:   # 16 MB
                     self.logger.info(f"Connected to {ws_url}")
                     self.reconnect_attempts = 0
 
@@ -138,8 +139,8 @@ class WebhookListener:
 
     _exchange_instance_count = 0
 
-    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager, session, market_manager,
-                 market_data_updater, exchange):
+    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager,
+             alert, session, market_manager, market_data_updater, exchange, order_book_manager):
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
             print("REST client is not initialized. Initializing now...")
@@ -245,11 +246,10 @@ class WebhookListener:
         self.profit_data_manager = ProfitDataManager.get_instance(self.shared_utils_precision, self.shared_utils_print,
                                                                   self.shared_data_manager, self.logger_manager)
 
-        self.order_book_manager = OrderBookManager.get_instance(self.exchange, self.shared_utils_precision,
-                                                                self.logger, self.ccxt_api)
+        self.order_book_manager = order_book_manager
 
         self.validate = ValidateOrders.get_instance(self.logger, self.order_book_manager,
-                                                    self.shared_utils_precision)
+                                                    self.shared_utils_precision, self.shared_data_manager)
 
         self.order_type_manager = OrderTypeManager.get_instance(
             coinbase_api=self.coinbase_api,
@@ -326,7 +326,7 @@ class WebhookListener:
                                                              self.shared_utils_date_time, self.market_manager)
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
                                                                self.shared_utils_debugger,self.shared_utils_print,
-                                                               self.logger_manager,
+                                                               self.logger_manager,self.order_book_manager,
                                                                self.rest_client, self.portfolio_uuid, self.exchange,
                                                                self.ccxt_api, self.shared_data_manager,
                                                                self.shared_utils_precision
@@ -342,15 +342,15 @@ class WebhookListener:
 
     @property
     def ticker_cache(self):
-        return self.market_data.get('ticker_cache', {})
+        return self.shared_data_manager.market_data.get('ticker_cache', {})
 
     @property
-    def current_prices(self):
-        return self.market_data.get('current_prices', {})
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread', {})
 
     @property
     def filtered_balances(self):
-        return self.order_management.get('non_zero_balances', {})
+        return self.shared_data_manager.order_management.get('non_zero_balances', {})
 
 
     async def refresh_market_data(self):
@@ -361,23 +361,24 @@ class WebhookListener:
                 # Fetch new market data
                 start = time.monotonic()
                 new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
-                self.logger.info(f"⏱ update_market_data took {time.monotonic() - start:.2f}s")
+                self.logger.info(f"⚠️⚠️⚠️  update_market_data took {time.monotonic() - start:.2f}s    ⚠️⚠️⚠️")
 
                 # Ensure fetched data is valid before proceeding
                 if not new_market_data:
-                    self.logger.error("❌ new_market_data is empty! Skipping update.")
+                    self.logger.error("❌ ⚠️⚠️⚠️      new_market_data is empty! Skipping update.     ⚠️⚠️⚠️⚠️ ❌")
 
                 if not new_order_management:
-                    self.logger.error("❌ new_order_management is empty! Skipping update.")
+                    self.logger.error("❌ ⚠️⚠️⚠️    new_order_management is empty! Skipping update. ⚠️⚠️⚠️⚠️ ❌")
 
                 # Refresh open orders and get the updated order_tracker
-                start = time.monotonic()
-                _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
-                self.logger.info(f"⏱ refresh_open_orders took {time.monotonic() - start:.2f}s")
+               # deprecated order_tracker is now updated with the websocket
+                # start = time.monotonic()
+                # _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
+                # self.logger.info(f"⏱ refresh_open_orders took {time.monotonic() - start:.2f}s")
 
                 # Reflect the updated order_tracker in the shared state
-                if updated_order_tracker:
-                    new_order_management['order_tracker'] = updated_order_tracker
+                # if updated_order_tracker:
+                #     new_order_management['order_tracker'] = updated_order_tracker
                 # Update shared state via SharedDataManager
 
                 start = time.monotonic()
@@ -712,8 +713,8 @@ class WebhookListener:
             asset = trade_data['base_currency']
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-            current_prices = market_data_snapshot.get('current_prices', {})
-            base_price_in_fiat = self.shared_utils_precision.float_to_decimal(current_prices.get(trading_pair, 0), quote_deci)
+            bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
+            base_price_in_fiat = self.shared_utils_precision.float_to_decimal(bid_ask_spread.get(trading_pair, 0), quote_deci)
             quote_price_in_fiat = Decimal(1.00)
             return base_price_in_fiat, quote_price_in_fiat
         except Exception as e:

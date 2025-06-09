@@ -181,21 +181,22 @@ class ValidateOrders:
     _instance = None
 
     @classmethod
-    def get_instance(cls, logger_manager, order_book, shared_utils_precision):
+    def get_instance(cls, logger_manager, order_book, shared_utils_precision, shared_data_manager):
         """
         Singleton method to ensure only one instance of ValidateOrders exists.
         """
         if cls._instance is None:
-            cls._instance = cls(logger_manager, order_book, shared_utils_precision)
+            cls._instance = cls(logger_manager, order_book, shared_utils_precision, shared_data_manager)
         return cls._instance
 
-    def __init__(self, logger_manager, order_book, shared_utils_precision):
+    def __init__(self, logger_manager, order_book, shared_utils_precision, shared_data_manager):
         """
         Initializes the ValidateOrders instance.
         """
         self.config = Config()
         self.order_book = order_book
         self.shared_utils_precision = shared_utils_precision
+        self.shared_data_manager = shared_data_manager
         self.logger = logger_manager  # 🙂
 
         # Only store necessary attributes
@@ -208,6 +209,11 @@ class ValidateOrders:
     @property
     def hodl(self):
         return self._hodl
+
+    @property
+    def open_orders(self):
+        return self.shared_data_manager.order_management.get('order_tracker', {})
+
 
     @property
     def min_sell_value(self):
@@ -278,8 +284,8 @@ class ValidateOrders:
                 base_decimal=details.get("base_decimal", base_deci),
                 quote_decimal=details.get("quote_decimal", quote_deci),
                 quote_increment=quote_increment,
-                highest_bid=self.shared_utils_precision.safe_decimal(order_book_details.get("highest_bid")),
-                lowest_ask=self.shared_utils_precision.safe_decimal(order_book_details.get("lowest_ask")),
+                highest_bid=self.shared_utils_precision.safe_decimal(order_book_details.get("bid")),
+                lowest_ask=self.shared_utils_precision.safe_decimal(order_book_details.get("ask")),
                 maker=self.shared_utils_precision.safe_decimal(details.get("maker_fee")),
                 taker=self.shared_utils_precision.safe_decimal(details.get("taker_fee")),
                 spread=self.shared_utils_precision.safe_decimal(order_book_details.get("spread")),
@@ -456,6 +462,11 @@ class ValidateOrders:
                     ]
                 if not match.empty:
                     return base_avail, base_bal_value, False, f"⚠️ Open order exists for {trading_pair}. Blocking new order."
+
+            has_open_order = any(
+                isinstance(order, dict) and order.get('symbol') == trading_pair
+                for order in self.open_orders.values()
+            ) if trading_pair else bool(self.open_orders)
 
             # Order logic
             condition = ""

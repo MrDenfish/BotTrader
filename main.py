@@ -12,6 +12,7 @@ from aiohttp import web
 
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
+from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
@@ -175,7 +176,7 @@ async def refresh_loop(shared_data_manager, interval=30):
         await asyncio.sleep(interval)
 
 
-async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, logger_manager, alert,
+async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, logger_manager, alert, order_book_manager,
                       shared_utils_debugger, shared_utils_print, startup_event=None, listener=None):
 
     if startup_event:
@@ -219,15 +220,15 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
     finally:
         sighook_logger.info("sighook shutdown complete.")
 
-async def create_trade_bot(config, coinbase_api, shared_data_manager, logger_manager,
-                           shared_utils_debugger, shared_utils_print,
-                           websocket_helper=None) -> TradeBot:
+async def create_trade_bot(config, coinbase_api, shared_data_manager, order_book_manager, logger_manager,
+                           shared_utils_debugger, shared_utils_print, websocket_helper=None) -> TradeBot:
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
         exchange=config.exchange,
+        order_book_manager=order_book_manager,
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
@@ -239,8 +240,9 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, logger_man
     return trade_bot
 
 
-async def init_webhook(config, session, shared_data_manager, logger_manager, alert,
-                       shared_utils_debugger, shared_utils_print, startup_event=None, trade_bot=None):
+async def init_webhook(config, session, shared_data_manager, logger_manager,shared_utils_debugger, shared_utils_print, alert,
+                       startup_event=None, trade_bot=None, order_book_manager=None):
+
 
     exchange = config.exchange
 
@@ -252,7 +254,9 @@ async def init_webhook(config, session, shared_data_manager, logger_manager, ale
         session=session,
         market_manager=None,
         market_data_updater=None,
-        exchange=exchange
+        exchange=config.exchange,
+        alert=alert,
+        order_book_manager=order_book_manager  # ✅ injected
     )
     listener.rest_client = config.rest_client
     listener.portfolio_uuid = config.portfolio_uuid
@@ -262,6 +266,7 @@ async def init_webhook(config, session, shared_data_manager, logger_manager, ale
             config=config,
             coinbase_api=listener.coinbase_api,
             shared_data_manager=shared_data_manager,
+            order_book_manager=order_book_manager,
             logger_manager=logger_manager,
             shared_utils_debugger=shared_utils_debugger,
             shared_utils_print=shared_utils_print,
@@ -269,6 +274,7 @@ async def init_webhook(config, session, shared_data_manager, logger_manager, ale
         )
 
     listener.market_manager = trade_bot.market_manager
+
     await listener.async_init()
 
     if listener.ohlcv_manager:
@@ -326,18 +332,21 @@ async def init_webhook(config, session, shared_data_manager, logger_manager, ale
 
 
 
-async def run_webhook(config, session, shared_data_manager, logger_manager, alert,
-                      shared_utils_debugger, shared_utils_print, startup_event=None, trade_bot=None):
+async def run_webhook(config, session, shared_data_manager, logger_manager, alert, shared_utils_debugger, shared_utils_print,
+                      order_book_manager, startup_event=None, ccxt_api=None, trade_bot=None):
+
+
     listener, websocket_manager, app, runner = await init_webhook(
         config=config,
         session=session,
         shared_data_manager=shared_data_manager,
         logger_manager=logger_manager,
-        alert=alert,
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
         startup_event=startup_event,
-        trade_bot=trade_bot
+        trade_bot=None,
+        alert=alert,
+        order_book_manager=order_book_manager  # ✅ pass it in
     )
 
     background_tasks = [
@@ -362,9 +371,6 @@ async def run_webhook(config, session, shared_data_manager, logger_manager, aler
 
     await graceful_shutdown(listener, runner)
     return listener
-
-
-
 
 async def graceful_shutdown(listener, runner):
     if hasattr(listener, 'shutdown'):
@@ -399,60 +405,103 @@ async def main():
         logger_manager, shared_logger,
     )
 
+    # ✅ Initialize OrderBookManager before listener
+    order_book_manager = OrderBookManager.get_instance(
+        config.exchange,
+        shared_data_manager,
+        shared_data_manager.shared_utils_precision,
+        logger_manager.get_logger("shared_logger"),
+        ccxt_api=None  # Pass your existing ccxt_api if available
+    )
+
     try:
         async with aiohttp.ClientSession() as session:
-
             if args.run == 'sighook':
                 await run_sighook(
-                    config,
-                    shared_data_manager,
-                    config.rest_client,
-                    config.portfolio_uuid,
-                    logger_manager,
-                    alert,
+                    config=config,
+                    shared_data_manager=shared_data_manager,
+                    rest_client=config.rest_client,
+                    portfolio_uuid=config.portfolio_uuid,
+                    logger_manager=logger_manager,
+                    alert=alert,
+                    order_book_manager=None,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print
                 )
 
             elif args.run == 'webhook':
                 await run_webhook(
-                    config,
-                    session,
-                    shared_data_manager,
-                    logger_manager,
-                    alert,
+                    config=config,
+                    session=session,
+                    shared_data_manager=shared_data_manager,
+                    logger_manager=logger_manager,
+                    alert=alert,
                     shared_utils_debugger=shared_utils_debugger,
-                    shared_utils_print=shared_utils_print
+                    shared_utils_print=shared_utils_print,
+                    order_book_manager=order_book_manager
                 )
 
             elif args.run == 'both':
-                # Prepare webhook as coroutine task
-                webhook_task = asyncio.create_task(run_webhook(
-                    config,
-                    session,
-                    shared_data_manager,
-                    logger_manager,
-                    alert,
+                # ✅ Step 1: Start Webhook first and get the listener instance
+                listener, websocket_manager, app, runner = await init_webhook(
+                    config=config,
+                    session=session,
+                    shared_data_manager=shared_data_manager,
+                    logger_manager=logger_manager,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print,
-                    startup_event=startup_event
-                ))
+                    startup_event=startup_event,
+                    trade_bot=None,
+                    alert=alert,
+                    order_book_manager=order_book_manager  # ✅ pass it in
+                )
 
-                # Prepare sighook as coroutine task
+
+
+                # ✅ Step 2: Run sighook now that order_book_manager is available
                 sighook_task = asyncio.create_task(run_sighook(
-                    config,
-                    shared_data_manager,
-                    config.rest_client,
-                    config.portfolio_uuid,
-                    logger_manager,
-                    alert,
+                    config=config,
+                    shared_data_manager=shared_data_manager,
+                    rest_client=config.rest_client,
+                    portfolio_uuid=config.portfolio_uuid,
+                    logger_manager=logger_manager,
+                    alert=alert,
+                    order_book_manager=order_book_manager,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print,
-                    startup_event=startup_event
+                    startup_event=startup_event,
+                    listener=listener
                 ))
 
-                # Run both in parallel and wait for shutdown
-                await asyncio.gather(webhook_task, sighook_task)
+                # ✅ Step 3: Webhook background tasks
+                background_tasks = [
+                    asyncio.create_task(periodic_runner(listener.refresh_market_data, 30, name="Market Data Refresher")),
+                    asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
+                    asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
+                    asyncio.create_task(websocket_manager.start_websockets())
+                ]
+
+                # ✅ Step 4: Wait for shutdown signal
+                try:
+                    await shutdown_event.wait()
+                except Exception as e:
+                    shared_logger.error("Unhandled exception in webhook:", exc_info=True)
+                    if alert:
+                        alert.callhome("webhook crashed", str(e), mode="email")
+
+                # ✅ Step 5: Cancel background tasks and sighook
+                for task in background_tasks:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                sighook_task.cancel()
+                try:
+                    await sighook_task
+                except asyncio.CancelledError:
+                    pass
+                await graceful_shutdown(listener, runner)
 
     except Exception as e:
         if alert:
@@ -460,12 +509,12 @@ async def main():
         raise
 
 
-
-
 if __name__ == "__main__":
     os.environ['PYTHONASYNCIODEBUG'] = '0'
     logger = logging.getLogger('asyncio')
     logger.setLevel(logging.ERROR)
     asyncio.run(main())
+
+
 
 
