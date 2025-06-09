@@ -99,8 +99,8 @@ class PrecisionUtils:
 
             market = self.usd_pairs.set_index('asset').to_dict(orient='index')  # dataframe to dictionary
             if market.get(asset):
-                base_precision = market.get(asset,{}).get('precision',{}).get('amount', 1e-08)  # Expected to be a float
-                quote_precision = market.get(asset,{}).get('precision',{}).get('price', 1e-08)  # Expected to be a float
+                base_precision = Decimal(market.get(asset,{}).get('precision',{}).get('base_increment', 1e-08) ) # Expected to be a float
+                quote_precision = Decimal(market.get(asset,{}).get('precision',{}).get('quote_increment', 1e-08) ) # Expected to be a float
                 base_increment = base_precision  # string
                 quote_increment = quote_precision  # string
 

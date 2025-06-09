@@ -139,7 +139,7 @@ class WebhookListener:
 
     _exchange_instance_count = 0
 
-    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager,
+    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager, coinbase_api,
              alert, session, market_manager, market_data_updater, exchange, order_book_manager):
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
@@ -173,11 +173,10 @@ class WebhookListener:
         self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
         self.shared_utils_debugger = Debugging()
 
-        self.coinbase_api = CoinbaseAPI(self.session, self.shared_utils_utility, self.logger_manager,
-                                        self.shared_utils_precision )
+
         self.alerts = AlertSystem(self.logger_manager)
         self.ccxt_api = ApiManager.get_instance(self.exchange, self.logger_manager, self.alerts)
-
+        self.coinbase_api = coinbase_api
         #database related
         self.database_session_manager = database_session_manager
 

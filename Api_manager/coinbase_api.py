@@ -328,6 +328,34 @@ class CoinbaseAPI:
             self.logger.error(f"❗ Exception in get_best_bid_ask: {e}", exc_info=True)
             return {}
 
+    async def fetch_all_products(self) -> list[dict]:
+        """
+        Fetch full product list from Coinbase (not just USD pairs).
+        """
+        try:
+            request_path = '/api/v3/brokerage/products'
+            jwt_token = self.generate_rest_jwt('GET', request_path)
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {jwt_token}'
+            }
+
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.get(f"{self.rest_url}{request_path}", headers=headers) as response:
+                text = await response.text()
+                status = response.status
+
+                if status == 200:
+                    data = await response.json()
+                    return data.get('products', [])
+                self.logger.error(f"❌ Failed to fetch products: {status} {text}")
+                return []
+        except Exception as e:
+            self.logger.error(f"❗ Exception in fetch_all_products: {e}", exc_info=True)
+            return []
+
     async def get_all_usd_pairs(self) -> list[str]:
         """
         Fetch all trading pairs from Coinbase and return only USD pairs.
