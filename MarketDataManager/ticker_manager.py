@@ -72,6 +72,9 @@ class TickerManager:
     def ticker_cache(self):
         return self.shared_data_manager.market_data.get("ticker_cache", {})
 
+    @property
+    def open_orders(self):
+        return self.shared_data_manager.order_management.get('order_tracker', {})
     # <><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
 
     async def update_ticker_cache(self, open_orders=None, start_time=None) -> tuple:
@@ -124,7 +127,7 @@ class TickerManager:
                 "bid_ask_spread": bid_ask_spread,
                 "avg_quote_volume": Decimal(avg_volume).quantize(Decimal('0')),
                 "spot_positions": spot_positions
-            }, {"non_zero_balances": non_zero_balances, 'order_tracker': {}}
+            }, {"non_zero_balances": non_zero_balances, 'order_tracker': self.open_orders}
 
         except Exception as e:
             self.logger.error(f"❌ Error in update_ticker_cache: {e}", exc_info=True)

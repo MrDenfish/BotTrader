@@ -220,6 +220,16 @@ class SharedDataManager:
                 self.order_management = {}
                 return {}, {}
 
+    async def get_order_tracker(self) -> dict:
+        """Safely retrieve the current order_tracker dict from shared order_management."""
+        async with self.lock:
+            if not isinstance(self.order_management, dict):
+                self.order_management = {}
+            if "order_tracker" not in self.order_management:
+                self.order_management["order_tracker"] = {}
+            return self.order_management["order_tracker"]
+
+
     async def refresh_shared_data(self):
         """Refresh shared data periodically."""
         async with (self.lock):
@@ -265,7 +275,16 @@ class SharedDataManager:
 
     async def set_order_management(self, updated_order_management: dict):
         async with self.lock:
-            self.order_management = updated_order_management
+            # Merge instead of replacing the full dict
+            if not isinstance(self.order_management, dict):
+                self.order_management = {}
+            for key, value in updated_order_management.items():
+                self.order_management[key] = value
+            self._order_management = self.order_management
+            missing_keys = {"order_tracker", "non_zero_balances"} - set(self.order_management.keys())
+            if missing_keys:
+                self.logger.warning(f"⚠️ order_management missing keys: {missing_keys}")
+            self.logger.debug(f"✅ set_order_management updated with {len(self.order_management.get('order_tracker', {}))} open orders")
 
     async def fetch_market_data(self):
         """Fetch market_data from the database via DatabaseSessionManager."""
@@ -334,7 +353,7 @@ class SharedDataManager:
     async def save_data(self):
         """Save shared data to the database using an active connection."""
         try:
-            self.logger.info("Starting to save shared data...")
+            print("Starting to save shared data...")
             async with self.database_session_manager.engine.begin() as conn:
                 # Clear old data from snapshot tables
                 await self.clear_old_data(conn, "market_data_snapshots")
@@ -472,8 +491,8 @@ class SharedDataManager:
             # Prefer high-level fields first, fall back to nested structure
             normalized = {
                 "order_id": order.get("id") or order.get("order_id"),
-                "symbol": order.get("symbol") or info.get("product_id", "").replace("-", "/") or
-                order.get("product_id", "").replace("-", "/"),
+                "symbol": order.get("symbol") or info.get("product_id", "").replace("/", "-") or
+                order.get("product_id", "").replace("/", "-"),
                 "side": order.get("side") or info.get("order_side") or order.get("order_side"),
                 "type": order.get("type") or info.get("order_type") or order.get("order_type"),
                 "status": order.get("status") or info.get("status"),

@@ -262,12 +262,16 @@ class OrderTypeManager:
 
     async def place_limit_order(self, source, order_data: OrderData):
         """
-        Places a limit order with retries and dynamic buffer adjustment to avoid post-only rejections.
+        Places a post-only limit order with retries and dynamic buffer adjustment to avoid rejections.
         """
 
         def is_post_only_rejection(resp: dict) -> bool:
             msg = (resp.get('message') or "").lower()
-            return "priced below the lowest sell price" in msg or "would match existing order" in msg
+            reason = (resp.get('reason') or "").lower()
+            return any(k in msg for k in ["post-only", "priced below", "match existing"]) or \
+                any(k in reason for k in ["post-only", "invalid_limit_price"])
+
+        response = None  # Ensure scope for error handler
 
         try:
             symbol = order_data.trading_pair.replace('/', '-')
@@ -276,21 +280,23 @@ class OrderTypeManager:
             caller_function_name = stack()[1].function
 
             amount = self.shared_utils_precision.safe_convert(order_data.adjusted_size, order_data.base_decimal)
-            price = self.shared_utils_precision.safe_convert(order_data.highest_bid,
-                                                             order_data.quote_decimal) if side == 'SELL' else order_data.lowest_ask
+            price = self.shared_utils_precision.safe_convert(
+                order_data.highest_bid if side == 'SELL' else order_data.lowest_ask,
+                order_data.quote_decimal
+            )
             available_crypto = self.shared_utils_precision.safe_convert(order_data.available_to_trade_crypto, order_data.base_decimal)
             usd_available = self.shared_utils_precision.safe_convert(order_data.usd_balance, order_data.quote_decimal)
 
             params = {'post_only': True}
             attempts = 0
-            response = None
             price_buffer_pct = Decimal('0.001')  # Initial buffer: 0.1%
             min_buffer = Decimal('0.0000001')
+            max_buffer = Decimal('0.01')
 
             while attempts < 3:
                 attempts += 1
 
-                # ✅ Required fields check
+                # ✅ Required field check
                 if not all([getattr(order_data, f) for f in ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask']]):
                     self.logger.error(f"Missing required fields in OrderData: {order_data}")
                     return {
@@ -308,7 +314,7 @@ class OrderTypeManager:
                         'message': f"⚠️ Order Blocked {asset} - Trading Rules Violation: {validation_result.details.get('condition')}"
                     }
 
-                # ✅ USD balance check for BUY
+                # ✅ Balance check
                 if side == 'BUY':
                     usd_required = amount * price * (1 + order_data.maker)
                     if usd_required > usd_available:
@@ -325,21 +331,24 @@ class OrderTypeManager:
                             'message': f"⚠️ Not enough {asset} for SELL. Trying to sell: {amount}, Available: {available_crypto}"
                         }
 
-                # ✅ Refresh market data before placing
-                latest_order_book = self.bid_ask_spread.get(order_data.trading_pair)# shared state
-                latest_ask = self.shared_utils_precision.safe_convert(
-                    latest_order_book['ask'], order_data.quote_decimal
-                ) if latest_order_book['ask'] else price
-                latest_bid = self.shared_utils_precision.safe_convert(
-                    latest_order_book['bid'], order_data.quote_decimal
-                ) if latest_order_book['bid'] else price
+                # ✅ Refresh order book
+                latest_order_book = self.bid_ask_spread.get(order_data.trading_pair)
+                latest_ask = self.shared_utils_precision.safe_convert(latest_order_book['ask'], order_data.quote_decimal) if latest_order_book[
+                    'ask'] else price
+                latest_bid = self.shared_utils_precision.safe_convert(latest_order_book['bid'], order_data.quote_decimal) if latest_order_book[
+                    'bid'] else price
 
-                if side == 'BUY' and price >= latest_ask:
-                    price = max(latest_ask * (1 - price_buffer_pct), latest_ask - min_buffer).quantize(
-                        Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_DOWN)
-                elif side == 'SELL' and price <= latest_bid:
-                    price = min(latest_bid * (1 + price_buffer_pct), latest_bid + min_buffer).quantize(
-                        Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_UP)
+                # ✅ Apply buffer
+                if side == 'BUY':
+                    price = min(
+                        latest_ask * (1 - price_buffer_pct),
+                        latest_ask - min_buffer
+                    ).quantize(Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_DOWN)
+                else:  # SELL
+                    price = max(
+                        latest_bid * (1 + price_buffer_pct),
+                        latest_bid + min_buffer
+                    ).quantize(Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_UP)
 
                 self.logger.info(f"🟡 Adjusted {side} limit price for {symbol}: {price} (Attempt {attempts})")
 
@@ -372,28 +381,32 @@ class OrderTypeManager:
 
                 if is_post_only_rejection(response):
                     self.logger.warning(f"🔁 Post-only rejection on attempt {attempts}: {response.get('message')}")
-                    price_buffer_pct += Decimal('0.0005')  # widen buffer slightly
+                    price_buffer_pct = min(price_buffer_pct + Decimal('0.0005'), max_buffer)
                     continue
 
-                # 🚫 Some other failure, break the loop
-                break
+                break  # Some other failure
 
             self.logger.warning(f"❗️ Order Rejected Limit Order: {symbol}:{order_data.trigger}", exc_info=True)
-            print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}   ⚠️')  # Debug
+            print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}   ⚠️')
 
             return {
                 'success': False,
                 'error': 'OrderRejected',
                 'trigger': 'limit',
-                'status': response.get('status', 'failed'),
-                'message': response.get('message', 'unknown'),
-                'reason': response.get('reason')
+                'status': response.get('status', 'failed') if response else 'failed',
+                'message': response.get('message', 'unknown') if response else 'No response received',
+                'reason': response.get('reason') if response else 'No reason provided'
             }
-            # Final fallback
 
         except Exception as ex:
             self.logger.error(f"❌ Error in place_limit_order: {ex}", exc_info=True)
-            return {'success': False, 'error': str(ex), 'trigger': 'limit'}
+            return {
+                'success': False,
+                'error': str(ex),
+                'trigger': 'limit',
+                'status': response.get('status', 'failed') if response else 'failed',
+                'message': response.get('message', str(ex)) if response else str(ex),
+            }
 
     async def place_trailing_stop_order(self, order_book, order_data, market_price):
         """

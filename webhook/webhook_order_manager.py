@@ -373,7 +373,7 @@ class TradeOrderManager:
                 return False, validation_result
 
             # Step 2: Get order book
-            order_book_details = self.bid_ask_spread.get(trading_pair) #await self.order_book_manager.get_order_book(raw_order_data)
+            order_book_details = self.bid_ask_spread.get(trading_pair)
 
             # Step 3: Full validation
             validation_result = self.validate.fetch_and_validate_rules(raw_order_data)
@@ -472,7 +472,7 @@ class TradeOrderManager:
                 self.logger.debug(f"📤 Attempt #{attempt + 1} to place {order_type} order for {symbol}...")
 
                 # Step 1: Refresh order book
-                order_book = self.bid_ask_spread.get(symbol)#await self.order_book_manager.get_order_book(order_data, symbol)
+                order_book = self.bid_ask_spread.get(symbol)
                 highest_bid = Decimal(order_book['bid'])
                 lowest_ask = Decimal(order_book['ask'])
 

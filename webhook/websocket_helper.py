@@ -327,7 +327,7 @@ class WebSocketHelper:
                 for channel in self.market_channels:
                     subscription_message = {
                         "type": "subscribe",
-                        "product_ids": ['BTC-USD'],  #self.product_ids,
+                        "product_ids": self.product_ids,
                         "channel": channel
                     }
                     # Inject JWT ONLY for level2
@@ -674,8 +674,10 @@ class WebSocketHelper:
                     if not isinstance(pos, dict):
                         raise TypeError(f"Invalid position type: {type(pos)}")
 
-                    symbol = f"{asset}/USD"
-                    if symbol =='USD/USD':
+                    symbol = f"{asset}-USD"
+                    if symbol == 'INDEX-USD':
+                        pass
+                    if symbol =='USD-USD':
                         continue
                     current_price = usd_prices.get(symbol)
                     if not current_price:

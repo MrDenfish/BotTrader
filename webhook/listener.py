@@ -469,10 +469,6 @@ class WebhookListener:
                 if order_data.open_orders.get('open_order'):
                     return
 
-
-            # Fetch the order book for price and size adjustments
-            order_book = await self.order_book_manager.get_order_book(order_data)
-
             # Use take profit stop loss
             order_data.source = source
 
@@ -505,9 +501,6 @@ class WebhookListener:
                     if associated_buy_order_id in self.order_management['order_tracker']:
                         del self.order_management['order_tracker'][associated_buy_order_id]
                         print(f"Removed associated buy order {associated_buy_order_id} from order_tracker")
-
-
-
             else:
                 print("No response data received from order_type_manager.process_limit_and_tp_sl_orders")
 
