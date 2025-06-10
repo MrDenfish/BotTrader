@@ -206,7 +206,7 @@ class PassiveOrderManager:
         Attempt to quote both sides of the book for *product_id*.
         Will return silently if market conditions aren't favorable.
         """
-        trading_pair = product_id.replace("-", "/")
+        trading_pair = product_id.replace("/", "-")
 
         try:
             od: OrderData | None = await self.tom.build_order_data(

@@ -110,9 +110,9 @@ class WebSocketMarketManager:
         """
         Handle Coinbase *user*-channel events.
 
-        ▸ Records TP/SL child SELL orders (trigger-bracket)
-        ▸ Updates order_tracker in SharedDataManager
-        ▸ Deletes DB rows when orders are CANCELLED
+        ▸ Replaces order_tracker on snapshot
+        ▸ Merges order changes on updates (create, cancel, fill)
+        ▸ Tracks SL/TP child orders
         ▸ Triggers handle_order_fill on filled orders
         """
         try:
@@ -121,25 +121,24 @@ class WebSocketMarketManager:
                 self.logger.error("user-payload missing events list")
                 return
 
-            # Snapshots and shared state
-            mkt_snap, om_snap = await self.snapshot_manager.get_snapshots()
+            # Load snapshot for market data (static), but always pull fresh order_tracker
+            mkt_snap, _ = await self.snapshot_manager.get_snapshots()
             spot_pos = mkt_snap.get("spot_positions", {})
             cur_prices = mkt_snap.get("bid_ask_spread", {})
             usd_pairs = mkt_snap.get("usd_pairs_cache", {})
 
-            # Ensure order_tracker is initialized
-            om_snap.setdefault("order_tracker", {})
+            # Always get the most up-to-date tracker
+            order_tracker = await self.shared_data_manager.get_order_tracker()
 
             for ev in events:
-                ev_type = ev.get("type", "")
+                ev_type = ev.get("type", "").lower()
                 orders = ev.get("orders", [])
-                if ev_type == "snapshot":
-                    self.logger.info("📸 Received snapshot with open orders")
                 if not isinstance(orders, list) or not orders:
                     continue
 
-                # --- Handle snapshot batch ---
+                # ---------------- SNAPSHOT: Replace Entire Tracker ----------------
                 if ev_type == "snapshot":
+                    new_tracker = {}
                     for order in orders:
                         order_id = order.get("order_id")
                         symbol = order.get("product_id")
@@ -149,11 +148,14 @@ class WebSocketMarketManager:
 
                         normalized = self.shared_data_manager.normalize_raw_order(order)
                         if normalized and status in {"PENDING", "OPEN", "ACTIVE"}:
-                            om_snap["order_tracker"][order_id] = normalized
-                            self.logger.info(f"📥 Snapshot order tracked: {order_id} | {symbol} | {status}")
-                    continue  # skip remainder of loop for snapshots
+                            new_tracker[order_id] = normalized
+                            self.logger.info(f"📥 Snapshot tracked: {order_id} | {symbol} | {status}")
 
-                # --- Process normal (non-snapshot) events ---
+                    await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
+                    self.logger.debug(f"📸 Snapshot processed: {len(new_tracker)} open orders")
+                    return  # ✅ Exit early — no need to process updates for snapshot
+
+                # ---------------- EVENT: Update Existing Tracker ----------------
                 for order in orders:
                     order_id = order.get("order_id")
                     parent_id = order.get("parent_order_id") or order.get("parent_id")
@@ -161,49 +163,48 @@ class WebSocketMarketManager:
                     side = (order.get("order_side") or "").lower()
                     status = (order.get("status") or "").upper()
 
-                    trade = {
-                        "order_id": order_id,
-                        "parent_id": parent_id,
-                        "symbol": symbol,
-                        "side": "sell",
-                        "price": order.get("limit_price") or order.get("price"),
-                        "amount": order.get("size") or order.get("filled_size") or order.get("order_size") or 0,
-                        "status": status.lower(),
-                        "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
-                        "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
-                    }
-
                     if not order_id or not symbol:
                         continue
 
-                    # --- Handle cancel events ---
+                    # --- Cancel / Cancel Queued ---
                     if status in {"CANCELLED", "CANCEL_QUEUED"}:
                         try:
                             await self.shared_data_manager.trade_recorder.delete_trade(order_id)
                             self.logger.info(f"❎ {order_id} {status} → deleted from DB")
                         except Exception:
                             self.logger.error("❌ delete_trade failed", exc_info=True)
-                        om_snap["order_tracker"].pop(order_id, None)
+
+                        order_tracker.pop(order_id, None)
                         continue
 
-                    # --- Record TP/SL child sell orders ---
+                    # --- SL/TP Child SELL Recording ---
                     if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
                         try:
+                            trade = {
+                                "order_id": order_id,
+                                "parent_id": parent_id,
+                                "symbol": symbol,
+                                "side": "sell",
+                                "price": order.get("limit_price") or order.get("price"),
+                                "amount": order.get("size") or order.get("filled_size") or order.get("order_size") or 0,
+                                "status": status.lower(),
+                                "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
+                                "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
+                            }
                             await self.shared_data_manager.trade_recorder.record_trade(trade)
                             self.logger.debug(f"TP/SL child stored → {order_id}")
                         except Exception:
                             self.logger.error("record_trade failed", exc_info=True)
 
-                    # --- Normalize and update tracker
+                    # --- Update or Remove From Tracker ---
                     normalized = self.shared_data_manager.normalize_raw_order(order)
                     if normalized:
                         if status in {"PENDING", "OPEN", "ACTIVE"}:
-                            om_snap["order_tracker"][order_id] = normalized
+                            order_tracker[order_id] = normalized
                         elif status == "FILLED":
-                            self.shared_utils_print.print_data(None, om_snap["order_tracker"], None, None, None)
-                            om_snap["order_tracker"].pop(order_id, None)
+                            order_tracker.pop(order_id, None)
 
-                    # --- Handle filled orders (buy or sell)
+                    # --- Trigger Fills ---
                     if status == "FILLED":
                         try:
                             order_data = OrderData.from_dict(order)
@@ -233,10 +234,12 @@ class WebSocketMarketManager:
                             await self.listener.handle_order_fill(order_data)
 
                         except Exception:
-                            self.logger.error("❌ Error processing user WebSocket message", exc_info=True)
+                            self.logger.error("❌ Error processing filled order", exc_info=True)
 
-            # ✅ Finalize by pushing updated tracker into shared state
-            await self.shared_data_manager.set_order_management(om_snap)
+            # ✅ Final write to shared state
+            await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})
+            self.logger.debug(f"📦 Final tracker updated → {len(order_tracker)} orders")
+
 
         except Exception:
             self.logger.error("process_user_channel error", exc_info=True)
