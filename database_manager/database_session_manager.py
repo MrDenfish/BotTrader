@@ -167,6 +167,7 @@ class DatabaseSessionManager:
         Check if OHLCV data is initialized in the database."""
         query = select(OHLCVData).limit(1)
         result = await self.database.fetch_one(query)
+        print(f'{result}')
         return result is not None
 
     async def fetch_market_data(self):

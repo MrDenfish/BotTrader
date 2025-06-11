@@ -126,10 +126,8 @@ class MarketManager:
                 if all_dfs:
                     df = pd.concat(all_dfs)
                     df['time'] = pd.to_datetime(df['time'], unit='ms')
-                    df = df.set_index('time')
-                    df = df.resample('1min').asfreq()
-                    df = df.ffill()
-                    df = df.reset_index()
+                    df = df.set_index('time').resample('1min', origin='start').ffill().reset_index()
+                    df['time'] = pd.to_datetime(df['time'], utc=True)  # safe & direct UTC assignment
 
                     await self.store_ohlcv_data({'symbol': symbol, 'data': df})
                 else:
@@ -165,49 +163,6 @@ class MarketManager:
 
         except Exception as e:
             self.logger.error(f"❌ Error in fetch_and_store_ohlcv_data(): {e}", exc_info=True)
-
-    async def fetch_ohlcv(self, endpoint, symbol, timeframe, since, params):
-        """PART III:
-        Fetch OHLCV data for a given symbol with optional `since` timestamp and limit.
-        """
-        all_ohlcv = []
-        symbol = symbol.replace('-', '/')
-        pagination_calls = params.get('paginationCalls', 10)
-        try:
-            for _ in range(pagination_calls):
-                await asyncio.sleep(self.exchange.rateLimit / 1000 + 3)  # Respect API rate limit
-                # Correctly await `ccxt_api_call`
-                ohlcv_page = await self.rate_limited_request(
-                    self.ccxt_api.ccxt_api_call,
-                    self.exchange.fetch_ohlcv,
-                    endpoint,
-                    symbol,
-                    timeframe,
-                    since,
-                    params=params
-                )
-                if not ohlcv_page:
-                    break
-                all_ohlcv.extend(ohlcv_page)
-                since = ohlcv_page[-1][0] + 1  # Advance pagination
-
-            if all_ohlcv:
-                # Create DataFrame
-                df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
-
-                # Ensure `time` column is converted to datetime format
-                if not pd.api.types.is_datetime64_any_dtype(df['time']):
-                    df['time'] = pd.to_datetime(df['time'], unit='ms')
-
-                # Ensure `time` is timezone-aware (UTC)
-                df['time'] = df['time'].dt.tz_localize(None).dt.tz_localize('UTC')
-                df = df.sort_values(by='time', ascending=True)
-                return {'symbol': symbol, 'data': df}
-
-        except Exception as e:
-            self.logger.error(f"❌ Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
-
-        return None
 
     async def store_ohlcv_data(self, ohlcv_data):
         """PART III:
@@ -298,7 +253,7 @@ class MarketManager:
                 )
                 await self.database.execute(delete_query)
 
-                self.logger.debug(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.")
+                print(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.")
         except Exception as e:
             self.logger.error(f"❌ Error capping OHLCV data for {symbol}: {e}", exc_info=True)
 
@@ -316,3 +271,46 @@ class MarketManager:
         if last_time:
             return int(last_time['time'].timestamp() * 1000)
         return None
+
+# async def fetch_ohlcv(self, endpoint, symbol, timeframe, since, params):
+    #     """PART III:
+    #     Fetch OHLCV data for a given symbol with optional `since` timestamp and limit.
+    #     """
+    #     all_ohlcv = []
+    #     symbol = symbol.replace('-', '/')
+    #     pagination_calls = params.get('paginationCalls', 10)
+    #     try:
+    #         for _ in range(pagination_calls):
+    #             await asyncio.sleep(self.exchange.rateLimit / 1000 + 3)  # Respect API rate limit
+    #             # Correctly await `ccxt_api_call`
+    #             ohlcv_page = await self.rate_limited_request(
+    #                 self.ccxt_api.ccxt_api_call,
+    #                 self.exchange.fetch_ohlcv,
+    #                 endpoint,
+    #                 symbol,
+    #                 timeframe,
+    #                 since,
+    #                 params=params
+    #             )
+    #             if not ohlcv_page:
+    #                 break
+    #             all_ohlcv.extend(ohlcv_page)
+    #             since = ohlcv_page[-1][0] + 1  # Advance pagination
+    #
+    #         if all_ohlcv:
+    #             # Create DataFrame
+    #             df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
+    #
+    #             # Ensure `time` column is converted to datetime format
+    #             if not pd.api.types.is_datetime64_any_dtype(df['time']):
+    #                 df['time'] = pd.to_datetime(df['time'], unit='ms')
+    #
+    #             # Ensure `time` is timezone-aware (UTC)
+    #             df['time'] = df['time'].dt.tz_localize(None).dt.tz_localize('UTC')
+    #             df = df.sort_values(by='time', ascending=True)
+    #             return {'symbol': symbol, 'data': df}
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
+    #
+    #     return None
