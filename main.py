@@ -13,7 +13,6 @@ from aiohttp import web
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
 from Api_manager.coinbase_api import CoinbaseAPI
-from Api_manager.api_manager import ApiManager
 from MarketDataManager.ticker_manager import TickerManager
 from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.market_data_manager import market_data_watchdog
@@ -21,7 +20,7 @@ from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
 from SharedDataManager.shared_data_manager import SharedDataManager
 from Shared_Utils.alert_system import AlertSystem
-from Shared_Utils.debugger import Debugging
+from TestingDebugging.debugger import Debugging
 from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
@@ -54,8 +53,11 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
         logger = logger_manager.get_logger("shared_logger")
         logger.info("⏳ Checking startup snapshot state...")
 
-        await shared_data_manager.validate_startup_state(market_data_updater)
-
+        market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater)
+        print(f"market_data: {market_data}")
+        print(f"order_mgmt: {order_mgmt}")
+        logger.info("✅ Market data preloaded successfully with data from the database.")
+        return market_data, order_mgmt
     except Exception as e:
         logger.error(f"❌ Failed to preload market/order data: {e}", exc_info=True)
         raise
@@ -217,6 +219,7 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
         exchange=config.exchange,
+        order_book_manager=order_book_manager,
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
@@ -319,7 +322,14 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, logge
     listener.market_data_manager = listener.market_data_updater
     listener.trade_order_manager.market_data_updater = listener.market_data_updater
 
+    # Current data  from the exchange will be loaded, open orders are excluded at this point and time.
+    #  await listener.sync_open_orders() # Not certain this is appropriate, the thought was that new open orders would be loaded here as
+    #  apposed to uploading old data from the database in TickerManager.update_ticker_cache()
     await listener.market_data_updater.update_market_data(time.time())
+    if not shared_data_manager.order_management.get("order_tracker"):
+        logger.warning("⚠️ order_tracker is empty after startup — pulling fallback from REST")
+        await listener.market_data_updater.update_market_data(time.time())
+
     # Start the watchdog
     asyncio.create_task(
         market_data_watchdog(
@@ -523,8 +533,8 @@ async def main():
                 # ✅ Step 3: Webhook background tasks
                 background_tasks = [
                     asyncio.create_task(periodic_runner(listener.refresh_market_data, 30, name="Market Data Refresher")),
-                    asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
                     asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
+                    asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
                     asyncio.create_task(websocket_manager.start_websockets())
                 ]
 

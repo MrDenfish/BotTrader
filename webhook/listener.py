@@ -12,15 +12,13 @@ import websockets
 from aiohttp import web
 
 from Api_manager.api_manager import ApiManager
-from Api_manager.coinbase_api import CoinbaseAPI
 from MarketDataManager.ohlcv_manager import OHLCVManager
 from MarketDataManager.ticker_manager import TickerManager
-from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.passive_order_manager import PassiveOrderManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.dates_and_times import DatesAndTimes
-from Shared_Utils.debugger import Debugging
+from TestingDebugging.debugger import Debugging
 from Shared_Utils.enum import ValidationCode
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
@@ -28,7 +26,6 @@ from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
 from webhook.trailing_stop_manager import TrailingStopManager
 from webhook.webhook_manager import WebHookManager
-from MarketDataManager.webhook_order_book import OrderBookManager
 from webhook.webhook_order_manager import TradeOrderManager
 from webhook.webhook_order_types import OrderTypeManager
 from webhook.webhook_utils import TradeBotUtils
@@ -787,7 +784,7 @@ class WebhookListener:
                 open_orders = open_resp.get("orders", []) or []
                 recent_orders = recent_resp.get("orders", []) or []
 
-                self.logger.debug(
+                print(
                     f"Fetched {len(open_orders)} open orders "
                     f"and {len(recent_orders)} recent orders (since {since_iso})."
                 )
@@ -899,6 +896,29 @@ class WebhookListener:
                 self.logger.error("❌ sync_open_orders failed: %s", exc, exc_info=True)
 
             await asyncio.sleep(interval)
+
+    async def sync_order_tracker_from_exchange(self):
+        """Fetch open orders from Coinbase and inject them into order_tracker + persist to DB."""
+        try:
+            resp = await self.coinbase_api.list_historical_orders(order_status="OPEN")
+            orders = resp.get("orders", []) or []
+
+            if not orders:
+                self.logger.warning("⚠️ No open orders from exchange — skipping order_tracker sync.")
+                return
+
+            new_tracker = {}
+            for order in orders:
+                normalized = self.shared_data_manager.normalize_raw_order(order)
+                if normalized:
+                    new_tracker[normalized["order_id"]] = normalized
+
+            await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
+            await self.shared_data_manager.save_data()
+            self.logger.info(f"✅ Loaded {len(new_tracker)} open orders from REST and saved to DB.")
+        except Exception as e:
+            self.logger.error("❌ Failed to sync order_tracker from REST", exc_info=True)
+
 
     def pick(self, o: dict[str, Any], *paths: Sequence[str] | str, default=None):
         """

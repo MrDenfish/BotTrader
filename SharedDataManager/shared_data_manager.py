@@ -168,6 +168,7 @@ class SharedDataManager:
             self.logger.info("✅ Startup data initialized and saved.")
         else:
             self.logger.info("✅ Startup snapshot loaded from database.")
+            return market_data, order_mgmt
 
     async def initialize(self):
         """Initialize SharedDataManager."""
@@ -274,6 +275,7 @@ class SharedDataManager:
         return order_management_data
 
     async def set_order_management(self, updated_order_management: dict):
+        """Updates Shared State"""
         async with self.lock:
             # Merge instead of replacing the full dict
             if not isinstance(self.order_management, dict):
@@ -284,7 +286,7 @@ class SharedDataManager:
             missing_keys = {"order_tracker", "non_zero_balances"} - set(self.order_management.keys())
             if missing_keys:
                 self.logger.warning(f"⚠️ order_management missing keys: {missing_keys}")
-            self.logger.debug(f"✅ set_order_management updated with {len(self.order_management.get('order_tracker', {}))} open orders")
+            self.logger.info(f"✅ set_order_management updated with {len(self.order_management.get('order_tracker', {}))} open orders")
 
     async def fetch_market_data(self):
         """Fetch market_data from the database via DatabaseSessionManager."""

@@ -136,7 +136,7 @@ class WebSocketMarketManager:
                 if not isinstance(orders, list) or not orders:
                     continue
 
-                # ---------------- SNAPSHOT: Replace Entire Tracker ----------------
+                # ---------------- SNAPSHOT: Replace Entire Tracker & Update the database----------------
                 if ev_type == "snapshot":
                     new_tracker = {}
                     for order in orders:
@@ -152,7 +152,8 @@ class WebSocketMarketManager:
                             self.logger.info(f"📥 Snapshot tracked: {order_id} | {symbol} | {status}")
 
                     await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
-                    self.logger.debug(f"📸 Snapshot processed: {len(new_tracker)} open orders")
+                    await self.shared_data_manager.save_data()  # ✅ Add this line
+                    self.logger.debug(f"📸 Snapshot processed and persisted: {len(new_tracker)} open orders")
                     return  # ✅ Exit early — no need to process updates for snapshot
 
                 # ---------------- EVENT: Update Existing Tracker ----------------
@@ -238,7 +239,8 @@ class WebSocketMarketManager:
 
             # ✅ Final write to shared state
             await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})
-            self.logger.debug(f"📦 Final tracker updated → {len(order_tracker)} orders")
+            await self.shared_data_manager.save_data()  # ✅ 
+            self.logger.debug(f"📦 Final tracker updated and persisted → {len(order_tracker)} orders")
 
 
         except Exception:
@@ -315,94 +317,94 @@ class WebSocketMarketManager:
         except Exception as e:
             self.logger.error(f"Error in _process_single_ticker for {ticker.get('product_id')}: {e}", exc_info=True)
 
-    async def process_order_for_tracker(self, order, profit_data_list, event_type):
-        try:
-            async with self.order_tracker_lock:
-                # Step 1: Fetch a snapshot of the shared data
-
-                market_data_snapshot, order_management_snapshot = await self.snapshot_manager.get_snapshots()
-
-                # Step 2: Work with order_tracker inside the snapshot
-                order_tracker = order_management_snapshot.get('order_tracker', {})
-                spot_position = market_data_snapshot.get('spot_positions', {})
-                bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
-                usd_pairs = market_data_snapshot.get('usd_pairs', {})
-
-                normalized = self.shared_data_manager.normalize_raw_order(order)
-                if not normalized:
-                    sample = json.dumps(order, indent=2)[:500]
-                    self.logger.warning(f"❌ Could not normalize order (truncated):\n{sample}")
-                    return
-
-                # Extract basic order info
-                order_id = normalized["order_id"]
-                type = normalized["type"]
-                symbol = normalized["symbol"]
-                asset = symbol.split("/")[0]
-                status = normalized["status"]
-                side = normalized.get("side", "UNKNOWN")
-                # avg_price = normalized.get("average_price", Decimal(0))
-                # amount = normalized.get("amount", Decimal(0))
-                # limit_price = normalized.get("limit_price")
-                # stop_price = normalized.get("stop_price")
-
-                if not order_id or not symbol:
-                    self.logger.warning(f"Invalid order data: {order}")
-                    return
-
-                # Precision
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-
-                # Price info fallback logic
-                # initial_price = Decimal(order.get('initial_price') or
-                #                         spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
-                avg_price = Decimal(order.get('avg_price') or
-                                    spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
-                cost_basis = Decimal(spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0))
-                asset_balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
-
-                # limit_price = Decimal(order.get('limit_price', 0)) if order.get('limit_price') else None
-                # stop_price = Decimal(order.get('stop_price', 0)) if order.get('stop_price') else None
-                # amount = Decimal(order.get('leaves_quantity', 0)) if order.get('leaves_quantity') else None
-
-                # Profit calc
-                status_of_order = f"{order.get('order_type', 'UNKNOWN')}/{side}/{status}"
-                required_prices = {
-                    'avg_price': avg_price,
-                    'cost_basis': cost_basis,
-                    'asset_balance': asset_balance,
-                    'current_price': None,
-                    'profit': None,
-                    'profit_percentage': None,
-                    'status_of_order': status_of_order
-                }
-
-                profit = await self.profit_data_manager.calculate_profitability(
-                    asset, required_prices, bid_ask_spread, usd_pairs)
-                if profit and profit.get("profit"):
-                    normalized["profit"] = profit
-                    profit_data_list.append(profit)
-
-                self.profit_data_manager.consolidate_profit_data(profit_data_list)
-
-                # Manage tracker state
-                if status in {"OPEN", "PENDING", "ACTIVE"}:
-                    order_tracker[order_id] = normalized
-                    self.logger.info(f"Order {order_id} added/updated in tracker.")
-                elif status in {"FILLED", "CANCELED"}:
-                    if order_id in order_tracker:
-                        del order_tracker[order_id]
-                        self.logger.info(f"Order {order_id} removed from tracker. Status: {status}")
-                else:
-                    self.logger.warning(f"Unhandled order status: {status}")
-
-                print_order_tracker = order_tracker
-                # ✅ Save updated tracker back to SharedDataManager
-                order_management_snapshot['order_tracker'] = print_order_tracker
-                await self.shared_data_manager.set_order_management(order_management_snapshot)
-                return print_order_tracker
-        except Exception as e:
-            self.logger.error(f"Error processing order in process_order_for_tracker: {e}", exc_info=True)
+    # async def process_order_for_tracker(self, order, profit_data_list, event_type):
+    #     try:
+    #         async with self.order_tracker_lock:
+    #             # Step 1: Fetch a snapshot of the shared data
+    #
+    #             market_data_snapshot, order_management_snapshot = await self.snapshot_manager.get_snapshots()
+    #
+    #             # Step 2: Work with order_tracker inside the snapshot
+    #             order_tracker = order_management_snapshot.get('order_tracker', {})
+    #             spot_position = market_data_snapshot.get('spot_positions', {})
+    #             bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
+    #             usd_pairs = market_data_snapshot.get('usd_pairs', {})
+    #
+    #             normalized = self.shared_data_manager.normalize_raw_order(order)
+    #             if not normalized:
+    #                 sample = json.dumps(order, indent=2)[:500]
+    #                 self.logger.warning(f"❌ Could not normalize order (truncated):\n{sample}")
+    #                 return
+    #
+    #             # Extract basic order info
+    #             order_id = normalized["order_id"]
+    #             type = normalized["type"]
+    #             symbol = normalized["symbol"]
+    #             asset = symbol.split("/")[0]
+    #             status = normalized["status"]
+    #             side = normalized.get("side", "UNKNOWN")
+    #             # avg_price = normalized.get("average_price", Decimal(0))
+    #             # amount = normalized.get("amount", Decimal(0))
+    #             # limit_price = normalized.get("limit_price")
+    #             # stop_price = normalized.get("stop_price")
+    #
+    #             if not order_id or not symbol:
+    #                 self.logger.warning(f"Invalid order data: {order}")
+    #                 return
+    #
+    #             # Precision
+    #             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+    #
+    #             # Price info fallback logic
+    #             # initial_price = Decimal(order.get('initial_price') or
+    #             #                         spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
+    #             avg_price = Decimal(order.get('avg_price') or
+    #                                 spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
+    #             cost_basis = Decimal(spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0))
+    #             asset_balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
+    #
+    #             # limit_price = Decimal(order.get('limit_price', 0)) if order.get('limit_price') else None
+    #             # stop_price = Decimal(order.get('stop_price', 0)) if order.get('stop_price') else None
+    #             # amount = Decimal(order.get('leaves_quantity', 0)) if order.get('leaves_quantity') else None
+    #
+    #             # Profit calc
+    #             status_of_order = f"{order.get('order_type', 'UNKNOWN')}/{side}/{status}"
+    #             required_prices = {
+    #                 'avg_price': avg_price,
+    #                 'cost_basis': cost_basis,
+    #                 'asset_balance': asset_balance,
+    #                 'current_price': None,
+    #                 'profit': None,
+    #                 'profit_percentage': None,
+    #                 'status_of_order': status_of_order
+    #             }
+    #
+    #             profit = await self.profit_data_manager.calculate_profitability(
+    #                 asset, required_prices, bid_ask_spread, usd_pairs)
+    #             if profit and profit.get("profit"):
+    #                 normalized["profit"] = profit
+    #                 profit_data_list.append(profit)
+    #
+    #             self.profit_data_manager.consolidate_profit_data(profit_data_list)
+    #
+    #             # Manage tracker state
+    #             if status in {"OPEN", "PENDING", "ACTIVE"}:
+    #                 order_tracker[order_id] = normalized
+    #                 self.logger.info(f"Order {order_id} added/updated in tracker.")
+    #             elif status in {"FILLED", "CANCELED"}:
+    #                 if order_id in order_tracker:
+    #                     del order_tracker[order_id]
+    #                     self.logger.info(f"Order {order_id} removed from tracker. Status: {status}")
+    #             else:
+    #                 self.logger.warning(f"Unhandled order status: {status}")
+    #
+    #             print_order_tracker = order_tracker
+    #             # ✅ Save updated tracker back to SharedDataManager
+    #             order_management_snapshot['order_tracker'] = print_order_tracker
+    #             await self.shared_data_manager.set_order_management(order_management_snapshot)
+    #             return print_order_tracker
+    #     except Exception as e:
+    #         self.logger.error(f"Error processing order in process_order_for_tracker: {e}", exc_info=True)
 
     async def _handle_received(self, message):
         # Received = order accepted by engine, not on book yet
