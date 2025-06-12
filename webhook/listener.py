@@ -91,22 +91,24 @@ class WebSocketManager:
         """Establish and manage a WebSocket connection."""
         while True:
             try:
-                async with websockets.connect(ws_url, max_size = 2 ** 24 ) as ws:   # 16 MB
-                    self.logger.info(f"Connected to {ws_url}")
+                async with websockets.connect(ws_url, max_size=2 ** 24) as ws:  # 16 MB
                     self.reconnect_attempts = 0
 
+                    # Setup connection target
                     if is_user_ws:
                         self.websocket_helper.user_ws = ws
                         await self.websocket_helper.subscribe_user()
+                        self.logger.info(f"✅ Connected and subscribed to user WebSocket: {ws_url}")
                     else:
                         self.websocket_helper.market_ws = ws
                         await asyncio.sleep(1)
+                        self.logger.info(f"✅ Connected to market WebSocket: {ws_url}")
                         self.logger.info("⚡ Subscribing to Market Channels...")
                         await self.websocket_helper.subscribe_market()
+                        self.logger.info("📡 Market WebSocket subscription complete.")
 
-                    self.logger.info(f"Listening on {ws_url}")
-
-                    # Setup dispatch map for known channel handler
+                    # Start listening
+                    self.logger.info(f"🎧 Listening on: {ws_url}")
 
                     async for message in ws:
                         try:
@@ -114,18 +116,18 @@ class WebSocketManager:
                                 await self.websocket_helper._on_user_message_wrapper(message)
                             else:
                                 await self.websocket_helper._on_market_message_wrapper(message)
-
                         except Exception as msg_error:
-                            self.logger.error(f"Error processing message: {msg_error}", exc_info=True)
+                            self.logger.error(f"❌ Error processing message: {msg_error}", exc_info=True)
+
             except asyncio.CancelledError:
                 self.logger.warning("⚠️ WebSocket connection task was cancelled.")
-                raise  # re-raise to allow upstream shutdown handling
+                raise
             except websockets.exceptions.ConnectionClosedError as e:
-                self.logger.warning(f"WebSocket closed unexpectedly: {e}. Reconnecting...")
+                self.logger.warning(f"🔌 WebSocket closed unexpectedly: {e}. Reconnecting...")
                 await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
                 self.reconnect_attempts += 1
             except Exception as general_error:
-                self.logger.error(f"Unexpected WebSocket error, check NGROK connection: {general_error}", exc_info=True)
+                self.logger.error(f"🔥 Unexpected WebSocket error: {general_error}", exc_info=True)
                 await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
                 self.reconnect_attempts += 1
 
@@ -357,7 +359,7 @@ class WebhookListener:
                 # Fetch new market data
                 start = time.monotonic()
                 new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
-                self.logger.info(f"⚠️⚠️⚠️  update_market_data took {time.monotonic() - start:.2f}s    ⚠️⚠️⚠️")
+                print(f"⚠️⚠️⚠️  update_market_data took {time.monotonic() - start:.2f}s    ⚠️⚠️⚠️")
 
                 # Ensure fetched data is valid before proceeding
                 if not new_market_data:

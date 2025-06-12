@@ -233,13 +233,18 @@ class TradeOrderManager:
 
                 print(f'‼️ USD Avail: {usd_avail} / USD Bal: {usd_bal}  ‼️')
                 base_currency, quote_currency = product_id.split('-')
-                current_ask = Decimal(self.bid_ask_spread.get(product_id,{}).get('ask'))
-                current_bid = Decimal(self.bid_ask_spread.get(product_id,{}).get('bid'))
-                spread = Decimal(self.bid_ask_spread.get(product_id,{}).get('spread'))
+                current_ask = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('ask')) or Decimal(0)
+                current_ask = self.shared_utils_precision.safe_quantize(current_ask, quote_quantizer)
+                current_bid = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('bid')) or Decimal(0)
+                spread = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('spread')) or Decimal(0)
 
                 # Calculate current price
                 current_price = (current_ask + current_bid) / 2
                 price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
+                if  price == 0.0:
+                    return None
+
+
                 # Determine side
                 side = 'buy' if Decimal(
                     self.spot_position.get(asset, {}).get('total_balance_fiat', 0)

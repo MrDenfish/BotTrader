@@ -177,7 +177,7 @@ class TradeBot:
 
             """PART I: Data Gathering"""
             self.start_time = time.time()
-            print('Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
+            print('🟩   Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
             # Connection check
             if not self.database_session_mngr.database.is_connected:
                 await self.database_session_mngr.connect()
@@ -193,7 +193,7 @@ class TradeBot:
             # Set ticker_cache, market_cache, and other relevant data
             # await self.database_session_mngr.process_data()
 
-            self.shared_utils_print.print_elapsed_time(self.start_time, 'Part Ie: Database Loading is complete, session closed')
+            self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part Ie: Database Loading is complete, session closed')
 
         except Exception as e:
             self.logger.error(f'❌ Failed to initialize data on startup {e}', exc_info=True)
@@ -330,7 +330,7 @@ class TradeBot:
                 print(f"<", "-" * 160, ">")
                 # PART II:
                 #   Trade Database Updates and Portfolio Management
-                print(f'Part II: Trade Database Updates and Portfolio Management - Start Time:', datetime.datetime.now())
+                print(f'🟩   Part II: Trade Database Updates and Portfolio Management - Start Time:', datetime.datetime.now())
                 (holdings_list, usd_coins, buy_sell_matrix, price_change) = \
                     self.portfolio_manager.get_portfolio_data(self.start_time)
 
@@ -338,12 +338,12 @@ class TradeBot:
                 # filtered_ticker_cache -> dataframe type
                 filtered_ticker_cache = self.portfolio_manager.filter_ticker_cache_matrix(buy_sell_matrix)
 
-                self.shared_utils_print.print_elapsed_time(self.start_time, 'Part II: Trade Database Updates/Portfolio Management')
+                self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part II: Trade Database Updates/Portfolio Management')
 
                 # PART III:
                 #   Order cancellation and Data Collection
                 # print(f"Exchange instance. Total instances: {TradeBot._exchange_instance_count}")# debug
-                print(f'Part III: Order cancellation and OHLCV Data Collection - Start Time:', datetime.datetime.now())
+                print(f'🟩   Part III: Order cancellation and OHLCV Data Collection - Start Time:', datetime.datetime.now())
                 if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
                     # Step 1: Get open orders (if needed for Part III logic)
                     open_orders = await self.order_manager.get_open_orders()
@@ -362,22 +362,22 @@ class TradeBot:
                             await self.market_manager.fetch_and_store_ohlcv_data(symbols, mode='update')
 
                     self.shared_utils_print.print_elapsed_time(self.market_manager.start_time,
-                                                              'Part III: Order cancellation and OHLCV Data Collection')
+                                                              '🟩   Part III: Order cancellation and OHLCV Data Collection')
                 else:
                     print("No coins to trade. Skipping Part III.")
 
 
                 # PART IV:
                 # Trading Strategies
-                print(f'Part IV: Trading Strategies - Start Time:', datetime.datetime.now())
+                print(f'🟩   Part IV: Trading Strategies - Start Time:', datetime.datetime.now())
                 strategy_results, buy_sell_matrix = await self.trading_strategy.process_all_rows(filtered_ticker_cache,
                                                                                         buy_sell_matrix, open_orders)
 
-                self.shared_utils_print.print_elapsed_time(self.start_time, 'Part IV: Trading Strategies')
+                self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part IV: Trading Strategies')
 
                 # PART V:
                 # Order Execution
-                print(f'Part V: Order Execution based on Market conditions - Start Time:', datetime.datetime.now())
+                print(f'🟩   Part V: Order Execution based on Market conditions - Start Time:', datetime.datetime.now())
                 submitted_orders = await self.order_manager.execute_actions(strategy_results, holdings_list)
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part V: Order Execution')
@@ -385,10 +385,10 @@ class TradeBot:
                 # PART VI:
                 # Profitability Analysis and Order Generation update holdings db
 
-                print(f'Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
+                print(f'🟩   Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
                 aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders)
 
-                self.shared_utils_print.print_elapsed_time(self.start_time, 'Part VI: Profitability Analysis and Order Generation')
+                self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part VI: Profitability Analysis and Order Generation')
                 if self.exchange is not None:
                     if hasattr(self.exchange, 'close') and callable(getattr(self.exchange, 'close')):
                         await self.exchange.close()
@@ -407,13 +407,13 @@ class TradeBot:
                     await asyncio.sleep(int(0))
 
                 self.start_time = time.time()  # rest start time for next iteration.
-                print('Part I: Data Gathering and Database Loading - Start Time:', self.start_time)
+                print('🟩   Part I: Data Gathering and Database Loading - Start Time:', self.start_time)
 
                 self.market_data, self.order_management = await self.shared_data_manager.refresh_shared_data()
 
                 (holdings_list, _, _, _) = self.portfolio_manager.get_portfolio_data(self.start_time)
 
-                self.shared_utils_print.print_elapsed_time(self.start_time, 'Part I: Data Gathering and Database Loading is complete, '
+                self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part I: Data Gathering and Database Loading is complete, '
                                                                  'session closed')
 
                 # break  # debugging for cprofile

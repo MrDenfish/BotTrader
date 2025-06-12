@@ -154,7 +154,7 @@ class TickerManager:
             non_zero_balances = {
                 pos["asset"]: pos
                 for pos in spot_positions
-                if Decimal(pos["total_balance_fiat"]) > self.min_value_to_monitor
+                if Decimal(pos["total_balance_fiat"]) > self.min_value_to_monitor or pos['asset'] == 'USD'
             }
             return non_zero_balances
         except Exception as e:

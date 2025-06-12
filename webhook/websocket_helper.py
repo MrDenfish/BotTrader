@@ -509,7 +509,7 @@ class WebSocketHelper:
                         precision_data = self.shared_utils_precision.fetch_precision(symbol)
                         order_data.base_decimal = precision_data[0]
                         order_data.quote_decimal = precision_data[1]
-                        if asset == 'IDEX':
+                        if asset == 'RAD':
                            pass
                         order_duration = raw_order.get('order_duration')
 

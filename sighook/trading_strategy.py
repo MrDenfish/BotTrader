@@ -222,14 +222,11 @@ class TradingStrategy:
             valid_symbols = list(ohlcv_data_dict.keys())
 
             for symbol in valid_symbols:
-                asset = symbol.split('/')[0]
-                temp_symbol = symbol.replace("/", "-")
-                _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                if "/" in symbol:
+                    asset = symbol.replace("/", "-") # normalize symbol
+                asset = symbol.split('-')[0]
 
-                # if self.symbol_has_open_order(temp_symbol, open_orders) or asset in self.shill_coins:
-                if asset in self.shill_coins:
-                    skipped_symbols.append(temp_symbol)
-                    continue
+                _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
 
                 ohlcv_df = ohlcv_data_dict[symbol]
                 ohlcv_df = self.indicators.calculate_indicators(ohlcv_df, quote_deci)
