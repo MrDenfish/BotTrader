@@ -54,8 +54,6 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
         logger.info("⏳ Checking startup snapshot state...")
 
         market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater)
-        print(f"market_data: {market_data}")
-        print(f"order_mgmt: {order_mgmt}")
         logger.info("✅ Market data preloaded successfully with data from the database.")
         return market_data, order_mgmt
     except Exception as e:

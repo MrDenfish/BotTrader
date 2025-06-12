@@ -258,10 +258,13 @@ class WebSocketMarketManager:
         try:
             product_id = ticker.get("product_id")
             now = time.time()
+            if not self.passive_order_manager or not hasattr(self.passive_order_manager, "passive_order_tracker"):
+                self.logger.warning(f"⚠️ passive_order_manager or tracker not available for {ticker.get('product_id')}")
+                return
             last = self.passive_order_manager.passive_order_tracker.get(product_id, {}).get("timestamp", 0)
             symbol = product_id.split("-")[0]
-            current_price = Decimal(ticker.get("price", "0"))
-            base_volume = Decimal(ticker.get("volume_24_h", "0"))
+            current_price = self.shared_utils_precision.safe_decimal(ticker.get("price", 0)) or Decimal("0")
+            base_volume = self.shared_utils_precision.safe_decimal((ticker.get("volume_24_h", 0)) or  Decimal("0"))
             usd_volume = base_volume * current_price
 
             # call manager at most once every 5 s per symbol
