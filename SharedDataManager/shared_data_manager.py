@@ -123,7 +123,7 @@ class SharedDataManager:
         self.lock = asyncio.Lock()
         self._initialized_event = Event()
 
-    async def validate_startup_state(self, ticker_manager):
+    async def validate_startup_state(self, market_data_manager,ticker_manager):
         """Ensure required shared data exists, or initialize it if missing."""
         raw_market_data = await self.database_session_manager.fetch_market_data()
         raw_order_mgmt = await self.database_session_manager.fetch_order_management()
@@ -153,8 +153,8 @@ class SharedDataManager:
                 self.logger.info(f"📊 ticker_cache rows: {len(tc)}")
 
         # ✅ Check if startup snapshot is usable
-        if not market_data or not order_mgmt:
-            self.logger.warning("⚠️ No startup snapshot found. Attempting fresh data fetch...")
+        if not market_data or not order_mgmt or self.is_market_data_invalid(market_data):
+            self.logger.warning("⚠️ No startup snapshot or incomplete market data. Attempting fresh data fetch...")
 
             start_time = time.time()
             new_market_data, new_order_mgmt = await ticker_manager.update_ticker_cache(start_time=start_time)
@@ -169,6 +169,18 @@ class SharedDataManager:
         else:
             self.logger.info("✅ Startup snapshot loaded from database.")
             return market_data, order_mgmt
+
+    # ✅ Check if startup snapshot is usable or stale
+    def is_market_data_invalid(self, market_data: dict) -> bool:
+        if not market_data:
+            return True
+        if market_data.get("ticker_cache") is None or market_data["ticker_cache"].empty:
+            return True
+        if market_data.get("usd_pairs_cache") is None or market_data["usd_pairs_cache"].empty:
+            return True
+        if not isinstance(market_data.get("avg_quote_volume"), Decimal) or market_data["avg_quote_volume"] <= 0:
+            return True
+        return False
 
     async def initialize(self):
         """Initialize SharedDataManager."""
@@ -547,12 +559,47 @@ class SharedDataManager:
             self.logger.error(f"❌ Failed to save passive order: {e}", exc_info=True)
 
     async def remove_passive_order(self, order_id: str):
-        async with self.database_session_manager.async_session() as session:
-            async with session.begin():
-                await session.execute(delete(PassiveOrder).where(PassiveOrder.order_id == order_id))
+        try:
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():
+                    await session.execute(delete(PassiveOrder).where(PassiveOrder.order_id == order_id))
+        except Exception as e:
+            self.logger.error(f"❌ Failed to remove passive order: {e}", exc_info=True)
 
     async def load_all_passive_orders(self) -> list[tuple[str, str, dict]]:
         async with self.database_session_manager.async_session() as session:
             result = await session.execute(select(PassiveOrder))
             rows = result.scalars().all()
             return [(r.symbol, r.side, r.order_data) for r in rows]
+
+
+    async def reconcile_passive_orders(self):
+        """
+        Delete passive_orders from the DB that are no longer in the active order_tracker.
+        """
+        try:
+            # Step 1: Load current active orders
+            order_tracker = await self.get_order_tracker()
+            active_order_ids = {order_id for order_id in order_tracker.keys()}
+
+            # Step 2: Fetch all passive orders from DB
+            async with self.database_session_manager.async_session() as session:
+                result = await session.execute(select(PassiveOrder.order_id))
+                db_order_ids = {row[0] for row in result.all()}
+
+            # Step 3: Determine stale passive orders
+            stale_ids = db_order_ids - active_order_ids
+            if not stale_ids:
+                self.logger.info("✅ No stale passive orders found.")
+                return
+
+            # Step 4: Delete stale entries
+            self.logger.info(f"🧹 Cleaning {len(stale_ids)} stale passive orders: {stale_ids}")
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():
+                    await session.execute(
+                        delete(PassiveOrder).where(PassiveOrder.order_id.in_(stale_ids))
+                    )
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to reconcile passive orders: {e}", exc_info=True)

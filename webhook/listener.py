@@ -22,6 +22,7 @@ from TestingDebugging.debugger import Debugging
 from Shared_Utils.enum import ValidationCode
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
+from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
 from webhook.trailing_stop_manager import TrailingStopManager
@@ -67,6 +68,7 @@ class WebSocketManager:
             )
 
             asyncio.create_task(self.periodic_restart())
+            asyncio.create_task(self.websocket_helper.monitor_user_channel_activity())
             asyncio.create_task(self.websocket_helper.monitor_market_channel_activity())
 
         except Exception as e:
@@ -138,8 +140,8 @@ class WebhookListener:
 
     _exchange_instance_count = 0
 
-    def __init__(self, bot_config, shared_data_manager, database_session_manager, logger_manager, coinbase_api,
-             alert, session, market_manager, market_data_updater, exchange, order_book_manager):
+    def __init__(self, bot_config, shared_data_manager, shared_utils_color, market_data_updater, database_session_manager, logger_manager, coinbase_api,
+              session, market_manager, exchange, alert, order_book_manager):
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
             print("REST client is not initialized. Initializing now...")
@@ -170,6 +172,8 @@ class WebhookListener:
         self.shared_utils_date_time = DatesAndTimes.get_instance(self.logger_manager)
         self.shared_utils_utility = SharedUtility.get_instance(self.logger_manager)
         self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
+        self.shared_utils_color = ColorCodes.get_instance()
+
         self.shared_utils_debugger = Debugging()
 
 
@@ -194,6 +198,7 @@ class WebhookListener:
             order_type_manager=None,  # Placeholder
             shared_utils_date_time=self.shared_utils_date_time,
             shared_utils_print=self.shared_utils_print, # Placeholder
+            shared_utils_color=self.shared_utils_color,
             shared_utils_precision=self.shared_utils_precision,
             shared_utils_utility=self.shared_utils_utility, # Placeholder
             shared_utils_debugger=self.shared_utils_debugger, # Placeholder
@@ -214,14 +219,15 @@ class WebhookListener:
             coinbase_api=None,
             exchange=None,
             ohlcv_manager=None,
-            shared_data_manager=None,
+            shared_data_manager=self.shared_data_manager,
+            shared_utils_color=self.shared_utils_color,
             shared_utils_utility=None,
             shared_utils_precision=None,
             trade_order_manager=None,
             order_manager = None,
             logger=None,
-            fee_cache=self.fee_rates,
             min_spread_pct=self.bot_config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
+            fee_cache=self.fee_rates,
             # optional knobs ↓
             max_lifetime=90,  # cancel / refresh after 90 s
         )
@@ -303,18 +309,20 @@ class WebhookListener:
         self.websocket_helper = WebSocketHelper(
             self, self.websocket_manager, self.exchange, self.ccxt_api, self.logger,
             self.coinbase_api, self.profit_data_manager, self.order_type_manager,
-            self.shared_utils_date_time, self.shared_utils_print, self.shared_utils_precision,
-            self.shared_utils_utility,self.shared_utils_debugger, self.trailing_stop_manager,
-            self.order_book_manager, self.snapshot_manager, self.trade_order_manager,
-            None, self.shared_data_manager, self.session, None
+            self.shared_utils_date_time, self.shared_utils_print,self.shared_utils_color,
+            self.shared_utils_precision, self.shared_utils_utility,self.shared_utils_debugger,
+            self.trailing_stop_manager,self.order_book_manager, self.snapshot_manager,
+            self.trade_order_manager, None, self.shared_data_manager,
+            self.session, None
 
         )
         self.market_ws_manager = WebSocketMarketManager(
             self, self.exchange, self.ccxt_api, self.logger, self.coinbase_api,
             self.profit_data_manager, self.order_type_manager, self.shared_utils_print,
-            self.shared_utils_precision, self.shared_utils_utility, self.shared_utils_debugger,
-            self.trailing_stop_manager, self.order_book_manager, self.snapshot_manager,
-            self.trade_order_manager, self.ohlcv_manager, self.shared_data_manager
+            self.shared_utils_color, self.shared_utils_precision, self.shared_utils_utility,
+            self.shared_utils_debugger,self.trailing_stop_manager, self.order_book_manager,
+            self.snapshot_manager, self.trade_order_manager, self.ohlcv_manager,
+            self.shared_data_manager
         )
 
 
@@ -324,9 +332,10 @@ class WebhookListener:
                                                              self.shared_utils_date_time, self.market_manager)
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
                                                                self.shared_utils_debugger,self.shared_utils_print,
-                                                               self.logger_manager,self.order_book_manager,
-                                                               self.rest_client, self.portfolio_uuid, self.exchange,
-                                                               self.ccxt_api, self.shared_data_manager,
+                                                               self.shared_utils_color,self.logger_manager,
+                                                               self.order_book_manager,self.rest_client,
+                                                               self.portfolio_uuid, self.exchange,self.ccxt_api,
+                                                               self.shared_data_manager,
                                                                self.shared_utils_precision
         )
 

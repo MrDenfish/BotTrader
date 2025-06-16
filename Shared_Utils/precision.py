@@ -3,6 +3,7 @@ import math
 from inspect import stack  # debugging
 
 import pandas as pd
+from typing import Optional
 from decimal import localcontext, Decimal, ROUND_DOWN, InvalidOperation
 
 
@@ -66,17 +67,20 @@ class PrecisionUtils:
                 self.logger.error(f"❌ safe_quantize failed for value={value}, precision={precision}: {fallback_error}")
                 return Decimal(0)  # Or raise, depending on your policy
 
-    def fetch_precision(self, symbol: str) -> tuple:
+    def fetch_precision(self, symbol: str, *, usd_pairs_override: Optional[pd.DataFrame] = None) -> tuple:
         """
         Fetch the precision for base and quote currencies of a given symbol.
 
         :param symbol: The symbol to fetch precision for, in the format 'BTC-USD' or 'BTC/USD'.
         :return: A tuple containing base and quote decimal places.
         """
+
         try:
-            if self.usd_pairs is None or self.usd_pairs.empty:
-                self.logger.warning(f"⚠️ fetch_precision: usd_pairs is empty. Default values (4, 2, 1e-08, 1e-08) for empty usd_pairs will be set")
-                return 4, 2, 1e-08, 1e-08  # default values for empty usd_pairs
+            usd_pairs_df = usd_pairs_override if usd_pairs_override is not None else self.usd_pairs
+
+            if usd_pairs_df is None or usd_pairs_df.empty:
+                self.logger.warning("⚠️ fetch_precision: usd_pairs is empty. Using default values.")
+                return 4, 2, 1e-08, 1e-08
 
             if isinstance(symbol, pd.Series):
                 caller_function_name = stack()[1].function  # debugging
@@ -97,7 +101,7 @@ class PrecisionUtils:
             if ticker_value == 'USD/USD' or ticker_value == 'USD':
                 return 2, 2, 1e-08, 1e-08
 
-            market = self.usd_pairs.set_index('asset').to_dict(orient='index')  # dataframe to dictionary
+            market = usd_pairs_df.set_index('asset').to_dict(orient='index')  # dataframe to dictionary
             if market.get(asset):
                 base_precision = Decimal(market.get(asset,{}).get('precision',{}).get('base_increment', 1e-08) ) # Expected to be a float
                 quote_precision = Decimal(market.get(asset,{}).get('precision',{}).get('quote_increment', 1e-08) ) # Expected to be a float

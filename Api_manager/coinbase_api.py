@@ -226,6 +226,50 @@ class CoinbaseAPI:
 
         return {"error": "Max retries exceeded"}
 
+    async def cancel_order(self, order_ids: list[str]) -> dict:
+        """
+        Cancel multiple orders using Coinbase Advanced Trade API.
+
+        Args:
+            order_ids (list[str]): List of order UUIDs to cancel.
+
+        Returns:
+            dict: API response containing details of cancelled and failed orders.
+        """
+        try:
+            if not order_ids:
+                self.logger.warning("⚠️ batch_cancel called with empty order_ids list.")
+                return {"success": [], "failure": []}
+
+            request_path = "/api/v3/brokerage/orders/batch_cancel"
+            jwt_token = self.generate_rest_jwt("POST", request_path)
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {jwt_token}"
+            }
+
+            payload = {"order_ids": order_ids}
+
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.post(f"{self.rest_url}{request_path}", headers=headers, json=payload) as response:
+                text = await response.text()
+
+                if response.status != 200:
+                    self.logger.error(f"❌ batch_cancel failed: {response.status} - {text}")
+                    return {"success": [], "failure": order_ids}
+
+                data = await response.json()
+                self.logger.info(f"✅ batch_cancel succeeded: {data}")
+                return data
+
+        except Exception as e:
+            self.logger.error(f"❌ Exception in batch_cancel: {e}", exc_info=True)
+            return {"success": [], "failure": order_ids}
+
+
     async def list_historical_orders(self, *,
             limit: int | None = None,
             cursor: str | None = None,

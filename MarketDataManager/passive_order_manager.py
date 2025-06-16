@@ -27,7 +27,7 @@ import time
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Optional
 
 # ---------------------------------------------------------------------------
 # Type aliases – keep it loose here, real project will import your dataclass
@@ -45,22 +45,19 @@ class PassiveOrderManager:
     #: How aggressively to bias quotes when inventory is skewed.
     INVENTORY_BIAS_FACTOR = Decimal("0.10")  # ≤ 25 % of current spread Lower inventory skew
 
-    MIN_ORDER_COST_BASIS = Decimal("25.00")
-
-    def __init__(self, config, ccxt_api, coinbase_api, exchange, shared_data_manager, shared_utils_utility, shared_utils_precision,
-                 ohlcv_manager, trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *,
-                  max_lifetime: int | None = None,) -> None:
+    def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility, shared_utils_precision,
+                 trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *, max_lifetime: int | None = None,) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
+        self.shared_utils_color = shared_utils_color
         self.shared_data_manager = shared_data_manager
         self.logger = logger
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
         self.min_spread_pct = min_spread_pct or self.DEFAULT_MIN_SPREAD_PCT
-        self.min_order_cost_basis = self.MIN_ORDER_COST_BASIS
         self.max_lifetime = max_lifetime or self.DEFAULT_MAX_LIFETIME
 
         # {symbol: {"buy": order_id, "sell": order_id, "timestamp": float}}
@@ -354,12 +351,16 @@ class PassiveOrderManager:
         quote_od.source = 'PassiveMM'
         if not self._passes_balance_check(quote_od):
             return
+        print(f"📈 Placing Passive order: {quote_od}")
 
         ok, res = await self.tom.place_order(quote_od)
         if ok:
             order_id = res['details'].get('order_id')
             if order_id:
+                print(f"✅ Saving Passive order: {quote_od.side.upper()} {trading_pair} @ {price}")
                 await self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
+            else:
+                self.logger.warning(f"⚠️ No order_id returned in order placement response: {res}")
             self.logger.info(f"✅ Passive {quote_od.side.upper()} {trading_pair} @ {price}")
         elif res.get('code') in {'411', '414', '415', '500'}:
             print(f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {res.get('error') or res.get('message')}")
@@ -385,7 +386,7 @@ class PassiveOrderManager:
     def _passes_balance_check(self, od: OrderData) -> bool:
         """Ensure affordability of the order about to placed."""
         maker_fee = self.fee["maker"]
-        if od.cost_basis < self.min_order_cost_basis :
+        if od.cost_basis < self._min_order_amount_fiat :
             return False
         if od.side == "buy":
             fee_multiplier = Decimal(1) + self.fee["maker"]
@@ -419,37 +420,59 @@ class PassiveOrderManager:
     # Housekeeping – cancel and refresh stale quotes
     # ------------------------------------------------------------------
     async def _watchdog(self) -> None:
-        """Background coroutine that clears expired resting orders."""
+        """Background coroutine that clears expired resting orders and reconciles DB."""
+        counter = 0  # to track periodic execution
+
         while True:
             try:
                 await asyncio.sleep(5)
                 now = time.time()
+
+                # Passive order cleanup logic
+                print(self.shared_utils_color.format(f" {self.passive_order_tracker}",self.shared_utils_color.MAGENTA))
+
                 for symbol, entry in list(self.passive_order_tracker.items()):
                     if now - entry.get("timestamp", 0) < self.max_lifetime:
-                        # Only monitor active BUYs
+                        # Monitor active BUYs
                         if "buy" in entry:
                             od = entry.get("order_data")
                             if isinstance(od, OrderData):
                                 await self.monitor_passive_position(symbol, od)
                         continue
-                    # cancel both sides and purge tracker
+
+                    # Cancel & cleanup expired orders
                     for side in ("buy", "sell"):
                         old_id = entry.get(side)
-                        if isinstance(old_id, dict):  # accidental structure
+                        if isinstance(old_id, dict):
                             old_id = old_id.get("order_id")
+
                         if old_id:
                             try:
                                 await self.order_manager.cancel_order(old_id, symbol)
-                                # clean up
-                                await self.shared_data_manager.remove_passive_order(old_id)
-                            except Exception as exc:  # noqa: BLE001 (broad ok here)
+                            except Exception as exc:
                                 self.logger.warning(
                                     f"⚠️ Failed to cancel expired {side} {symbol} (ID: {old_id}): {exc}", exc_info=True
                                 )
+                            try:
+                                await self.shared_data_manager.remove_passive_order(old_id)
+                            except Exception as exc:
+                                self.logger.warning(
+                                    f"⚠️ Failed to remove passive order {old_id} from DB: {exc}", exc_info=True
+                                )
+                        else:
+                            self.logger.info(
+                                f"ℹ️ No order_id for expired {side} {symbol} — skipping cancel, attempting DB cleanup"
+                            )
+
                     self.passive_order_tracker.pop(symbol, None)
                     print(f"🔍 Monitoring: {list(self.passive_order_tracker.keys())}")
 
-            except Exception as ex:  # watchdog must never die silently
-                self.logger.error(f"Watchdog error {ex}", exc_info=True)
+                # 🔁 Reconcile DB every 12 cycles (~1 min)
+                counter += 1
+                if counter % 12 == 0:
+                    await self.shared_data_manager.reconcile_passive_orders()
 
+
+            except Exception as ex:
+                self.logger.error(f"Watchdog error {ex}", exc_info=True)
 

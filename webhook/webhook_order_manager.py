@@ -469,7 +469,9 @@ class TradeOrderManager:
     async def attempt_order_placement(self, order_data: OrderData, order_type: str, max_attempts: int = 3) -> tuple[bool, dict]:
         symbol = order_data.trading_pair
         asset = order_data.base_currency
+        response = None
 
+        # Step 0: Refresh market data
         await self.market_data_updater.run_single_refresh_market_data()
 
         for attempt in range(max_attempts):
@@ -520,6 +522,7 @@ class TradeOrderManager:
                 # Step 4: Attempt order placement
                 if order_type == 'limit':
                     response = await self.order_types.place_limit_order("Webhook", order_data)
+
                 elif order_type == 'tp_sl':
                     response = await self.order_types.process_limit_and_tp_sl_orders("Webhook", order_data, tp, sl)
                 elif order_type == 'trailing_stop':
@@ -529,7 +532,7 @@ class TradeOrderManager:
 
                 # Step 5: Handle known failure format: {'status': 'failed', 'reason': ...}
                 if isinstance(response, dict) and response.get('status') == 'failed':
-                    reason = response.get('reason', '')
+                    reason =  response.get('reason', '')
                     if reason == 'insufficient_balance':
                         return False, self.build_response(
                             success=False, code="422", message="Insufficient balance", details=order_data.__dict__,
@@ -538,10 +541,14 @@ class TradeOrderManager:
                     # Add more custom 'reason' cases here as needed
 
                 # Step 6: Handle success
-                if response.get('success') and response.get('info', {}).get('order_id'):
-                    order_id = response['info']['order_id']
+                if response.get('success') and response.get('order_id'):
+                    success_response = response.get('success_response', {})
+                    order_config = response.get('order_configuration', {})
+
+                    order_id = response['order_id']
                     order_data.order_id = order_id
-                    if response.get('side').lower() == 'buy':
+                    order_data.source = response.get('source')
+                    if success_response.get('side').lower() == 'buy':
                         order_data.parent_order_id = order_id
                     self.logger.info(f"✅ Successfully placed {order_type} order for {symbol}")
                     return True, self.build_response(True, "Order placed", "200", order_data.__dict__)

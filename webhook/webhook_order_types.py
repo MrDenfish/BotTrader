@@ -245,11 +245,14 @@ class OrderTypeManager:
                     'order_id': response.get('success_response',{}).get('order_id'),  # or client_order_id
                     'parent_id':response.get('success_response',{}).get('order_id'),
                     'order_time': datetime.utcnow(),  # Or response.get('timestamp') if exists
-                    'trigger': 'limit',
-                    'status': 'placed'
+                    'trigger': order_data.trigger,
+                    'status': 'placed',
+                    'source':order_data.source
                 }
                 await self.shared_data_manager.trade_recorder.record_trade(trade_data)
-
+                response['trigger'] = order_data.trigger
+                response['status'] = 'placed'
+                response['source'] = order_data.source
                 return response
             else:
                 print(f"❗️ Order Rejected TP/SL: {response.get('error_response', {}).get('message')} ❗️") # debug
@@ -354,29 +357,53 @@ class OrderTypeManager:
 
                 formatted_price = f"{price:.{order_data.quote_decimal}f}"
                 formatted_amount = f"{amount:.{order_data.base_decimal}f}"
+                client_order_id = str(uuid.uuid4())
+                payload = {
+                    "client_order_id": f"{order_data.source}-{uuid.uuid4().hex[:8]}",
+                    "product_id": symbol,
+                    "side": side.upper(),
+                    "order_configuration": {
+                        "limit_limit_gtc": {
+                            "base_size": str(formatted_amount),
+                            "limit_price": str(formatted_price),
+                            "post_only": True
+                        }
+                    }
+                }
 
-                response = await self.ccxt_api.ccxt_api_call(
-                    self.exchange.create_order, 'private', symbol, 'limit', side, formatted_amount, formatted_price, params=params
-                )
+                response = await self.coinbase_api.create_order(payload)
+                print(f"🟡 Coinbase Pro response: {response}")
 
-                if not response:
-                    self.logger.warning("❌ No response from exchange when placing order.")
-                    break
+                if not response.get("success"):
+                    return {
+                        'success': False,
+                        'error': response.get("error"),
+                        'trigger': order_data.trigger,
+                        'status': 'failed',
+                        'message': response.get("details", "Unknown Error"),
+                        'source': order_data.source
+                    }
 
-                if response.get('success'):
-                    self.logger.info(f"✅ Order placed successfully: {response.get('side')} {symbol}")
+                if response.get("success"):
+                    order_id = response.get("success_response", {}).get("order_id")
+                    response["source"] = order_data.source
+                    response["trigger"] = order_data.trigger
+                    response["order_id"] = order_id
+                    response["status"] = "placed"
+
                     await self.shared_data_manager.trade_recorder.record_trade({
-                        'symbol': response.get('success_response', {}).get('product_id'),
-                        'side': response.get('success_response', {}).get('side', '').lower(),
-                        'amount': response.get('order_configuration', {}).get('limit_limit_gtc', {}).get('base_size'),
-                        'price': response.get('order_configuration', {}).get('limit_limit_gtc', {}).get('limit_price'),
-                        'order_id': response.get('success_response', {}).get('order_id'),
+                        'symbol': symbol,
+                        'side': side.lower(),
+                        'amount': formatted_amount,
+                        'price': formatted_price,
+                        'order_id': order_id,
                         'order_time': datetime.now(),
-                        'trigger': 'limit',
-                        'status': 'placed'
+                        'trigger': order_data.trigger,
+                        'status': 'placed',
+                        'source': order_data.source,
+                        'order_configuration': response['order_configuration']
                     })
-                    response['trigger'] = 'limit'
-                    response['status'] = 'placed'
+
                     return response
 
                 if is_post_only_rejection(response):
@@ -389,14 +416,7 @@ class OrderTypeManager:
             self.logger.warning(f"❗️ Order Rejected Limit Order: {symbol}:{order_data.trigger}", exc_info=True)
             print(f' ⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}   ⚠️')
 
-            return {
-                'success': False,
-                'error': 'OrderRejected',
-                'trigger': 'limit',
-                'status': response.get('status', 'failed') if response else 'failed',
-                'message': response.get('message', 'unknown') if response else 'No response received',
-                'reason': response.get('reason') if response else 'No reason provided'
-            }
+
 
         except Exception as ex:
             self.logger.error(f"❌ Error in place_limit_order: {ex}", exc_info=True)
@@ -521,6 +541,9 @@ class OrderTypeManager:
                 return None
 
             print(f'Trailing stop order placed for {order_data["trading_pair"]}, response: {response}')  # Debugging
+            response['trigger'] = order_data.trigger
+            response['status'] = 'placed'
+            response['source'] = order_data.source
             return response, market_price, trailing_stop_price
 
         except Exception as ex:
