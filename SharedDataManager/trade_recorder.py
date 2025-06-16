@@ -2,6 +2,8 @@
 # SharedDataManager/trade_recorder.py
 
 from TableModels.trade_record import TradeRecord
+from typing import Optional
+from sqlalchemy import text
 from sqlalchemy.future import select
 from decimal import Decimal
 from datetime import datetime
@@ -29,7 +31,14 @@ class TradeRecorder:
                     else order_time_raw
                 )
                 base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(trade_data['symbol'])
+                parent_id = trade_data.get('parent_id')
 
+                if trade_data['side'].lower() == 'sell' and not parent_id:
+                    parent_id = await self.find_latest_unlinked_buy(trade_data['symbol'])
+                    if not parent_id and self.logger:
+                        self.logger.warning(f"⚠️ No parent BUY order found for SELL {trade_data['symbol']} — orphaned sell.")
+                elif trade_data['side'].lower() == 'buy':
+                    parent_id = trade_data['order_id']  # self-linked
 
                 trade_record = TradeRecord(
                     symbol=trade_data['symbol'],
@@ -40,9 +49,11 @@ class TradeRecorder:
                     total_fees_usd=None,
                     price=self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci),
                     order_id=trade_data['order_id'],
-                    parent_id=trade_data['parent_id'] or trade_data['order_id'],
+                    parent_id=parent_id,
                     trigger=trade_data['trigger'],
-                    status=trade_data['status']
+                    status=trade_data['status'],
+                    source=trade_data['source']
+
                 )
 
                 session.add(trade_record)
@@ -97,3 +108,29 @@ class TradeRecorder:
                 if self.logger:
                     self.logger.error(f"❌ Failed to delete trade {order_id}: {e}", exc_info=True)
 
+    from sqlalchemy import text
+
+    async def find_latest_unlinked_buy(self, symbol: str) -> Optional[str]:
+        """
+        Finds the most recent buy order for a symbol that has not yet been linked to a sell.
+        Returns the order_id if found, else None.
+        """
+        async with self.db_session_manager.async_session() as session:
+            try:
+                result = await session.execute(text("""
+                    SELECT order_id FROM trade_records
+                    WHERE symbol = :symbol
+                      AND side = 'buy'
+                      AND order_id NOT IN (
+                          SELECT parent_id FROM trade_records
+                          WHERE symbol = :symbol AND side = 'sell'
+                      )
+                    ORDER BY order_time DESC
+                    LIMIT 1
+                """), {"symbol": symbol})
+                row = result.fetchone()
+                return row[0] if row else None
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"❌ Error in find_latest_unlinked_buy for {symbol}: {e}", exc_info=True)
+                return None

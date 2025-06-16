@@ -40,10 +40,11 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, coinbase_api, shared_data_mgr, rest_client, portfolio_uuid, exchange, order_book_manager, logger_manager=None, websocket_helper=None,
-                 shared_utils_debugger=None, shared_utils_print=None):
+    def __init__(self, coinbase_api, shared_data_mgr, market_data_updater,rest_client, portfolio_uuid, exchange, order_book_manager,
+                 logger_manager=None, websocket_helper=None, shared_utils_debugger=None, shared_utils_print=None, shared_utils_color=None):
         self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_mgr
+        self.market_data_updater = market_data_updater
         self.websocket_helper = websocket_helper
         self.app_config = bot_config()
         self.rest_client = rest_client
@@ -65,7 +66,7 @@ class TradeBot:
         self.profit_extras = self.async_func = self.indicators = self.debug_data_loader = None
         self.ticker_manager = self.portfolio_manager = self.webhook = self.trading_strategy = None
         self.profit_manager = self.profit_helper = self.order_manager = self.market_manager = None
-        self.market_data = self.ticker_cache = self.market_cache_vol = self.bid_ask_spread = None
+        self.ticker_cache = self.market_cache_vol = self.bid_ask_spread = None
         self.filtered_balances = self.start_time = self.exchange_class = self.session = None
         self.sharded_utils = self.profit_data_manager = self.snapshots_manager =  self.ticker_manager = None
         self.sleep_time = self.app_config.sleep_time
@@ -96,7 +97,7 @@ class TradeBot:
     def min_volume_new(self):
         return round(Decimal(self.shared_data_manager.market_data.get('avg_quote_volume', 0)), 0)
 
-    async def async_init(self, validate_startup_data: bool = False, shared_utils_debugger=None, shared_utils_print=None):
+    async def async_init(self, validate_startup_data: bool = False, shared_utils_debugger=None, shared_utils_print=None, shared_utils_color=None):
         """Initialize bot components asynchronously.
 
         Args:
@@ -111,6 +112,7 @@ class TradeBot:
         # ✅ Assign shared_utils if provided
         self.shared_utils_debugger = shared_utils_debugger or getattr(self, 'shared_utils_debugger', None)
         self.shared_utils_print = shared_utils_print or getattr(self, 'shared_utils_print', None)
+        self.shared_utils_color = shared_utils_color or getattr(self, 'shared_utils_color', None)
 
         # ✅ Ensure shared_utils are defined before using them
         if not self.shared_utils_debugger or not self.shared_utils_print:
@@ -124,6 +126,7 @@ class TradeBot:
             self.coinbase_api,
             self.shared_utils_debugger,
             self.shared_utils_print,
+            self.shared_utils_color,
             self.logger_manager,
             self.order_book_manager,
             self.rest_client,
@@ -136,7 +139,7 @@ class TradeBot:
 
         # ✅ Validate and load shared data
         if validate_startup_data:
-            await self.shared_data_manager.validate_startup_state(self.ticker_manager)
+            await self.shared_data_manager.validate_startup_state(self.market_data_updater, self.ticker_manager)
 
         market_data, order_management = await self.shared_data_manager.initialize_shared_data()
 
@@ -235,9 +238,10 @@ class TradeBot:
         )
 
         self.ticker_manager = await TickerManager.get_instance(
-            self.app_config, self.coinbase_api, self.shared_utils_debugger, self.shared_utils_print,
-            self.logger_manager, self.order_book_manager, self.rest_client, self.portfolio_uuid, self.exchange, self.ccxt_api,
-            self.shared_data_manager, self.shared_utils_precision
+            self.app_config, self.coinbase_api, self.shared_utils_debugger,
+            self.shared_utils_print, self.shared_utils_color, self.logger_manager,
+            self.order_book_manager, self.rest_client, self.portfolio_uuid, self.exchange,
+            self.ccxt_api, self.shared_data_manager, self.shared_utils_precision
         )
 
         self.database_utility = DatabaseIntegrity.get_instance(self.app_config, self.db_tables, self.logger_manager)
@@ -273,7 +277,7 @@ class TradeBot:
 
         self.order_manager = OrderManager.get_instance(
             self.trading_strategy, self.ticker_manager, self.exchange,
-            self.webhook, self.alerts, self.logger, self.ccxt_api,
+            self.webhook, self.alerts, self.logger, self.coinbase_api, self.ccxt_api,
             self.shared_utils_precision, self.shared_data_manager,
             self.web_url, self.max_concurrent_tasks,
         )

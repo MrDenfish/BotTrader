@@ -14,14 +14,15 @@ class OrderManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
+    def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, coinbase_api, ccxt_api,
                      shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks=10):
         if cls._instance is None:
-            cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
-                                shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks)
+            cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts,
+                                logger_manager, coinbase_api, ccxt_api, shared_utils_precision,
+                                shared_data_manager, web_url, max_concurrent_tasks)
         return cls._instance
 
-    def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, ccxt_api,
+    def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, coinbase_api, ccxt_api,
                  shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks=10):
         self.config = CentralConfig()
         self.shared_data_manager = shared_data_manager
@@ -33,6 +34,7 @@ class OrderManager:
         self.alerts = alerts
         self.logger = logger_manager  # 🙂
         self.ccxt_api = ccxt_api
+        self.coinbase_api = coinbase_api
         self._version = self.config.program_version
         self._min_sell_value = Decimal(self.config.min_sell_value)
         self._order_size_fiat = Decimal(self.config.order_size_fiat)
@@ -225,15 +227,13 @@ class OrderManager:
         try:
             if order_id is not None:
                 print(f'Cancelling order {product_id}:{order_id}')
-                product_id = product_id.replace('-', '/')
-                endpoint = 'private'
-
-                async with self.ccxt_api.get_semaphore(endpoint):
-                    await self.ccxt_api.ccxt_api_call(self.exchange.cancel_order,endpoint,order_id,product_id)
+                response = await self.coinbase_api.cancel_order(order_id)
+                if response:
                     print(f"  🟪🟨  open order canceled  🟨🟪  ")  # debug
                     return
-            print(f'‼️ Order {product_id}:{order_id}  was not cancelled')
-            return
+                else:
+                    print(f'‼️ Order {product_id}:{order_id}  was not cancelled')
+                    return
         except Exception as e:
             self.logger.error(f'❌Error cancelling order {product_id}:{order_id}: {e}', exc_info=True)
 

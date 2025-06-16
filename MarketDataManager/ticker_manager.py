@@ -1,6 +1,6 @@
 import asyncio
 from decimal import Decimal
-
+from typing import Optional
 import pandas as pd
 import decimal
 import random
@@ -23,20 +23,20 @@ class TickerManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, config, coinbase_api, shared_utils_debugger, shared_utils_print, logger_manager, order_book_manager, rest_client,
-                           portfolio_uuid, exchange, ccxt_api, shared_data_manager, shared_utils_precision):
+    async def get_instance(cls, config, coinbase_api, shared_utils_debugger, shared_utils_print, shared_utils_color, logger_manager,
+                           order_book_manager, rest_client, portfolio_uuid, exchange, ccxt_api, shared_data_manager, shared_utils_precision):
         """Ensures only one instance of TickerManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
                     cls._instance = cls(config, coinbase_api, shared_utils_debugger,
-                                        shared_utils_print, logger_manager, order_book_manager,
-                                        rest_client, portfolio_uuid, exchange, ccxt_api,
-                                        shared_data_manager, shared_utils_precision)
+                                        shared_utils_print, shared_utils_color,logger_manager,
+                                        order_book_manager, rest_client, portfolio_uuid, exchange,
+                                        ccxt_api,shared_data_manager, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, config, coinbase_api, shared_utils_debugger, shared_utils_print, logger_manager, order_book_manager, rest_client,
-                 portfolio_uuid, exchange, ccxt_api, shared_data_manager, shared_utils_precision):
+    def __init__(self, config, coinbase_api, shared_utils_debugger, shared_utils_print, shared_utils_color, logger_manager, order_book_manager,
+                 rest_client, portfolio_uuid, exchange, ccxt_api, shared_data_manager, shared_utils_precision):
         if TickerManager._instance is not None:
             raise Exception("TickerManager is a singleton and has already been initialized!")
         self.bot_config = config
@@ -118,7 +118,9 @@ class TickerManager:
             tickers_cache, bid_ask_spread = await self.parallel_fetch_and_update(usd_pairs_cache, tickers_cache)
 
             # Process spot positions and include precision data
-            spot_positions = self.process_spot_positions(non_zero_balances, tickers_cache)
+            spot_positions = self.process_spot_positions(non_zero_balances,
+                                                         tickers_cache,
+                                                         usd_pairs_cache)
 
             return {
                 "ticker_cache": tickers_cache,
@@ -161,7 +163,7 @@ class TickerManager:
             self.logger.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
             return {}
 
-    def process_spot_positions(self, non_zero_balances: dict, tickers_cache: pd.DataFrame) -> dict:
+    def process_spot_positions(self, non_zero_balances: dict, tickers_cache: pd.DataFrame, usd_pairs_cache: Optional[pd.DataFrame] = None) -> dict:
         """
         Process spot positions, round numeric values, and merge precision data for custom objects.
 
@@ -184,7 +186,7 @@ class TickerManager:
 
             for asset, data in non_zero_balances.items():
                 # Retrieve precision from tickers_cache
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, usd_pairs_override=usd_pairs_cache)
                 precision = {'amount': base_deci, 'price': quote_deci}
                 # ticker_precision_map.get(asset, {'amount': None, 'price': None}))
 
@@ -411,7 +413,7 @@ class TickerManager:
                 product_id = entry.get("product_id")
 
                 asset = product_id.split("-")[0]
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset,usd_pairs_override=usd_pairs)
 
                 try:
                     bid = float(entry.get("bids", [{}])[0].get("price"))

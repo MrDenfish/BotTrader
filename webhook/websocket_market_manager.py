@@ -13,7 +13,7 @@ getcontext().prec = 10
 
 class WebSocketMarketManager:
     def __init__(self, listener, exchange, ccxt_api, logger_manager, coinbase_api, profit_data_manager,
-                 order_type_manager, shared_utils_print, shared_utils_precision, shared_utils_utility,
+                 order_type_manager, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
                  shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager,
                  trade_order_manager, ohlcv_manager, shared_data_manager):
 
@@ -152,7 +152,7 @@ class WebSocketMarketManager:
                             self.logger.info(f"📥 Snapshot tracked: {order_id} | {symbol} | {status}")
 
                     await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
-                    await self.shared_data_manager.save_data()  # ✅ Add this line
+                    await self.shared_data_manager.save_data()  # ✅
                     self.logger.debug(f"📸 Snapshot processed and persisted: {len(new_tracker)} open orders")
                     return  # ✅ Exit early — no need to process updates for snapshot
 
@@ -191,6 +191,7 @@ class WebSocketMarketManager:
                                 "status": status.lower(),
                                 "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
                                 "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
+                                "new_source":'Test Source_sell'
                             }
                             await self.shared_data_manager.trade_recorder.record_trade(trade)
                             self.logger.debug(f"TP/SL child stored → {order_id}")
@@ -198,6 +199,7 @@ class WebSocketMarketManager:
                             self.logger.error("record_trade failed", exc_info=True)
 
                     # --- Update or Remove From Tracker ---
+                    order['source'] = 'websocket' # tag order for tracking
                     normalized = self.shared_data_manager.normalize_raw_order(order)
                     if normalized:
                         if status in {"PENDING", "OPEN", "ACTIVE"}:

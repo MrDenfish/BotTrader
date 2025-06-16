@@ -24,6 +24,7 @@ from TestingDebugging.debugger import Debugging
 from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
+from  Shared_Utils.print_data import ColorCodes
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
@@ -48,12 +49,12 @@ print(f"   DB: {_.machine_type}@{_.db_host}/{_.db_name}")
 async def load_config():
     return Config(is_docker=is_docker_env())
 
-async def preload_market_data(logger_manager, shared_data_manager, market_data_updater,  ):
+async def preload_market_data(logger_manager, shared_data_manager, market_data_updater, ticker_manager ):
     try:
         logger = logger_manager.get_logger("shared_logger")
         logger.info("⏳ Checking startup snapshot state...")
 
-        market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater)
+        market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater,ticker_manager)
         logger.info("✅ Market data preloaded successfully with data from the database.")
         return market_data, order_mgmt
     except Exception as e:
@@ -85,7 +86,7 @@ async def init_shared_data(logger_manager, shared_logger):
                                                      shared_logger)
     shared_utils_utility = SharedUtility.get_instance(logger_manager)
     shared_utils_print = PrintData.get_instance(logger_manager, shared_utils_utility)
-
+    shared_utils_color = ColorCodes.get_instance()
     shared_data_manager.__init__(shared_logger, database_session_manager,
                                  shared_utils_utility, shared_utils_precision)
 
@@ -94,10 +95,11 @@ async def init_shared_data(logger_manager, shared_logger):
     shared_data_manager.snapshot_manager = snapshot_manager
     shared_data_manager.shared_utils_debugger = shared_utils_debugger
     shared_data_manager.shared_utils_print = shared_utils_print
+    shared_data_manager.shared_utils_color = shared_utils_color
     shared_data_manager.shared_utils_precision = shared_utils_precision
 
     await shared_data_manager.initialize()
-    return shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_utility, shared_utils_precision
+    return shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility, shared_utils_precision
 
 
 async def build_websocket_components(config, listener, shared_data_manager):
@@ -113,10 +115,11 @@ async def build_websocket_components(config, listener, shared_data_manager):
         ccxt_api=listener.ccxt_api,
         coinbase_api=listener.coinbase_api,
         exchange=listener.exchange,
+        ohlcv_manager=listener.ohlcv_manager,
         shared_data_manager=shared_data_manager,
+        shared_utils_color=listener.shared_utils_color,
         shared_utils_utility=listener.shared_utils_utility,
         shared_utils_precision=listener.shared_utils_precision,
-        ohlcv_manager=listener.ohlcv_manager,
         trade_order_manager=listener.trade_order_manager,
         order_manager=listener.order_manager,
         logger=listener.logger,
@@ -137,6 +140,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
         order_type_manager=listener.order_type_manager,
         shared_utils_date_time=listener.shared_utils_date_time,
         shared_utils_print=listener.shared_utils_print,
+        shared_utils_color=listener.shared_utils_color,
         shared_utils_precision=listener.shared_utils_precision,
         shared_utils_utility=listener.shared_utils_utility,
         shared_utils_debugger=listener.shared_utils_debugger,
@@ -160,6 +164,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
         profit_data_manager=listener.profit_data_manager,
         order_type_manager=listener.order_type_manager,
         shared_utils_print=listener.shared_utils_print,
+        shared_utils_color=listener.shared_utils_color,
         shared_utils_precision=listener.shared_utils_precision,
         shared_utils_utility=listener.shared_utils_utility,
         shared_utils_debugger=listener.shared_utils_debugger,
@@ -197,8 +202,8 @@ async def refresh_loop(shared_data_manager, interval=30):
         await asyncio.sleep(interval)
 
 
-async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, logger_manager, alert, order_book_manager,
-                      shared_utils_debugger, shared_utils_print, startup_event=None, listener=None):
+async def run_sighook(config, shared_data_manager, market_data_updater, rest_client, portfolio_uuid, logger_manager, alert, order_book_manager,
+                      shared_utils_debugger, shared_utils_print, shared_utils_color, startup_event=None, listener=None):
 
     if startup_event:
         await startup_event.wait()
@@ -214,6 +219,7 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
+        market_data_updater=market_data_updater,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
         exchange=config.exchange,
@@ -221,11 +227,14 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
+        shared_utils_color=shared_utils_color,
         websocket_helper=websocket_helper
     )
     await trade_bot.async_init(validate_startup_data=False,
                                shared_utils_debugger=shared_utils_debugger,
-                               shared_utils_print=shared_utils_print)
+                               shared_utils_print=shared_utils_print,
+                               shared_utils_color=shared_utils_color
+                               )
 
     sighook_logger = logger_manager.get_logger("sighook")
 
@@ -242,11 +251,12 @@ async def run_sighook(config, shared_data_manager, rest_client, portfolio_uuid, 
     finally:
         sighook_logger.info("sighook shutdown complete.")
 
-async def create_trade_bot(config, coinbase_api, shared_data_manager, order_book_manager, logger_manager,
-                           shared_utils_debugger, shared_utils_print, websocket_helper=None) -> TradeBot:
+async def create_trade_bot(config, coinbase_api, shared_data_manager, market_data_updater, order_book_manager, logger_manager,
+                           shared_utils_debugger, shared_utils_print, shared_utils_color, websocket_helper=None) -> TradeBot:
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
+        market_data_updater = market_data_updater,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
         exchange=config.exchange,
@@ -254,16 +264,18 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, order_book
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
+        shared_utils_color=shared_utils_color,
         websocket_helper=websocket_helper
     )
     await trade_bot.async_init(validate_startup_data=True,
                                shared_utils_debugger=shared_utils_debugger,
-                               shared_utils_print=shared_utils_print)
+                               shared_utils_print=shared_utils_print,
+                               shared_utils_color=shared_utils_color)
     return trade_bot
 
 
-async def init_webhook(config, session, coinbase_api, shared_data_manager, logger_manager,shared_utils_debugger, shared_utils_print, alert,
-                       startup_event=None, trade_bot=None, order_book_manager=None):
+async def init_webhook(config, session, coinbase_api, shared_data_manager, market_data_updater, logger_manager,shared_utils_debugger,
+                       shared_utils_print, shared_utils_color, alert, startup_event=None, trade_bot=None, order_book_manager=None):
 
 
     exchange = config.exchange
@@ -271,12 +283,13 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, logge
     listener = WebhookListener(
         bot_config=config,
         shared_data_manager=shared_data_manager,
+        shared_utils_color=shared_utils_color,
+        market_data_updater=market_data_updater,
         database_session_manager=shared_data_manager.database_session_manager,
         logger_manager=logger_manager,
         coinbase_api=coinbase_api,
         session=session,
         market_manager=None,
-        market_data_updater=None,
         exchange=config.exchange,
         alert=alert,
         order_book_manager=order_book_manager  # ✅ injected
@@ -289,10 +302,12 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, logge
             config=config,
             coinbase_api=listener.coinbase_api,
             shared_data_manager=shared_data_manager,
+            market_data_updater = market_data_updater,
             order_book_manager=order_book_manager,
             logger_manager=logger_manager,
             shared_utils_debugger=shared_utils_debugger,
             shared_utils_print=shared_utils_print,
+            shared_utils_color=shared_utils_color,
             websocket_helper=listener.websocket_helper  # only if required
         )
 
@@ -362,8 +377,8 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, logge
 
 
 
-async def run_webhook(config, session, coinbase_api, shared_data_manager, logger_manager, alert, shared_utils_debugger, shared_utils_print,
-                      order_book_manager, startup_event=None, ccxt_api=None, trade_bot=None):
+async def run_webhook(config, session, coinbase_api, shared_data_manager, market_data_updater, logger_manager, alert, shared_utils_debugger,
+                      shared_utils_print, shared_utils_color, order_book_manager, startup_event=None, ccxt_api=None, trade_bot=None):
 
 
     listener, websocket_manager, app, runner = await init_webhook(
@@ -371,9 +386,11 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, logger
         session=session,
         coinbase_api=coinbase_api,
         shared_data_manager=shared_data_manager,
+        market_data_updater=market_data_updater,
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
+        shared_utils_color=shared_utils_color,
         startup_event=startup_event,
         trade_bot=None,
         alert=alert,
@@ -424,9 +441,8 @@ async def main():
     config.exchange = ExchangeManager.get_instance(config.load_webhook_api_key()).get_exchange()
     startup_event = asyncio.Event()
 
-    shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_utility, shared_utils_precision = await init_shared_data(
-        logger_manager, shared_logger,
-    )
+    (shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility,
+     shared_utils_precision) = await init_shared_data(logger_manager, shared_logger)
 
     # ✅ Initialize OrderBookManager before listener
     order_book_manager = OrderBookManager.get_instance(
@@ -447,8 +463,9 @@ async def main():
             ticker_manager = TickerManager(
                 config=config,
                 coinbase_api=coinbase_api,
-                shared_utils_debugger=shared_data_manager.shared_utils_debugger,
-                shared_utils_print=shared_data_manager.shared_utils_print,
+                shared_utils_debugger=shared_utils_debugger,
+                shared_utils_print=shared_utils_print,
+                shared_utils_color=shared_utils_color,
                 logger_manager=logger_manager,
                 order_book_manager=order_book_manager,
                 rest_client=config.rest_client,
@@ -469,6 +486,7 @@ async def main():
             await preload_market_data(
                 logger_manager=logger_manager,
                 shared_data_manager=shared_data_manager,
+                ticker_manager=ticker_manager,
                 market_data_updater=market_data_updater  # ✅ pass it in
             )
 
@@ -478,23 +496,27 @@ async def main():
                     session=session,
                     coinbase_api=coinbase_api,
                     shared_data_manager=shared_data_manager,
+                    market_data_updater=market_data_updater,
                     logger_manager=logger_manager,
                     alert=alert,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print,
+                    shared_utils_color=shared_utils_color,
                     order_book_manager=order_book_manager
                 )
             elif   args.run == 'sighook':
                 await run_sighook(
                     config=config,
                     shared_data_manager=shared_data_manager,
+                    market_data_updater=market_data_updater,
                     rest_client=config.rest_client,
                     portfolio_uuid=config.portfolio_uuid,
                     logger_manager=logger_manager,
                     alert=alert,
                     order_book_manager=None,
                     shared_utils_debugger=shared_utils_debugger,
-                    shared_utils_print=shared_utils_print
+                    shared_utils_print=shared_utils_print,
+                    shared_utils_color=shared_utils_color
                 )
 
             elif args.run == 'both':
@@ -504,9 +526,11 @@ async def main():
                     session=session,
                     coinbase_api=coinbase_api,
                     shared_data_manager=shared_data_manager,
+                    market_data_updater=market_data_updater,
                     logger_manager=logger_manager,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print,
+                    shared_utils_color=shared_utils_color,
                     startup_event=startup_event,
                     trade_bot=None,
                     alert=alert,
@@ -517,6 +541,7 @@ async def main():
                 sighook_task = asyncio.create_task(run_sighook(
                     config=config,
                     shared_data_manager=shared_data_manager,
+                    market_data_updater=market_data_updater,
                     rest_client=config.rest_client,
                     portfolio_uuid=config.portfolio_uuid,
                     logger_manager=logger_manager,
@@ -524,6 +549,7 @@ async def main():
                     order_book_manager=order_book_manager,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print,
+                    shared_utils_color=shared_utils_color,
                     startup_event=startup_event,
                     listener=listener
                 ))
