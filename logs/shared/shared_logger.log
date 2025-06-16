@@ -5119,3 +5119,180 @@ asyncio.exceptions.TimeoutError
 2025-06-16 09:40:30,347 - shared_logger - INFO - 🟡 No OHLCV data for SUKU-USD (market inactivity) (coinbase_api.py:470)
 2025-06-16 09:40:31,570 - shared_logger - INFO - 🟡 No OHLCV data for LCX-USD (market inactivity) (coinbase_api.py:470)
 2025-06-16 09:40:32,437 - shared_logger - INFO - 🟡 No OHLCV data for POWR-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:34,922 - shared_logger - INFO - 🟡 No OHLCV data for ELA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:38,311 - shared_logger - INFO - 🟡 No OHLCV data for DAI-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:41,701 - shared_logger - INFO - 🟡 No OHLCV data for DIA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:44,426 - shared_logger - INFO - 🟡 No OHLCV data for LSETH-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:47,324 - shared_logger - INFO - 🟡 No OHLCV data for PUNDIX-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:48,961 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for LTC-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:40:49,679 - shared_logger - INFO - 🟡 No OHLCV data for HIGH-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:40:49,767 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for BONK-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:40:53,581 - shared_logger - INFO - 🟡 No OHLCV data for CLANKER-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:05,926 - shared_logger - INFO - 🟡 No OHLCV data for BLUR-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:08,367 - shared_logger - INFO - ✅ No stale passive orders found. (shared_data_manager.py:593)
+2025-06-16 09:41:08,370 - shared_logger - INFO - ✅ No stale passive orders found. (shared_data_manager.py:593)
+2025-06-16 09:41:08,761 - shared_logger - INFO - 🟡 No OHLCV data for BADGER-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:09,655 - shared_logger - INFO - 🟡 No OHLCV data for SHPING-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:11,184 - shared_logger - INFO - 🟡 No OHLCV data for REQ-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:14,860 - shared_logger - INFO - 🟡 No OHLCV data for ME-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:16,314 - shared_logger - INFO - 🟡 No OHLCV data for DRIFT-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:31,591 - shared_logger - INFO - 🟡 No OHLCV data for MOBILE-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:33,677 - shared_logger - INFO - 🟡 No OHLCV data for RED-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:35,691 - shared_logger - INFO - 🟡 No OHLCV data for ZETA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:38,839 - shared_logger - INFO - 🟡 No OHLCV data for FORTH-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:39,984 - shared_logger - INFO - 🟡 No OHLCV data for XTZ-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:44,101 - shared_logger - INFO - 🟡 No OHLCV data for STORJ-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:45,043 - shared_logger - INFO - 🟡 No OHLCV data for BNT-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:46,993 - shared_logger - INFO - 🟡 No OHLCV data for FIDA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:48,246 - shared_logger - INFO - 🟡 No OHLCV data for DNT-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:41:49,235 - shared_logger - INFO - 🟡 No OHLCV data for ALEO-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:17,895 - shared_logger - INFO - 🟡 No OHLCV data for EOS-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:26,135 - shared_logger - INFO - 🟡 No OHLCV data for AVT-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:26,669 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ELA-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,745 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for AERO-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,749 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for BTC-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,777 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ETH-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,814 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for XRP-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,825 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for SUI-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,829 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for AAVE-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:26,927 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for SOL-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:27,660 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for BNT-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:27,947 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for LRC-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:43:28,601 - shared_logger - INFO - 🟡 No OHLCV data for LRC-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:31,239 - shared_logger - INFO - 🟡 No OHLCV data for BAT-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:32,357 - shared_logger - INFO - 🟡 No OHLCV data for GHST-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:32,434 - shared_logger - INFO - 🟡 No OHLCV data for GLM-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:33,021 - shared_logger - INFO - ✅ No stale passive orders found. (shared_data_manager.py:593)
+2025-06-16 09:43:33,027 - shared_logger - INFO - ✅ No stale passive orders found. (shared_data_manager.py:593)
+2025-06-16 09:43:33,464 - shared_logger - INFO - 🟡 No OHLCV data for COW-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:39,447 - shared_logger - INFO - 🟡 No OHLCV data for ARKM-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:41,208 - shared_logger - INFO - 🟡 No OHLCV data for ILV-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:42,273 - shared_logger - INFO - 🟡 No OHLCV data for AMP-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:42,547 - shared_logger - INFO - 🟡 No OHLCV data for 1INCH-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:54,104 - shared_logger - INFO - 🟡 No OHLCV data for FARM-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:43:59,398 - shared_logger - INFO - 🟡 No OHLCV data for SD-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:00,621 - shared_logger - INFO - 🟡 No OHLCV data for SPA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:02,765 - shared_logger - INFO - 🟡 No OHLCV data for OSMO-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:04,164 - shared_logger - INFO - 🟡 No OHLCV data for LDO-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:08,061 - shared_logger - INFO - 🟡 No OHLCV data for BAL-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:12,275 - shared_logger - INFO - 🟡 No OHLCV data for POLS-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:14,047 - shared_logger - INFO - 🟡 No OHLCV data for G-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:50,952 - shared_logger - ERROR - ❌ Unexpected error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')) (ticker_manager.py:497)
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connectionpool.py", line 789, in urlopen
+    response = self._make_request(
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connectionpool.py", line 536, in _make_request
+    response = conn.getresponse()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connection.py", line 507, in getresponse
+    httplib_response = super().getresponse()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/http/client.py", line 1375, in getresponse
+    response.begin()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/http/client.py", line 318, in begin
+    version, status, reason = self._read_status()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/http/client.py", line 287, in _read_status
+    raise RemoteDisconnected("Remote end closed connection without"
+http.client.RemoteDisconnected: Remote end closed connection without response
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connectionpool.py", line 843, in urlopen
+    retries = retries.increment(
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/util/retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/util/util.py", line 38, in reraise
+    raise value.with_traceback(tb)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connectionpool.py", line 789, in urlopen
+    response = self._make_request(
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connectionpool.py", line 536, in _make_request
+    response = conn.getresponse()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/urllib3/connection.py", line 507, in getresponse
+    httplib_response = super().getresponse()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/http/client.py", line 1375, in getresponse
+    response.begin()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/http/client.py", line 318, in begin
+    version, status, reason = self._read_status()
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/http/client.py", line 287, in _read_status
+    raise RemoteDisconnected("Remote end closed connection without"
+urllib3.exceptions.ProtocolError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/MarketDataManager/ticker_manager.py", line 487, in get_portfolio_breakdown
+    return self.rest_client.get_portfolio_breakdown(portfolio_uuid, currency)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/coinbase/rest/portfolios.py", line 91, in get_portfolio_breakdown
+    return GetPortfolioBreakdownResponse(self.get(endpoint, params=params, **kwargs))
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/coinbase/rest/rest_base.py", line 101, in get
+    return self.prepare_and_send_request(
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/coinbase/rest/rest_base.py", line 207, in prepare_and_send_request
+    return self.send_request(http_method, url_path, params, headers, data=data)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/coinbase/rest/rest_base.py", line 220, in send_request
+    response = self.session.request(
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/site-packages/requests/adapters.py", line 682, in send
+    raise ConnectionError(err, request=request)
+requests.exceptions.ConnectionError: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-06-16 09:44:50,961 - shared_logger - ERROR - ❌ All retry attempts failed for get_portfolio_breakdown. (ticker_manager.py:499)
+2025-06-16 09:44:50,961 - shared_logger - ERROR - ❌ Error in fetch_and_filter_balances: Portfolio breakdown data is empty or invalid. (ticker_manager.py:163)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/MarketDataManager/ticker_manager.py", line 152, in fetch_and_filter_balances
+    raise ValueError("Portfolio breakdown data is empty or invalid.")
+ValueError: Portfolio breakdown data is empty or invalid.
+2025-06-16 09:44:54,624 - shared_logger - INFO - 🟡 No OHLCV data for ALEPH-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:57,538 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ALCX-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,426 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for XRP-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,645 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for MOODENG-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,677 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ONDO-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,680 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for XLM-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,684 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ADA-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,687 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for HBAR-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,693 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for LINK-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,738 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for NKN-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,753 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for XRP-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:58,953 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for UNI-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:44:59,052 - shared_logger - INFO - 🟡 No OHLCV data for NKN-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:44:59,681 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for UNI-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:02,235 - shared_logger - INFO - 🟡 No OHLCV data for LRDS-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:06,130 - shared_logger - INFO - ✅ No stale passive orders found. (shared_data_manager.py:593)
+2025-06-16 09:45:06,131 - shared_logger - INFO - ✅ No stale passive orders found. (shared_data_manager.py:593)
+2025-06-16 09:45:07,053 - shared_logger - INFO - 🟡 No OHLCV data for ARPA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:07,850 - shared_logger - INFO - 🟡 No OHLCV data for TIME-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:09,881 - shared_logger - INFO - 🟡 No OHLCV data for PNG-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:14,912 - shared_logger - INFO - 🟡 No OHLCV data for KERNEL-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:17,069 - shared_logger - INFO - 🟡 No OHLCV data for PRCL-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:19,251 - shared_logger - INFO - 🟡 No OHLCV data for SNX-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:19,680 - shared_logger - INFO - 🟡 No OHLCV data for CELR-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:20,617 - shared_logger - INFO - 🟡 No OHLCV data for GNO-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:21,562 - shared_logger - INFO - 🟡 No OHLCV data for DEXT-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:24,393 - shared_logger - INFO - 🟡 No OHLCV data for ZRO-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:29,590 - shared_logger - INFO - 🟡 No OHLCV data for RPL-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:30,658 - shared_logger - INFO - 🟡 No OHLCV data for AGLD-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:32,053 - shared_logger - INFO - 🟡 No OHLCV data for SHDW-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:32,996 - shared_logger - INFO - 🟡 No OHLCV data for CVX-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:33,028 - shared_logger - INFO - 🟡 No OHLCV data for INV-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:33,929 - shared_logger - INFO - 🟡 No OHLCV data for CHZ-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:35,346 - shared_logger - INFO - 🟡 No OHLCV data for RONIN-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:35,776 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for XTZ-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:35,815 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for RONIN-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:35,930 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for FET-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:35,932 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for BONK-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:35,947 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for LTC-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:36,248 - shared_logger - INFO - 🟡 No OHLCV data for NMR-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:36,553 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for NMR-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:36,692 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for FET-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:36,806 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ICP-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:37,528 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ALCX-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:37,531 - shared_logger - WARNING - ⚠️ Coinbase returned 429 for ICP-USD. Possibly no trade history or invalid request. (coinbase_api.py:494)
+2025-06-16 09:45:39,548 - shared_logger - INFO - 🟡 No OHLCV data for SUSHI-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:42,303 - shared_logger - INFO - 🟡 No OHLCV data for C98-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:44,012 - shared_logger - INFO - 🟡 No OHLCV data for MANA-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:47,139 - shared_logger - INFO - 🟡 No OHLCV data for PERP-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:48,855 - shared_logger - INFO - 🟡 No OHLCV data for MSOL-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:49,932 - shared_logger - INFO - 🟡 No OHLCV data for FAI-USD (market inactivity) (coinbase_api.py:470)
+2025-06-16 09:45:50,530 - shared_logger - INFO - 🟡 No OHLCV data for SWELL-USD (market inactivity) (coinbase_api.py:470)
