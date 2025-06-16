@@ -116,3 +116,5 @@
 2025-06-16 09:34:26,687 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)
 2025-06-16 09:34:38,627 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
 2025-06-16 09:38:22,132 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
+2025-06-16 09:43:15,349 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)
+2025-06-16 09:43:23,731 - sighook_logger - WARNING - ⚠️ Skipping unsupported order type:  (order_manager.py:322)
