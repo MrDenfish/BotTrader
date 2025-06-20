@@ -258,19 +258,6 @@ class TradingStrategy:
             return strategy_results, buy_sell_matrix
 
 
-    @staticmethod
-    def symbol_has_open_order(symbol, open_orders):
-        """ PART IV:
-        Check if the symbol has an open order.
-        """
-        try:
-            if open_orders.empty:
-                return False
-            else:
-                return symbol.replace('/', '-') in open_orders['product_id'].values
-        except Exception as e:
-            return False
-
     async def fetch_ohlcv_data_from_db(self, asset):
         """ PART IV:
         Fetch OHLCV data from the database for a given asset.

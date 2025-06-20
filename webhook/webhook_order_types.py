@@ -145,10 +145,7 @@ class OrderTypeManager:
             # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=trading_pair)
             all_open_orders = self.open_orders # shared state
             # ✅ Check if there is an open order for the specific `trading_pair`
-            has_open_order = any(isinstance(order, dict) and order.get('symbol') == trading_pair
-                for order in all_open_orders.values()
-            ) if trading_pair else bool(all_open_orders)
-
+            has_open_order, open_order = self.shared_utils_utility.has_open_orders(trading_pair, all_open_orders)
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
             if has_open_order:
                 return {
@@ -300,12 +297,15 @@ class OrderTypeManager:
                 attempts += 1
 
                 # ✅ Required field check
-                if not all([getattr(order_data, f) for f in ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask']]):
-                    self.logger.error(f"Missing required fields in OrderData: {order_data}")
+                required_fields = ['trading_pair', 'side', 'adjusted_size', 'highest_bid', 'lowest_ask']
+                missing_fields = [f for f in required_fields if getattr(order_data, f) is None]
+
+                if missing_fields:
+                    self.logger.error(f"Missing required fields in OrderData: {missing_fields} | Data: {order_data}")
                     return {
                         'error': 'order_not_valid',
                         'code': 'MISSING_FIELDS',
-                        'message': f"⚠️ Order Blocked - Incomplete OrderData: {order_data}"
+                        'message': f"⚠️ Order Blocked - Incomplete OrderData: missing {missing_fields}"
                     }
 
                 # ✅ Revalidate

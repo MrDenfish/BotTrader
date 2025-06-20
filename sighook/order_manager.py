@@ -227,7 +227,7 @@ class OrderManager:
         try:
             if order_id is not None:
                 print(f'Cancelling order {product_id}:{order_id}')
-                response = await self.coinbase_api.cancel_order(order_id)
+                response = await self.coinbase_api.cancel_order([order_id])
                 if response:
                     print(f"  🟪🟨  open order canceled  🟨🟪  ")  # debug
                     return

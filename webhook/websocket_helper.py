@@ -23,8 +23,8 @@ class WebSocketHelper:
             """
     def __init__(
             self, listener, websocket_manager, exchange, ccxt_api, logger_manager, coinbase_api, profit_data_manager,
-            order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility, shared_utils_debugger,
-            trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager,
+            order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
+            shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager,
             shared_data_manager, market_ws_manager, order_manager, passive_order_manager=None
             ):
 
@@ -95,6 +95,7 @@ class WebSocketHelper:
         self.order_type_manager = order_type_manager
         self.trade_order_manager = trade_order_manager
         self.order_book_manager = order_book_manager
+        self.order_manager = order_manager
         self.snapshot_manager = snapshot_manager
 
         # Utility functions
@@ -137,6 +138,10 @@ class WebSocketHelper:
         return self.shared_data_manager.order_management.get("non_zero_balances", {})
 
     @property
+    def open_orders(self):
+        return self.shared_data_manager.order_management.get('order_tracker', {})
+
+    @property
     def ticker_cache(self):
         return self.shared_data_manager.market_data.get("ticker_cache", {})
 
@@ -171,6 +176,10 @@ class WebSocketHelper:
     @property
     def min_buy_value(self):
         return self._min_buy_value
+
+    @property
+    def avg_quote_volume(self):
+        return Decimal(self.shared_data_manager.market_data['avg_quote_volume'])
 
     @property
     def roc_5min(self):
@@ -520,7 +529,7 @@ class WebSocketHelper:
                     raw_order['side'] = raw_order.get('side').lower()
                     order_id = raw_order.get('order_id', 'UNKNOWN')
                     order_data = OrderData.from_dict(raw_order)
-
+                    order_data.avg_quote_volume = self.avg_quote_volume
                     try:
                         symbol = order_data.trading_pair
                         asset = symbol.split('/')[0]
@@ -717,17 +726,25 @@ class WebSocketHelper:
                     profit = (Decimal(current_price) - average_entry) * available_qty
                     profit_pct = ((Decimal(current_price) - average_entry) / average_entry) if average_entry else Decimal("0")
                     if profit_pct > 0:
-                        print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, PnL%={profit_pct:.2%}", self.shared_utils_color.GREEN))
+                        print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, "
+                                                             f"PnL%={profit_pct:.2%}", self.shared_utils_color.GREEN))
                     else:
-                        print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, PnL%={profit_pct:.2%}", self.shared_utils_color.BLUE))
+                        print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, "
+                                                             f"PnL%={profit_pct:.2%}", self.shared_utils_color.BLUE))
                     # print(f"🔎{color} {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, PnL%={profit_pct:.2%}")
                     self.shared_utils_color.RESET
                     if profit_pct >= self.take_profit and asset not in self.hodl:
                         self.logger.info(f"💰 TP trigger for {symbol}: {profit_pct:.2%}")
                         await self._place_tp_order('websocket','profit',asset, symbol, current_price)
                     elif profit_pct <= -self.stop_loss and asset not in self.hodl:
-                        self.logger.info(f"🛑 SL trigger for {symbol}: {profit_pct:.2%}")
-                        await self._place_sl_order(asset, symbol, current_price, profit, profit_pct)
+                        print(self.shared_utils_color.format(f"🛑 SL trigger for {symbol}: {profit_pct:.2%}", self.shared_utils_color.RED))
+                        has_open_order, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
+                        if  has_open_order:
+                            await self.order_manager.cancel_order(open_order.get('order_id'), symbol)
+                            self.logger.info(f"🛑 SL trigger for {symbol}: {profit_pct:.2%} but has open orders")
+                            continue
+                        else:
+                            await self._place_sl_order(asset, symbol, current_price, profit, profit_pct)
 
                 except Exception as e:
                     self.logger.error(f"❌ monitor_untracked_assets error for {asset}: {e}", exc_info=True)
@@ -747,11 +764,11 @@ class WebSocketHelper:
             order_data.trigger = {"trigger": "TP", "trigger_note": f"price={price}"}
 
             # Check if there's already an open order
-            open_orders = self.shared_data_manager.order_management.get("order_tracker", {})
-            if any(o.get("symbol") == symbol for o in open_orders.values()):
+            if any(o.get("symbol") == symbol for o in self.open_orders.values()):
                 self.logger.info(f"⏸️ Skipping TP order for {symbol}: open order exists")
                 return
-
+            if order_data.side == 'buy':
+                pass
             success, response = await self.trade_order_manager.place_order(order_data, precision_data)
             log_method = self.logger.info if success else self.logger.error
             log_method(f"{'✅' if success else '❌'} TP order for {symbol}: {response}")
@@ -764,7 +781,7 @@ class WebSocketHelper:
             try:
                 # Step 1: Build OrderData
                 order_data = await self.trade_order_manager.build_order_data(
-                    source='websocket', trigger='stop_loss', asset=asset, product_id=symbol
+                    source='websocket', trigger='stop_loss', asset=asset, product_id=symbol, side='sell',
                 )
                 if not order_data:
                     return
@@ -772,8 +789,7 @@ class WebSocketHelper:
                 order_data.trigger = {"trigger": "SL", "trigger_note": f"stop_loss={self.stop_loss}%"}
 
                 # Step 2: Check existing open orders
-                open_orders = self.shared_data_manager.order_management.get("order_tracker", {})
-                for o in open_orders.values():
+                for o in self.open_orders.values():
                     if o.get("symbol") != symbol:
                         continue
 
@@ -790,11 +806,14 @@ class WebSocketHelper:
                         return  # Don't place a new order if one is active and valid
 
                 # Step 3: Place SL order if no active one exists
+
                 if not order_data.open_orders.get("open_order"):
+                    if order_data.side =='buy':
+                        pass
                     success, response = await self.trade_order_manager.place_order(order_data, precision_data)
                     log_method = self.logger.info if success else self.logger.error
                     log_method(f"{'✅' if success else '❌'} SL order for {symbol}: {response}")
-                    return
+                return
 
             except Exception as e:
                 self.logger.error(f"Error building or submitting SL order for {symbol}: {e}", exc_info=True)
