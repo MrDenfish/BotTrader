@@ -127,6 +127,7 @@ class SharedDataManager:
         """Ensure required shared data exists, or initialize it if missing."""
         raw_market_data = await self.database_session_manager.fetch_market_data()
         raw_order_mgmt = await self.database_session_manager.fetch_order_management()
+        raw_order_mgmt["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
 
         market_data = None
         order_mgmt = None
@@ -142,6 +143,7 @@ class SharedDataManager:
 
             if raw_om and raw_om.strip().lower() != "null":
                 order_mgmt = json.loads(raw_om, cls=CustomJSONDecoder)
+                order_mgmt["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
 
         except Exception as e:
             self.logger.error(f"❌ Error decoding startup data: {e}", exc_info=True)
@@ -222,6 +224,7 @@ class SharedDataManager:
 
                 print("Fetching order management data from the database...")
                 self.order_management = await self.fetch_order_management()
+                self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
                 print("✅ SharedDataManager:initialized successfully.")
                 return self.market_data, self.order_management
             except Exception as e:
@@ -253,6 +256,7 @@ class SharedDataManager:
                 order_management_result = await self.database_session_manager.fetch_order_management()
                 self.order_management = json.loads(order_management_result["data"], cls=CustomJSONDecoder) if order_management_result else {}
                 self.order_management = self.validate_order_management_data(self.order_management)
+                self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
 
                 print("Shared data refreshed successfully.")
                 return self.market_data, self.order_management
@@ -325,16 +329,18 @@ class SharedDataManager:
             return {}
 
     async def fetch_order_management(self):
-        """Fetch order_management from the database via DatabaseSessionManager."""
+        """Fetch order_management and merge passive_orders."""
         try:
             result = await self.database_session_manager.fetch_order_management()
-            # Delegate the call to DatabaseSessionManager
-            return json.loads(result["data"], cls=CustomJSONDecoder) if result else {}
+            order_management = json.loads(result["data"], cls=CustomJSONDecoder) if result else {}
+
+            # ✅ Fetch passive orders separately
+            passive_orders = await self.database_session_manager.fetch_passive_orders()
+            order_management["passive_orders"] = passive_orders  # ⬅️ Merge
+
+            return order_management
         except Exception as e:
-            if self.logger:
-                self.logger.error(f"❌ Error fetching order management data: {e}", exc_info=True)
-            else:
-                print(f"❌ Error fetching order management data: {e}")
+            self.logger.error(f"❌ Error fetching order management data: {e}", exc_info=True)
             return {}
 
     async def get_snapshots(self):
@@ -377,11 +383,23 @@ class SharedDataManager:
                 saved_market_data = await self.save_market_data_snapshot(conn, self.market_data)
                 saved_order_management = await self.save_order_management_snapshot(conn, self.order_management)
 
-                # Update shared data
+                # 🔒 Don't persist runtime-only keys
+                saved_order_management_clean = {
+                    k: v for k, v in saved_order_management.items() if k != "passive_orders"
+                }
+
+                # ✅ Write cleaned version to DB
                 if self.market_data:
                     await self.update_data("market_data", saved_market_data, conn)
                 if self.order_management:
-                    await self.update_data("order_management", saved_order_management, conn)
+                    await self.update_data("order_management", saved_order_management_clean, conn)
+
+                # ✅ Re-attach runtime-only keys in memory
+                if "passive_orders" in self.order_management:
+                    saved_order_management_clean["passive_orders"] = self.order_management["passive_orders"]
+
+                self.order_management = saved_order_management_clean
+
         except Exception as e:
             self.logger.error(f"❌ Error saving shared data: {e}", exc_info=True)
 
@@ -431,24 +449,36 @@ class SharedDataManager:
             )
 
     @staticmethod
-    def dismantle_order_management(order_management):
-        """Dismantle the order_management structure into simpler dictionaries."""
+    def dismantle_order_management(order_management: dict) -> dict:
+        """
+        Dismantle the order_management structure into simpler dictionaries,
+        excluding any runtime-only keys that should not be persisted.
+
+        Returns:
+            dict: A simplified snapshot-ready version of order_management.
+        """
+        # 🔒 Runtime-only keys to exclude from persistence
+        runtime_keys_to_exclude = {"passive_orders", "cache_meta"}
+
+        # Remove runtime-only keys (if they exist)
+        filtered_om = {k: v for k, v in order_management.items() if k not in runtime_keys_to_exclude}
+
+        # Initialize dismantled structure
         dismantled = {
             "non_zero_balances": {},
-            "order_tracker": order_management.get("order_tracker", {}),  # Copy as-is
+            "order_tracker": filtered_om.get("order_tracker", {}),
         }
 
-        # Process non_zero_balances
-        for asset, position in order_management.get("non_zero_balances", {}).items():
-            # Check if the position has a `to_dict` method
+        # Convert non_zero_balances to flat dicts
+        for asset, position in filtered_om.get("non_zero_balances", {}).items():
             if hasattr(position, "to_dict") and callable(position.to_dict):
                 dismantled["non_zero_balances"][asset] = position.to_dict()
             elif isinstance(position, dict):
-                dismantled["non_zero_balances"][asset] = position  # Already a dict
+                dismantled["non_zero_balances"][asset] = position
             else:
                 raise TypeError(
                     f"Unsupported type for position: {type(position).__name__}. "
-                    f"Expected PortfolioPosition or dict."
+                    f"Expected object with to_dict() or a plain dict."
                 )
 
         return dismantled

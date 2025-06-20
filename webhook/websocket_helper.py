@@ -130,6 +130,10 @@ class WebSocketHelper:
         return self.shared_data_manager.order_management
 
     @property
+    def passive_orders(self):
+        return self.shared_data_manager.order_management.get('passive_orders')
+
+    @property
     def coin_info(self):
         return self.shared_data_manager.market_data.get('filtered_vol', {})
 
@@ -682,7 +686,6 @@ class WebSocketHelper:
         """
         try:
             self.logger.info("📱 Starting monitor_untracked_assets")
-
             usd_prices = self.usd_pairs.set_index("symbol")["price"].to_dict() if not self.usd_pairs.empty else {}
 
             raw_balances = self.non_zero_balances
@@ -692,6 +695,10 @@ class WebSocketHelper:
 
             for asset, position in raw_balances.items():
                 try:
+                    symbol = f"{asset}-USD"
+                    if symbol in self.passive_orders:
+                        self.logger.debug(f"⏭ Skipping {asset} — passive position managed elsewhere.")
+                        continue
                     precision = self.spot_positions.get(asset,{}).get('precision')
                     base_deci = precision.get('amount', 8)
                     quote_deci = precision.get('price', 8)
@@ -700,7 +707,7 @@ class WebSocketHelper:
                     if not isinstance(pos, dict):
                         raise TypeError(f"Invalid position type: {type(pos)}")
 
-                    symbol = f"{asset}-USD"
+
                     if symbol == 'INDEX-USD':
                         pass
                     if symbol =='USD-USD':
