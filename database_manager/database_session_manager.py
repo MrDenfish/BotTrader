@@ -202,6 +202,28 @@ class DatabaseSessionManager:
             self.logger.error(f"❌ Error fetching order_management: {e}", exc_info=True)
             return {}
 
+    async def fetch_passive_orders(self) -> dict:
+        """Fetch passive_orders and return them keyed by symbol."""
+        try:
+            if not self.database.is_connected:
+                await self.connect()
+
+            query = "SELECT * FROM passive_orders"
+            rows = await self.database.fetch_all(query)
+
+            result = {}
+            for row in rows:
+                row_dict = dict(row)  # ✅ Convert Record to native dict
+                symbol = row_dict.get("symbol")
+                if symbol:
+                    result[symbol] = row_dict
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching passive_orders: {e}", exc_info=True)
+            return {}
+
     def async_session(self) -> AsyncSession:
         """Returns a new SQLAlchemy async session."""
         return self.async_session_factory()

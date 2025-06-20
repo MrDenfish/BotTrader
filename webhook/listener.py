@@ -369,6 +369,7 @@ class WebhookListener:
                 # Fetch new market data
                 start = time.monotonic()
                 new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
+                new_order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
                 print(f"⚠️⚠️⚠️  update_market_data took {time.monotonic() - start:.2f}s    ⚠️⚠️⚠️")
 
                 # Ensure fetched data is valid before proceeding
