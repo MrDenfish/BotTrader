@@ -51,6 +51,20 @@ class SharedUtility:
         loop_id = id(asyncio.get_running_loop())
         self.logger.debug(f"� {name} is running in event loop: {loop_id}")
 
+    def has_open_orders(self, trading_pair, open_orders):
+        """
+        Returns a tuple: (bool, order)
+        - bool: whether an open order for the given trading_pair exists
+        - order: the first matching order dict, or None
+        """
+        if not trading_pair or not open_orders:
+            return False, None
+
+        for order in open_orders.values():
+            if isinstance(order, dict) and order.get("symbol") == trading_pair:
+                return True, order
+
+        return False, None
 
     def validate_order_tracker(self, order_tracker):
         """
@@ -116,3 +130,31 @@ class SharedUtility:
             f"Status:       {source.status}"
         ]
         return "\n".join(lines)
+
+    def prepare_order_fees_and_decimals(self,details: dict, precision_data: tuple) -> tuple:
+        base_deci, quote_deci, *_ = precision_data
+        maker_fee = Decimal(details.get("maker_fee", "0.0015"))
+        taker_fee = Decimal(details.get("taker_fee", "0.0025"))
+        quote_increment = Decimal("1").scaleb(-quote_deci)
+        return maker_fee, taker_fee, base_deci, quote_deci, quote_increment
+
+    def assign_basic_order_fields(self,details: dict) -> dict:
+        trading_pair = details.get("trading_pair", "")
+        base_currency = details.get("asset", trading_pair.split("/")[0])
+        quote_currency = trading_pair.split("/")[1] if "/" in trading_pair else "USD"
+
+        return {
+            "trading_pair": trading_pair,
+            "base_currency": base_currency,
+            "quote_currency": quote_currency,
+            "usd_balance": Decimal(details.get("usd_balance", 0)),
+            "usd_avail_balance": Decimal(details.get("usd_avail_balance", 0)),
+            "base_avail_balance": Decimal(details.get("base_balance", 0)),
+            "total_balance_crypto": Decimal(details.get("available_to_trade_crypto", 0)),
+            "available_to_trade_crypto": Decimal(details.get("available_to_trade_crypto", 0)),
+        }
+
+    def initialize_order_amounts(self,side: str, fiat_amount: Decimal, crypto_amount: Decimal) -> tuple:
+        if side.lower() == "buy":
+            return Decimal(fiat_amount), Decimal("0")
+        return Decimal("0"), Decimal(crypto_amount)

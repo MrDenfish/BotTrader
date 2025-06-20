@@ -145,200 +145,292 @@ class TradeOrderManager:
     def order_size(self):
         return float(self._order_size_fiat)
 
-    async def build_order_data(self, source: str, trigger: str, asset: str, product_id: str, stop_price: Optional[Decimal] = None,
-                               fee_info: Optional[dict] = None, order_type: Optional[str] = None) -> Optional[OrderData]:
+    async def build_order_data(
+            self,
+            source: str,
+            trigger: str,
+            asset: str,
+            product_id: str,
+            stop_price: Optional[Decimal] = None,
+            fee_info: Optional[dict] = None,
+            order_type: Optional[str] = None,
+            side: Optional[str] = None  # 👈 new
+    ) -> Optional[OrderData]:
         try:
-            # Fetch data
-            type = None
-            volume_24h = 0
-            # check market_data integrity
-            if asset == 'TURBO':
-                pass
-            market_data_status = self.market_data_updater.get_empty_keys(self.market_data) # dictionary integrity check
-            if len(market_data_status) < 1:
-                cost_basis = self.spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0)
-                total_balance_crypto = self.spot_position.get(asset, {}).get('total_balance_crypto', 0)
-                # volume_leaders = self.market_data.get('filtered_vol', {})
-                for index, row in self.usd_pairs.iterrows():
-                    if row["asset"] == asset:
-                        volume_24h = row["24h_quote_volume"]
-                        break
+            if self.market_data_updater.get_empty_keys(self.market_data):
+                return None
 
-                if volume_24h is not None:
-                    print(f"24h volume for {asset}: {volume_24h}")
-                else:
-                    print(f"{asset} not found in usd_pairs.")
+            trading_pair = product_id.replace("/", "-")
+            spot = self.spot_position.get(asset, {})
+            base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
+            available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
+            usd_balance = Decimal(self.spot_position.get("USD", {}).get("total_balance_fiat", 0))
+            usd_avail = Decimal(self.spot_position.get("USD", {}).get("available_to_trade_fiat", 0))
 
+            bid = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("bid", 0))
+            ask = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("ask", 0))
+            current_bid =  self.shared_utils_precision.safe_quantize(bid,quote_quantizer)
+            current_ask =  self.shared_utils_precision.safe_quantize(ask,quote_quantizer)
+            spread = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("spread", 0))
 
-                product_id = product_id.replace('/', '-') # normalize
+            price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
+            if price == 0:
+                return None
 
-                # Open orders
-                # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=product_id)
-                all_open_orders = self.open_orders  # shared state
-                has_open_order = any(
-                    isinstance(order, dict) and order.get('symbol') == product_id
-                    for order in all_open_orders.values()
-                ) if product_id else bool(all_open_orders)
+            if side is None:
+                side = "buy" if usd_avail >= self.order_size else "sell"
 
-                open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
-                active_open_order = False
-                active_open_order_type = None
-                active_open_order_side = None
-
-                # Make sure the 'symbol' column and 'info' column exist
-                if 'symbol' in open_orders.columns and 'info' in open_orders.columns:
-                    for _, row in open_orders.iterrows():
-                        info = row.get('info', {})
-                        symbol = info.get('product_id', '').replace('/', '-')
-
-                        if product_id == symbol:  # `symbol` should be in format 'XXX/USD'
-                            active_open_order = True
-                            active_open_order_type = row.get('type', 'UNKNOWN')
-                            active_open_order_side = row.get('side', 'UNKNOWN')
-                            break  # Stop after first match
-
-                # Fetch fees
-                if not fee_info:
-                    fee_info = await self.coinbase_api.get_fee_rates() # <--- _place_tp_order() raises an error here
-                if fee_info.get('error'):
-                    maker_fee = self.default_maker_fee
-                    taker_fee = self.default_taker_fee
-                else:
-                    maker_fee = Decimal(fee_info['maker'])
-                    taker_fee = Decimal(fee_info['taker'])
-
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-                quote_quantizer = Decimal("1").scaleb(-quote_deci)
-                base_quantizer = Decimal("1").scaleb(-base_deci)
-                balance = Decimal(self.spot_position.get(asset, {}).get('total_balance_crypto', 0)).quantize(
-                    Decimal(f'1e-{base_deci}'),
-                    rounding=ROUND_HALF_UP
-                )
-                volume_24h = self.shared_utils_precision.safe_decimal(volume_24h)
-                volume_24h = self.shared_utils_precision.safe_quantize(volume_24h, 0)
-                cost_basis = self.shared_utils_precision.safe_quantize(Decimal(cost_basis), quote_quantizer)
-                total_balance_crypto = self.shared_utils_precision.safe_decimal(total_balance_crypto)
-                total_balance_crypto = self.shared_utils_precision.safe_quantize(total_balance_crypto, base_quantizer)
-
-                size_of_order_fiat = Decimal('0') # will be set if order is a buy
-
-                available_to_trade = Decimal(self.spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
-                available_to_trade = self.shared_utils_precision.safe_quantize(available_to_trade, base_quantizer)
-
-                usd_bal = self.shared_utils_precision.safe_decimal(
-                    self.spot_position.get("USD", {}).get("total_balance_fiat")).quantize(2, rounding=ROUND_HALF_UP)
-
-                usd_avail = self.shared_utils_precision.safe_decimal(
-                    self.spot_position.get("USD", {}).get("available_to_trade_fiat")).quantize(2, rounding=ROUND_HALF_UP)
-
-                print(f'‼️ USD Avail: {usd_avail} / USD Bal: {usd_bal}  ‼️')
-                base_currency, quote_currency = product_id.split('-')
-                current_ask = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('ask')) or Decimal(0)
-                current_ask = self.shared_utils_precision.safe_quantize(current_ask, quote_quantizer)
-                current_bid = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('bid')) or Decimal(0)
-                spread = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('spread')) or Decimal(0)
-
-                # Calculate current price
-                current_price = (current_ask + current_bid) / 2
-                price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
-                if  price == 0.0:
-                    return None
+            if not fee_info:
+                fee_info = await self.coinbase_api.get_fee_rates()
+            if fee_info.get("error"):
+                maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
+            else:
+                maker_fee = Decimal(fee_info["maker"])
+                taker_fee = Decimal(fee_info["taker"])
 
 
-                # Determine side
-                side = 'buy' if Decimal(
-                    self.spot_position.get(asset, {}).get('total_balance_fiat', 0)
-                ) <= self.max_value_of_crypto_to_buy_more and trigger != 'stop_loss' else 'sell'
 
-                # Set fiat allocation
-                fiat_avail_for_order = Decimal(min(self.order_size, usd_avail))
-                fiat_avail_for_order = self.shared_utils_precision.safe_quantize(fiat_avail_for_order, quote_quantizer)
+            fiat_amt = min(self.order_size, usd_avail)
+            crypto_amt = available_to_trade
+            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(side, fiat_amt, crypto_amt)
 
-                # Calculate order size
-                if side == 'buy':
-                    size_of_order_qty = (fiat_avail_for_order / price)
-                    size_of_order_qty = self.shared_utils_precision.safe_quantize(size_of_order_qty, quote_quantizer) if price > 0 else Decimal(0)
-                    if (price * size_of_order_qty) < self.min_order_amount:
-                        print(f'‼️ Insufficient fiat balance to place buy order: {product_id}')
-                        return None
-
-                else:
-                    size_of_order_qty = available_to_trade
-
-                # Fetch order book
-                temp_data = {'quote_decimal': quote_deci, 'base_decimal': base_deci, 'trading_pair': product_id}
-                temp_data = OrderData.from_dict(temp_data)
-                # order_book = await self.order_book_manager.get_order_book(temp_data, trading_pair, self.bid_ask_spread)
-                temp_order = {
-                    'side': side,
-                    'type': order_type,
-                    'maker_fee': maker_fee,
-                    'taker_fee': taker_fee,
-                    'usd_avail_balance': usd_avail,
-                    'usd_balance': usd_bal,
-                    'base_avail_to_trade': balance,
-                    'sell_amount': available_to_trade if side == 'sell' else Decimal(0),
-                    "order_size":size_of_order_qty if side == 'buy' else Decimal(0),
-                    'order_amount_fiat': fiat_avail_for_order,
-                    'quote_decimal': quote_deci,
-                    'base_decimal': base_deci
-                }
-                temp_book = {
-                    'highest_bid': float(current_bid),
-                    'lowest_ask': float(current_ask)
-                }
-
-                adjusted_price, adjusted_size_of_order_qty = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book)
-                adjusted_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_price, 'quote')
-                adjusted_size_of_order_qty = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_size_of_order_qty, 'base')
-                fiat_avail_for_order = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, fiat_avail_for_order, 'quote')
-                usd_bal = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_bal, 'quote')
-                usd_avail = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_avail, 'quote')
-                spread = Decimal(spread)
-                return OrderData(
-                    trading_pair=product_id,
-                    time_order_placed=None,
-                    type= 'limit' if trigger in ('ROC', 'market_making') else None,
-                    order_id='UNKNOWN',
-                    side=side,
-                    order_amount_fiat=fiat_avail_for_order,
-                    order_amount_crypto=Decimal("0"),
-                    filled_price=None,
-                    base_currency=asset,
-                    quote_currency=quote_currency,
-                    usd_avail_balance=usd_avail,
-                    usd_balance=usd_bal,
-                    base_avail_balance=balance,
-                    total_balance_crypto=total_balance_crypto,
-                    available_to_trade_crypto=available_to_trade,
-                    base_decimal=base_deci,
-                    quote_decimal=quote_deci,
-                    quote_increment=Decimal("1") / (Decimal("10") ** quote_deci),
-                    highest_bid=Decimal(current_bid).quantize(quote_quantizer),
-                    lowest_ask=Decimal(current_ask).quantize(quote_quantizer),
-                    maker=maker_fee,
-                    taker=taker_fee,
-                    spread=spread,
-                    open_orders={'open_order': active_open_order, 'type': active_open_order_type, 'side': active_open_order_side},
-                    status='UNKNOWN',
-                    source=source,
-                    trigger=trigger,
-                    price=price,
-                    cost_basis=cost_basis,
-                    limit_price=adjusted_price,
-                    average_price=None,
-                    adjusted_price=adjusted_price,
-                    adjusted_size=adjusted_size_of_order_qty,
-                    stop_loss_price=stop_price,
-                    take_profit_price=None,
-                    volume_24h=volume_24h,
-
-                )
-            self.logger.warning(f"The following market_data dictionaries are incomplete: {market_data_status} ")
+            return OrderData(
+                trading_pair=trading_pair,
+                time_order_placed=None,
+                type=order_type or "limit",
+                order_id="UNKNOWN",
+                side=side,
+                order_amount_fiat=order_amount_fiat,
+                order_amount_crypto=order_amount_crypto,
+                filled_price=None,
+                base_currency=asset,
+                quote_currency="USD",
+                usd_avail_balance=usd_avail,
+                usd_balance=usd_balance,
+                base_avail_balance=available_to_trade,
+                total_balance_crypto=total_balance_crypto,
+                available_to_trade_crypto=available_to_trade,
+                base_decimal=base_deci,
+                quote_decimal=quote_deci,
+                quote_increment=quote_quantizer,
+                highest_bid=current_bid,
+                lowest_ask=current_ask,
+                maker=maker_fee,
+                taker=taker_fee,
+                spread=spread,
+                open_orders={},
+                status="UNKNOWN",
+                source=source,
+                trigger={"trigger": trigger},
+                price=price,
+                cost_basis=Decimal("0"),
+                limit_price=price,
+                average_price=None,
+                avg_quote_volume=self.avg_quote_volume,
+                adjusted_price=None,
+                adjusted_size=None,
+                stop_loss_price=stop_price,
+                take_profit_price=None,
+                volume_24h=None
+            )
 
         except Exception as e:
-            self.logger.error(f"Error in build_order_data for  {asset} {trigger}: {e}", exc_info=True)
+            self.logger.error(f"Error in build_order_data for {asset} {trigger}: {e}", exc_info=True)
             return None
+
+    # async def build_order_data(self, source: str, trigger: str, asset: str, product_id: str, stop_price: Optional[Decimal] = None,
+    #                            fee_info: Optional[dict] = None, order_type: Optional[str] = None) -> Optional[OrderData]:
+    #     try:
+    #         # Fetch data
+    #         type = None
+    #         volume_24h = 0
+    #         # check market_data integrity
+    #         if asset == 'TURBO':
+    #             pass
+    #         market_data_status = self.market_data_updater.get_empty_keys(self.market_data) # dictionary integrity check
+    #         if len(market_data_status) < 1:
+    #             if asset  in self.non_zero_balances:
+    #                 cost_basis = self.non_zero_balances[asset]['cost_basis'].get('value', 0)
+    #             else:
+    #                 cost_basis = Decimal(0.0)
+    #             total_balance_crypto = self.spot_position.get(asset, {}).get('total_balance_crypto', 0)
+    #             # volume_leaders = self.market_data.get('filtered_vol', {})
+    #             for index, row in self.usd_pairs.iterrows():
+    #                 if row["asset"] == asset:
+    #                     volume_24h = row["24h_quote_volume"]
+    #                     break
+    #
+    #             if volume_24h is not None:
+    #                 print(f"24h volume for {asset}: {volume_24h}")
+    #             else:
+    #                 print(f"{asset} not found in usd_pairs.")
+    #
+    #
+    #             product_id = product_id.replace('/', '-') # normalize
+    #
+    #             # Open orders
+    #             # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=product_id)
+    #             all_open_orders = self.open_orders  # shared state
+    #             has_open_order, open_order = self.shared_utils_utility.has_open_orders(product_id, all_open_orders)
+    #             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
+    #             active_open_order = False
+    #             active_open_order_type = None
+    #             active_open_order_side = None
+    #
+    #             # Make sure the 'symbol' column and 'info' column exist
+    #             if 'symbol' in open_orders.columns and 'info' in open_orders.columns:
+    #                 for _, row in open_orders.iterrows():
+    #                     info = row.get('info', {})
+    #                     symbol = info.get('product_id', '').replace('/', '-')
+    #
+    #                     if product_id == symbol:  # `symbol` should be in format 'XXX/USD'
+    #                         active_open_order = True
+    #                         active_open_order_type = row.get('type', 'UNKNOWN')
+    #                         active_open_order_side = row.get('side', 'UNKNOWN')
+    #                         break  # Stop after first match
+    #
+    #             # Fetch fees
+    #             if not fee_info:
+    #                 fee_info = await self.coinbase_api.get_fee_rates() # <--- _place_tp_order() raises an error here
+    #             if fee_info.get('error'):
+    #                 maker_fee = self.default_maker_fee
+    #                 taker_fee = self.default_taker_fee
+    #             else:
+    #                 maker_fee = Decimal(fee_info['maker'])
+    #                 taker_fee = Decimal(fee_info['taker'])
+    #
+    #             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+    #             quote_quantizer = Decimal("1").scaleb(-quote_deci)
+    #             base_quantizer = Decimal("1").scaleb(-base_deci)
+    #             balance = Decimal(total_balance_crypto).quantize(Decimal(f'1e-{base_deci}'),rounding=ROUND_HALF_UP)
+    #             volume_24h = self.shared_utils_precision.safe_decimal(volume_24h)
+    #             volume_24h = self.shared_utils_precision.safe_quantize(volume_24h, 0)
+    #             cost_basis = self.shared_utils_precision.safe_quantize(Decimal(cost_basis), quote_quantizer)
+    #             total_balance_crypto = self.shared_utils_precision.safe_decimal(total_balance_crypto)
+    #             total_balance_crypto = self.shared_utils_precision.safe_quantize(total_balance_crypto, base_quantizer)
+    #
+    #             size_of_order_fiat = Decimal('0') # will be set if order is a buy
+    #
+    #             available_to_trade = Decimal(self.spot_position.get(asset, {}).get('available_to_trade_crypto', 0))
+    #             available_to_trade = self.shared_utils_precision.safe_quantize(available_to_trade, base_quantizer)
+    #
+    #             usd_bal = self.shared_utils_precision.safe_decimal(
+    #                 self.spot_position.get("USD", {}).get("total_balance_fiat")).quantize(2, rounding=ROUND_HALF_UP)
+    #
+    #             usd_avail = self.shared_utils_precision.safe_decimal(
+    #                 self.spot_position.get("USD", {}).get("available_to_trade_fiat")).quantize(2, rounding=ROUND_HALF_UP)
+    #
+    #             print(f'‼️ USD Avail: {usd_avail} / USD Bal: {usd_bal}  ‼️')
+    #             base_currency, quote_currency = product_id.split('-')
+    #             current_ask = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('ask')) or Decimal(0)
+    #             current_ask = self.shared_utils_precision.safe_quantize(current_ask, quote_quantizer)
+    #             current_bid = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('bid')) or Decimal(0)
+    #             spread = self.shared_utils_precision.safe_decimal(self.bid_ask_spread.get(product_id,{}).get('spread')) or Decimal(0)
+    #
+    #             # Calculate current price
+    #             current_price = (current_ask + current_bid) / 2
+    #             price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
+    #             spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
+    #
+    #             if  price == 0.0:
+    #                 return None
+    #
+    #
+    #             # Determine side
+    #             side = 'buy' if Decimal(
+    #                 self.spot_position.get(asset, {}).get('total_balance_fiat', 0)
+    #             ) <= self.max_value_of_crypto_to_buy_more and trigger != 'stop_loss' else 'sell'
+    #
+    #             # Set fiat allocation
+    #             fiat_avail_for_order = Decimal(min(self.order_size, usd_avail))
+    #             fiat_avail_for_order = self.shared_utils_precision.safe_quantize(fiat_avail_for_order, quote_quantizer)
+    #
+    #             # Calculate order size
+    #             if side == 'buy':
+    #                 size_of_order_qty = (fiat_avail_for_order / price)
+    #                 size_of_order_qty = self.shared_utils_precision.safe_quantize(size_of_order_qty, quote_quantizer) if price > 0 else Decimal(0)
+    #                 if (price * size_of_order_qty) < self.min_order_amount:
+    #                     print(f'‼️ Insufficient fiat balance to place buy order: {product_id}')
+    #                     return None
+    #
+    #             else:
+    #                 size_of_order_qty = available_to_trade
+    #
+    #             # Fetch order book
+    #             temp_data = {'quote_decimal': quote_deci, 'base_decimal': base_deci, 'trading_pair': product_id}
+    #             temp_data = OrderData.from_dict(temp_data)
+    #             # order_book = await self.order_book_manager.get_order_book(temp_data, trading_pair, self.bid_ask_spread)
+    #             temp_order = {
+    #                 'side': side,
+    #                 'type': order_type,
+    #                 'maker_fee': maker_fee,
+    #                 'taker_fee': taker_fee,
+    #                 'usd_avail_balance': usd_avail,
+    #                 'usd_balance': usd_bal,
+    #                 'base_avail_to_trade': balance,
+    #                 'sell_amount': available_to_trade if side == 'sell' else Decimal(0),
+    #                 "order_size":size_of_order_qty if side == 'buy' else Decimal(0),
+    #                 'order_amount_fiat': fiat_avail_for_order,
+    #                 'quote_decimal': quote_deci,
+    #                 'base_decimal': base_deci
+    #             }
+    #             temp_book = {
+    #                 'highest_bid': float(current_bid),
+    #                 'lowest_ask': float(current_ask)
+    #             }
+    #
+    #             adjusted_price, adjusted_size_of_order_qty = self.shared_utils_precision.adjust_price_and_size(temp_order, temp_book)
+    #             adjusted_price = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_price, 'quote')
+    #             adjusted_size_of_order_qty = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, adjusted_size_of_order_qty, 'base')
+    #             fiat_avail_for_order = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, fiat_avail_for_order, 'quote')
+    #             usd_bal = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_bal, 'quote')
+    #             usd_avail = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, usd_avail, 'quote')
+    #             return OrderData(
+    #                 trading_pair=product_id,
+    #                 time_order_placed=None,
+    #                 type= 'limit' if trigger in ('ROC', 'market_making') else None,
+    #                 order_id='UNKNOWN',
+    #                 side=side,
+    #                 order_amount_fiat=fiat_avail_for_order,
+    #                 order_amount_crypto=adjusted_size_of_order_qty,
+    #                 filled_price=None,
+    #                 base_currency=asset,
+    #                 quote_currency=quote_currency,
+    #                 usd_avail_balance=usd_avail,
+    #                 usd_balance=usd_bal,
+    #                 base_avail_balance=balance,
+    #                 total_balance_crypto=total_balance_crypto,
+    #                 available_to_trade_crypto=available_to_trade,
+    #                 base_decimal=base_deci,
+    #                 quote_decimal=quote_deci,
+    #                 quote_increment=Decimal("1") / (Decimal("10") ** quote_deci),
+    #                 highest_bid=Decimal(current_bid).quantize(quote_quantizer),
+    #                 lowest_ask=Decimal(current_ask).quantize(quote_quantizer),
+    #                 maker=maker_fee,
+    #                 taker=taker_fee,
+    #                 spread=spread,
+    #                 open_orders={'open_order': active_open_order, 'type': active_open_order_type, 'side': active_open_order_side},
+    #                 status='UNKNOWN',
+    #                 source=source,
+    #                 trigger=trigger,
+    #                 price=price,
+    #                 cost_basis=cost_basis,
+    #                 limit_price=adjusted_price,
+    #                 average_price=None,
+    #                 adjusted_price=adjusted_price,
+    #                 adjusted_size=adjusted_size_of_order_qty,
+    #                 stop_loss_price=stop_price,
+    #                 take_profit_price=None,
+    #                 volume_24h=volume_24h,
+    #
+    #             )
+    #         self.logger.warning(f"The following market_data dictionaries are incomplete: {market_data_status} ")
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"Error in build_order_data for  {asset} {trigger}: {e}", exc_info=True)
+    #         return None
 
     def build_response(self, success: bool, message: str, code: Union[str, int],
                        details: Optional[dict] = None, error_response: Optional[dict] = None) -> Dict:
@@ -355,11 +447,7 @@ class TradeOrderManager:
             self.shared_utils_utility.log_event_loop("place_order")
             trading_pair = raw_order_data.trading_pair
             all_open_orders = self.open_orders  # shared state
-            # all_open_orders, has_open_order, _ = await self.websocket_helper.refresh_open_orders(trading_pair=raw_order_data.trading_pair)
-            has_open_order = any(
-                isinstance(order, dict) and order.get('symbol') == trading_pair
-                for order in all_open_orders.values()
-            ) if trading_pair else bool(all_open_orders)
+            has_open_order, open_order = self.shared_utils_utility.has_open_orders(trading_pair, all_open_orders)
 
             open_orders = all_open_orders if isinstance(all_open_orders, pd.DataFrame) else pd.DataFrame()
             raw_order_data.open_orders = not open_orders.empty and raw_order_data.trading_pair in open_orders.symbol.values
@@ -469,6 +557,9 @@ class TradeOrderManager:
     async def attempt_order_placement(self, order_data: OrderData, order_type: str, max_attempts: int = 3) -> tuple[bool, dict]:
         symbol = order_data.trading_pair
         asset = order_data.base_currency
+        quote_deci = order_data.quote_decimal
+        base_deci = order_data.base_decimal
+
         response = None
 
         # Step 0: Refresh market data
@@ -482,6 +573,16 @@ class TradeOrderManager:
                 order_book = self.bid_ask_spread.get(symbol)
                 highest_bid = Decimal(order_book['bid'])
                 lowest_ask = Decimal(order_book['ask'])
+
+                #reformat deci size:
+                quote_quantizer = Decimal("1").scaleb(-quote_deci)
+                base_quantizer = Decimal("1").scaleb(-base_deci)
+                highest_bid = self.shared_utils_precision.safe_quantize(Decimal(highest_bid), quote_quantizer)
+                order_data.highest_bid = highest_bid
+                lowest_ask = self.shared_utils_precision.safe_quantize(Decimal(lowest_ask), quote_quantizer)
+                order_data.lowest_ask = lowest_ask
+                spread = self.shared_utils_precision.safe_quantize(Decimal(order_data.spread), quote_quantizer)
+                order_data.spread = spread
 
                 # Step 1.1: Adjust price
                 side = order_data.side.lower()
@@ -582,6 +683,12 @@ class TradeOrderManager:
 
                 if error_code == 'Insufficient_USD':
                     self.logger.warning(f"⚠️ {error_msg}")
+                    order_data.status = 'FAILED'
+                    order_data.post_only = False
+                    break
+                if not error_code and not error_response and error_msg == 'Unknown Error':
+                    self.logger.warning(f"⚠️ {response}")
+                    print(f'{order_data}')
                     order_data.status = 'FAILED'
                     order_data.post_only = False
                     break

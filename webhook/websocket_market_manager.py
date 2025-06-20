@@ -312,6 +312,8 @@ class WebSocketMarketManager:
 
                 if roc_order_data:
                     print(f'\n� Order Data:\n{roc_order_data.debug_summary(verbose=True)}\n')
+                    if roc_order_data.side =='buy':
+                        pass
                     order_success, response_msg = await self.trade_order_manager.place_order(roc_order_data)
                     print(f"‼️ ROC ALERT: {product_id} increased by {log_roc:.2f}% 5 minutes. A buy order was placed!")
             else:

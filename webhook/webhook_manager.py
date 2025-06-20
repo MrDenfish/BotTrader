@@ -51,6 +51,8 @@ class WebHookManager:
             dict: Unified response dictionary (same format used by attempt_order_placement).
         """
         try:
+            if order_details.side == 'buy':
+                pass
             success, response = await self.trade_order_manager.place_order(order_details, precision_data)
             return response  # Already structured by attempt_order_placement
         except InsufficientFundsException:

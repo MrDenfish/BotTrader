@@ -98,11 +98,20 @@ class PassiveOrderManager:
         - Triggers a trailing stop-loss (TSL)
         """
         try:
+            quote_deci = od.quote_decimal
+            base_deci = od.base_decimal
+
+            # Evaluate exit conditions
             decision = await self.evaluate_exit_conditions(od)
             if decision:
                 self.logger.info(f"✅ Exit condition met: {decision['trigger']}")
             ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol)
+            # reformat deci size:
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            base_quantizer = Decimal("1").scaleb(-base_deci)
             current_price = Decimal(ticker_data['last'])
+            current_price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
+            # spread =  self.shared_utils_precision.safe_quantize(od.spread, quote_quantizer)
 
             entry = self.passive_order_tracker.get(symbol, {})
             peak_price = entry.get("peak_price", od.limit_price)
@@ -220,6 +229,8 @@ class PassiveOrderManager:
             return  # No usable order book
 
         spread = od.lowest_ask - od.highest_bid
+        od.spread = spread
+
         mid_price = (od.lowest_ask + od.highest_bid) / 2
         spread_pct = spread / mid_price
         price = od.limit_price or od.price
@@ -346,6 +357,9 @@ class PassiveOrderManager:
         quote_od.cost_basis = (price * quote_od.adjusted_size).quantize(
             Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP
         )
+        quote_quantizer = Decimal("1").scaleb(-quote_deci)
+        spread= Decimal(quote_od.spread)
+        quote_od.spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
         trigger = {"trigger": f"passive_{quote_od.side}", "trigger_note": f"price:{price}"}
         quote_od.trigger = trigger
         quote_od.source = 'PassiveMM'

@@ -138,6 +138,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
         coinbase_api=listener.coinbase_api,
         profit_data_manager=listener.profit_data_manager,
         order_type_manager=listener.order_type_manager,
+        order_manager=listener.order_manager,
         shared_utils_date_time=listener.shared_utils_date_time,
         shared_utils_print=listener.shared_utils_print,
         shared_utils_color=listener.shared_utils_color,
@@ -151,7 +152,6 @@ async def build_websocket_components(config, listener, shared_data_manager):
         ohlcv_manager=listener.ohlcv_manager,
         shared_data_manager=shared_data_manager,
         market_ws_manager=None,
-        order_manager=listener.order_manager,
         passive_order_manager=passive_order_manager
     )
 
@@ -452,8 +452,6 @@ async def main():
         logger_manager.get_logger("shared_logger"),
         ccxt_api=None  # Pass your existing ccxt_api if available
     )
-
-
 
     try:
         async with (aiohttp.ClientSession() as session):

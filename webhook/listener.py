@@ -253,7 +253,8 @@ class WebhookListener:
         self.order_book_manager = order_book_manager
 
         self.validate = ValidateOrders.get_instance(self.logger, self.order_book_manager,
-                                                    self.shared_utils_precision, self.shared_data_manager)
+                                                    self.shared_utils_precision, self.shared_utils_utility,
+                                                    self.shared_data_manager)
 
         self.order_type_manager = OrderTypeManager.get_instance(
             coinbase_api=self.coinbase_api,
@@ -479,7 +480,8 @@ class WebhookListener:
 
             # Use take profit stop loss
             order_data.source = source
-
+            if order_data.side == 'buy':
+                pass
             order_success, response_msg = await self.trade_order_manager.place_order(order_data)
             if response_msg:
                 response_data = response_msg
