@@ -506,7 +506,11 @@ class CoinbaseAPI:
         Args:
             product_id (Optional[str]): Filter orders by this trading pair (e.g., 'BTC-USD').
             limit (int): Max number of orders per page (max: 100).
-
+            status
+            string
+            required
+            The current state of the order
+Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORDER_STATUS, QUEUED, CANCEL_QUEUED]
         Returns:
             List[dict]: Filtered and normalized list of open orders.
         """
@@ -577,7 +581,7 @@ class CoinbaseAPI:
                 if product_id and product != product_id:
                     continue  # Client-side filtering
 
-                if status in {"FILLED", "CANCELLED"} or completion_pct == "100.00":
+                if status in {"FILLED", "CANCELLED","FAILED", "EXPIRED"} or completion_pct == "100.00":
                     continue  # Not open anymore
 
                 formatted_orders.append({

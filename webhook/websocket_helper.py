@@ -524,10 +524,33 @@ class WebSocketHelper:
             profit_data_list = []
 
             async with (self.order_tracker_lock):
-                order_tracker_snapshot = dict(order_management_snapshot.get("order_tracker", {}))
+                raw_tracker = order_management_snapshot.get("order_tracker", {})
+                if isinstance(raw_tracker, list):
+                    # Convert list of dicts to dict keyed by order_id
+                    order_tracker_snapshot = {
+                        (
+                                o.get("order_id") or
+                                o.get("info", {}).get("order_id") or
+                                o.get("id") or
+                                f"unknown_{i}"
+                        ): o
+                        for i, o in enumerate(raw_tracker)
+                        if isinstance(o, dict)
+                    }
+                else:
+                    # Assume it's already a dict
+                    order_tracker_snapshot = dict(raw_tracker)
+                raw_passive = order_management_snapshot.get("passive_tracker", {})
+                if isinstance(raw_passive, list):
+                    passive_tracker_snapshot = {
+                        o["order_id"]: o for o in raw_passive if isinstance(o, dict) and "order_id" in o
+                    }
+                else:
+                    passive_tracker_snapshot = dict(raw_passive)
+
                 for order_id, raw_order in order_tracker_snapshot.items():
                     # Skip passive orders — these are managed by PassiveMM via watchdog
-                    # if raw_order.source.lower() == 'passivemm':
+                    # if raw_order.source.lower() == 'PassiveMM':
                     #     continue
                     raw_order['type'] = raw_order.get('type').lower()
                     raw_order['side'] = raw_order.get('side').lower()
@@ -697,8 +720,7 @@ class WebSocketHelper:
                 try:
                     symbol = f"{asset}-USD"
                     if symbol in self.passive_orders:
-                        self.logger.debug(f"⏭ Skipping {asset} — passive position managed elsewhere.")
-                        continue
+                        continue # passive_order_manager.py.monitor_passive_position()
                     precision = self.spot_positions.get(asset,{}).get('precision')
                     base_deci = precision.get('amount', 8)
                     quote_deci = precision.get('price', 8)
@@ -781,50 +803,47 @@ class WebSocketHelper:
             log_method(f"{'✅' if success else '❌'} TP order for {symbol}: {response}")
 
     async def _place_sl_order(self, asset: str, symbol: str, current_price: Decimal, profit: Decimal, profit_pct: Decimal):
-        precision_data = self.shared_utils_precision.fetch_precision(symbol)
-        order_not_placed = True
-
-        while order_not_placed:
-            try:
-                # Step 1: Build OrderData
-                order_data = await self.trade_order_manager.build_order_data(
-                    source='websocket', trigger='stop_loss', asset=asset, product_id=symbol, side='sell',
-                )
-                if not order_data:
-                    return
-
-                order_data.trigger = {"trigger": "SL", "trigger_note": f"stop_loss={self.stop_loss}%"}
-
-                # Step 2: Check existing open orders
-                for o in self.open_orders.values():
-                    if o.get("symbol") != symbol:
-                        continue
-
-                    order_id = o.get("order_id")
-                    order_type = o.get("type", "").upper()
-                    limit_price = self._extract_price(o)
-
-                    if order_type == "TAKE_PROFIT_STOP_LOSS" and current_price <= limit_price:
-                        await self.listener.order_manager.cancel_order(order_id, symbol)
-                        self.logger.info(f"🛑 Canceled SL order {order_id} at limit {limit_price}")
-                        order_not_placed = False
-                        break  # Only cancel one matching SL order
-                    else:
-                        return  # Don't place a new order if one is active and valid
-
-                # Step 3: Place SL order if no active one exists
-
-                if not order_data.open_orders.get("open_order"):
-                    if order_data.side =='buy':
-                        pass
-                    success, response = await self.trade_order_manager.place_order(order_data, precision_data)
-                    log_method = self.logger.info if success else self.logger.error
-                    log_method(f"{'✅' if success else '❌'} SL order for {symbol}: {response}")
+        try:
+            # Step 1: Build OrderData
+            order_data = await self.trade_order_manager.build_order_data(
+                source='websocket', trigger='stop_loss', asset=asset, product_id=symbol, side='sell',
+            )
+            if not order_data:
                 return
 
-            except Exception as e:
-                self.logger.error(f"Error building or submitting SL order for {symbol}: {e}", exc_info=True)
+            order_data.trigger = {"trigger": "SL", "trigger_note": f"stop_loss={self.stop_loss}%"}
+
+            # Step 2: Skip if passive order already exists for this asset
+            if asset in self.passive_orders:
                 return
+
+            # Step 3: Look for existing open orders
+            matching_orders = [
+                o for o in self.open_orders.values()
+                if o.get("symbol") == symbol
+            ] if self.open_orders else []
+
+            for o in matching_orders:
+                order_id = o.get("order_id")
+                order_type = o.get("type", "").upper()
+                limit_price = self._extract_price(o)
+
+                if order_type == "TAKE_PROFIT_STOP_LOSS" and current_price <= limit_price:
+                    await self.listener.order_manager.cancel_order(order_id, symbol)
+                    self.logger.info(f"🛑 Canceled SL order {order_id} at limit {limit_price}")
+                    break  # Only cancel one matching SL order
+                else:
+                    return  # Skip placing a new one if an active order exists
+
+            # Step 4: Submit SL order if no conflicting order exists
+            if not order_data.open_orders.get("open_order") and order_data.side == 'sell':
+                precision_data = self.shared_utils_precision.fetch_precision(symbol)
+                success, response = await self.trade_order_manager.place_order(order_data, precision_data)
+                log_method = self.logger.info if success else self.logger.error
+                log_method(f"{'✅' if success else '❌'} SL order for {symbol}: {response}")
+
+        except Exception as e:
+            self.logger.error(f"Error building or submitting SL order for {symbol}: {e}", exc_info=True)
 
     def _extract_price(self, order: dict) -> Decimal:
         """

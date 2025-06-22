@@ -610,7 +610,15 @@ class SharedDataManager:
         try:
             # Step 1: Load current active orders
             order_tracker = await self.get_order_tracker()
-            active_order_ids = {order_id for order_id in order_tracker.keys()}
+            if isinstance(order_tracker, list):
+                passive_tracker_snapshot = {
+                    o["order_id"]: o for o in order_tracker if isinstance(o, dict) and "order_id" in o
+                }
+            else:
+                passive_tracker_snapshot = dict(order_tracker)
+
+
+            active_order_ids = {order_id for order_id in passive_tracker_snapshot.keys()}
 
             # Step 2: Fetch all passive orders from DB
             async with self.database_session_manager.async_session() as session:

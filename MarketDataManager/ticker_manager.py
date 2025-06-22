@@ -121,6 +121,14 @@ class TickerManager:
             spot_positions = self.process_spot_positions(non_zero_balances,
                                                          tickers_cache,
                                                          usd_pairs_cache)
+            open_orders = await self.coinbase_api.fetch_open_orders()
+            open_orders_dict = {
+                o["id"]: o for o in open_orders if isinstance(o, dict) and "id" in o
+            }
+
+
+            # Calculate average quote volume
+            avg_volume = tickers_cache['24h_quote_volume'].mean()
 
             return {
                 "ticker_cache": tickers_cache,
@@ -129,7 +137,7 @@ class TickerManager:
                 "bid_ask_spread": bid_ask_spread,
                 "avg_quote_volume": Decimal(avg_volume).quantize(Decimal('0')),
                 "spot_positions": spot_positions
-            }, {"non_zero_balances": non_zero_balances, 'order_tracker': self.open_orders}
+            }, {"non_zero_balances": non_zero_balances, 'order_tracker': open_orders_dict}
 
         except Exception as e:
             self.logger.error(f"❌ Error in update_ticker_cache: {e}", exc_info=True)
