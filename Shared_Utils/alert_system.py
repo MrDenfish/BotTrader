@@ -1,5 +1,9 @@
 import os
 import smtplib
+from typing import Optional
+
+
+
 
 """ This class handles the sending of alert messages, such as SMS or emails."""
 #
@@ -59,3 +63,31 @@ class AlertSystem:
 
         except Exception as e:
             self.logger(f"❌ Error sending alert: {e}", exc_info=True)
+
+    def summarize_user_snapshot(self, data: dict) -> Optional[str]:
+        try:
+            events = data.get("events", [])
+            for event in events:
+                if event.get("type") != "snapshot":
+                    continue
+                orders = event.get("orders", [])
+                if not orders:
+                    return None
+                summaries = []
+                for order in orders:
+                    summary = (
+                        f"📬 User Snapshot:\n"
+                        f"- Symbol: {order.get('product_id')}\n"
+                        f"- Side: {order.get('order_side')}\n"
+                        f"- Type: {order.get('order_type')}\n"
+                        f"- Status: {order.get('status')}\n"
+                        f"- Limit Price: {order.get('limit_price')}\n"
+                        f"- Remaining Qty: {order.get('leaves_quantity')}\n"
+                        f"- Order ID: {order.get('order_id')}\n"
+                        f"- Created At: {order.get('creation_time')}\n"
+                    )
+                    summaries.append(summary)
+                return "\n".join(summaries)
+        except Exception as e:
+            self.logger.error(f"❌ Error summarizing user snapshot: {e}", exc_info=True)
+            return None

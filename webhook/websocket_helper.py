@@ -254,13 +254,15 @@ class WebSocketHelper:
                 self.logger.info(f"✅ First message received from user channel: {channel}")
 
             if channel == "user":
+                print(self.shared_utils_color.format(f" 💚 {self.listener.alerts.summarize_user_snapshot(data)}", self.shared_utils_color.BLUE))
+                # print(f'💚  {self.listener.alerts.summarize_user_snapshot(data)}')
                 await self.market_ws_manager.process_user_channel(data)
             elif channel == "heartbeats":
                 self.last_heartbeat = time.time()
                 self.count += 1
                 if self.count >= 25:
                     heartbeat_counter = data.get("events", [{}])[0].get("heartbeat_counter")
-                    print(f"❤️ USER heartbeat: Counter={heartbeat_counter}")
+                    print(f"💚 USER heartbeat: Counter={heartbeat_counter}")
                     self.count = 0
             elif channel == "subscriptions":
                 self.logger.debug(f"� Received user channel subscription update: {json.dumps(data, indent=2)}")
