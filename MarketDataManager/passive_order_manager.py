@@ -123,8 +123,14 @@ class PassiveOrderManager:
                 peak_price = current_price
 
             # ----- STOP-LOSS (SL) -----
-            dynamic_sl_pct = max(self.fee["taker"] * Decimal(2), od.spread * Decimal(1.25))
+            normalized_spread_pct = (
+                od.spread / od.limit_price if od.limit_price and od.spread else Decimal("0")
+            )
+            dynamic_sl_pct = max(self.fee["taker"] * Decimal(2), normalized_spread_pct * Decimal("1.25"))
             stop_price = od.limit_price * (Decimal("1.0") - dynamic_sl_pct)
+            stop_price = self.shared_utils_precision.safe_quantize(stop_price, quote_quantizer)
+
+
             if current_price <= stop_price:
                 self.logger.warning(f"🔻 Stop-loss triggered for {symbol} @ {current_price} (SL threshold: {stop_price})")
                 await self._submit_passive_sell(
@@ -290,7 +296,8 @@ class PassiveOrderManager:
             if ok:
                 sell_id = res.get('details', {}).get('order_id')
                 self.logger.info(f"✅ {reason.upper()} SELL placed for {symbol} @ {sell_od.adjusted_price}")
-                await self._track_passive_order(symbol, reason, sell_id)
+                await self._track_passive_order(symbol, reason, sell_id, sell_od)
+
             else:
                 self.logger.error(f"❌ Failed to place {reason.upper()} SELL for {symbol}: {res}")
         except Exception as e:
@@ -443,7 +450,8 @@ class PassiveOrderManager:
                 now = time.time()
 
                 # Passive order cleanup logic
-                print(self.shared_utils_color.format(f" {self.passive_order_tracker}",self.shared_utils_color.MAGENTA))
+                if len(self.passive_order_tracker)>0:
+                    print(self.shared_utils_color.format(f" {self.passive_order_tracker}",self.shared_utils_color.MAGENTA))
 
                 for symbol, entry in list(self.passive_order_tracker.items()):
                     if now - entry.get("timestamp", 0) < self.max_lifetime:
