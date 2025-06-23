@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from Config.config_manager import CentralConfig
 from database_manager.database_ops import DatabaseOpsManager
 from TableModels.base import Base
-from TableModels.ohlcv_data import OHLCVData
+import TableModels
 
 
 class DatabaseSessionManager:
@@ -165,7 +165,7 @@ class DatabaseSessionManager:
     async def check_ohlcv_initialized(self):
         """PART III:
         Check if OHLCV data is initialized in the database."""
-        query = select(OHLCVData).limit(1)
+        query = select(TableModels.OHLCVData).limit(1)
         result = await self.database.fetch_one(query)
         print(f'{result}')
         return result is not None

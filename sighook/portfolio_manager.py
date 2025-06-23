@@ -146,7 +146,7 @@ class PortfolioManager:
         try:
             # Validate ticker cache and preprocess
             if not self._is_ticker_cache_valid():
-                return [], [], 0, pd.DataFrame(), pd.DataFrame()
+                return [], [], pd.DataFrame(), pd.DataFrame()
             # Preprocess ticker cache and remove duplicates and irrelevant data
             # self.ticker_cache = self._preprocess_and_deduplicate_ticker_cache()
 
@@ -167,7 +167,7 @@ class PortfolioManager:
 
         except Exception as e:
             self.logger.error(f"❌ Error in get_portfolio_data: {e}", exc_info=True)
-            return [], [], 0, pd.DataFrame(), pd.DataFrame()
+            return [], [], pd.DataFrame(), pd.DataFrame()
 
     # Supporting Methods
 
@@ -270,15 +270,22 @@ class PortfolioManager:
 
     def _create_row(self, row):
         """Part II: Generate a row for the buy/sell matrix."""
-        _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(row['asset'])
-        price_decimal = Decimal(row['price']).quantize(Decimal(f'1e-{quote_deci}'), rounding=ROUND_DOWN)
-        return {
-            'asset': row['asset'],
-            'price': price_decimal,
-            'base volume': row['volume_24h'],
-            'quote volume': row['24h_quote_volume'],
-            'price change %': Decimal(row['price_percentage_change_24h'])
-        }
+        try:
+            _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(row['asset'])
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            symbol = row.get('asset')
+            price = Decimal(row['current_price'])
+            price_decimal = self.shared_utils_precision.safe_quantize(price, quote_quantizer)
+            return {
+                'asset': row['asset'],
+                'price': price_decimal,
+                'base volume': row['volume_24h'],
+                'quote volume': row['24h_quote_volume'],
+                'price change %': Decimal(row['price_percentage_change_24h'])
+            }
+        except Exception as e:
+            self.logger.error(f"❌Error creating row for buy sell matrix: {e}", exc_info=True)
+            return {}
 
     def _get_tradeable_crypto_mapping(self, non_zero_balances):
         """PART II:
@@ -289,7 +296,7 @@ class PortfolioManager:
                 for balance_data in non_zero_balances.values()
             }
         except Exception as e:
-            self.logger.error(f"❌Error creating tradeable crypto mapping: {e}", exc_info=True)
+            self.logger.error(f"❌Error creating tradable crypto mapping: {e}", exc_info=True)
             return {}
 
 
