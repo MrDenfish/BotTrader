@@ -234,3 +234,5 @@ AttributeError: 'PortfolioManager' object has no attribute '_get_tradeable_crypt
 2025-06-24 20:18:15,794 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)
 2025-06-24 20:52:00,588 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)
 2025-06-24 21:24:12,225 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)
+2025-06-24 21:28:44,010 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)
+2025-06-24 21:33:42,646 - sighook_logger - INFO - Processing holdings data... (holdings_process_manager.py:156)

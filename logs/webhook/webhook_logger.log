@@ -8856,3 +8856,798 @@ NoneType: None
 2025-06-24 21:27:52,535 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
 2025-06-24 21:27:54,097 - webhook_logger - INFO - 💰 GFI-USD SELL profit 1.00 USD (websocket_market_manager.py:234)
 2025-06-24 21:27:54,097 - webhook_logger - INFO - ✅ Order filled: 3a0d1dc2-dc2b-4b23-8406-9f8d79d14004 at 0.6386 with fee 0.074926938 (websocket_market_manager.py:236)
+2025-06-24 21:27:59,039 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:27:59,058 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1786 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:27:59,330 - webhook_logger - INFO - ✅ Successfully placed limit order for ZETACHAIN-USD (webhook_order_manager.py:463)
+2025-06-24 21:27:59,335 - webhook_logger - INFO - ✅ Passive BUY ZETACHAIN-USD @ 0.1779 (passive_order_manager.py:385)
+2025-06-24 21:28:01,569 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PNG-USD: 0.12189 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:01,780 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:01,781 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PNG-USD: 0.12189 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:03,229 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:03,230 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PNG-USD: 0.12189 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:03,427 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for NKN-USD: 0.0253 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:03,606 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:03,606 - webhook_logger - INFO - ❌ All 3 attempts to place order for PNG-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:28:03,660 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:03,661 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for NKN-USD: 0.0253 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:03,862 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:03,866 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for NKN-USD: 0.0253 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:04,120 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:04,120 - webhook_logger - INFO - ❌ All 3 attempts to place order for NKN-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:28:04,304 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:04,578 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:10,816 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:11,094 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:11,109 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ASM-USD: 0.01892 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:11,397 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:11,398 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ASM-USD: 0.01892 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:11,649 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:11,651 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ASM-USD: 0.01892 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:12,184 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:12,184 - webhook_logger - INFO - ❌ All 3 attempts to place order for ASM-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:28:14,192 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AVT-USD: 1.36 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:14,406 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:14,407 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AVT-USD: 1.36 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:14,632 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:14,633 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AVT-USD: 1.36 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:15,129 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:15,129 - webhook_logger - INFO - ❌ All 3 attempts to place order for AVT-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:28:17,082 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:17,402 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:17,422 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:28:17,490 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:28:17,490 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:28:17,491 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:28:17,491 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -1.05% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:17,491 - webhook_logger - INFO - 🛑 SL trigger for ALEO-USD: 0.49% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:17,492 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:17,492 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:28:17,690 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:28:17,690 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:17,690 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:28:17,897 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:28:17,897 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:28:18,132 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:28:18,133 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:18,133 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:28:18,134 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:28:18,134 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.71s (listener.py:403)
+2025-06-24 21:28:18,134 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:28:22,691 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:22,990 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:27,499 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:28:28,369 - webhook_logger - WARNING - Skipping GFI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:28,698 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:30,323 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:28:30,323 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:28:30,324 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:28:30,326 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:28:30,326 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:28:35,118 - webhook_logger - INFO - ℹ️ No order_id for expired sell GFI-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-24 21:28:35,120 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:40,439 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:40,756 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FOX-USD: 0.0229 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:40,995 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:40,997 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FOX-USD: 0.0229 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:41,249 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:41,250 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FOX-USD: 0.0229 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:28:41,446 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:28:41,446 - webhook_logger - INFO - ❌ All 3 attempts to place order for FOX-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:28:45,727 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:47,488 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:28:47,556 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:28:47,556 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:28:47,557 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:28:47,557 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -1.05% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:47,558 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:47,558 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:28:47,754 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:28:47,754 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:47,754 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:28:47,938 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:28:47,938 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:28:48,119 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:28:48,120 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:28:48,121 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:28:48,123 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:28:48,123 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.63s (listener.py:403)
+2025-06-24 21:28:48,123 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:28:52,294 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:28:57,570 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:29:03,752 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:29:09,041 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:29:14,346 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:29:18,131 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:29:18,206 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:29:18,206 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:29:18,207 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:29:18,208 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:18,208 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:18,208 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:29:18,507 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:29:18,507 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:18,507 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:29:18,693 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:29:18,694 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:29:18,883 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:29:18,883 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:18,883 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:29:18,884 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:29:18,884 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.75s (listener.py:403)
+2025-06-24 21:29:18,884 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:29:19,638 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:29:25,025 - webhook_logger - WARNING - Skipping ZETACHAIN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:29:29,833 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:29:30,714 - webhook_logger - INFO - ℹ️ No order_id for expired sell ZETACHAIN-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-24 21:29:30,837 - webhook_logger - INFO - ❎ 01adf282-37ba-4689-ac58-4f4110594e6f CANCEL_QUEUED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:29:30,892 - webhook_logger - INFO - ❎ 01adf282-37ba-4689-ac58-4f4110594e6f CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:29:31,172 - webhook_logger - INFO - ❎ 01adf282-37ba-4689-ac58-4f4110594e6f CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:29:32,593 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:29:32,594 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:29:32,595 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:29:32,598 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:29:32,599 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:29:47,094 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:29:47,161 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:29:47,161 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:29:47,162 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:29:47,163 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:47,163 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:47,163 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:29:47,347 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:29:47,347 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:47,347 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:29:47,562 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:29:47,563 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:29:47,789 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:29:47,789 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:29:47,789 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:29:47,792 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:29:47,792 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.70s (listener.py:403)
+2025-06-24 21:29:47,793 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:29:50,760 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ARPA-USD: 0.0188 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:29:51,002 - webhook_logger - INFO - ✅ Successfully placed limit order for ARPA-USD (webhook_order_manager.py:463)
+2025-06-24 21:29:51,006 - webhook_logger - INFO - ✅ Passive BUY ARPA-USD @ 0.0188 (passive_order_manager.py:385)
+2025-06-24 21:29:55,736 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:00,979 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for APT-USD: 5.05 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:01,172 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:01,212 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:01,215 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for APT-USD: 5.05 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:01,637 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:01,642 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for APT-USD: 5.05 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:01,896 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:01,897 - webhook_logger - INFO - ❌ All 3 attempts to place order for APT-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:30:04,393 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GHST-USD: 0.358 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:04,830 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:04,836 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GHST-USD: 0.358 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:05,067 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:05,069 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GHST-USD: 0.358 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:05,275 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:05,276 - webhook_logger - INFO - ❌ All 3 attempts to place order for GHST-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:30:06,632 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:12,051 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:17,263 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:30:17,317 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:30:17,317 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:30:17,318 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:30:17,318 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:17,319 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:17,319 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:30:17,348 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:17,769 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:30:17,770 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:17,770 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:30:17,982 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:30:17,983 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:30:18,192 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:30:18,192 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:18,193 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:30:18,195 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:30:18,195 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.93s (listener.py:403)
+2025-06-24 21:30:18,195 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:30:22,760 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:28,049 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:31,612 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:30:33,522 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:34,115 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:30:34,116 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:30:34,117 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:30:34,120 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:30:34,121 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:30:40,062 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:40,403 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SYN-USD: 0.108 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:40,798 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:40,803 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SYN-USD: 0.108 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:41,573 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:41,576 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SYN-USD: 0.108 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:41,788 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:41,789 - webhook_logger - INFO - ❌ All 3 attempts to place order for SYN-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:30:43,934 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0046 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:44,155 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:44,161 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0046 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:44,370 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:44,375 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0046 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:30:44,616 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:30:44,617 - webhook_logger - INFO - ❌ All 3 attempts to place order for PAX-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:30:45,355 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:47,646 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:30:47,726 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:30:47,726 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:30:47,726 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:30:47,727 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:47,727 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:47,727 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:30:47,954 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:30:47,954 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:47,955 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:30:48,352 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:30:48,353 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:30:48,563 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:30:48,564 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:30:48,564 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:30:48,565 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:30:48,566 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.92s (listener.py:403)
+2025-06-24 21:30:48,566 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:30:50,635 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:30:55,934 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:31:01,333 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:31:06,853 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:31:12,173 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:31:17,462 - webhook_logger - WARNING - Skipping ARPA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:31:17,771 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:31:17,847 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:31:17,848 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:31:17,848 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:31:17,849 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:17,849 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:17,849 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:31:18,043 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:31:18,043 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:18,043 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:31:18,314 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:31:18,314 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:31:18,492 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:31:18,493 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:18,493 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:31:18,493 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:31:18,494 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.72s (listener.py:403)
+2025-06-24 21:31:18,494 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:31:23,000 - webhook_logger - INFO - ℹ️ No order_id for expired sell ARPA-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-24 21:31:23,014 - webhook_logger - INFO - ❎ d7ebc0ec-28e7-47c9-ab6d-0bfcb4755096 CANCEL_QUEUED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:31:23,285 - webhook_logger - INFO - ❎ d7ebc0ec-28e7-47c9-ab6d-0bfcb4755096 CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:31:23,322 - webhook_logger - INFO - ❎ d7ebc0ec-28e7-47c9-ab6d-0bfcb4755096 CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:31:33,139 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:31:35,634 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:31:35,634 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:31:35,635 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:31:35,636 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:31:35,636 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:31:47,378 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:31:47,418 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:31:47,418 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:31:47,419 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:31:47,419 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:47,419 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:47,420 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:31:47,606 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:31:47,607 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:47,607 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:31:47,832 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:31:47,833 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:31:48,030 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:31:48,030 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:31:48,031 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:31:48,031 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:31:48,031 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.65s (listener.py:403)
+2025-06-24 21:31:48,031 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:31:55,618 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ALCX-USD: 7.42 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:31:56,491 - webhook_logger - INFO - ✅ Successfully placed limit order for ALCX-USD (webhook_order_manager.py:463)
+2025-06-24 21:31:56,530 - webhook_logger - INFO - ✅ Passive BUY ALCX-USD @ 7.41 (passive_order_manager.py:385)
+2025-06-24 21:31:58,364 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:31:58,647 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BTRST-USD: 0.242 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:31:58,988 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:31:58,990 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BTRST-USD: 0.242 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:31:59,303 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:31:59,305 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BTRST-USD: 0.242 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:31:59,555 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:31:59,556 - webhook_logger - INFO - ❌ All 3 attempts to place order for BTRST-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:32:03,646 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:05,633 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLAST-USD: 0.00216 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:32:05,841 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:32:05,843 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLAST-USD: 0.00216 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:32:06,127 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:32:06,132 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLAST-USD: 0.00216 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:32:06,507 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:32:06,507 - webhook_logger - INFO - ❌ All 3 attempts to place order for BLAST-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:32:08,964 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:14,274 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:18,305 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:32:18,372 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:32:18,372 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:32:18,372 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:32:18,373 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:18,373 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:18,373 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:32:18,552 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:32:18,552 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:18,552 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:32:18,753 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:32:18,754 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:32:18,941 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:32:18,942 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:18,942 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:32:18,943 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:32:18,943 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.64s (listener.py:403)
+2025-06-24 21:32:18,943 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:32:19,633 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:24,911 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:31,392 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:36,690 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:38,412 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for IDEX-USD: 0.0201 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:32:38,526 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:32:38,661 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:32:38,668 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for IDEX-USD: 0.0201 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:32:38,880 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:32:38,885 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for IDEX-USD: 0.0201 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:32:39,120 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:32:39,121 - webhook_logger - INFO - ❌ All 3 attempts to place order for IDEX-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:32:40,984 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:32:40,985 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:32:40,985 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:32:40,987 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:32:40,987 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:32:42,013 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:47,145 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:32:47,197 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:32:47,197 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:32:47,198 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:32:47,198 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:47,198 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:47,199 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:32:47,324 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:47,757 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:32:47,758 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:47,758 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:32:48,230 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:32:48,231 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:32:48,533 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:32:48,535 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -1.09% but has open orders (websocket_helper.py:774)
+2025-06-24 21:32:48,535 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:32:48,537 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:32:48,537 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 1.39s (listener.py:403)
+2025-06-24 21:32:48,537 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:32:52,756 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:32:58,091 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:03,443 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:08,932 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:14,222 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:17,204 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:33:17,257 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:33:17,257 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:33:17,258 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:33:17,258 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:17,258 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:17,258 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:33:17,535 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:33:17,536 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:17,537 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:33:17,765 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:33:17,766 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:33:18,004 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:33:18,004 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -0.99% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:18,005 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:33:18,006 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:33:18,007 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.80s (listener.py:403)
+2025-06-24 21:33:18,007 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:33:19,530 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:24,872 - webhook_logger - WARNING - Skipping ALCX-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:30,262 - webhook_logger - WARNING - ⚠️ No message received from user channel 'user' in the last 93s. Reconnecting... (websocket_helper.py:284)
+2025-06-24 21:33:30,388 - webhook_logger - INFO - ℹ️ No order_id for expired sell ALCX-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-24 21:33:30,535 - webhook_logger - INFO - ❎ b5313a5c-d48e-40f3-a21b-e674ec70384f CANCEL_QUEUED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:33:30,592 - webhook_logger - INFO - ❎ b5313a5c-d48e-40f3-a21b-e674ec70384f CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:33:30,647 - webhook_logger - INFO - ❎ b5313a5c-d48e-40f3-a21b-e674ec70384f CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:33:30,790 - webhook_logger - INFO - Already subscribed to all requested user channels. Skipping subscription. (websocket_helper.py:417)
+2025-06-24 21:33:30,791 - webhook_logger - INFO - ✅ Connected and subscribed to user WebSocket: wss://advanced-trade-ws-user.coinbase.com (listener.py:103)
+2025-06-24 21:33:30,791 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws-user.coinbase.com (listener.py:113)
+2025-06-24 21:33:36,038 - webhook_logger - INFO - ❎ 334f026d-e174-434d-8044-e09506cf3c6a CANCEL_QUEUED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:33:36,095 - webhook_logger - INFO - ❎ 334f026d-e174-434d-8044-e09506cf3c6a CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:33:36,142 - webhook_logger - INFO - ❎ 334f026d-e174-434d-8044-e09506cf3c6a CANCELLED → deleted from DB (websocket_market_manager.py:174)
+2025-06-24 21:33:39,996 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:33:43,665 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:33:43,665 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:33:43,666 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:33:43,668 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:33:43,668 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:33:48,019 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:33:48,069 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:33:48,070 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:33:48,070 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:33:48,071 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:48,071 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:48,071 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:33:48,252 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:33:48,253 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:48,253 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:33:48,543 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:33:48,544 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:33:49,160 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:33:49,160 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -0.99% but has open orders (websocket_helper.py:774)
+2025-06-24 21:33:49,160 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:33:49,161 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:33:49,161 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 1.14s (listener.py:403)
+2025-06-24 21:33:49,161 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:33:53,024 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OMNI-USD: 1.608 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:33:53,670 - webhook_logger - INFO - ✅ Successfully placed limit order for OMNI-USD (webhook_order_manager.py:463)
+2025-06-24 21:33:53,682 - webhook_logger - INFO - ✅ Passive BUY OMNI-USD @ 1.602 (passive_order_manager.py:385)
+2025-06-24 21:33:55,375 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for WAXL-USD: 0.3484 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:33:56,618 - webhook_logger - INFO - ✅ Successfully placed limit order for WAXL-USD (webhook_order_manager.py:463)
+2025-06-24 21:33:56,622 - webhook_logger - INFO - ✅ Passive BUY WAXL-USD @ 0.3437 (passive_order_manager.py:385)
+2025-06-24 21:33:56,753 - webhook_logger - INFO - ✅ Order filled: fe88de18-0409-4e14-8f7e-b9bebf6f5315 at 0.3484 with fee 0.074977422 (websocket_market_manager.py:236)
+2025-06-24 21:33:58,511 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:58,538 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0046 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:33:58,917 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:33:58,938 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:33:58,939 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0046 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:34:00,711 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:34:00,712 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAX-USD: 1.0046 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:34:00,916 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:34:00,917 - webhook_logger - INFO - ❌ All 3 attempts to place order for PAX-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:34:00,927 - webhook_logger - INFO - ✅ Order filled: fe88de18-0409-4e14-8f7e-b9bebf6f5315 at 0.3484 with fee 0.074977422 (websocket_market_manager.py:236)
+2025-06-24 21:34:03,503 - webhook_logger - INFO - ✅ Order filled: fe88de18-0409-4e14-8f7e-b9bebf6f5315 at 0.3484 with fee 0.074977422 (websocket_market_manager.py:236)
+2025-06-24 21:34:04,436 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:04,724 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:06,169 - webhook_logger - INFO - ✅ Order filled: fe88de18-0409-4e14-8f7e-b9bebf6f5315 at 0.3484 with fee 0.074977422 (websocket_market_manager.py:236)
+2025-06-24 21:34:10,208 - webhook_logger - INFO - ✅ Order filled: fd047885-cf8a-4e4e-b1ef-285a78d552fa at 1.608 with fee 0.07508556 (websocket_market_manager.py:236)
+2025-06-24 21:34:11,114 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:12,596 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:12,897 - webhook_logger - INFO - ✅ Order filled: fd047885-cf8a-4e4e-b1ef-285a78d552fa at 1.608 with fee 0.07508556 (websocket_market_manager.py:236)
+2025-06-24 21:34:17,435 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:34:17,495 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:34:17,495 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:34:17,495 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:34:17,496 - webhook_logger - INFO - 💰 TP trigger for WAXL-USD: 3.80% (websocket_helper.py:767)
+2025-06-24 21:34:18,247 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:18,626 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:20,600 - webhook_logger - INFO - 🟡 Adjusted SELL limit price for WAXL-USD: 0.3416 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:34:20,923 - webhook_logger - INFO - ✅ Successfully placed limit order for WAXL-USD (webhook_order_manager.py:463)
+2025-06-24 21:34:20,923 - webhook_logger - INFO - ✅ TP order for WAXL-USD: {'success': True, 'message': 'Order placed', 'code': '200', 'details': {'trading_pair': 'WAXL-USD', 'time_order_placed': None, 'type': 'limit', 'order_id': '2a910b27-e229-4091-aeb7-d8c84e8a65db', 'side': 'sell', 'filled_price': Decimal('0'), 'base_currency': 'WAXL', 'quote_currency': 'USD', 'usd_balance': Decimal('22.75'), 'base_decimal': 2, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.3412'), 'lowest_ask': Decimal('0.3497'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0086'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'websocket', 'trigger': {'trigger': 'TP', 'trigger_note': 'price=0.3416'}, 'base_avail_balance': Decimal('143.49'), 'total_balance_crypto': Decimal('143.49'), 'available_to_trade_crypto': Decimal('143.49'), 'usd_avail_balance': Decimal('22.75'), 'order_amount_fiat': Decimal('0'), 'order_amount_crypto': Decimal('143.49'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.3414'), 'adjusted_size': Decimal('143.47'), 'stop_loss_price': Decimal('0.3379'), 'take_profit_price': Decimal('0.3508'), 'avg_quote_volume': None, 'volume_24h': None}, 'error_response': {}} (websocket_helper.py:804)
+2025-06-24 21:34:20,923 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:34:20,924 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:34:20,924 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:34:21,215 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:34:21,215 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:34:21,216 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 2.72% (websocket_helper.py:767)
+2025-06-24 21:34:21,599 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:34:21,599 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:34:21,783 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:34:21,784 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -0.99% but has open orders (websocket_helper.py:774)
+2025-06-24 21:34:21,784 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:34:21,786 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:34:21,786 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 4.35s (listener.py:403)
+2025-06-24 21:34:21,787 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:34:24,155 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:24,687 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:30,135 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:30,388 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:35,701 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:35,939 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:41,269 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:41,923 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:43,310 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:34:47,042 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-24 21:34:47,043 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-24 21:34:47,043 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:379)
+2025-06-24 21:34:47,044 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-24 21:34:47,044 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-24 21:34:47,243 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:51,392 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:53,821 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:34:53,889 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:34:53,889 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:34:53,890 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:34:53,891 - webhook_logger - INFO - 🛑 SL trigger for WAXL-USD: -2.04% but has open orders (websocket_helper.py:774)
+2025-06-24 21:34:55,034 - webhook_logger - INFO - 💰 WAXL-USD SELL profit 1.00 USD (websocket_market_manager.py:234)
+2025-06-24 21:34:55,034 - webhook_logger - INFO - ✅ Order filled: 2a910b27-e229-4091-aeb7-d8c84e8a65db at 0.3416 with fee 0.073514028 (websocket_market_manager.py:236)
+2025-06-24 21:34:58,584 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:58,932 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:34:58,951 - webhook_logger - INFO - 🟡 Adjusted SELL limit price for OMNI-USD: 1.602 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:00,602 - webhook_logger - INFO - ✅ Successfully placed limit order for OMNI-USD (webhook_order_manager.py:463)
+2025-06-24 21:35:00,603 - webhook_logger - INFO - ✅ SL order for OMNI-USD: {'success': True, 'message': 'Order placed', 'code': '200', 'details': {'trading_pair': 'OMNI-USD', 'time_order_placed': None, 'type': 'limit', 'order_id': 'a60c3f07-0cd7-48a9-902d-14c253433a2b', 'side': 'sell', 'filled_price': Decimal('0'), 'base_currency': 'OMNI', 'quote_currency': 'USD', 'usd_balance': Decimal('69.73'), 'base_decimal': 2, 'quote_decimal': 3, 'quote_increment': Decimal('0.001'), 'highest_bid': Decimal('1.600'), 'lowest_ask': Decimal('1.608'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.008'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'websocket', 'trigger': {'trigger': 'SL', 'trigger_note': 'stop_loss=-0.0075%'}, 'base_avail_balance': Decimal('31.15'), 'total_balance_crypto': Decimal('31.15'), 'available_to_trade_crypto': Decimal('31.15'), 'usd_avail_balance': Decimal('69.73'), 'order_amount_fiat': Decimal('0'), 'order_amount_crypto': Decimal('31.15'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('1.602'), 'adjusted_size': Decimal('31.13'), 'stop_loss_price': Decimal('1.586'), 'take_profit_price': Decimal('1.646'), 'avg_quote_volume': None, 'volume_24h': None}, 'error_response': {}} (websocket_helper.py:844)
+2025-06-24 21:35:00,603 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:00,603 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:00,603 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:35:00,786 - webhook_logger - INFO - 💰 WAXL-USD SELL profit 1.00 USD (websocket_market_manager.py:234)
+2025-06-24 21:35:00,786 - webhook_logger - INFO - ✅ Order filled: 2a910b27-e229-4091-aeb7-d8c84e8a65db at 0.3416 with fee 0.073514028 (websocket_market_manager.py:236)
+2025-06-24 21:35:01,289 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:01,290 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:01,290 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 2.72% (websocket_helper.py:767)
+2025-06-24 21:35:01,623 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:01,623 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:35:01,837 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:01,837 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -0.99% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:01,838 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:35:01,838 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:35:01,838 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 8.02s (listener.py:403)
+2025-06-24 21:35:01,838 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:35:04,265 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:04,531 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:10,476 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:10,728 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:10,739 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CHZ-USD: 0.0357 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:11,229 - webhook_logger - INFO - ✅ Successfully placed limit order for CHZ-USD (webhook_order_manager.py:463)
+2025-06-24 21:35:11,232 - webhook_logger - INFO - ✅ Passive BUY CHZ-USD @ 0.0355 (passive_order_manager.py:385)
+2025-06-24 21:35:14,762 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.112 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:15,005 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:15,008 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.112 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:15,865 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:15,867 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.112 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:16,192 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:16,508 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:16,529 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:16,529 - webhook_logger - INFO - ❌ All 3 attempts to place order for TNSR-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:35:17,193 - webhook_logger - WARNING - Skipping CHZ-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:18,996 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:35:19,056 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:35:19,056 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:35:19,056 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:35:19,057 - webhook_logger - INFO - 🛑 SL trigger for OMNI-USD: 0.06% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:19,057 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:19,057 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:19,058 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:35:19,331 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:19,332 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:19,332 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 2.72% (websocket_helper.py:767)
+2025-06-24 21:35:19,604 - webhook_logger - INFO - ⏸️ Skipping TP order for SKL-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:19,605 - webhook_logger - INFO - 💰 TP trigger for RAD-USD: 8.62% (websocket_helper.py:767)
+2025-06-24 21:35:19,893 - webhook_logger - INFO - ⏸️ Skipping TP order for RAD-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:19,893 - webhook_logger - INFO - 🛑 SL trigger for MUSE-USD: -0.99% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:19,893 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:785)
+2025-06-24 21:35:19,895 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:701)
+2025-06-24 21:35:19,895 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 0.90s (listener.py:403)
+2025-06-24 21:35:19,895 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-24 21:35:22,494 - webhook_logger - WARNING - Skipping OMNI-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:22,770 - webhook_logger - WARNING - Skipping WAXL-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:23,057 - webhook_logger - WARNING - Skipping CHZ-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:28,667 - webhook_logger - INFO - ℹ️ No order_id for expired sell OMNI-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-24 21:35:28,869 - webhook_logger - INFO - ℹ️ No order_id for expired sell WAXL-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-24 21:35:28,869 - webhook_logger - WARNING - Skipping CHZ-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:34,176 - webhook_logger - WARNING - Skipping CHZ-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:36,397 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OCEAN-USD: 0.2952 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:37,044 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:37,047 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OCEAN-USD: 0.2952 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:37,429 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:37,432 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OCEAN-USD: 0.2952 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:37,679 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:37,679 - webhook_logger - INFO - ❌ All 3 attempts to place order for OCEAN-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:35:39,142 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AURORA-USD: 0.0737 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:39,356 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:39,358 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AURORA-USD: 0.0737 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:39,537 - webhook_logger - WARNING - Skipping CHZ-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:39,816 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:39,819 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AURORA-USD: 0.0737 (Attempt 1) (webhook_order_types.py:356)
+2025-06-24 21:35:40,069 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:533)
+Traceback (most recent call last):
+  File "/Users/jack/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 479, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-24 21:35:40,069 - webhook_logger - INFO - ❌ All 3 attempts to place order for AURORA-USD failed. (webhook_order_manager.py:535)
+2025-06-24 21:35:44,817 - webhook_logger - WARNING - Skipping CHZ-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-24 21:35:46,183 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-24 21:35:48,438 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-24 21:35:48,493 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:690)
+2025-06-24 21:35:48,493 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:691)
+2025-06-24 21:35:48,493 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:712)
+2025-06-24 21:35:48,494 - webhook_logger - INFO - 🛑 SL trigger for OMNI-USD: 0.06% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:48,494 - webhook_logger - INFO - 🛑 SL trigger for INV-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:48,494 - webhook_logger - INFO - 🛑 SL trigger for ELA-USD: -3.88% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:48,495 - webhook_logger - INFO - 💰 TP trigger for SHDW-USD: 4.65% (websocket_helper.py:767)
+2025-06-24 21:35:48,786 - webhook_logger - INFO - ⏸️ Skipping TP order for SHDW-USD: open order exists (websocket_helper.py:798)
+2025-06-24 21:35:48,787 - webhook_logger - INFO - 🛑 SL trigger for VARA-USD: -2.58% but has open orders (websocket_helper.py:774)
+2025-06-24 21:35:48,787 - webhook_logger - INFO - 💰 TP trigger for SKL-USD: 2.72% (websocket_helper.py:767)
