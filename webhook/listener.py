@@ -349,6 +349,10 @@ class WebhookListener:
         return self.shared_data_manager.order_management
 
     @property
+    def fee_info(self):
+        return self.shared_data_manager.market_data.get('fee_info', {})
+
+    @property
     def ticker_cache(self):
         return self.shared_data_manager.market_data.get('ticker_cache', {})
 
@@ -392,6 +396,8 @@ class WebhookListener:
 
                 start = time.monotonic()
                 new_market_data["last_updated"] = datetime.utcnow()
+                new_market_data["fee_info"] = await self.coinbase_api.get_fee_rates()
+
                 await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
                 self.logger.info(f"⏱ update_market_data (shared_data_manager) took {time.monotonic() - start:.2f}s")
 
@@ -668,15 +674,13 @@ class WebhookListener:
 
             asset_obj = order_management_snapshot.get("non_zero_balances", {}).get(asset)
 
-
-            fee_info = await self.coinbase_api.get_fee_rates()
-            new_maker = fee_info.get("maker")
+            new_maker = self.fee_info.get("maker")
             old_maker = self.passive_order_manager.fee.get("maker")
 
             if new_maker is not None and new_maker != old_maker:
-                await self.passive_order_manager.update_fee_cache(fee_info)
+                await self.passive_order_manager.update_fee_cache(self.fee_info)
             _, _, base_value = self.calculate_order_size_fiat(trade_data, base_price_in_fiat, quote_price_in_fiat,
-                                                         precision_data, fee_info)
+                                                         precision_data, self.fee_info)
             if trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
                 return web.json_response(
                     {"success": False, "message": f"Insufficient balance to sell {asset} (requires {self.min_sell_value} USD)"},
@@ -688,7 +692,7 @@ class WebhookListener:
             source = 'Webhook'
             trigger = trade_data.get('trigger','strategy')
             trigger = {"trigger": f"{trigger}", "trigger_note": f"from webhook"}
-            order_details = await self.trade_order_manager.build_order_data(source, trigger, asset, product_id, None, fee_info)
+            order_details = await self.trade_order_manager.build_order_data(source, trigger, asset, product_id, None)
             if order_details is None:
                 return web.json_response(
                     {"success": False, "message": f"Order build failed"},

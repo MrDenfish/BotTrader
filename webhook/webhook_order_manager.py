@@ -68,6 +68,10 @@ class TradeOrderManager:
         return self._default_maker_fee
 
     @property
+    def fee_info(self):
+        return self.shared_data_manager.market_data.get('fee_info', {})
+
+    @property
     def default_taker_fee(self):
         return self._default_taker_fee
 
@@ -152,7 +156,6 @@ class TradeOrderManager:
             asset: str,
             product_id: str,
             stop_price: Optional[Decimal] = None,
-            fee_info: Optional[dict] = None,
             order_type: Optional[str] = None,
             side: Optional[str] = None  # 👈 new
     ) -> Optional[OrderData]:
@@ -182,15 +185,11 @@ class TradeOrderManager:
             if side is None:
                 side = "buy" if usd_avail >= self.order_size else "sell"
 
-            if not fee_info:
-                fee_info = await self.coinbase_api.get_fee_rates()
-                if fee_info.get("error") or not fee_info:
-                    maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
-                else:
-                    maker_fee = Decimal(fee_info["maker"])
-                    taker_fee = Decimal(fee_info["taker"])
-
-
+            if not self.fee_info:
+                maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
+            else:
+                maker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('maker') or self.default_maker_fee)
+                taker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('taker') or self.default_taker_fee)
 
             fiat_amt = min(self.order_size, usd_avail)
             crypto_amt = available_to_trade
