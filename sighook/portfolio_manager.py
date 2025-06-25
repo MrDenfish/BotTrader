@@ -242,7 +242,7 @@ class PortfolioManager:
 
             # Populate the 'free' column from non_zero_balances
             self.market_cache_usd['free'] = self.market_cache_usd['asset'].map(
-                self._get_tradeable_crypto_mapping(self.non_zero_balances)).fillna(0)
+                self._get_tradable_crypto_mapping(self.non_zero_balances)).fillna(0)
 
             # Handle non-numeric or NaN values in 'free' and 'price' columns
             self.market_cache_usd['free'] = pd.to_numeric(self.market_cache_usd['free'], errors='coerce')
@@ -274,7 +274,7 @@ class PortfolioManager:
             _, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(row['asset'])
             quote_quantizer = Decimal("1").scaleb(-quote_deci)
             symbol = row.get('asset')
-            price = Decimal(row['current_price'])
+            price = Decimal(row['price'])
             price_decimal = self.shared_utils_precision.safe_quantize(price, quote_quantizer)
             return {
                 'asset': row['asset'],
@@ -287,7 +287,7 @@ class PortfolioManager:
             self.logger.error(f"❌Error creating row for buy sell matrix: {e}", exc_info=True)
             return {}
 
-    def _get_tradeable_crypto_mapping(self, non_zero_balances):
+    def _get_tradable_crypto_mapping(self, non_zero_balances):
         """PART II:
         Create a mapping of asset to available_to_trade_crypto from non_zero_balances."""
         try:

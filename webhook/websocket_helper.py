@@ -2,11 +2,10 @@ import asyncio
 import decimal
 import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, Any
 
-import pandas as pd
 from coinbase import jwt_generator
 
 from Config.config_manager import CentralConfig as Config
@@ -732,7 +731,7 @@ class WebSocketHelper:
                         raise TypeError(f"Invalid position type: {type(pos)}")
 
 
-                    if symbol == 'INDEX-USD':
+                    if symbol == 'SHDW-USD':
                         pass
                     if symbol =='USD-USD':
                         continue
@@ -789,7 +788,7 @@ class WebSocketHelper:
         precision_data = self.shared_utils_precision.fetch_precision(symbol)
 
         order_data = await self.trade_order_manager.build_order_data(
-            source='websocket', trigger='take_profit', asset=asset, product_id=symbol
+            source='websocket', trigger='take_profit', asset=asset, product_id=symbol, side='sell'
         )
         if order_data:
             order_data.trigger = {"trigger": "TP", "trigger_note": f"price={price}"}

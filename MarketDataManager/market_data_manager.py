@@ -70,17 +70,24 @@ class MarketDataUpdater:
     def open_orders(self):
         return self.shared_data_manager.order_management.get('order_tracker', {})
 
+    import asyncio
+
+    import asyncio
+
     async def update_market_data(self, start_time, open_orders=None):
         """Fetch and prepare updated market data."""
         try:
-            # Fetch new data
-            new_market_data, new_order_management = await self.ticker_manager.update_ticker_cache(open_orders)
-
-            # Return the new data
-            return new_market_data or {}, new_order_management or {}
+            result = await self.ticker_manager.update_ticker_cache(open_orders)
+        except asyncio.CancelledError:
+            self.logger.error("❌ Market data update was cancelled.")
+            raise
         except Exception as e:
             self.logger.error(f"❌ Error updating MarketDataManager: {e}", exc_info=True)
             return {}, {}
+
+        # Only execute this if `await` succeeded
+        new_market_data, new_order_management = result or ({}, {})
+        return new_market_data, new_order_management
 
     async def run_single_refresh_market_data(self):
         """One-time version of refresh_market_data() for manual use."""

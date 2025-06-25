@@ -184,11 +184,11 @@ class TradeOrderManager:
 
             if not fee_info:
                 fee_info = await self.coinbase_api.get_fee_rates()
-            if fee_info.get("error"):
-                maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
-            else:
-                maker_fee = Decimal(fee_info["maker"])
-                taker_fee = Decimal(fee_info["taker"])
+                if fee_info.get("error") or not fee_info:
+                    maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
+                else:
+                    maker_fee = Decimal(fee_info["maker"])
+                    taker_fee = Decimal(fee_info["taker"])
 
 
 

@@ -1,7 +1,6 @@
 
 
 import asyncio
-
 import logging
 import pandas as pd
 import aiohttp
@@ -18,7 +17,7 @@ from Config.config_manager import CentralConfig as Config
 class CoinbaseAPI:
     """This class is for REST API code and should nt be confused with the websocket code used in WebsocketHelper"""
 
-    def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision,):
+    def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision):
         self.config = Config()
         self.api_key = self.config.load_websocket_api_key().get('name')
         self.api_secret = self.config.load_websocket_api_key().get('signing_key')
@@ -169,7 +168,7 @@ class CoinbaseAPI:
                 "code": ValidationCode.UNHANDLED_EXCEPTION.value
             }
 
-    async def get_fee_rates(self,):
+    async def get_fee_rates(self):
         """
         Retrieves maker and taker fee rates from Coinbase.
         Returns:
@@ -193,11 +192,15 @@ class CoinbaseAPI:
                 if response.status == 200:
                     js = await response.json()
                     tier = js.get("fee_tier", {})
+                    usd_volume = js.get("advanced_trade_only_volume") or js.get("total_volume")
+                    if usd_volume is None:
+                        self.logger.warning("⚠️ USD volume data not found in fee summary response.")
+
                     return {
                         "maker": self.shared_utils_precision.safe_convert(tier.get("maker_fee_rate", self.default_maker_fee ), 4),
                         "taker": self.shared_utils_precision.safe_convert(tier.get("taker_fee_rate", self.default_taker_fee ), 4),
                         "pricing_tier": tier.get("pricing_tier"),
-                        "usd_volume": tier.get("usd_volume"),
+                        "usd_volume": usd_volume
                     }
                 else:
                     self.logger.error(f"❌ Error fetching fee rates: HTTP {response.status} → {response_text}")
@@ -504,13 +507,9 @@ class CoinbaseAPI:
         Fetch all open orders from Coinbase Advanced Trade API.
 
         Args:
-            product_id (Optional[str]): Filter orders by this trading pair (e.g., 'BTC-USD').
+            product_id (Optional[str]): Filter orders by trading pair (e.g., 'BTC-USD').
             limit (int): Max number of orders per page (max: 100).
-            status
-            string
-            required
-            The current state of the order
-Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORDER_STATUS, QUEUED, CANCEL_QUEUED]
+
         Returns:
             List[dict]: Filtered and normalized list of open orders.
         """
@@ -523,11 +522,14 @@ Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORD
 
         params = {
             "limit": str(limit),
+            "order_status": "OPEN"
         }
 
         all_orders = []
         retries = 0
         cursor = None
+
+        timeout_seconds = 15  # ⏱ To catch long stalls
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -536,7 +538,11 @@ Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORD
                         params["cursor"] = cursor
 
                     try:
-                        async with self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers) as resp:
+                        resp = await asyncio.wait_for(
+                            self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
+                            timeout=timeout_seconds
+                        )
+                        async with resp:
                             if resp.status == 429:
                                 retries += 1
                                 if retries > 3:
@@ -548,8 +554,8 @@ Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORD
                                 continue
 
                             if resp.status != 200:
-                                self.logger.error(f"❌ Failed to fetch orders: HTTP {resp.status}")
                                 text = await resp.text()
+                                self.logger.error(f"❌ Failed to fetch orders: HTTP {resp.status}")
                                 self.logger.debug(f"↩️ Response: {text}")
                                 return []
 
@@ -565,13 +571,21 @@ Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORD
                             if not data.get("has_next"):
                                 break
 
-                            cursor = data.get("cursor")  # continue pagination
+                            cursor = data.get("cursor")
+
+                    except asyncio.TimeoutError:
+                        self.logger.error(f"⏰ Timeout: fetch_open_orders() exceeded {timeout_seconds}s.")
+                        return []
+
+                    except asyncio.CancelledError:
+                        self.logger.error("❌ fetch_open_orders() was cancelled during aiohttp request.", exc_info=True)
+                        raise  # Required to allow shutdowns and task cancellation
 
                     except Exception as e:
                         self.logger.error(f"❌ Exception during open orders fetch: {e}", exc_info=True)
                         return []
 
-            # Final filtering in Python
+            # Final filtering and formatting
             formatted_orders = []
             for order in all_orders:
                 status = order.get("status", "").upper()
@@ -579,9 +593,9 @@ Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORD
                 product = order.get("product_id", "")
 
                 if product_id and product != product_id:
-                    continue  # Client-side filtering
+                    continue  # Filter by symbol
 
-                if status in {"FILLED", "CANCELLED","FAILED", "EXPIRED"} or completion_pct == "100.00":
+                if status in {"FILLED", "CANCELLED", "FAILED", "EXPIRED"} or completion_pct == "100.00":
                     continue  # Not open anymore
 
                 formatted_orders.append({
@@ -602,6 +616,10 @@ Possible values: [PENDING, OPEN, FILLED, CANCELLED, EXPIRED, FAILED, UNKNOWN_ORD
                 })
 
             return formatted_orders
+
+        except asyncio.CancelledError:
+            self.logger.error("❌ fetch_open_orders() was cancelled (outer scope).", exc_info=True)
+            raise
 
         except Exception as e:
             self.logger.error(f"❌ Error fetching open orders: {e}", exc_info=True)

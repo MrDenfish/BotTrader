@@ -147,36 +147,44 @@ class SharedDataManager:
 
         except Exception as e:
             self.logger.error(f"❌ Error decoding startup data: {e}", exc_info=True)
+        try:
+            # ✅ Logging the state
+            if isinstance(market_data, dict):
+                tc = market_data.get("ticker_cache")
+                if isinstance(tc, pd.DataFrame):
+                    self.logger.info(f"📊 ticker_cache rows: {len(tc)}")
 
-        # ✅ Logging the state
-        if isinstance(market_data, dict):
-            tc = market_data.get("ticker_cache")
-            if isinstance(tc, pd.DataFrame):
-                self.logger.info(f"📊 ticker_cache rows: {len(tc)}")
+            # ✅ Check if startup snapshot is usable
+            if not market_data or not order_mgmt or self.is_market_data_invalid(market_data):
+                self.logger.warning("⚠️ No startup snapshot or incomplete market data. Attempting fresh data fetch...")
 
-        # ✅ Check if startup snapshot is usable
-        if not market_data or not order_mgmt or self.is_market_data_invalid(market_data):
-            self.logger.warning("⚠️ No startup snapshot or incomplete market data. Attempting fresh data fetch...")
+                start_time = time.time()
+                result = await ticker_manager.update_ticker_cache(start_time=start_time)
+                new_market_data, new_order_mgmt = result or ({}, {})
+                await self.update_shared_data(
+                    new_market_data=new_market_data,
+                    new_order_management=new_order_mgmt
+                )
+                await self.save_data()
 
-            start_time = time.time()
-            new_market_data, new_order_mgmt = await ticker_manager.update_ticker_cache(start_time=start_time)
-
-            await self.update_shared_data(
-                new_market_data=new_market_data,
-                new_order_management=new_order_mgmt
-            )
-            await self.save_data()
-
-            self.logger.info("✅ Startup data initialized and saved.")
-        else:
-            self.logger.info("✅ Startup snapshot loaded from database.")
-            return market_data, order_mgmt
+                self.logger.info("✅ Startup data initialized and saved.")
+            else:
+                self.logger.info("✅ Startup snapshot loaded from database.")
+                return market_data, order_mgmt
+        except asyncio.CancelledError:
+            self.logger.warning("🔁 Market data update was cancelled.")
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Error updating MarketDataManager: {e}", exc_info=True)
+            return {}, {}
 
     # ✅ Check if startup snapshot is usable or stale
     def is_market_data_invalid(self, market_data: dict) -> bool:
         if not market_data:
             return True
         if market_data.get("ticker_cache") is None or market_data["ticker_cache"].empty:
+            return True
+        if market_data.get("bid_ask_spread") is None or len(market_data["bid_ask_spread"]) == 0:
             return True
         if market_data.get("usd_pairs_cache") is None or market_data["usd_pairs_cache"].empty:
             return True

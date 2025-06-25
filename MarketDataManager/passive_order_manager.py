@@ -46,7 +46,7 @@ class PassiveOrderManager:
     INVENTORY_BIAS_FACTOR = Decimal("0.10")  # ≤ 25 % of current spread Lower inventory skew
 
     def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility, shared_utils_precision,
-                 trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *, max_lifetime: int | None = None,) -> None:
+                 trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *, max_lifetime: int | None = None) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
