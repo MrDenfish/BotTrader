@@ -106,7 +106,6 @@ class MarketManager:
                     # If chunk_end goes beyond the end_dt, skip it
                     if chunk_end > end_dt:
                         break
-
                     params = {
                         "start": int(chunk_start.timestamp()),
                         "end": int(chunk_end.timestamp()),
@@ -114,7 +113,7 @@ class MarketManager:
                         "limit": limit
                     }
 
-                    ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol, params=params)
+                    ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol=symbol,params=params)
                     if ohlcv_result and not ohlcv_result['data'].empty:
                         all_dfs.append(ohlcv_result['data'])
                     else:

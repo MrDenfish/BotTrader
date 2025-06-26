@@ -4,6 +4,7 @@ import asyncio
 import logging
 import pandas as pd
 import aiohttp
+import hmac, hashlib, base64, time
 
 from typing import Optional, List
 from coinbase import jwt_generator
@@ -51,12 +52,28 @@ class CoinbaseAPI:
         self.jwt_token = None
         self.jwt_expiry = None
 
+    def _get_auth_headers(self, method: str, request_path: str, body: str = "") -> dict:
+        timestamp = str(time.time())
+        message = f'{timestamp}{method}{request_path}{body}'
+        hmac_key = base64.b64decode(self.api_secret)
+        signature = hmac.new(hmac_key, message.encode(), hashlib.sha256)
+        signature_b64 = base64.b64encode(signature.digest()).decode()
+
+        return {
+            "CB-ACCESS-KEY": self.api_key,
+            "CB-ACCESS-SIGN": signature_b64,
+            "CB-ACCESS-TIMESTAMP": timestamp,
+            "CB-ACCESS-PASSPHRASE": self.passphrase,
+            "Content-Type": "application/json"
+        }
+
     def clear_ohlcv_cache_if_stale(self):
         now = datetime.utcnow()
         if now - self.last_cache_clear_time >= timedelta(hours=1):
             self.empty_ohlcv_cache.clear()
             self.last_cache_clear_time = now
             self.logger.debug("🧹 Cleared empty OHLCV cache after 1 hour.")
+
 
     def generate_rest_jwt(self, method='GET', request_path='/api/v3/brokerage/orders'):
         try:
@@ -438,69 +455,81 @@ class CoinbaseAPI:
             self.logger.error(f"❗ Exception in get_all_usd_pairs: {e}", exc_info=True)
             return []
 
-    async def fetch_ohlcv(self, symbol: str, params):
+    async def fetch_ohlcv(self, symbol: str, params: dict):
         """
-        Fetch OHLCV data from Coinbase REST API for a given product_id (symbol).
-        """
-        self.clear_ohlcv_cache_if_stale()  # clears the cache once per hour.
-        try:
-            start = params.get('start')
-            end = params.get('end')
-            timeframe = params.get('granularity')
-            limit = params.get('limit', 5)
+        Fetch OHLCV candles from Coinbase Advanced Trade API (JWT-authenticated).
 
-            product_id = symbol.replace('/', '-')
-            url = f"https://api.coinbase.com/api/v3/brokerage/market/products/{product_id}/candles"
+        Args:
+            symbol (str): Market symbol like "BTC-USD"
+            params (dict): Dictionary with keys: start (int), end (int),
+                           granularity (str), limit (int)
+
+        Returns:
+            dict: { 'symbol': str, 'data': pd.DataFrame }
+        """
+        try:
+            product_id = symbol.replace("/", "-")
+            request_path = f"/api/v3/brokerage/products/{product_id}/candles"
+
+            # Extract and validate parameters
+            start = str(params.get("start"))
+            end = str(params.get("end"))
+            granularity = params.get("granularity", "ONE_MINUTE")
+            limit = str(params.get("limit", 300))
+
             query_params = {
-                "start": str(start),
-                "end": str(end),
-                "granularity": timeframe,
+                "start": start,
+                "end": end,
+                "granularity": granularity,
                 "limit": limit
             }
 
+            # Build JWT token
+            jwt_token = self.generate_rest_jwt("GET", request_path)
+
             headers = {
+                "Authorization": f"Bearer {jwt_token}",
                 "Content-Type": "application/json"
             }
 
+            url = f"https://api.coinbase.com{request_path}"
+
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=query_params, headers=headers) as response:
-                    if response.status == 200:
-                        response_json = await response.json()
-                        candles = response_json.get("candles", [])
+                async with session.get(url, headers=headers, params=query_params) as response:
+                    if response.status != 200:
+                        self.logger.warning(f"⚠️ Coinbase returned {response.status} for {symbol}")
+                        return {'symbol': symbol, 'data': pd.DataFrame()}
 
-                        if not candles:
-                            if symbol not in self.empty_ohlcv_cache:
-                                self.logger.info(f"🟡 No OHLCV data for {symbol} (market inactivity)")
-                                self.empty_ohlcv_cache.add(symbol)
-                            return {'symbol': symbol, 'data': pd.DataFrame()}
+                    result = await response.json()
+                    candles = result.get("candles", [])
 
-                        # Process valid data
-                        all_ohlcv = [
-                            [
-                                int(candle['start']) * 1000,  # to milliseconds
-                                float(candle['open']),
-                                float(candle['high']),
-                                float(candle['low']),
-                                float(candle['close']),
-                                float(candle['volume']),
-                            ]
-                            for candle in candles
-                        ]
+                    if not candles:
+                        self.logger.info(f"🟡 No OHLCV data for {symbol}")
+                        return {'symbol': symbol, 'data': pd.DataFrame()}
 
-                        df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
-                        df['time'] = pd.to_datetime(df['time'], unit='ms', utc=True)
-                        df = df.sort_values(by='time')
+                    df = pd.DataFrame(candles)
+                    df = df.rename(columns={
+                        "start": "time",
+                        "low": "low",
+                        "high": "high",
+                        "open": "open",
+                        "close": "close",
+                        "volume": "volume"
+                    })
 
-                        return {'symbol': symbol, 'data': df}
+                    df["time"] = pd.to_datetime(df["time"].astype(int), unit="s", utc=True)
 
-                    else:
-                        self.logger.warning(
-                            f"⚠️ Coinbase returned {response.status} for {symbol}. Possibly no trade history or invalid request.")
-                        return {'symbol': symbol, 'data': pd.DataFrame()}  # Also return empty DataFrame
+                    df[["open", "high", "low", "close", "volume"]] = df[
+                        ["open", "high", "low", "close", "volume"]
+                    ].astype(float)
+
+                    df = df.sort_values("time")
+
+                    return {"symbol": symbol, "data": df}
 
         except Exception as e:
-            self.logger.error(f"❌ Unexpected error fetching OHLCV for {symbol}: {e}", exc_info=True)
-            return None
+            self.logger.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
+            return {"symbol": symbol, "data": pd.DataFrame()}
 
     async def fetch_open_orders(self, product_id: Optional[str] = None, limit: int = 100) -> List[dict]:
         """

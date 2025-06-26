@@ -278,8 +278,8 @@ class WebSocketMarketManager:
                     )
                 )
             # Fetch historical data
-            oldest_close, latest_close, avg_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id, limit=5)
-            volatility, adaptive_threshold = await self.ohlcv_manager.fetch_volatility_5min(product_id, limit=5)
+            oldest_close, latest_close, avg_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
+            volatility, adaptive_threshold = await self.ohlcv_manager.fetch_volatility_5min(product_id)
 
             if not all([oldest_close, latest_close, volatility, adaptive_threshold]):
                 return

@@ -94,7 +94,7 @@ class OHLCVManager:
             self.logger.error(f"❌ Error fetching last 5-minute OHLCV for {symbol}: {e}", exc_info=True)
             return None, None, None
 
-    async def fetch_volatility_5min(self, symbol, timeframe='ONE_MINUTE', limit=5, threshold_multiplier=1.1):
+    async def fetch_volatility_5min(self, symbol, threshold_multiplier=1.1):
         """
         Computes short-term volatility using standard deviation of log returns and returns both the current and dynamic threshold.
 
@@ -109,10 +109,11 @@ class OHLCVManager:
         """
         try:
             # Use existing cache if available, otherwise fetch
+            limit = 5  # Default to last 5 minutes
             if symbol in self.ohlcv_cache:
                 df = self.ohlcv_cache[symbol]['data']
             else:
-                _, _, _ = await self.fetch_last_5min_ohlcv(symbol, timeframe, limit)
+                _, _, _ = await self.fetch_last_5min_ohlcv(symbol)
                 df = self.ohlcv_cache[symbol]['data'] if symbol in self.ohlcv_cache else None
 
             if df is None or df.empty or len(df) < limit:

@@ -255,9 +255,7 @@ class PassiveOrderManager:
 
             # Fetch OHLCV once for use in SELL side
             try:
-                oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(
-                    product_id, limit=5
-                )
+                oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
             except Exception as exc:
                 self.logger.warning(
                     f"⚠️ Failed to fetch OHLCV for {trading_pair}, skipping SELL: {exc}", exc_info=True
