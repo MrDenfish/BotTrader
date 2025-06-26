@@ -766,7 +766,7 @@ class WebSocketHelper:
                     if profit_pct >= self.take_profit and asset not in self.hodl:
                         self.logger.info(f"💰 TP trigger for {symbol}: {profit_pct:.2%}")
                         await self._place_tp_order('websocket','profit',asset, symbol, current_price)
-                    elif profit_pct <= -self.stop_loss and asset not in self.hodl:
+                    elif profit_pct <= self.stop_loss and asset not in self.hodl:
                         print(self.shared_utils_color.format(f"🛑 SL trigger for {symbol}: {profit_pct:.2%}", self.shared_utils_color.RED))
                         has_open_order, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
                         if  has_open_order:
