@@ -22344,3 +22344,1391 @@ Traceback (most recent call last):
     if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
 TypeError: argument of type 'NoneType' is not iterable
 2025-06-22 07:56:53,390 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for XYO-USD: 0.00894 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:56:58,612 - webhook_logger - INFO - ℹ️ No order_id for expired sell 1INCH-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 07:56:59,276 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:56:59,279 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for XYO-USD: 0.00894 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:00,118 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:00,124 - webhook_logger - INFO - ❌ All 3 attempts to place order for XYO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:06,183 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:12,254 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:13,180 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 07:57:13,193 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 07:57:13,193 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 07:57:13,212 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 07:57:14,037 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:14,046 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAXG-USD: 3468.53 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:23,384 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:23,388 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAXG-USD: 3468.53 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:23,393 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:23,397 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:23,742 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:24,235 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:24,238 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:24,256 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:24,258 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PAXG-USD: 3468.53 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:24,388 - webhook_logger - INFO - 🟡 Adjusted SELL limit price for WAXL-USD: 0.3234 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:24,600 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:24,601 - webhook_logger - INFO - ❌ All 3 attempts to place order for PAXG-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:24,629 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:24,630 - webhook_logger - INFO - ❌ All 3 attempts to place order for SKL-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:24,658 - webhook_logger - ERROR - ❌ SL order for WAXL-USD: {'success': False, 'message': 'Order placement failed', 'code': '500', 'details': {'trading_pair': 'WAXL-USD', 'time_order_placed': None, 'type': 'limit', 'order_id': 'UNKNOWN', 'side': 'sell', 'filled_price': Decimal('0'), 'base_currency': 'WAXL', 'quote_currency': 'USD', 'usd_balance': Decimal('186.07'), 'base_decimal': 2, 'quote_decimal': 4, 'quote_increment': Decimal('0.0001'), 'highest_bid': Decimal('0.3230'), 'lowest_ask': Decimal('0.3236'), 'maker': Decimal('0.0015'), 'taker': Decimal('0.0025'), 'spread': Decimal('0.0005'), 'open_orders': Empty DataFrame
+Columns: []
+Index: [], 'status': 'VALID', 'source': 'websocket', 'trigger': {'trigger': 'SL', 'trigger_note': 'stop_loss=-0.0075%'}, 'base_avail_balance': Decimal('152.06'), 'total_balance_crypto': Decimal('152.06'), 'available_to_trade_crypto': Decimal('152.06'), 'usd_avail_balance': Decimal('33.58'), 'order_amount_fiat': Decimal('0'), 'order_amount_crypto': Decimal('152.06'), 'price': Decimal('0'), 'cost_basis': Decimal('0'), 'limit_price': Decimal('0'), 'average_price': None, 'adjusted_price': Decimal('0.3232'), 'adjusted_size': Decimal('152.04'), 'stop_loss_price': Decimal('0.3199'), 'take_profit_price': Decimal('0.3321'), 'avg_quote_volume': None, 'volume_24h': None}, 'error_response': {}} (websocket_helper.py:845)
+2025-06-22 07:57:24,774 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for 00-USD: 0.0145 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:24,799 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HONEY-USD: 0.0192 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:24,854 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.097 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,303 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,307 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for 00-USD: 0.0145 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,315 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,318 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HONEY-USD: 0.0192 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,372 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,374 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.097 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,388 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AUDIO-USD: 0.0510 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,476 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for A8-USD: 0.0965 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,582 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,585 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for 00-USD: 0.0145 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,616 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,619 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HONEY-USD: 0.0192 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,681 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,685 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.097 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,708 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,714 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AUDIO-USD: 0.0510 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,800 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,803 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for A8-USD: 0.0965 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:25,908 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,909 - webhook_logger - INFO - ❌ All 3 attempts to place order for 00-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:25,919 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:25,920 - webhook_logger - INFO - ❌ All 3 attempts to place order for HONEY-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:26,005 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:26,005 - webhook_logger - INFO - ❌ All 3 attempts to place order for TNSR-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:26,009 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:26,014 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AUDIO-USD: 0.0510 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:30,277 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:30,281 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for A8-USD: 0.0965 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:30,295 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:30,296 - webhook_logger - INFO - ❌ All 3 attempts to place order for AUDIO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:30,334 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:30,739 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:30,739 - webhook_logger - INFO - ❌ All 3 attempts to place order for A8-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:36,997 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:42,111 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 07:57:42,159 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CGLD-USD: 0.246 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:42,166 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PYR-USD: 0.800 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:42,416 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:42,425 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:42,428 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CGLD-USD: 0.246 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:42,447 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:42,453 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PYR-USD: 0.800 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:42,816 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:42,821 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CGLD-USD: 0.246 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:42,826 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:42,829 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PYR-USD: 0.800 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:43,131 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:43,132 - webhook_logger - INFO - ❌ All 3 attempts to place order for CGLD-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:43,135 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:43,136 - webhook_logger - INFO - ❌ All 3 attempts to place order for PYR-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:43,225 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 07:57:43,240 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 07:57:43,243 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 07:57:43,244 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 30.06s (listener.py:403)
+2025-06-22 07:57:43,244 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 07:57:44,562 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 07:57:48,480 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 07:57:48,480 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 07:57:48,480 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 07:57:48,481 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 07:57:48,482 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 07:57:48,491 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:50,372 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 07:57:50,372 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 07:57:50,372 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 07:57:50,374 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 07:57:50,374 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 07:57:51,043 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CRO-USD: 0.0783 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:51,505 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:51,508 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CRO-USD: 0.0783 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:51,813 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:51,817 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CRO-USD: 0.0783 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:57:52,102 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:57:52,102 - webhook_logger - INFO - ❌ All 3 attempts to place order for CRO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:57:57,608 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:57:59,943 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,070 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ALEO-USD: 0.205 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,079 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AUDIO-USD: 0.0510 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,228 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,232 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,353 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,357 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AUDIO-USD: 0.0510 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,434 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,437 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ALEO-USD: 0.205 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,500 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,503 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,704 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,710 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AUDIO-USD: 0.0510 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,718 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,721 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ALEO-USD: 0.205 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:00,763 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:00,764 - webhook_logger - INFO - ❌ All 3 attempts to place order for SKL-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:58:01,030 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:01,031 - webhook_logger - INFO - ❌ All 3 attempts to place order for AUDIO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:58:01,040 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:01,041 - webhook_logger - INFO - ❌ All 3 attempts to place order for ALEO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:58:01,349 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: no close frame received or sent. Reconnecting... (listener.py:128)
+2025-06-22 07:58:03,046 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:58:05,178 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 07:58:05,178 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 07:58:05,179 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 07:58:05,180 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 07:58:05,180 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 07:58:08,688 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:58:10,176 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TIME-USD: 9.80 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:10,457 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:10,462 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TIME-USD: 9.80 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:10,774 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:10,778 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TIME-USD: 9.80 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:11,071 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:11,071 - webhook_logger - INFO - ❌ All 3 attempts to place order for TIME-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:58:11,095 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BADGER-USD: 0.86 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:11,120 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1583 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:11,403 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:11,408 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BADGER-USD: 0.86 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:11,439 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:11,442 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1583 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:11,703 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:11,706 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BADGER-USD: 0.86 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:11,730 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:11,733 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1583 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:58:12,023 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:12,024 - webhook_logger - INFO - ❌ All 3 attempts to place order for BADGER-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:58:12,025 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 07:58:12,025 - webhook_logger - INFO - ❌ All 3 attempts to place order for ZETACHAIN-USD failed. (webhook_order_manager.py:726)
+2025-06-22 07:58:14,173 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:58:20,226 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:58:26,551 - webhook_logger - INFO - ℹ️ No order_id for expired sell SYN-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 07:58:30,168 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 07:59:03,247 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 07:59:05,926 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 07:59:05,928 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 07:59:05,928 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 07:59:05,930 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 07:59:05,930 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 07:59:07,114 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 07:59:10,245 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 07:59:10,246 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 07:59:10,247 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 07:59:10,248 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 07:59:10,248 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 07:59:17,108 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 07:59:19,884 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 07:59:19,885 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 07:59:19,885 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 07:59:19,886 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 07:59:19,886 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 07:59:32,999 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 07:59:40,617 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 07:59:45,962 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZORA-USD: 0.00793 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 07:59:46,439 - webhook_logger - INFO - ✅ Successfully placed limit order for ZORA-USD (webhook_order_manager.py:654)
+2025-06-22 07:59:46,450 - webhook_logger - INFO - ✅ Passive BUY ZORA-USD @ 0.00792 (passive_order_manager.py:385)
+2025-06-22 07:59:47,213 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:59:52,652 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 07:59:57,983 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:00,170 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ASM-USD: 0.01772 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:00,423 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:00,429 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ASM-USD: 0.01772 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:00,676 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:00,680 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ASM-USD: 0.01772 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:00,931 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:00,932 - webhook_logger - INFO - ❌ All 3 attempts to place order for ASM-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:00:03,305 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:05,151 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:00:07,771 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:00:07,772 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:00:07,772 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:00:07,773 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:00:07,773 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:00:08,686 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:09,418 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:00:12,045 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:00:12,046 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:00:12,046 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:00:12,050 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:00:12,050 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:00:14,018 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:16,689 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PNG-USD: 0.10891 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:17,241 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:17,245 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PNG-USD: 0.10891 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:17,505 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:17,511 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for PNG-USD: 0.10891 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:17,796 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:17,796 - webhook_logger - INFO - ❌ All 3 attempts to place order for PNG-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:00:19,612 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:00:19,618 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:22,702 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:00:22,703 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:00:22,703 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:00:22,704 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:00:22,705 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:00:24,965 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:26,779 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CVC-USD: 0.0809 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:27,065 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:27,069 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CVC-USD: 0.0809 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:27,467 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:27,471 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CVC-USD: 0.0809 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:27,785 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 08:00:27,855 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 08:00:27,855 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 08:00:27,860 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:27,860 - webhook_logger - INFO - ❌ All 3 attempts to place order for CVC-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:00:27,862 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 08:00:33,716 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:34,936 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:00:38,184 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SD-USD: 0.4063 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:38,432 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:38,435 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SD-USD: 0.4063 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:38,828 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:38,832 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SD-USD: 0.4063 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:00:39,219 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:39,228 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:00:39,229 - webhook_logger - INFO - ❌ All 3 attempts to place order for SD-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:00:44,496 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:50,120 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:55,458 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:00:57,907 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 08:00:57,927 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 08:00:57,939 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 08:00:57,939 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 30.15s (listener.py:403)
+2025-06-22 08:00:57,939 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 08:01:03,653 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:01:07,080 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:01:08,376 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:01:08,970 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:01:10,396 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:01:10,396 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:01:10,397 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:01:10,400 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:01:10,400 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:01:13,843 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:01:15,412 - webhook_logger - WARNING - Skipping ZORA-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:01:16,542 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:01:16,543 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:01:16,543 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:01:16,545 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:01:16,545 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:01:21,275 - webhook_logger - INFO - ℹ️ No order_id for expired sell ZORA-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 08:01:23,872 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:01:24,657 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:01:26,396 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:01:28,270 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:01:28,270 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:01:28,270 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:01:28,274 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:01:28,274 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:01:57,830 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:01:57,987 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:02:18,225 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:02:18,623 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:02:27,514 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:02:27,524 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:02:30,237 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:02:30,238 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:02:30,238 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:02:30,239 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:02:30,239 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:02:30,253 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:02:30,253 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:02:30,253 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:02:30,254 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:02:30,254 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:02:30,870 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:02:37,542 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:02:40,259 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:02:40,259 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:02:40,259 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:02:40,261 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:02:40,261 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:03:01,826 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:03:09,634 - webhook_logger - INFO - 💙 Confirmed Market Subscriptions: {'channel': 'subscriptions', 'client_id': '', 'timestamp': '2025-06-22T16:02:30.439478385Z', 'sequence_num': 295, 'events': [{'subscriptions': {'ticker_batch': ['HFT-USD', 'AVAX-USD', 'PYTH-USD', 'KAVA-USD', 'BOBA-USD', 'CRO-USD', 'AUDIO-USD', 'AXL-USD', 'COW-USD', 'SYN-USD', 'IOTX-USD', 'ASM-USD', 'LQTY-USD', 'CVC-USD', 'XLM-USD', 'FIDA-USD', 'A8-USD', 'AGLD-USD', 'STG-USD', 'SPELL-USD', 'POL-USD', 'RNDR-USD', 'VET-USD', 'ATH-USD', 'API3-USD', 'ATOM-USD', 'JASMY-USD', 'TAO-USD', 'SWELL-USD', 'SQD-USD', 'ARB-USD', 'GMT-USD', 'LINK-USD', 'OMNI-USD', 'PLU-USD', 'ALEPH-USD', 'ETH-USD', 'RSR-USD', 'CLV-USD', 'FARM-USD', 'ACX-USD', 'SOL-USD', 'WAXL-USD', 'AKT-USD', 'ADA-USD', 'MORPHO-USD', 'MATH-USD', 'JTO-USD', 'GLM-USD', 'ZEC-USD', 'ALCX-USD', 'FORT-USD', 'FIL-USD', 'SAND-USD', 'MKR-USD', 'BLUR-USD', 'DNT-USD', 'EDGE-USD', '1INCH-USD', 'INJ-USD', 'POPCAT-USD', 'TURBO-USD', 'BONK-USD', 'ENS-USD', 'AIOZ-USD', 'LCX-USD', 'GTC-USD', 'POLS-USD', 'CGLD-USD', 'NEAR-USD', 'PAX-USD', 'CTSI-USD', 'WLD-USD', 'RENDER-USD', 'LRDS-USD', 'PERP-USD', 'AVT-USD', 'SHPING-USD', 'DIMO-USD', 'RLC-USD', 'TOSHI-USD', 'SAFE-USD', 'SNX-USD', 'BAL-USD', 'DEXT-USD', 'FLOKI-USD', 'ARKM-USD', 'POWR-USD', 'PYR-USD', 'POND-USD', 'FOX-USD', 'DASH-USD', 'EGLD-USD', 'NMR-USD', 'REZ-USD', 'ENA-USD', 'GFI-USD', 'PRCL-USD', 'TNSR-USD', 'VELO-USD', 'ZEN-USD', 'CTX-USD', 'PNUT-USD', 'IO-USD', 'ICP-USD', '00-USD', 'XCN-USD', 'ETC-USD', 'C98-USD', 'RARI-USD', 'KRL-USD', 'ALGO-USD', 'AERGO-USD', 'PEPE-USD', 'IDEX-USD', 'MAGIC-USD', 'FLOW-USD', 'USDT-USD', 'AURORA-USD', 'DOGINME-USD', 'PRO-USD', 'AMP-USD', 'QNT-USD', 'BCH-USD', 'SXT-USD', 'MOODENG-USD', 'HNT-USD', 'LDO-USD', 'MANA-USD', 'LOKA-USD', 'CELR-USD', 'KERNEL-USD', 'GNO-USD', 'AUCTION-USD', 'DAI-USD', 'FAI-USD', 'G-USD', 'ROSE-USD', 'PNG-USD', 'SPA-USD', 'GODS-USD', 'DOGE-USD', 'PUNDIX-USD', 'QI-USD', 'MOG-USD', 'ZK-USD', 'B3-USD', 'PENGU-USD', 'XTZ-USD', 'COMP-USD', 'PIRATE-USD', 'MLN-USD', 'CLANKER-USD', 'PROMPT-USD', 'BADGER-USD', 'L3-USD', 'COOKIE-USD', 'SUSHI-USD', 'YFI-USD', 'XYO-USD', 'BAND-USD', 'SPK-USD', 'AERO-USD', 'WIF-USD', 'IP-USD', 'MANTLE-USD', 'ONDO-USD', 'GRT-USD', 'TIA-USD', 'METIS-USD', 'SWFTC-USD', 'OXT-USD', 'TIME-USD', 'BERA-USD', 'REQ-USD', 'ACH-USD', 'ZETA-USD', 'VVV-USD', 'BTC-USD', 'UNI-USD', 'EOS-USD', 'NCT-USD', 'CVX-USD', 'SHIB-USD', 'EIGEN-USD', 'ERN-USD', 'RED-USD', 'ARPA-USD', 'HOPR-USD', 'FLR-USD', 'VARA-USD', 'STORJ-USD', 'LTC-USD', 'STX-USD', 'FX-USD', 'WELL-USD', 'MNDE-USD', 'MASK-USD', 'CHZ-USD', 'PAXG-USD', 'SHDW-USD', 'FORTH-USD', 'FIS-USD', 'SUI-USD', 'XRP-USD', 'SD-USD', 'IMX-USD', 'HBAR-USD', 'TRB-USD', 'VTHO-USD', 'AST-USD', 'INV-USD', 'RONIN-USD', 'KNC-USD', 'RPL-USD', 'AXS-USD', 'SUKU-USD', 'ALICE-USD', 'TRAC-USD', 'ZETACHAIN-USD', 'OP-USD', 'PRIME-USD', 'OSMO-USD', 'NKN-USD', 'INDEX-USD', 'LA-USD', 'SKL-USD', 'OCEAN-USD', 'CBETH-USD', 'MOBILE-USD', 'KARRAT-USD', 'KEYCAT-USD', 'RBN-USD', 'BIGTIME-USD', 'AAVE-USD', 'HIGH-USD', 'GST-USD', 'LSETH-USD', 'ME-USD', 'FET-USD', 'OGN-USD', 'CAKE-USD', 'MINA-USD', 'RAD-USD', 'SEAM-USD', 'RARE-USD', 'BICO-USD', 'DOT-USD', 'ORCA-USD', 'NEON-USD', 'SYRUP-USD', 'DIA-USD', 'APT-USD', 'LRC-USD', 'BLZ-USD', 'FARTCOIN-USD', 'VOXEL-USD', 'BNT-USD', 'ZORA-USD', 'LPT-USD', 'CORECHAIN-USD', 'MATIC-USD', 'KAITO-USD', 'SUPER-USD', 'HOME-USD', 'BTRST-USD', 'SEI-USD', 'BAT-USD', 'ALT-USD', 'MUSE-USD', 'ZRO-USD', 'PENDLE-USD', 'ABT-USD', 'WCFG-USD', 'GHST-USD', 'COTI-USD', 'DEGEN-USD', 'ACS-USD', 'APE-USD', 'UMA-USD', 'HONEY-USD', 'ETHFI-USD', 'CRV-USD', 'MDT-USD', 'MSOL-USD', 'ALEO-USD', 'ANKR-USD', 'DRIFT-USD', 'ZRX-USD', 'ILV-USD', 'BLAST-USD', 'STRK-USD', 'ELA-USD', 'GIGA-USD', 'KSM-USD']}}]} (websocket_helper.py:364)
+2025-06-22 08:03:09,635 - webhook_logger - INFO - 💙 Confirmed Market Subscriptions: {'channel': 'subscriptions', 'client_id': '', 'timestamp': '2025-06-22T16:02:30.439694362Z', 'sequence_num': 296, 'events': [{'subscriptions': {'heartbeats': ['heartbeats'], 'ticker_batch': ['ME-USD', 'FET-USD', 'OGN-USD', 'CAKE-USD', 'MINA-USD', 'RAD-USD', 'SEAM-USD', 'RARE-USD', 'BICO-USD', 'DOT-USD', 'ORCA-USD', 'NEON-USD', 'SYRUP-USD', 'DIA-USD', 'APT-USD', 'LRC-USD', 'BLZ-USD', 'FARTCOIN-USD', 'VOXEL-USD', 'BNT-USD', 'ZORA-USD', 'LPT-USD', 'CORECHAIN-USD', 'MATIC-USD', 'KAITO-USD', 'SUPER-USD', 'HOME-USD', 'BTRST-USD', 'SEI-USD', 'BAT-USD', 'ALT-USD', 'MUSE-USD', 'ZRO-USD', 'PENDLE-USD', 'ABT-USD', 'WCFG-USD', 'GHST-USD', 'COTI-USD', 'DEGEN-USD', 'ACS-USD', 'APE-USD', 'UMA-USD', 'HONEY-USD', 'ETHFI-USD', 'CRV-USD', 'MDT-USD', 'MSOL-USD', 'ALEO-USD', 'ANKR-USD', 'DRIFT-USD', 'ZRX-USD', 'ILV-USD', 'BLAST-USD', 'STRK-USD', 'ELA-USD', 'GIGA-USD', 'KSM-USD', 'HFT-USD', 'AVAX-USD', 'PYTH-USD', 'KAVA-USD', 'BOBA-USD', 'CRO-USD', 'AUDIO-USD', 'AXL-USD', 'COW-USD', 'SYN-USD', 'IOTX-USD', 'ASM-USD', 'LQTY-USD', 'CVC-USD', 'XLM-USD', 'FIDA-USD', 'A8-USD', 'AGLD-USD', 'STG-USD', 'SPELL-USD', 'POL-USD', 'RNDR-USD', 'VET-USD', 'ATH-USD', 'API3-USD', 'ATOM-USD', 'JASMY-USD', 'TAO-USD', 'SWELL-USD', 'SQD-USD', 'ARB-USD', 'GMT-USD', 'LINK-USD', 'OMNI-USD', 'PLU-USD', 'ALEPH-USD', 'ETH-USD', 'RSR-USD', 'CLV-USD', 'FARM-USD', 'ACX-USD', 'SOL-USD', 'WAXL-USD', 'AKT-USD', 'ADA-USD', 'MORPHO-USD', 'MATH-USD', 'JTO-USD', 'GLM-USD', 'ZEC-USD', 'ALCX-USD', 'FORT-USD', 'FIL-USD', 'SAND-USD', 'MKR-USD', 'BLUR-USD', 'DNT-USD', 'EDGE-USD', '1INCH-USD', 'INJ-USD', 'POPCAT-USD', 'TURBO-USD', 'BONK-USD', 'ENS-USD', 'AIOZ-USD', 'LCX-USD', 'GTC-USD', 'POLS-USD', 'CGLD-USD', 'NEAR-USD', 'PAX-USD', 'CTSI-USD', 'WLD-USD', 'RENDER-USD', 'LRDS-USD', 'PERP-USD', 'AVT-USD', 'SHPING-USD', 'DIMO-USD', 'RLC-USD', 'TOSHI-USD', 'SAFE-USD', 'SNX-USD', 'BAL-USD', 'DEXT-USD', 'FLOKI-USD', 'ARKM-USD', 'POWR-USD', 'PYR-USD', 'POND-USD', 'FOX-USD', 'DASH-USD', 'EGLD-USD', 'NMR-USD', 'REZ-USD', 'ENA-USD', 'GFI-USD', 'PRCL-USD', 'TNSR-USD', 'VELO-USD', 'ZEN-USD', 'CTX-USD', 'PNUT-USD', 'IO-USD', 'ICP-USD', '00-USD', 'XCN-USD', 'ETC-USD', 'C98-USD', 'RARI-USD', 'KRL-USD', 'ALGO-USD', 'AERGO-USD', 'PEPE-USD', 'IDEX-USD', 'MAGIC-USD', 'FLOW-USD', 'USDT-USD', 'AURORA-USD', 'DOGINME-USD', 'PRO-USD', 'AMP-USD', 'QNT-USD', 'BCH-USD', 'SXT-USD', 'MOODENG-USD', 'HNT-USD', 'LDO-USD', 'MANA-USD', 'LOKA-USD', 'CELR-USD', 'KERNEL-USD', 'GNO-USD', 'AUCTION-USD', 'DAI-USD', 'FAI-USD', 'G-USD', 'ROSE-USD', 'PNG-USD', 'SPA-USD', 'GODS-USD', 'DOGE-USD', 'PUNDIX-USD', 'QI-USD', 'MOG-USD', 'ZK-USD', 'B3-USD', 'PENGU-USD', 'XTZ-USD', 'COMP-USD', 'PIRATE-USD', 'MLN-USD', 'CLANKER-USD', 'PROMPT-USD', 'BADGER-USD', 'L3-USD', 'COOKIE-USD', 'SUSHI-USD', 'YFI-USD', 'XYO-USD', 'BAND-USD', 'SPK-USD', 'AERO-USD', 'WIF-USD', 'IP-USD', 'MANTLE-USD', 'ONDO-USD', 'GRT-USD', 'TIA-USD', 'METIS-USD', 'SWFTC-USD', 'OXT-USD', 'TIME-USD', 'BERA-USD', 'REQ-USD', 'ACH-USD', 'ZETA-USD', 'VVV-USD', 'BTC-USD', 'UNI-USD', 'EOS-USD', 'NCT-USD', 'CVX-USD', 'SHIB-USD', 'EIGEN-USD', 'ERN-USD', 'RED-USD', 'ARPA-USD', 'HOPR-USD', 'FLR-USD', 'VARA-USD', 'STORJ-USD', 'LTC-USD', 'STX-USD', 'FX-USD', 'WELL-USD', 'MNDE-USD', 'MASK-USD', 'CHZ-USD', 'PAXG-USD', 'SHDW-USD', 'FORTH-USD', 'FIS-USD', 'SUI-USD', 'XRP-USD', 'SD-USD', 'IMX-USD', 'HBAR-USD', 'TRB-USD', 'VTHO-USD', 'AST-USD', 'INV-USD', 'RONIN-USD', 'KNC-USD', 'RPL-USD', 'AXS-USD', 'SUKU-USD', 'ALICE-USD', 'TRAC-USD', 'ZETACHAIN-USD', 'OP-USD', 'PRIME-USD', 'OSMO-USD', 'NKN-USD', 'INDEX-USD', 'LA-USD', 'SKL-USD', 'OCEAN-USD', 'CBETH-USD', 'MOBILE-USD', 'KARRAT-USD', 'KEYCAT-USD', 'RBN-USD', 'BIGTIME-USD', 'AAVE-USD', 'HIGH-USD', 'GST-USD', 'LSETH-USD']}}]} (websocket_helper.py:364)
+2025-06-22 08:03:09,635 - webhook_logger - INFO - 💙 Confirmed Market Subscriptions: {'channel': 'subscriptions', 'client_id': '', 'timestamp': '2025-06-22T16:02:30.450169931Z', 'sequence_num': 297, 'events': [{'subscriptions': {'heartbeats': ['heartbeats'], 'ticker_batch': ['FARM-USD', 'ACX-USD', 'SOL-USD', 'WAXL-USD', 'AKT-USD', 'ADA-USD', 'MORPHO-USD', 'MATH-USD', 'JTO-USD', 'GLM-USD', 'ZEC-USD', 'ALCX-USD', 'FORT-USD', 'FIL-USD', 'SAND-USD', 'MKR-USD', 'BLUR-USD', 'DNT-USD', 'EDGE-USD', '1INCH-USD', 'INJ-USD', 'POPCAT-USD', 'TURBO-USD', 'BONK-USD', 'ENS-USD', 'AIOZ-USD', 'LCX-USD', 'GTC-USD', 'POLS-USD', 'CGLD-USD', 'NEAR-USD', 'PAX-USD', 'CTSI-USD', 'WLD-USD', 'RENDER-USD', 'LRDS-USD', 'PERP-USD', 'AVT-USD', 'SHPING-USD', 'DIMO-USD', 'RLC-USD', 'TOSHI-USD', 'SAFE-USD', 'SNX-USD', 'BAL-USD', 'DEXT-USD', 'FLOKI-USD', 'ARKM-USD', 'POWR-USD', 'PYR-USD', 'POND-USD', 'FOX-USD', 'DASH-USD', 'EGLD-USD', 'NMR-USD', 'REZ-USD', 'ENA-USD', 'GFI-USD', 'PRCL-USD', 'TNSR-USD', 'VELO-USD', 'ZEN-USD', 'CTX-USD', 'PNUT-USD', 'IO-USD', 'ICP-USD', '00-USD', 'XCN-USD', 'ETC-USD', 'C98-USD', 'RARI-USD', 'KRL-USD', 'ALGO-USD', 'AERGO-USD', 'PEPE-USD', 'IDEX-USD', 'MAGIC-USD', 'FLOW-USD', 'USDT-USD', 'AURORA-USD', 'DOGINME-USD', 'PRO-USD', 'AMP-USD', 'QNT-USD', 'BCH-USD', 'SXT-USD', 'MOODENG-USD', 'HNT-USD', 'LDO-USD', 'MANA-USD', 'LOKA-USD', 'CELR-USD', 'KERNEL-USD', 'GNO-USD', 'AUCTION-USD', 'DAI-USD', 'FAI-USD', 'G-USD', 'ROSE-USD', 'PNG-USD', 'SPA-USD', 'GODS-USD', 'DOGE-USD', 'PUNDIX-USD', 'QI-USD', 'MOG-USD', 'ZK-USD', 'B3-USD', 'PENGU-USD', 'XTZ-USD', 'COMP-USD', 'PIRATE-USD', 'MLN-USD', 'CLANKER-USD', 'PROMPT-USD', 'BADGER-USD', 'L3-USD', 'COOKIE-USD', 'SUSHI-USD', 'YFI-USD', 'XYO-USD', 'BAND-USD', 'SPK-USD', 'AERO-USD', 'WIF-USD', 'IP-USD', 'MANTLE-USD', 'ONDO-USD', 'GRT-USD', 'TIA-USD', 'METIS-USD', 'SWFTC-USD', 'OXT-USD', 'TIME-USD', 'BERA-USD', 'REQ-USD', 'ACH-USD', 'ZETA-USD', 'VVV-USD', 'BTC-USD', 'UNI-USD', 'EOS-USD', 'NCT-USD', 'CVX-USD', 'SHIB-USD', 'EIGEN-USD', 'ERN-USD', 'RED-USD', 'ARPA-USD', 'HOPR-USD', 'FLR-USD', 'VARA-USD', 'STORJ-USD', 'LTC-USD', 'STX-USD', 'FX-USD', 'WELL-USD', 'MNDE-USD', 'MASK-USD', 'CHZ-USD', 'PAXG-USD', 'SHDW-USD', 'FORTH-USD', 'FIS-USD', 'SUI-USD', 'XRP-USD', 'SD-USD', 'IMX-USD', 'HBAR-USD', 'TRB-USD', 'VTHO-USD', 'AST-USD', 'INV-USD', 'RONIN-USD', 'KNC-USD', 'RPL-USD', 'AXS-USD', 'SUKU-USD', 'ALICE-USD', 'TRAC-USD', 'ZETACHAIN-USD', 'OP-USD', 'PRIME-USD', 'OSMO-USD', 'NKN-USD', 'INDEX-USD', 'LA-USD', 'SKL-USD', 'OCEAN-USD', 'CBETH-USD', 'MOBILE-USD', 'KARRAT-USD', 'KEYCAT-USD', 'RBN-USD', 'BIGTIME-USD', 'AAVE-USD', 'HIGH-USD', 'GST-USD', 'LSETH-USD', 'ME-USD', 'FET-USD', 'OGN-USD', 'CAKE-USD', 'MINA-USD', 'RAD-USD', 'SEAM-USD', 'RARE-USD', 'BICO-USD', 'DOT-USD', 'ORCA-USD', 'NEON-USD', 'SYRUP-USD', 'DIA-USD', 'APT-USD', 'LRC-USD', 'BLZ-USD', 'FARTCOIN-USD', 'VOXEL-USD', 'BNT-USD', 'ZORA-USD', 'LPT-USD', 'CORECHAIN-USD', 'MATIC-USD', 'KAITO-USD', 'SUPER-USD', 'HOME-USD', 'BTRST-USD', 'SEI-USD', 'BAT-USD', 'ALT-USD', 'MUSE-USD', 'ZRO-USD', 'PENDLE-USD', 'ABT-USD', 'WCFG-USD', 'GHST-USD', 'COTI-USD', 'DEGEN-USD', 'ACS-USD', 'APE-USD', 'UMA-USD', 'HONEY-USD', 'ETHFI-USD', 'CRV-USD', 'MDT-USD', 'MSOL-USD', 'ALEO-USD', 'ANKR-USD', 'DRIFT-USD', 'ZRX-USD', 'ILV-USD', 'BLAST-USD', 'STRK-USD', 'ELA-USD', 'GIGA-USD', 'KSM-USD', 'HFT-USD', 'AVAX-USD', 'PYTH-USD', 'KAVA-USD', 'BOBA-USD', 'CRO-USD', 'AUDIO-USD', 'AXL-USD', 'COW-USD', 'SYN-USD', 'IOTX-USD', 'ASM-USD', 'LQTY-USD', 'CVC-USD', 'XLM-USD', 'FIDA-USD', 'A8-USD', 'AGLD-USD', 'STG-USD', 'SPELL-USD', 'POL-USD', 'RNDR-USD', 'VET-USD', 'ATH-USD', 'API3-USD', 'ATOM-USD', 'JASMY-USD', 'TAO-USD', 'SWELL-USD', 'SQD-USD', 'ARB-USD', 'GMT-USD', 'LINK-USD', 'OMNI-USD', 'PLU-USD', 'ALEPH-USD', 'ETH-USD', 'RSR-USD', 'CLV-USD']}}]} (websocket_helper.py:364)
+2025-06-22 08:03:09,636 - webhook_logger - INFO - 💙 Confirmed Market Subscriptions: {'channel': 'subscriptions', 'client_id': '', 'timestamp': '2025-06-22T16:02:30.45034568Z', 'sequence_num': 298, 'events': [{'subscriptions': {'heartbeats': ['heartbeats'], 'ticker_batch': ['KSM-USD', 'HFT-USD', 'AVAX-USD', 'PYTH-USD', 'KAVA-USD', 'BOBA-USD', 'CRO-USD', 'AUDIO-USD', 'AXL-USD', 'COW-USD', 'SYN-USD', 'IOTX-USD', 'ASM-USD', 'LQTY-USD', 'CVC-USD', 'XLM-USD', 'FIDA-USD', 'A8-USD', 'AGLD-USD', 'STG-USD', 'SPELL-USD', 'POL-USD', 'RNDR-USD', 'VET-USD', 'ATH-USD', 'API3-USD', 'ATOM-USD', 'JASMY-USD', 'TAO-USD', 'SWELL-USD', 'SQD-USD', 'ARB-USD', 'GMT-USD', 'LINK-USD', 'OMNI-USD', 'PLU-USD', 'ALEPH-USD', 'ETH-USD', 'RSR-USD', 'CLV-USD', 'FARM-USD', 'ACX-USD', 'SOL-USD', 'WAXL-USD', 'AKT-USD', 'ADA-USD', 'MORPHO-USD', 'MATH-USD', 'JTO-USD', 'GLM-USD', 'ZEC-USD', 'ALCX-USD', 'FORT-USD', 'FIL-USD', 'SAND-USD', 'MKR-USD', 'BLUR-USD', 'DNT-USD', 'EDGE-USD', '1INCH-USD', 'INJ-USD', 'POPCAT-USD', 'TURBO-USD', 'BONK-USD', 'ENS-USD', 'AIOZ-USD', 'LCX-USD', 'GTC-USD', 'POLS-USD', 'CGLD-USD', 'NEAR-USD', 'PAX-USD', 'CTSI-USD', 'WLD-USD', 'RENDER-USD', 'LRDS-USD', 'PERP-USD', 'AVT-USD', 'SHPING-USD', 'DIMO-USD', 'RLC-USD', 'TOSHI-USD', 'SAFE-USD', 'SNX-USD', 'BAL-USD', 'DEXT-USD', 'FLOKI-USD', 'ARKM-USD', 'POWR-USD', 'PYR-USD', 'POND-USD', 'FOX-USD', 'DASH-USD', 'EGLD-USD', 'NMR-USD', 'REZ-USD', 'ENA-USD', 'GFI-USD', 'PRCL-USD', 'TNSR-USD', 'VELO-USD', 'ZEN-USD', 'CTX-USD', 'PNUT-USD', 'IO-USD', 'ICP-USD', '00-USD', 'XCN-USD', 'ETC-USD', 'C98-USD', 'RARI-USD', 'KRL-USD', 'ALGO-USD', 'AERGO-USD', 'PEPE-USD', 'IDEX-USD', 'MAGIC-USD', 'FLOW-USD', 'USDT-USD', 'AURORA-USD', 'DOGINME-USD', 'PRO-USD', 'AMP-USD', 'QNT-USD', 'BCH-USD', 'SXT-USD', 'MOODENG-USD', 'HNT-USD', 'LDO-USD', 'MANA-USD', 'LOKA-USD', 'CELR-USD', 'KERNEL-USD', 'GNO-USD', 'AUCTION-USD', 'DAI-USD', 'FAI-USD', 'G-USD', 'ROSE-USD', 'PNG-USD', 'SPA-USD', 'GODS-USD', 'DOGE-USD', 'PUNDIX-USD', 'QI-USD', 'MOG-USD', 'ZK-USD', 'B3-USD', 'PENGU-USD', 'XTZ-USD', 'COMP-USD', 'PIRATE-USD', 'MLN-USD', 'CLANKER-USD', 'PROMPT-USD', 'BADGER-USD', 'L3-USD', 'COOKIE-USD', 'SUSHI-USD', 'YFI-USD', 'XYO-USD', 'BAND-USD', 'SPK-USD', 'AERO-USD', 'WIF-USD', 'IP-USD', 'MANTLE-USD', 'ONDO-USD', 'GRT-USD', 'TIA-USD', 'METIS-USD', 'SWFTC-USD', 'OXT-USD', 'TIME-USD', 'BERA-USD', 'REQ-USD', 'ACH-USD', 'ZETA-USD', 'VVV-USD', 'BTC-USD', 'UNI-USD', 'EOS-USD', 'NCT-USD', 'CVX-USD', 'SHIB-USD', 'EIGEN-USD', 'ERN-USD', 'RED-USD', 'ARPA-USD', 'HOPR-USD', 'FLR-USD', 'VARA-USD', 'STORJ-USD', 'LTC-USD', 'STX-USD', 'FX-USD', 'WELL-USD', 'MNDE-USD', 'MASK-USD', 'CHZ-USD', 'PAXG-USD', 'SHDW-USD', 'FORTH-USD', 'FIS-USD', 'SUI-USD', 'XRP-USD', 'SD-USD', 'IMX-USD', 'HBAR-USD', 'TRB-USD', 'VTHO-USD', 'AST-USD', 'INV-USD', 'RONIN-USD', 'KNC-USD', 'RPL-USD', 'AXS-USD', 'SUKU-USD', 'ALICE-USD', 'TRAC-USD', 'ZETACHAIN-USD', 'OP-USD', 'PRIME-USD', 'OSMO-USD', 'NKN-USD', 'INDEX-USD', 'LA-USD', 'SKL-USD', 'OCEAN-USD', 'CBETH-USD', 'MOBILE-USD', 'KARRAT-USD', 'KEYCAT-USD', 'RBN-USD', 'BIGTIME-USD', 'AAVE-USD', 'HIGH-USD', 'GST-USD', 'LSETH-USD', 'ME-USD', 'FET-USD', 'OGN-USD', 'CAKE-USD', 'MINA-USD', 'RAD-USD', 'SEAM-USD', 'RARE-USD', 'BICO-USD', 'DOT-USD', 'ORCA-USD', 'NEON-USD', 'SYRUP-USD', 'DIA-USD', 'APT-USD', 'LRC-USD', 'BLZ-USD', 'FARTCOIN-USD', 'VOXEL-USD', 'BNT-USD', 'ZORA-USD', 'LPT-USD', 'CORECHAIN-USD', 'MATIC-USD', 'KAITO-USD', 'SUPER-USD', 'HOME-USD', 'BTRST-USD', 'SEI-USD', 'BAT-USD', 'ALT-USD', 'MUSE-USD', 'ZRO-USD', 'PENDLE-USD', 'ABT-USD', 'WCFG-USD', 'GHST-USD', 'COTI-USD', 'DEGEN-USD', 'ACS-USD', 'APE-USD', 'UMA-USD', 'HONEY-USD', 'ETHFI-USD', 'CRV-USD', 'MDT-USD', 'MSOL-USD', 'ALEO-USD', 'ANKR-USD', 'DRIFT-USD', 'ZRX-USD', 'ILV-USD', 'BLAST-USD', 'STRK-USD', 'ELA-USD', 'GIGA-USD']}}]} (websocket_helper.py:364)
+2025-06-22 08:03:14,383 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:03:18,330 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.0002642) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:03:20,468 - webhook_logger - INFO - 💙 Confirmed Market Subscriptions: {'channel': 'subscriptions', 'client_id': '', 'timestamp': '2025-06-22T16:02:40.459718044Z', 'sequence_num': 296, 'events': [{'subscriptions': {'ticker_batch': ['FORTH-USD', 'GMT-USD', 'CGLD-USD', 'PRO-USD', 'WAXL-USD', 'TURBO-USD', 'CHZ-USD', 'TIME-USD', 'XLM-USD', 'MATIC-USD', 'SXT-USD', 'ETH-USD', 'AUDIO-USD', 'SAND-USD', 'BLZ-USD', 'A8-USD', 'WLD-USD', 'LDO-USD', 'VELO-USD', 'LSETH-USD', 'CLV-USD', 'HONEY-USD', 'ATOM-USD', 'WELL-USD', 'CORECHAIN-USD', 'ALICE-USD', 'BNT-USD', 'GHST-USD', 'PENGU-USD', 'SQD-USD', 'AKT-USD', 'GODS-USD', 'JASMY-USD', 'CVC-USD', 'VOXEL-USD', 'BLAST-USD', 'LOKA-USD', 'BAL-USD', 'MOBILE-USD', 'HFT-USD', 'ZEN-USD', 'SHIB-USD', 'TRAC-USD', 'STORJ-USD', 'TIA-USD', 'HOPR-USD', 'B3-USD', 'AERO-USD', 'GFI-USD', 'ME-USD', 'TRB-USD', 'ZRX-USD', 'SWELL-USD', 'ADA-USD', 'PYTH-USD', 'MANTLE-USD', 'ALGO-USD', 'PRIME-USD', 'DEXT-USD', 'C98-USD', 'ARKM-USD', 'ERN-USD', 'BONK-USD', 'BCH-USD', 'TOSHI-USD', 'HNT-USD', 'SUI-USD', 'MOODENG-USD', 'PLU-USD', 'SHPING-USD', '1INCH-USD', 'GLM-USD', 'XRP-USD', 'BAT-USD', 'APE-USD', 'PAXG-USD', 'POPCAT-USD', 'ETHFI-USD', 'SUSHI-USD', 'NMR-USD', 'API3-USD', 'IDEX-USD', 'REZ-USD', 'HIGH-USD', 'DAI-USD', 'LRDS-USD', 'EDGE-USD', 'ABT-USD', 'BOBA-USD', 'VARA-USD', 'MINA-USD', 'PEPE-USD', 'KAVA-USD', 'NCT-USD', 'ACS-USD', 'SYN-USD', 'LTC-USD', 'ORCA-USD', 'MASK-USD', 'CELR-USD', 'INDEX-USD', 'LQTY-USD', 'XCN-USD', 'MORPHO-USD', 'LRC-USD', 'CRV-USD', 'NEON-USD', 'XTZ-USD', 'PNG-USD', 'AXS-USD', 'AUCTION-USD', 'INV-USD', 'OSMO-USD', 'SOL-USD', 'DEGEN-USD', 'GNO-USD', 'POLS-USD', 'CRO-USD', 'ETC-USD', 'FLOKI-USD', 'POND-USD', 'RED-USD', 'RARI-USD', 'ALEO-USD', 'FORT-USD', 'MSOL-USD', 'ZETACHAIN-USD', 'CBETH-USD', 'RBN-USD', 'AXL-USD', 'DRIFT-USD', 'CTX-USD', 'QI-USD', 'SUPER-USD', 'FLOW-USD', 'SPA-USD', 'BICO-USD', 'L3-USD', 'ONDO-USD', 'REQ-USD', 'FAI-USD', 'APT-USD', 'BADGER-USD', 'FARM-USD', 'POL-USD', 'VET-USD', 'IOTX-USD', 'AURORA-USD', 'SPK-USD', 'MATH-USD', 'PENDLE-USD', 'OXT-USD', 'RPL-USD', 'OP-USD', 'VVV-USD', 'BIGTIME-USD', 'ACH-USD', 'FLR-USD', 'ELA-USD', 'ATH-USD', 'ALCX-USD', 'AMP-USD', 'AAVE-USD', 'COTI-USD', 'FX-USD', 'SAFE-USD', 'IO-USD', 'RONIN-USD', 'ICP-USD', 'EGLD-USD', 'KRL-USD', 'KAITO-USD', 'AVT-USD', 'POWR-USD', 'FARTCOIN-USD', 'VTHO-USD', 'RENDER-USD', 'DOGE-USD', 'GTC-USD', 'KARRAT-USD', 'PNUT-USD', 'OMNI-USD', 'RNDR-USD', 'LPT-USD', 'UNI-USD', 'ALT-USD', 'ROSE-USD', 'FIDA-USD', 'KEYCAT-USD', 'JTO-USD', 'SUKU-USD', 'SWFTC-USD', 'XYO-USD', 'TAO-USD', 'PRCL-USD', 'DOGINME-USD', 'STX-USD', 'STRK-USD', 'ILV-USD', 'PYR-USD', 'KERNEL-USD', 'RSR-USD', 'PUNDIX-USD', 'MANA-USD', 'OGN-USD', 'METIS-USD', 'GST-USD', 'ARB-USD', 'ZORA-USD', 'STG-USD', 'ASM-USD', 'LINK-USD', 'ZEC-USD', 'ARPA-USD', 'PIRATE-USD', 'CVX-USD', 'BTC-USD', 'LCX-USD', 'ACX-USD', 'ZRO-USD', 'CAKE-USD', 'SD-USD', 'DNT-USD', 'FET-USD', 'BERA-USD', 'DOT-USD', 'NEAR-USD', 'COMP-USD', 'PAX-USD', 'CTSI-USD', 'BAND-USD', 'ALEPH-USD', 'HOME-USD', 'MOG-USD', 'SNX-USD', 'UMA-USD', 'KSM-USD', 'HBAR-USD', 'COOKIE-USD', 'ENS-USD', 'AVAX-USD', 'SKL-USD', 'ZETA-USD', 'ZK-USD', 'NKN-USD', 'TNSR-USD', 'MAGIC-USD', 'PERP-USD', 'ENA-USD', '00-USD', 'MDT-USD', 'IP-USD', 'QNT-USD', 'RARE-USD', 'CLANKER-USD', 'RAD-USD', 'FIL-USD', 'MLN-USD', 'IMX-USD', 'AGLD-USD', 'WCFG-USD', 'ANKR-USD', 'SEI-USD', 'SYRUP-USD', 'MKR-USD', 'EOS-USD', 'SHDW-USD', 'GIGA-USD', 'GRT-USD', 'FOX-USD', 'MNDE-USD', 'AERGO-USD', 'OCEAN-USD', 'G-USD', 'SEAM-USD', 'YFI-USD', 'RLC-USD', 'PROMPT-USD', 'DASH-USD', 'FIS-USD', 'MUSE-USD', 'AIOZ-USD', 'EIGEN-USD', 'DIMO-USD', 'WIF-USD', 'USDT-USD', 'SPELL-USD', 'AST-USD', 'BLUR-USD', 'COW-USD', 'DIA-USD', 'BTRST-USD', 'INJ-USD', 'LA-USD', 'KNC-USD']}}]} (websocket_helper.py:364)
+2025-06-22 08:03:20,468 - webhook_logger - INFO - 💙 Confirmed Market Subscriptions: {'channel': 'subscriptions', 'client_id': '', 'timestamp': '2025-06-22T16:02:40.46006302Z', 'sequence_num': 297, 'events': [{'subscriptions': {'heartbeats': ['heartbeats'], 'ticker_batch': ['ACX-USD', 'ZRO-USD', 'CAKE-USD', 'SD-USD', 'DNT-USD', 'FET-USD', 'BERA-USD', 'DOT-USD', 'NEAR-USD', 'COMP-USD', 'PAX-USD', 'CTSI-USD', 'BAND-USD', 'ALEPH-USD', 'HOME-USD', 'MOG-USD', 'SNX-USD', 'UMA-USD', 'KSM-USD', 'HBAR-USD', 'COOKIE-USD', 'ENS-USD', 'AVAX-USD', 'SKL-USD', 'ZETA-USD', 'ZK-USD', 'NKN-USD', 'TNSR-USD', 'MAGIC-USD', 'PERP-USD', 'ENA-USD', '00-USD', 'MDT-USD', 'IP-USD', 'QNT-USD', 'RARE-USD', 'CLANKER-USD', 'RAD-USD', 'FIL-USD', 'MLN-USD', 'IMX-USD', 'AGLD-USD', 'WCFG-USD', 'ANKR-USD', 'SEI-USD', 'SYRUP-USD', 'MKR-USD', 'EOS-USD', 'SHDW-USD', 'GIGA-USD', 'GRT-USD', 'FOX-USD', 'MNDE-USD', 'AERGO-USD', 'OCEAN-USD', 'G-USD', 'SEAM-USD', 'YFI-USD', 'RLC-USD', 'PROMPT-USD', 'DASH-USD', 'FIS-USD', 'MUSE-USD', 'AIOZ-USD', 'EIGEN-USD', 'DIMO-USD', 'WIF-USD', 'USDT-USD', 'SPELL-USD', 'AST-USD', 'BLUR-USD', 'COW-USD', 'DIA-USD', 'BTRST-USD', 'INJ-USD', 'LA-USD', 'KNC-USD', 'FORTH-USD', 'GMT-USD', 'CGLD-USD', 'PRO-USD', 'WAXL-USD', 'TURBO-USD', 'CHZ-USD', 'TIME-USD', 'XLM-USD', 'MATIC-USD', 'SXT-USD', 'ETH-USD', 'AUDIO-USD', 'SAND-USD', 'BLZ-USD', 'A8-USD', 'WLD-USD', 'LDO-USD', 'VELO-USD', 'LSETH-USD', 'CLV-USD', 'HONEY-USD', 'ATOM-USD', 'WELL-USD', 'CORECHAIN-USD', 'ALICE-USD', 'BNT-USD', 'GHST-USD', 'PENGU-USD', 'SQD-USD', 'AKT-USD', 'GODS-USD', 'JASMY-USD', 'CVC-USD', 'VOXEL-USD', 'BLAST-USD', 'LOKA-USD', 'BAL-USD', 'MOBILE-USD', 'HFT-USD', 'ZEN-USD', 'SHIB-USD', 'TRAC-USD', 'STORJ-USD', 'TIA-USD', 'HOPR-USD', 'B3-USD', 'AERO-USD', 'GFI-USD', 'ME-USD', 'TRB-USD', 'ZRX-USD', 'SWELL-USD', 'ADA-USD', 'PYTH-USD', 'MANTLE-USD', 'ALGO-USD', 'PRIME-USD', 'DEXT-USD', 'C98-USD', 'ARKM-USD', 'ERN-USD', 'BONK-USD', 'BCH-USD', 'TOSHI-USD', 'HNT-USD', 'SUI-USD', 'MOODENG-USD', 'PLU-USD', 'SHPING-USD', '1INCH-USD', 'GLM-USD', 'XRP-USD', 'BAT-USD', 'APE-USD', 'PAXG-USD', 'POPCAT-USD', 'ETHFI-USD', 'SUSHI-USD', 'NMR-USD', 'API3-USD', 'IDEX-USD', 'REZ-USD', 'HIGH-USD', 'DAI-USD', 'LRDS-USD', 'EDGE-USD', 'ABT-USD', 'BOBA-USD', 'VARA-USD', 'MINA-USD', 'PEPE-USD', 'KAVA-USD', 'NCT-USD', 'ACS-USD', 'SYN-USD', 'LTC-USD', 'ORCA-USD', 'MASK-USD', 'CELR-USD', 'INDEX-USD', 'LQTY-USD', 'XCN-USD', 'MORPHO-USD', 'LRC-USD', 'CRV-USD', 'NEON-USD', 'XTZ-USD', 'PNG-USD', 'AXS-USD', 'AUCTION-USD', 'INV-USD', 'OSMO-USD', 'SOL-USD', 'DEGEN-USD', 'GNO-USD', 'POLS-USD', 'CRO-USD', 'ETC-USD', 'FLOKI-USD', 'POND-USD', 'RED-USD', 'RARI-USD', 'ALEO-USD', 'FORT-USD', 'MSOL-USD', 'ZETACHAIN-USD', 'CBETH-USD', 'RBN-USD', 'AXL-USD', 'DRIFT-USD', 'CTX-USD', 'QI-USD', 'SUPER-USD', 'FLOW-USD', 'SPA-USD', 'BICO-USD', 'L3-USD', 'ONDO-USD', 'REQ-USD', 'FAI-USD', 'APT-USD', 'BADGER-USD', 'FARM-USD', 'POL-USD', 'VET-USD', 'IOTX-USD', 'AURORA-USD', 'SPK-USD', 'MATH-USD', 'PENDLE-USD', 'OXT-USD', 'RPL-USD', 'OP-USD', 'VVV-USD', 'BIGTIME-USD', 'ACH-USD', 'FLR-USD', 'ELA-USD', 'ATH-USD', 'ALCX-USD', 'AMP-USD', 'AAVE-USD', 'COTI-USD', 'FX-USD', 'SAFE-USD', 'IO-USD', 'RONIN-USD', 'ICP-USD', 'EGLD-USD', 'KRL-USD', 'KAITO-USD', 'AVT-USD', 'POWR-USD', 'FARTCOIN-USD', 'VTHO-USD', 'RENDER-USD', 'DOGE-USD', 'GTC-USD', 'KARRAT-USD', 'PNUT-USD', 'OMNI-USD', 'RNDR-USD', 'LPT-USD', 'UNI-USD', 'ALT-USD', 'ROSE-USD', 'FIDA-USD', 'KEYCAT-USD', 'JTO-USD', 'SUKU-USD', 'SWFTC-USD', 'XYO-USD', 'TAO-USD', 'PRCL-USD', 'DOGINME-USD', 'STX-USD', 'STRK-USD', 'ILV-USD', 'PYR-USD', 'KERNEL-USD', 'RSR-USD', 'PUNDIX-USD', 'MANA-USD', 'OGN-USD', 'METIS-USD', 'GST-USD', 'ARB-USD', 'ZORA-USD', 'STG-USD', 'ASM-USD', 'LINK-USD', 'ZEC-USD', 'ARPA-USD', 'PIRATE-USD', 'CVX-USD', 'BTC-USD', 'LCX-USD']}}]} (websocket_helper.py:364)
+2025-06-22 08:03:22,936 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 08:03:22,981 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 08:03:22,981 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 08:03:22,983 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 08:03:29,363 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:03:31,983 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:03:31,983 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:03:31,983 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:03:31,985 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:03:31,985 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:03:34,226 - webhook_logger - INFO - 📉 Skipping passive SELL for COTI-USD — average_close (0.043699999999999996) < current_price (0.0439) (passive_order_manager.py:344)
+2025-06-22 08:03:39,360 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:03:41,953 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:03:41,953 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:03:41,953 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:03:41,955 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:03:41,955 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:03:46,504 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6838) (passive_order_manager.py:344)
+2025-06-22 08:03:46,614 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.000263) < current_price (0.000264) (passive_order_manager.py:344)
+2025-06-22 08:03:53,222 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 08:03:53,234 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 08:03:53,242 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 08:03:53,242 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 30.31s (listener.py:403)
+2025-06-22 08:03:53,243 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 08:04:32,300 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:04:34,911 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:04:34,911 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:04:34,911 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:04:34,912 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:04:34,913 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:04:42,378 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:04:44,969 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:04:44,969 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:04:44,969 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:04:44,971 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:04:44,971 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:04:48,390 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.000263) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:05:14,455 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.000263) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:05:17,888 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.6821) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:05:33,923 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:05:36,538 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:05:36,538 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:05:36,538 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:05:36,539 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:05:36,540 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:05:44,009 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:05:46,752 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:05:46,752 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:05:46,752 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:05:46,753 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:05:46,754 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:05:49,588 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.67905) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:05:50,875 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 08:05:50,911 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 08:05:50,911 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 08:05:50,913 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 08:06:08,566 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: no close frame received or sent. Reconnecting... (listener.py:128)
+2025-06-22 08:06:10,306 - webhook_logger - INFO - Already subscribed to all requested user channels. Skipping subscription. (websocket_helper.py:418)
+2025-06-22 08:06:10,306 - webhook_logger - INFO - ✅ Connected and subscribed to user WebSocket: wss://advanced-trade-ws-user.coinbase.com (listener.py:103)
+2025-06-22 08:06:10,306 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws-user.coinbase.com (listener.py:113)
+2025-06-22 08:06:16,642 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.67905) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:06:20,980 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 08:06:20,992 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 08:06:20,996 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 08:06:20,996 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 30.12s (listener.py:403)
+2025-06-22 08:06:20,997 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 08:06:28,462 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.000263) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:06:37,601 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 08:06:37,633 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 08:06:37,633 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 08:06:37,642 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 08:06:42,233 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:06:45,100 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:06:45,100 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:06:45,101 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:06:45,102 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:06:45,102 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:06:51,079 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:07:01,730 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:07:01,731 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:07:01,731 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:07:01,732 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:07:01,732 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:07:07,909 - webhook_logger - INFO - 📉 Skipping passive SELL for MOBILE-USD — average_close (0.000263) < current_price (0.000266) (passive_order_manager.py:344)
+2025-06-22 08:07:08,134 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 08:07:08,147 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 08:07:08,151 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 08:07:08,151 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 30.55s (listener.py:403)
+2025-06-22 08:07:08,152 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 08:08:00,870 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:08:01,805 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SYN-USD: 0.100 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:01,814 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SUKU-USD: 0.0248 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:01,903 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:01,911 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DNT-USD: 0.0251 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:01,966 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for KEYCAT-USD: 0.002626 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,155 - webhook_logger - INFO - ✅ Successfully placed limit order for SYN-USD (webhook_order_manager.py:654)
+2025-06-22 08:08:02,158 - webhook_logger - INFO - ✅ Successfully placed limit order for SUKU-USD (webhook_order_manager.py:654)
+2025-06-22 08:08:02,164 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,169 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,177 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,180 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DNT-USD: 0.0251 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,190 - webhook_logger - INFO - ✅ Passive BUY SYN-USD @ 0.100 (passive_order_manager.py:385)
+2025-06-22 08:08:02,192 - webhook_logger - INFO - ✅ Passive BUY SUKU-USD @ 0.0246 (passive_order_manager.py:385)
+2025-06-22 08:08:02,216 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,219 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for KEYCAT-USD: 0.002626 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,422 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,425 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DNT-USD: 0.0251 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,447 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,450 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,477 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,480 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for KEYCAT-USD: 0.002626 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:02,711 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,711 - webhook_logger - INFO - ❌ All 3 attempts to place order for SKL-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:02,716 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:02,716 - webhook_logger - INFO - ❌ All 3 attempts to place order for DNT-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:03,028 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:03,028 - webhook_logger - INFO - ❌ All 3 attempts to place order for KEYCAT-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:03,461 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:08:03,461 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:08:03,462 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:08:03,463 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:08:03,463 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:08:09,069 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:10,848 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:11,481 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:08:26,262 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:26,586 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:27,852 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FARM-USD: 23.39 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:27,879 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for VOXEL-USD: 0.0423 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:27,902 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GHST-USD: 0.320 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:27,933 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLUR-USD: 0.0644 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,093 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:08:28,093 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:08:28,093 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:08:28,094 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:08:28,095 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:08:28,097 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,100 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FARM-USD: 23.41 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,148 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,151 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for VOXEL-USD: 0.0423 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,165 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,169 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GHST-USD: 0.320 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,195 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,198 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLUR-USD: 0.0644 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,614 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,617 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for VOXEL-USD: 0.0423 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,629 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,632 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GHST-USD: 0.320 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,646 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,650 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLUR-USD: 0.0644 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,655 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,658 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FARM-USD: 23.41 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:28,935 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,936 - webhook_logger - INFO - ❌ All 3 attempts to place order for VOXEL-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:28,938 - webhook_logger - WARNING - 🛠️ Last attempt: rebuilding OrderData for BLUR-USD (webhook_order_manager.py:697)
+2025-06-22 08:08:28,958 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:28,958 - webhook_logger - INFO - ❌ All 3 attempts to place order for FARM-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:29,468 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:29,468 - webhook_logger - INFO - ❌ All 3 attempts to place order for GHST-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:29,488 - webhook_logger - INFO - 🔁 Rebuilt OrderData with changes:
+adjusted_price: 0.0643 ➜ None
+adjusted_size: 782.4 ➜ None
+limit_price: 0 ➜ 0.06435 (webhook_order_manager.py:711)
+2025-06-22 08:08:29,488 - webhook_logger - INFO - ❌ All 3 attempts to place order for BLUR-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:34,320 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:35,368 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:35,482 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:39,315 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:39,317 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:39,812 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:39,814 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for SKL-USD: 0.0162 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:40,358 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:40,358 - webhook_logger - INFO - ❌ All 3 attempts to place order for SKL-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:08:44,042 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:44,424 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:53,569 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 08:08:53,580 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 08:08:53,581 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 08:08:53,582 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 08:08:53,601 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MATH-USD: 0.0872 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:53,756 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:54,527 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:08:54,563 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:54,567 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MATH-USD: 0.0872 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:54,904 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:54,908 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MATH-USD: 0.0872 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:08:55,173 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:08:55,174 - webhook_logger - INFO - ❌ All 3 attempts to place order for MATH-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:01,575 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:02,033 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:02,058 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BTRST-USD: 0.205 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:09,100 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:09,104 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BTRST-USD: 0.205 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:12,320 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:12,653 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:12,681 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:12,684 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BTRST-USD: 0.205 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:13,087 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:13,087 - webhook_logger - INFO - ❌ All 3 attempts to place order for BTRST-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:13,947 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for A8-USD: 0.0962 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:14,124 - webhook_logger - INFO - 📉 Skipping passive SELL for ABT-USD — average_close (0.67905) < current_price (0.6858) (passive_order_manager.py:344)
+2025-06-22 08:09:14,196 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:14,199 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for A8-USD: 0.0962 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:14,464 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:14,467 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for A8-USD: 0.0962 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:14,850 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:14,851 - webhook_logger - INFO - ❌ All 3 attempts to place order for A8-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:19,355 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:19,705 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:24,923 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 08:09:24,967 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 08:09:24,970 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 08:09:24,970 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 31.40s (listener.py:403)
+2025-06-22 08:09:24,971 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 08:09:25,434 - webhook_logger - WARNING - Skipping SYN-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:25,770 - webhook_logger - WARNING - Skipping SUKU-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:34,983 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HFT-USD: 0.0440 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:35,321 - webhook_logger - INFO - ℹ️ No order_id for expired sell SYN-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 08:09:35,327 - webhook_logger - INFO - ✅ Successfully placed limit order for HFT-USD (webhook_order_manager.py:654)
+2025-06-22 08:09:35,342 - webhook_logger - INFO - ✅ Passive BUY HFT-USD @ 0.0439 (passive_order_manager.py:385)
+2025-06-22 08:09:35,675 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for LSETH-USD: 2378.49 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:35,691 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLUR-USD: 0.0643 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:35,715 - webhook_logger - INFO - ℹ️ No order_id for expired sell SUKU-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 08:09:35,721 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.098 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:35,749 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OXT-USD: 0.0514 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:45,408 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:45,451 - webhook_logger - INFO - ✅ Successfully placed limit order for OXT-USD (webhook_order_manager.py:654)
+2025-06-22 08:09:45,461 - webhook_logger - INFO - ✅ Passive BUY OXT-USD @ 0.0512 (passive_order_manager.py:385)
+2025-06-22 08:09:50,860 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:50,968 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLAST-USD: 0.00203 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,411 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:51,431 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DEXT-USD: 0.2604 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,439 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1580 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,528 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ACS-USD: 0.0010641 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,780 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:51,783 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLAST-USD: 0.00203 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,789 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:51,792 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DEXT-USD: 0.2594 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,798 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:51,801 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1579 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:51,825 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:51,829 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ACS-USD: 0.0010641 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:52,051 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,053 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ZETACHAIN-USD: 0.1579 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:52,074 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,077 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DEXT-USD: 0.2594 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:52,085 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,089 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLAST-USD: 0.00203 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:52,102 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,105 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ACS-USD: 0.0010641 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:09:52,354 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,357 - webhook_logger - INFO - ❌ All 3 attempts to place order for ZETACHAIN-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:52,359 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,359 - webhook_logger - INFO - ❌ All 3 attempts to place order for DEXT-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:52,366 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,366 - webhook_logger - INFO - ❌ All 3 attempts to place order for BLAST-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:52,367 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:09:52,368 - webhook_logger - INFO - ❌ All 3 attempts to place order for ACS-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:09:54,340 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:09:56,779 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:57,163 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:09:57,220 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:09:57,220 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:09:57,220 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:09:57,221 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:09:57,222 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:09:58,432 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:09:59,911 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MINA-USD: 0.150 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:00,227 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:00,229 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MINA-USD: 0.150 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:00,471 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:00,474 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MINA-USD: 0.150 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:00,715 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:00,715 - webhook_logger - INFO - ❌ All 3 attempts to place order for MINA-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:10:01,096 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:10:01,096 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:10:01,097 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:10:01,098 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:10:01,098 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:10:02,522 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:02,913 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:08,282 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:08,716 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:13,995 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AST-USD: 0.0465 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,007 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FARM-USD: 23.33 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,022 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.098 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,264 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:14,267 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AST-USD: 0.0462 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,273 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:14,298 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:14,302 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FARM-USD: 23.40 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,308 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:14,311 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.098 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,634 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:14,689 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:14,692 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AST-USD: 0.0462 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,702 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:14,708 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for FARM-USD: 23.40 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:14,712 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:14,716 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for TNSR-USD: 0.098 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:15,071 - webhook_logger - WARNING - 🛠️ Last attempt: rebuilding OrderData for AST-USD (webhook_order_manager.py:697)
+2025-06-22 08:10:15,100 - webhook_logger - WARNING - 🛠️ Last attempt: rebuilding OrderData for TNSR-USD (webhook_order_manager.py:697)
+2025-06-22 08:10:15,235 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:15,235 - webhook_logger - INFO - ❌ All 3 attempts to place order for FARM-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:10:15,319 - webhook_logger - INFO - 🔁 Rebuilt OrderData with changes:
+adjusted_price: 0.0461 ➜ None
+adjusted_size: 1084.5 ➜ None
+limit_price: 0 ➜ 0.0462 (webhook_order_manager.py:711)
+2025-06-22 08:10:15,320 - webhook_logger - INFO - ❌ All 3 attempts to place order for AST-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:10:15,337 - webhook_logger - INFO - 🔁 Rebuilt OrderData with changes:
+adjusted_price: 0.097 ➜ None
+adjusted_size: 515.46 ➜ None
+limit_price: 0 ➜ 0.0985 (webhook_order_manager.py:711)
+2025-06-22 08:10:15,337 - webhook_logger - INFO - ❌ All 3 attempts to place order for TNSR-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:10:16,933 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ACS-USD: 0.0010639 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:16,939 - webhook_logger - INFO - ⏱ update_market_data (shared_data_manager) took 0.00s (listener.py:396)
+2025-06-22 08:10:16,953 - webhook_logger - INFO - ✅ monitor_untracked_assets is <class 'method'> (websocket_helper.py:691)
+2025-06-22 08:10:16,953 - webhook_logger - INFO - 🧪 About to await monitor_untracked_assets (websocket_helper.py:692)
+2025-06-22 08:10:16,955 - webhook_logger - INFO - 📱 Starting monitor_untracked_assets (websocket_helper.py:713)
+2025-06-22 08:10:17,519 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:17,522 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ACS-USD: 0.0010625 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:21,638 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:21,640 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for ACS-USD: 0.0010625 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:21,675 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:22,014 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:25,580 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:25,580 - webhook_logger - INFO - ❌ All 3 attempts to place order for ACS-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:10:32,788 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:33,260 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:39,751 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:40,216 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:45,619 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for 00-USD: 0.0144 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:45,701 - webhook_logger - ERROR - ❌ Exception during attempt #1: 'NoneType' object is not subscriptable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 574, in attempt_order_placement
+    highest_bid = Decimal(order_book['bid'])
+TypeError: 'NoneType' object is not subscriptable
+2025-06-22 08:10:45,701 - webhook_logger - ERROR - ❌ Exception during attempt #2: 'NoneType' object is not subscriptable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 574, in attempt_order_placement
+    highest_bid = Decimal(order_book['bid'])
+TypeError: 'NoneType' object is not subscriptable
+2025-06-22 08:10:45,702 - webhook_logger - ERROR - ❌ Exception during attempt #3: 'NoneType' object is not subscriptable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 574, in attempt_order_placement
+    highest_bid = Decimal(order_book['bid'])
+TypeError: 'NoneType' object is not subscriptable
+2025-06-22 08:10:45,702 - webhook_logger - INFO - ❌ All 3 attempts to place order for FLOKI-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:10:45,716 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for CLV-USD: 0.0204 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:46,835 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DOGINME-USD: 0.0004123 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:46,955 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:786)
+2025-06-22 08:10:46,956 - webhook_logger - WARNING - ⚠️ monitor_untracked_assets timed out — skipping. (websocket_helper.py:700)
+2025-06-22 08:10:46,959 - webhook_logger - INFO - ✅ monitor_untracked_assets completed (websocket_helper.py:702)
+2025-06-22 08:10:46,960 - webhook_logger - INFO - ⏱ monitor_and_update_active_orders took 30.02s (listener.py:403)
+2025-06-22 08:10:46,960 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+NoneType: None
+2025-06-22 08:10:47,714 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:47,717 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DOGINME-USD: 0.0004123 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:54,872 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:54,875 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for DOGINME-USD: 0.0004123 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:10:54,920 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:55,280 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:10:58,977 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:10:58,977 - webhook_logger - INFO - ❌ All 3 attempts to place order for DOGINME-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:11:00,884 - webhook_logger - ERROR - ❌ Exception during attempt #1: 'NoneType' object is not subscriptable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 574, in attempt_order_placement
+    highest_bid = Decimal(order_book['bid'])
+TypeError: 'NoneType' object is not subscriptable
+2025-06-22 08:11:00,885 - webhook_logger - ERROR - ❌ Exception during attempt #2: 'NoneType' object is not subscriptable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 574, in attempt_order_placement
+    highest_bid = Decimal(order_book['bid'])
+TypeError: 'NoneType' object is not subscriptable
+2025-06-22 08:11:00,885 - webhook_logger - ERROR - ❌ Exception during attempt #3: 'NoneType' object is not subscriptable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 574, in attempt_order_placement
+    highest_bid = Decimal(order_book['bid'])
+TypeError: 'NoneType' object is not subscriptable
+2025-06-22 08:11:00,885 - webhook_logger - INFO - ❌ All 3 attempts to place order for SWFTC-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:11:00,940 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for GST-USD: 0.005755 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:11:01,256 - webhook_logger - INFO - ✅ Successfully placed limit order for GST-USD (webhook_order_manager.py:654)
+2025-06-22 08:11:01,265 - webhook_logger - INFO - ✅ Passive BUY GST-USD @ 0.005732 (passive_order_manager.py:385)
+2025-06-22 08:11:04,219 - webhook_logger - WARNING - Skipping HFT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:04,572 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:04,908 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:07,231 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:11:10,180 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:11:10,180 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:11:10,180 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:11:10,182 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:11:10,182 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:11:10,534 - webhook_logger - INFO - ℹ️ No order_id for expired sell HFT-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 08:11:10,535 - webhook_logger - WARNING - Skipping OXT-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:10,566 - webhook_logger - WARNING - 🔌 WebSocket closed unexpectedly: sent 1011 (internal error) keepalive ping timeout; no close frame received. Reconnecting... (listener.py:128)
+2025-06-22 08:11:10,961 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:15,287 - webhook_logger - INFO - ✅ Connected to market WebSocket: wss://advanced-trade-ws.coinbase.com (listener.py:107)
+2025-06-22 08:11:15,287 - webhook_logger - INFO - ⚡ Subscribing to Market Channels... (listener.py:108)
+2025-06-22 08:11:15,288 - webhook_logger - INFO - � Subscribing to Market Channels: ['ticker_batch', 'heartbeats'] (websocket_helper.py:380)
+2025-06-22 08:11:15,289 - webhook_logger - INFO - 📡 Market WebSocket subscription complete. (listener.py:110)
+2025-06-22 08:11:15,289 - webhook_logger - INFO - 🎧 Listening on: wss://advanced-trade-ws.coinbase.com (listener.py:113)
+2025-06-22 08:11:20,848 - webhook_logger - INFO - ℹ️ No order_id for expired sell OXT-USD — skipping cancel, attempting DB cleanup (passive_order_manager.py:485)
+2025-06-22 08:11:20,849 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:29,627 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:35,998 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:41,463 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:49,798 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:11:57,397 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:12:05,961 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OXT-USD: 0.0514 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:11,047 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:11,051 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OXT-USD: 0.0514 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:11,100 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:12:11,556 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:11,559 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for OXT-USD: 0.0514 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:11,938 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AVT-USD: 1.24 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,098 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:12,099 - webhook_logger - INFO - ❌ All 3 attempts to place order for OXT-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:12,178 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BICO-USD: 0.0803 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,215 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:12,218 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AVT-USD: 1.24 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,246 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for MUSE-USD: 6.879 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,437 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:12,440 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BICO-USD: 0.0803 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,475 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:12,478 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for AVT-USD: 1.24 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,696 - webhook_logger - INFO - ✅ Successfully placed limit order for MUSE-USD (webhook_order_manager.py:654)
+2025-06-22 08:12:12,719 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:12,723 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BICO-USD: 0.0803 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:12,778 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:12,778 - webhook_logger - INFO - ❌ All 3 attempts to place order for AVT-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:12,842 - webhook_logger - INFO - ✅ Passive BUY MUSE-USD @ 6.847 (passive_order_manager.py:385)
+2025-06-22 08:12:13,019 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:13,019 - webhook_logger - INFO - ❌ All 3 attempts to place order for BICO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:14,992 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLZ-USD: 0.0317 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:15,621 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:15,624 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLZ-USD: 0.0317 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:15,909 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:15,915 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BLZ-USD: 0.0317 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:16,187 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:16,188 - webhook_logger - INFO - ❌ All 3 attempts to place order for BLZ-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:20,332 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:12:20,686 - webhook_logger - WARNING - Skipping MUSE-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:12:21,854 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HFT-USD: 0.0440 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:21,878 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for XYO-USD: 0.00895 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,002 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BADGER-USD: 0.86 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,137 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,140 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HFT-USD: 0.0440 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,151 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,156 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for XYO-USD: 0.00892 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,261 - webhook_logger - ERROR - ❌ Exception during attempt #1: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,263 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BADGER-USD: 0.86 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,406 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,409 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for XYO-USD: 0.00892 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,473 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,476 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for HFT-USD: 0.0440 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,551 - webhook_logger - ERROR - ❌ Exception during attempt #2: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,554 - webhook_logger - INFO - 🟡 Adjusted BUY limit price for BADGER-USD: 0.86 (Attempt 1) (webhook_order_types.py:356)
+2025-06-22 08:12:22,685 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,686 - webhook_logger - INFO - ❌ All 3 attempts to place order for XYO-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:22,740 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:22,741 - webhook_logger - INFO - ❌ All 3 attempts to place order for HFT-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:23,247 - webhook_logger - ERROR - ❌ Exception during attempt #3: argument of type 'NoneType' is not iterable (webhook_order_manager.py:724)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/webhook_order_manager.py", line 670, in attempt_order_placement
+    if 'PREVIEW_STOP_PRICE_BELOW_LAST_TRADE_PRICE' in error_code:
+TypeError: argument of type 'NoneType' is not iterable
+2025-06-22 08:12:23,247 - webhook_logger - INFO - ❌ All 3 attempts to place order for BADGER-USD failed. (webhook_order_manager.py:726)
+2025-06-22 08:12:26,133 - webhook_logger - WARNING - Skipping GST-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:12:26,519 - webhook_logger - WARNING - Skipping MUSE-USD: invalid current_price or quantity. (passive_order_manager.py:187)
+2025-06-22 08:12:28,970 - webhook_logger - WARNING - ⚠️ refresh_market_data was cancelled by the event loop. (listener.py:412)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 371, in refresh_market_data
+    new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
+  File "/Users/Manny/Python_Projects/BotTrader/MarketDataManager/market_data_manager.py", line 77, in update_market_data
+    new_market_data, new_order_management = await self.ticker_manager.update_ticker_cache(open_orders)
+  File "/Users/Manny/Python_Projects/BotTrader/MarketDataManager/ticker_manager.py", line 124, in update_ticker_cache
+    open_orders = await self.coinbase_api.fetch_open_orders()
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/coinbase_api.py", line 547, in fetch_open_orders
+    await asyncio.sleep(wait_time)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/asyncio/tasks.py", line 605, in sleep
+    return await future
+asyncio.exceptions.CancelledError
+2025-06-22 08:12:28,971 - webhook_logger - ERROR - 🚨 refresh_market_data loop exited unexpectedly! (listener.py:419)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/webhook/listener.py", line 371, in refresh_market_data
+    new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
+  File "/Users/Manny/Python_Projects/BotTrader/MarketDataManager/market_data_manager.py", line 77, in update_market_data
+    new_market_data, new_order_management = await self.ticker_manager.update_ticker_cache(open_orders)
+  File "/Users/Manny/Python_Projects/BotTrader/MarketDataManager/ticker_manager.py", line 124, in update_ticker_cache
+    open_orders = await self.coinbase_api.fetch_open_orders()
+  File "/Users/Manny/Python_Projects/BotTrader/Api_manager/coinbase_api.py", line 547, in fetch_open_orders
+    await asyncio.sleep(wait_time)
+  File "/Users/Manny/opt/anaconda3/envs/tradebot/lib/python3.10/asyncio/tasks.py", line 605, in sleep
+    return await future
+asyncio.exceptions.CancelledError
+2025-06-22 08:12:29,112 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,119 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,229 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,239 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,240 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,243 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,248 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
+2025-06-22 08:12:29,250 - webhook_logger - WARNING - ⚠️ WebSocket connection task was cancelled. (listener.py:125)
