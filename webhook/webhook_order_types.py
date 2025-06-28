@@ -26,19 +26,19 @@ class OrderTypeManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,
+    def get_instance(cls, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, shared_utils_color,
                      shared_data_manager, validate, logger_manager, alerts, ccxt_api, order_book_manager,
                      websocket_helper, session):
         """
         Singleton method to ensure only one instance of OrderTypeManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility,
+            cls._instance = cls(coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, shared_utils_color,
                                 shared_data_manager, validate, logger_manager, alerts, ccxt_api, order_book_manager,
                                 websocket_helper, session)
         return cls._instance
 
-    def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, shared_data_manager,
+    def __init__(self, coinbase_api, exchange_client, shared_utils_precision, shared_utils_utility, shared_utils_color, shared_data_manager,
                  validate, logger_manager, alerts, ccxt_api, order_book_manager, websocket_helper, session):
         self.config = Config()
         self.exchange = exchange_client
@@ -53,6 +53,7 @@ class OrderTypeManager:
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
+        self.shared_utils_color = shared_utils_color
         self.shared_data_manager = shared_data_manager
         self.session = session  # Store the session as an attribute
         self.start_time = self.ticker_cache = self.non_zero_balances = self.market_data = None
@@ -370,9 +371,28 @@ class OrderTypeManager:
                         }
                     }
                 }
-
                 response = await self.coinbase_api.create_order(payload)
-                print(f"🟡 Coinbase Pro response: {response}")
+                trigger_type = (order_data.trigger or {}).get("trigger", "UNKNOWN")
+
+                color = {
+                    "websocket": self.shared_utils_color.CYAN,
+                    "PassiveMM": self.shared_utils_color.BLUE,
+                    "webhook": self.shared_utils_color.YELLOW
+                }.get(order_data.source, self.shared_utils_color.MAGENTA)
+
+                print(self.shared_utils_color.format(
+                    f"{order_data.source.upper()} ORDER ({trigger_type}) {symbol}: {response}",
+                    color
+                ))
+
+
+                # if order_data.source == "websocket":
+                #     print(self.shared_utils_color.format(f"'WEBSOCKET ORDER:  {response}", self.shared_utils_color.CYAN))
+                #
+                # elif order_data.source == 'PassiveMM' :
+                #     print(self.shared_utils_color.format(f"PASSIVE ORDER:   {response}", self.shared_utils_color.BLUE))
+                # elif order_data.source == 'webhook' :
+                #     print(self.shared_utils_color.format(f"'WEBHOOK ORDER:{response}", self.shared_utils_color.YELLOW))
 
                 if not response.get("success"):
                     return {

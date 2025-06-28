@@ -174,61 +174,63 @@ class TickerManager:
             self.logger.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
             return {}
 
-    def process_spot_positions(self, non_zero_balances: dict, tickers_cache: pd.DataFrame, usd_pairs_cache: Optional[pd.DataFrame] = None) -> dict:
+    def process_spot_positions( self, non_zero_balances: dict,
+                                tickers_cache: pd.DataFrame,
+                                usd_pairs_cache: Optional[pd.DataFrame] = None) -> dict:
         """
-        Process spot positions, round numeric values, and merge precision data for custom objects.
+        Process spot positions by rounding numeric values to proper precision
+        and merging precision metadata into the output.
 
         Args:
             non_zero_balances (dict): Dictionary of custom objects for non-zero balances.
-            tickers_cache (pd.DataFrame): DataFrame containing ticker information.
+            tickers_cache (pd.DataFrame): DataFrame containing ticker information (not used here).
+            usd_pairs_cache (Optional[pd.DataFrame]): Optional cache to assist in precision lookup.
 
         Returns:
-            dict: Processed spot positions with rounded values and added precision.
+            dict: Processed spot positions with rounded numeric values and precision metadata.
         """
         try:
-            # Convert tickers_cache to a dictionary for quick lookup
-            ticker_precision_map = tickers_cache.set_index('asset')['precision'].to_dict()
-
-            # Define precision for rounding
-            rounding_precision = Decimal('0.00000001')
-            usd_precision = Decimal('0.01')
-
             processed_positions = {}
 
             for asset, data in non_zero_balances.items():
-                # Retrieve precision from tickers_cache
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset, usd_pairs_override=usd_pairs_cache)
-                precision = {'amount': base_deci, 'price': quote_deci}
-                # ticker_precision_map.get(asset, {'amount': None, 'price': None}))
+                # Fetch base (crypto) and quote (USD) decimal precision
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(
+                    asset,
+                    usd_pairs_override=usd_pairs_cache
+                )
 
-                # Use vars() to get attributes of the custom object as a dictionary
+                precision_info = {
+                    "amount": base_deci,
+                    "price": quote_deci
+                }
+
+                # Convert object to dictionary form if needed
                 data_dict = vars(data) if hasattr(data, '__dict__') else data
-
-                # Initialize the processed position with precision values
-                processed_position = {"precision": precision}
+                processed_position = {"precision": precision_info}
 
                 for key, value in data_dict.items():
-
                     if isinstance(value, (float, int, Decimal)) and not isinstance(value, bool):
-                        value_str = str(value)
                         try:
-                            decimal_value = Decimal(value_str)
+                            decimal_value = Decimal(str(value))
 
+                            # Determine field-specific precision
                             if key in ['total_balance_crypto', 'available_to_trade_crypto', 'available_to_transfer_crypto']:
-                                precision = Decimal(f'1e-{base_deci}')
+                                field_precision = Decimal(f'1e-{base_deci}')
                             elif key in ['total_balance_fiat', 'available_to_trade_fiat', 'available_to_transfer_fiat']:
-                                precision = Decimal(f'1e-{quote_deci}')
+                                field_precision = Decimal(f'1e-{quote_deci}')
                             else:
-                                # Use a conservative default precision for any other numerics
-                                precision = Decimal('1.0') if decimal_value == decimal_value.to_integral() else Decimal(f'1e-{quote_deci}')
+                                # Fallback precision for other numerics
+                                field_precision = Decimal('1.0') if decimal_value == decimal_value.to_integral() else Decimal(f'1e-{quote_deci}')
 
-                            processed_position[key] = self.shared_utils_precision.safe_quantize(decimal_value, precision)
+                            # Quantize the value safely
+                            processed_position[key] = self.shared_utils_precision.safe_quantize(decimal_value, field_precision)
 
                         except (decimal.InvalidOperation, ValueError) as e:
-                            self.logger.warning(f"⚠️ Failed to quantize {key}={value_str} with precision={precision}: {e}")
+                            self.logger.warning(
+                                f"⚠️ Failed to quantize {key}={value} with precision={field_precision}: {e}"
+                            )
                             processed_position[key] = Decimal("0")
 
-                # Add the processed position to the final dictionary
                 processed_positions[asset] = processed_position
 
             return processed_positions

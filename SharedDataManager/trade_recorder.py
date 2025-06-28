@@ -72,7 +72,7 @@ class TradeRecorder:
         """
         Fetch all recorded trades.
         """
-        async with self.db_session_manager.session() as session:
+        async with self.db_session_manager.async_session() as session:
             result = await session.execute(select(TradeRecord))
             trades = result.scalars().all()
             return trades
@@ -81,7 +81,7 @@ class TradeRecorder:
         """
         Fetch the most recent trades (default: last 10).
         """
-        async with self.db_session_manager.session() as session:
+        async with self.db_session_manager.async_session() as session:
             result = await session.execute(
                 select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
             )

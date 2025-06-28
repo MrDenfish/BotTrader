@@ -24,6 +24,7 @@ these at runtime based on your exchange tier and risk appetite.
 import asyncio
 import copy
 import time
+import  json
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
@@ -308,6 +309,9 @@ class PassiveOrderManager:
         rows = await self.shared_data_manager.load_all_passive_orders()
         for symbol, side, od_dict in rows:
             try:
+                if isinstance(od_dict, str):
+                    od_dict = json.loads(od_dict)  # ✅ Convert JSON string to dict
+
                 od = OrderData.from_dict(od_dict)
                 entry = self.passive_order_tracker.setdefault(symbol, {})
                 entry[side] = od.order_id

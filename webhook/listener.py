@@ -261,6 +261,7 @@ class WebhookListener:
             exchange_client=self.exchange,
             shared_utils_precision=self.shared_utils_precision,
             shared_utils_utility=self.shared_utils_utility,
+            shared_utils_color=self.shared_utils_color,
             shared_data_manager=self.shared_data_manager,
             validate=self.validate,
             logger_manager=self.logger,

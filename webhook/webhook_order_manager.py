@@ -155,66 +155,91 @@ class TradeOrderManager:
     async def build_order_data(
             self,
             source: str,
-            trigger: str,
+            trigger: Union[str, Dict[str, str]],
             asset: str,
             product_id: str,
             stop_price: Optional[Decimal] = None,
             order_type: Optional[str] = None,
-            side: Optional[str] = None  # 👈 new
+            side: Optional[str] = None
     ) -> Optional[OrderData]:
         try:
+            # Abort if market data is missing or incomplete
             if self.market_data_updater.get_empty_keys(self.market_data):
-
+                self.logger.warning(f"⚠️ Market data incomplete — skipping {asset}")
                 return None
 
             trading_pair = product_id.replace("/", "-")
             spot = self.spot_position.get(asset, {})
-            passive_order_data = self.passive_orders.get(asset, {})
-            if not spot and not passive_order_data:
-                self.logger.warning(f"⚠️ No spot position or passive order data found for {asset}.")
-                return None
+            # 🔧 Precision and quantization setup
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
             quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            passive_order_data = self.passive_orders.get(asset, {})
+            usd_data = self.spot_position.get("USD", {})
+            usd_balance = Decimal(usd_data.get("total_balance_fiat", 0))
+            usd_avail = Decimal(usd_data.get("available_to_trade_fiat", 0))
+            usd_avail = self.shared_utils_precision.safe_quantize(usd_avail, quote_quantizer)
+
+            min_order_threshold = getattr(self, "min_order_threshold", Decimal("5.00"))
+
+            # 🔍 Handle assets not yet in wallet or passive tracker
+            if not spot and not passive_order_data and not side:
+                if usd_avail >= min_order_threshold:
+                    self.logger.info(f"💡 Proceeding with buy for new asset {asset} — USD available, no wallet entry or passive order.")
+                    spot = {}  # Allow downstream logic
+                else:
+                    self.logger.warning(f"⚠️ Skipping {asset} — no wallet, no passive order, and USD < {min_order_threshold}")
+                    return None
+
+            # 🔍 Allow PassiveMM to quote new assets
             if source == "PassiveMM":
                 if not passive_order_data:
-                    self.logger.warning(f"⚠️ No passive order data found for {asset}.")
-                    return None
+                    if usd_avail >= min_order_threshold:
+                        self.logger.info(f"💡 PassiveMM: initializing first-time quote for {asset} — no passive order data.")
+                        passive_order_data = {}
+                    else:
+                        self.logger.warning(f"⚠️ PassiveMM skipping {asset} — no passive data and insufficient USD.")
+                        return None
                 self.shared_utils_utility.get_passive_order_data(passive_order_data)
-                total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
-                available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
-            else:
-                total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
-                available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
 
 
+
+            # 🔧 Balance and available-to-trade values
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
-            usd_balance = Decimal(self.spot_position.get("USD", {}).get("total_balance_fiat", 0))
-            usd_avail = Decimal(self.spot_position.get("USD", {}).get("available_to_trade_fiat", 0))
 
             bid = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("bid", 0))
             ask = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("ask", 0))
-            current_bid =  self.shared_utils_precision.safe_quantize(bid,quote_quantizer)
-            current_ask =  self.shared_utils_precision.safe_quantize(ask,quote_quantizer)
+            current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
+            current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
             spread = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("spread", 0))
 
             price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
             if price == 0:
+                self.logger.warning(f"⚠️ Price is zero for {trading_pair} — skipping order")
                 return None
 
+            # 🔧 Side fallback logic
             if side is None:
                 side = "buy" if usd_avail >= self.order_size else "sell"
 
+            # 🔧 Fee setup
             if not self.fee_info:
                 maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
             else:
                 maker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('maker') or self.default_maker_fee)
                 taker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('taker') or self.default_taker_fee)
 
+            # 🔧 Determine amount to order
             fiat_amt = min(self.order_size, usd_avail)
             crypto_amt = available_to_trade
-            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(side, fiat_amt, crypto_amt)
+            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
+                side, fiat_amt, crypto_amt
+            )
 
+            trigger_note = f"triggered by {trigger}" if isinstance(trigger, str) else trigger.get("trigger_note", "")
+            trigger_dict = trigger if isinstance(trigger, dict) else self.build_trigger(trigger, trigger_note)
+
+            # ✅ Construct final OrderData
             return OrderData(
                 trading_pair=trading_pair,
                 time_order_placed=None,
@@ -242,7 +267,7 @@ class TradeOrderManager:
                 open_orders={},
                 status="UNKNOWN",
                 source=source,
-                trigger={"trigger": trigger},
+                trigger=trigger_dict,
                 price=price,
                 cost_basis=Decimal("0"),
                 limit_price=price,
@@ -256,8 +281,14 @@ class TradeOrderManager:
             )
 
         except Exception as e:
-            self.logger.error(f"Error in build_order_data for {asset} {trigger}: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in build_order_data for {asset} {trigger}: {e}", exc_info=True)
             return None
+
+    def build_trigger(self,trigger_type: str, note: str = "") -> dict:
+        return {
+            "trigger": trigger_type.upper(),
+            "trigger_note": note
+        }
 
 
     def build_response(self, success: bool, message: str, code: Union[str, int],
