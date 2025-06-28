@@ -152,7 +152,8 @@ async def build_websocket_components(config, listener, shared_data_manager):
         ohlcv_manager=listener.ohlcv_manager,
         shared_data_manager=shared_data_manager,
         market_ws_manager=None,
-        passive_order_manager=passive_order_manager
+        passive_order_manager=passive_order_manager,
+
     )
 
     market_ws_manager = WebSocketMarketManager(

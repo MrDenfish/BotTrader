@@ -576,9 +576,15 @@ class SharedDataManager:
             self.logger.error(f"Error normalizing raw order: {e}", exc_info=True)
             return {}
     # PASSIVE ORDER METHODS
+    import json
+
     async def save_passive_order(self, order_id: str, symbol: str, side: str, order_data: dict):
         try:
+            # Step 1: Convert to JSON-safe types
             json_safe = self.shared_utils_utility.convert_json_safe(order_data)
+
+            # Step 2: Serialize to string
+            json_string = json.dumps(json_safe)
 
             async with self.database_session_manager.async_session() as session:
                 async with session.begin():
@@ -587,7 +593,7 @@ class SharedDataManager:
                         symbol=symbol,
                         side=side,
                         timestamp=datetime.utcnow(),
-                        order_data=json_safe
+                        order_data=json_string  # ✅ Explicit string
                     )
                     session.add(po)
 

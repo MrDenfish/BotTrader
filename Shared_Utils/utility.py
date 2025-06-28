@@ -2,8 +2,9 @@
 import asyncio
 import datetime
 import socket
+import json
 from decimal import Decimal
-
+from typing import Optional, Union
 import pandas as pd
 from aiohttp import web
 
@@ -96,7 +97,7 @@ class SharedUtility:
     def convert_json_safe(self, obj):
         """Recursively convert complex types (Decimal, datetime, DataFrame) to JSON-safe formats."""
         if isinstance(obj, dict):
-            return {k: self.convert_json_safe(v) for k, v in obj.items()}
+            return {str(k): self.convert_json_safe(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [self.convert_json_safe(i) for i in obj]
         elif isinstance(obj, Decimal):
@@ -104,8 +105,35 @@ class SharedUtility:
         elif isinstance(obj, (datetime.datetime, datetime.date)):
             return obj.isoformat()
         elif isinstance(obj, pd.DataFrame):
-            return obj.to_dict(orient='records')  # or 'split', 'index', etc.
+            return obj.to_dict(orient='records')
         return obj
+
+    def get_passive_order_data(self, raw_entry: Union[str, dict]) -> Optional[dict]:
+        """
+        Parses a passive order's 'order_data' field into a dictionary.
+
+        Args:
+            raw_entry (Union[str, dict]): The passive order dictionary or its 'order_data' string.
+
+        Returns:
+            dict | None: Parsed order data or None if parsing fails.
+        """
+        try:
+            # If passed the full order record dict
+            if isinstance(raw_entry, dict):
+                order_data = raw_entry.get("order_data")
+                if isinstance(order_data, str):
+                    return json.loads(order_data)
+                elif isinstance(order_data, dict):
+                    return order_data
+            # If passed the raw JSON string directly
+            elif isinstance(raw_entry, str):
+                return json.loads(raw_entry)
+
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"⚠️ Failed to parse passive order data: {e}")
+
+        return None
 
     def safe_json_response(self, data: dict, status: int = 200) -> web.Response:
         """Wrapper for web.json_response that safely handles Decimal values."""

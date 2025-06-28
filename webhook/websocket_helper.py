@@ -24,7 +24,7 @@ class WebSocketHelper:
             self, listener, websocket_manager, exchange, ccxt_api, logger_manager, coinbase_api, profit_data_manager,
             order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
             shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager,
-            shared_data_manager, market_ws_manager, order_manager, passive_order_manager=None
+            shared_data_manager, market_ws_manager, order_manager, passive_order_manager=None,  # type: ignore
             ):
 
         # Core configurations
@@ -86,6 +86,7 @@ class WebSocketHelper:
         self._hodl = self.config.hodl
         self._order_size_fiat = Decimal(self.config.order_size_fiat)
         self._roc_5min = Decimal(self.config._roc_5min)
+        self._min_cooldown = Decimal(self.config._min_cooldown)
 
         # Snapshot and data managers
         self.passive_order_manager = passive_order_manager
@@ -96,6 +97,7 @@ class WebSocketHelper:
         self.order_book_manager = order_book_manager
         self.order_manager = order_manager
         self.snapshot_manager = snapshot_manager
+        self.trade_recorder = self.shared_data_manager.trade_recorder
 
         # Utility functions
         self.shared_utils_date_time = shared_utils_date_time
@@ -171,6 +173,10 @@ class WebSocketHelper:
     @property
     def take_profit(self):
         return self._take_profit
+
+    @property
+    def min_cooldown(self):
+        return self._min_cooldown
 
     @property
     def hodl(self):
@@ -703,86 +709,192 @@ class WebSocketHelper:
         except Exception as outer_e:
             self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
 
-    async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any], order_management_snapshot: Dict[str, Any]):
-        """
-        Simplified and robust: evaluate held assets for TP/SL conditions and place orders.
-        No per-asset timeout. No nested async logic. Clear logs for decision path.
-        """
+    # async def monitor_untracked_assets(self, market_data_snapshot: Dict[str, Any], order_management_snapshot: Dict[str, Any]):
+    #     """
+    #     Simplified and robust: evaluate held assets for TP/SL conditions and place orders.
+    #     No per-asset timeout. No nested async logic. Clear logs for decision path.
+    #     """
+    #     try:
+    #         self.logger.info("📱 Starting monitor_untracked_assets")
+    #         usd_prices = self.usd_pairs.set_index("symbol")["price"].to_dict() if not self.usd_pairs.empty else {}
+    #
+    #         raw_balances = self.non_zero_balances
+    #         if not usd_prices or not raw_balances:
+    #             self.logger.warning("⚠️ Skipping due to missing prices or balances")
+    #             return
+    #
+    #         for asset, position in raw_balances.items():
+    #             try:
+    #                 symbol = f"{asset}-USD"
+    #                 if symbol in self.passive_orders:
+    #                     continue # passive_order_manager.py.monitor_passive_position()
+    #                 precision = self.spot_positions.get(asset,{}).get('precision')
+    #                 base_deci = precision.get('amount', 8)
+    #                 quote_deci = precision.get('price', 8)
+    #
+    #                 pos = position.to_dict() if hasattr(position, "to_dict") else position
+    #                 if not isinstance(pos, dict):
+    #                     raise TypeError(f"Invalid position type: {type(pos)}")
+    #
+    #
+    #                 if symbol == 'SHDW-USD':
+    #                     pass
+    #                 if symbol =='USD-USD':
+    #                     continue
+    #                 current_price = usd_prices.get(symbol)
+    #                 if not current_price:
+    #                     self.logger.debug(f"🔍 Skipping {symbol}: price unavailable")
+    #                     continue
+    #                 quote_quantizer = Decimal("1").scaleb(-quote_deci)
+    #                 base_quantizer = Decimal("1").scaleb(-base_deci)
+    #                 average_entry = Decimal(pos.get("average_entry_price", {}).get("value"))
+    #                 average_entry = self.shared_utils_precision.safe_quantize(average_entry, quote_quantizer)
+    #                 cost_basis = Decimal(pos.get("cost_basis", {}).get("value"))
+    #                 cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_quantizer)
+    #
+    #                 available_qty = Decimal(pos.get("available_to_trade_crypto"))
+    #                 available_qty = self.shared_utils_precision.safe_quantize(available_qty, base_quantizer)
+    #
+    #                 if average_entry == 0 or available_qty == 0:
+    #                     continue
+    #
+    #                 # Evaluate PnL
+    #                 profit = (Decimal(current_price) - average_entry) * available_qty
+    #                 profit_pct = ((Decimal(current_price) - average_entry) / average_entry) if average_entry else Decimal("0")
+    #                 if profit_pct > 0:
+    #                     print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, "
+    #                                                          f"PnL%={profit_pct:.2%}", self.shared_utils_color.GREEN))
+    #                 else:
+    #                     print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, "
+    #                                                          f"PnL%={profit_pct:.2%}", self.shared_utils_color.BLUE))
+    #                 # print(f"🔎{color} {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, PnL%={profit_pct:.2%}")
+    #                 self.shared_utils_color.RESET
+    #                 if profit_pct >= self.take_profit and asset not in self.hodl:
+    #                     self.logger.info(f"💰 TP trigger for {symbol}: {profit_pct:.2%}")
+    #                     await self._place_tp_order('websocket','profit',asset, symbol, current_price)
+    #                 elif profit_pct <= self.stop_loss and asset not in self.hodl:
+    #                     print(self.shared_utils_color.format(f"🛑 SL trigger for {symbol}: {profit_pct:.2%}", self.shared_utils_color.RED))
+    #                     has_open_order, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
+    #                     if  has_open_order:
+    #                         await self.order_manager.cancel_order(open_order.get('order_id'), symbol)
+    #                         self.logger.info(f"🛑 SL trigger for {symbol}: {profit_pct:.2%} but has open orders")
+    #                         continue
+    #                     else:
+    #                         await self._place_sl_order(asset, symbol, current_price, profit, profit_pct)
+    #
+    #             except Exception as e:
+    #                 self.logger.error(f"❌ monitor_untracked_assets error for {asset}: {e}", exc_info=True)
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ monitor_untracked_assets crashed: {e}", exc_info=True)
+    #     finally:
+    #         self.logger.info("✅ monitor_untracked_assets completed")
+    async def monitor_untracked_assets(self, market_data_snapshot, order_management_snapshot):
+        self.logger.info("📱 Starting monitor_untracked_assets")
+
+        usd_prices = self._get_usd_prices()
+        if not usd_prices or not self.non_zero_balances:
+            self.logger.warning("⚠️ Skipping due to missing prices or balances")
+            return
+
+        for asset, position in self.non_zero_balances.items():
+            try:
+                result = self._analyze_position(asset, position, usd_prices)
+                symbol = result[0] if result else asset + "-USD"
+                if not result:
+                    continue
+
+                if not await self._passes_holding_cooldown(symbol):
+                    continue
+
+                await self._handle_tp_sl_decision(*result, order_management_snapshot)
+            except Exception as e:
+                self.logger.error(f"❌ Error analyzing {asset}: {e}", exc_info=True)
+
+        self.logger.info("✅ monitor_untracked_assets completed")
+
+    def _get_usd_prices(self):
+        if self.usd_pairs.empty:
+            return {}
+        return self.usd_pairs.set_index("symbol")["price"].to_dict()
+
+    def _analyze_position(self, asset, position, usd_prices):
+        symbol = f"{asset}-USD"
+        if symbol in ("USD-USD", "SHDW-USD") or symbol in self.passive_orders:
+            return None
+
+        pos = position.to_dict() if hasattr(position, "to_dict") else position
+        current_price = usd_prices.get(symbol)
+        if not current_price:
+            return None
+
+        precision = self.spot_positions.get(asset, {}).get("precision", {})
+        base_deci = precision.get("amount", 8)
+        quote_deci = precision.get("price", 8)
+        base_q = Decimal("1").scaleb(-base_deci)
+        quote_q = Decimal("1").scaleb(-quote_deci)
+
+        avg_entry = Decimal(pos.get("average_entry_price", {}).get("value", "0"))
+        cost_basis = Decimal(pos.get("cost_basis", {}).get("value", "0"))
+        qty = Decimal(pos.get("available_to_trade_crypto", "0"))
+
+        avg_entry = self.shared_utils_precision.safe_quantize(avg_entry, quote_q)
+        cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_q)
+        qty = self.shared_utils_precision.safe_quantize(qty, base_q)
+
+        if qty <= Decimal("0.0001") or avg_entry <= 0:
+            return None
+
+        profit = (Decimal(current_price) - avg_entry) * qty
+        profit_pct = (Decimal(current_price) - avg_entry) / avg_entry
+
+        return symbol, asset, current_price, qty, avg_entry, profit, profit_pct
+
+    async def _passes_holding_cooldown(self, symbol: str) -> bool:
         try:
-            self.logger.info("📱 Starting monitor_untracked_assets")
-            usd_prices = self.usd_pairs.set_index("symbol")["price"].to_dict() if not self.usd_pairs.empty else {}
+            order_id = await self.trade_recorder.find_latest_unlinked_buy(symbol)
+            if not order_id:
+                return True  # No buy found — skip cooldown
 
-            raw_balances = self.non_zero_balances
-            if not usd_prices or not raw_balances:
-                self.logger.warning("⚠️ Skipping due to missing prices or balances")
-                return
+            # Fetch the full trade record
+            trades = await self.trade_recorder.fetch_all_trades()
+            for trade in trades:
+                if trade.order_id == order_id:
+                    acquired = trade.order_time
+                    break
+            else:
+                return True  # Order ID not found
 
-            for asset, position in raw_balances.items():
-                try:
-                    symbol = f"{asset}-USD"
-                    if symbol in self.passive_orders:
-                        continue # passive_order_manager.py.monitor_passive_position()
-                    precision = self.spot_positions.get(asset,{}).get('precision')
-                    base_deci = precision.get('amount', 8)
-                    quote_deci = precision.get('price', 8)
-
-                    pos = position.to_dict() if hasattr(position, "to_dict") else position
-                    if not isinstance(pos, dict):
-                        raise TypeError(f"Invalid position type: {type(pos)}")
-
-
-                    if symbol == 'SHDW-USD':
-                        pass
-                    if symbol =='USD-USD':
-                        continue
-                    current_price = usd_prices.get(symbol)
-                    if not current_price:
-                        self.logger.debug(f"🔍 Skipping {symbol}: price unavailable")
-                        continue
-                    quote_quantizer = Decimal("1").scaleb(-quote_deci)
-                    base_quantizer = Decimal("1").scaleb(-base_deci)
-                    average_entry = Decimal(pos.get("average_entry_price", {}).get("value"))
-                    average_entry = self.shared_utils_precision.safe_quantize(average_entry, quote_quantizer)
-                    cost_basis = Decimal(pos.get("cost_basis", {}).get("value"))
-                    cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_quantizer)
-
-                    available_qty = Decimal(pos.get("available_to_trade_crypto"))
-                    available_qty = self.shared_utils_precision.safe_quantize(available_qty, base_quantizer)
-
-                    if average_entry == 0 or available_qty == 0:
-                        continue
-
-                    # Evaluate PnL
-                    profit = (Decimal(current_price) - average_entry) * available_qty
-                    profit_pct = ((Decimal(current_price) - average_entry) / average_entry) if average_entry else Decimal("0")
-                    if profit_pct > 0:
-                        print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, "
-                                                             f"PnL%={profit_pct:.2%}", self.shared_utils_color.GREEN))
-                    else:
-                        print(self.shared_utils_color.format(f" {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, "
-                                                             f"PnL%={profit_pct:.2%}", self.shared_utils_color.BLUE))
-                    # print(f"🔎{color} {symbol}: Entry={average_entry}, Now={current_price}, Qty={available_qty}, PnL%={profit_pct:.2%}")
-                    self.shared_utils_color.RESET
-                    if profit_pct >= self.take_profit and asset not in self.hodl:
-                        self.logger.info(f"💰 TP trigger for {symbol}: {profit_pct:.2%}")
-                        await self._place_tp_order('websocket','profit',asset, symbol, current_price)
-                    elif profit_pct <= self.stop_loss and asset not in self.hodl:
-                        print(self.shared_utils_color.format(f"🛑 SL trigger for {symbol}: {profit_pct:.2%}", self.shared_utils_color.RED))
-                        has_open_order, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
-                        if  has_open_order:
-                            await self.order_manager.cancel_order(open_order.get('order_id'), symbol)
-                            self.logger.info(f"🛑 SL trigger for {symbol}: {profit_pct:.2%} but has open orders")
-                            continue
-                        else:
-                            await self._place_sl_order(asset, symbol, current_price, profit, profit_pct)
-
-                except Exception as e:
-                    self.logger.error(f"❌ monitor_untracked_assets error for {asset}: {e}", exc_info=True)
+            now = datetime.utcnow().replace(tzinfo=acquired.tzinfo)
+            held_for = now - acquired
+            if held_for < timedelta(minutes=self.min_cooldown):
+                self.logger.debug(f"⏳ Skipping {symbol} — held for {held_for}, below cooldown")
+                return False
+            return True
 
         except Exception as e:
-            self.logger.error(f"❌ monitor_untracked_assets crashed: {e}", exc_info=True)
-        finally:
-            self.logger.info("✅ monitor_untracked_assets completed")
+            self.logger.warning(f"⚠️ Could not evaluate cooldown for {symbol}: {e}", exc_info=True)
+            return True
+
+    async def _handle_tp_sl_decision(self, symbol, asset, current_price, qty, avg_entry, profit, profit_pct, snapshot):
+        if asset in self.hodl:
+            return
+
+        open_order_found, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
+
+        if profit_pct >= self.take_profit:
+            if open_order_found and current_price > open_order.get("price", Decimal("0")):
+                await self.order_manager.cancel_order(open_order.get("order_id"), symbol)
+                self.logger.info(f"🔁 Replacing TP for {symbol} @ {current_price}")
+            if not open_order_found:
+                await self._place_tp_order("websocket", "profit", asset, symbol, current_price)
+
+        elif profit_pct <= -self.stop_loss:
+            if open_order_found and current_price < open_order.get("price", Decimal("0")):
+                await self.order_manager.cancel_order(open_order.get("order_id"), symbol)
+                self.logger.info(f"🔁 Replacing SL for {symbol} @ {current_price}")
+            if not open_order_found:
+                await self._place_sl_order(asset, symbol, current_price, profit, profit_pct)
 
     async def _place_tp_order(self, source, trigger, asset: str, symbol: str, price: Decimal):
         precision_data = self.shared_utils_precision.fetch_precision(symbol)

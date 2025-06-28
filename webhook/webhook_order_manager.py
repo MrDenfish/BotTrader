@@ -116,6 +116,9 @@ class TradeOrderManager:
     def open_orders(self):
         return self.shared_data_manager.order_management.get("order_tracker")
 
+    @property
+    def passive_orders(self):
+        return self.shared_data_manager.order_management.get("passive_orders")
 
     @property
     def avg_quote_volume(self):
@@ -161,12 +164,29 @@ class TradeOrderManager:
     ) -> Optional[OrderData]:
         try:
             if self.market_data_updater.get_empty_keys(self.market_data):
+
                 return None
 
             trading_pair = product_id.replace("/", "-")
             spot = self.spot_position.get(asset, {})
+            passive_order_data = self.passive_orders.get(asset, {})
+            if not spot and not passive_order_data:
+                self.logger.warning(f"⚠️ No spot position or passive order data found for {asset}.")
+                return None
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
             quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            if source == "PassiveMM":
+                if not passive_order_data:
+                    self.logger.warning(f"⚠️ No passive order data found for {asset}.")
+                    return None
+                self.shared_utils_utility.get_passive_order_data(passive_order_data)
+                total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
+                available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
+            else:
+                total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
+                available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
+
+
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
             usd_balance = Decimal(self.spot_position.get("USD", {}).get("total_balance_fiat", 0))

@@ -49,7 +49,7 @@ class CentralConfig:
         self._webhook_api_key_path = self._api_key = self._api_secret = None
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
         self._assets_ignored = self._buy_target = self._sell_target = self._min_value_to_monitor = None
-        self._quote_currency = self._trailing_percentage = self._min_volume = None
+        self._quote_currency = self._trailing_percentage = self._min_volume = self._min_cooldown = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
 
@@ -92,6 +92,7 @@ class CentralConfig:
             "_quote_currency": "QUOTE_CURRENCY",
             "_order_size_fiat": "ORDER_SIZE_FIAT", # in USD
             "_trailing_percentage": "TRAILING_PERCENTAGE",
+            "_min_cooldown": "MIN_COOLDOWN", # in minutes
             "_min_order_amount_fiat":"MIN_ORDER_AMOUNT_FIAT", # in USD
             "_min_value_to_monitor": "MIN_VALUE_TO_MONITOR", # in USD
             "_min_buy_value": "MIN_BUY_VALUE",
@@ -440,6 +441,10 @@ class CentralConfig:
     @property
     def min_volume(self):
         return self._min_volume
+
+    @property
+    def min_cooldown(self):
+        return float(self._min_cooldown)
 
     @property
     def database_url(self):
