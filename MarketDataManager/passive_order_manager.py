@@ -380,6 +380,8 @@ class PassiveOrderManager:
         if ok:
             order_id = res['details'].get('order_id')
             if order_id:
+                quote_od.open_orders = True
+                quote_od.order_id = order_id  # ✅ patch with real ID
                 print(f"✅ Saving Passive order: {quote_od.side.upper()} {trading_pair} @ {price}")
                 await self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
             else:
