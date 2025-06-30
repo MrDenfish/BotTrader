@@ -328,12 +328,20 @@ class OrderTypeManager:
                             'message': f"⚠️ Not enough USD (${order_data.usd_balance}) for BUY. Required: ${usd_required}"
                         }
                 else:
-                    if amount > available_crypto:
-                        return {
-                            'error': 'Insufficient_Balance',
-                            'code': 'INSUFFICIENT_CRYPTO',
-                            'message': f"⚠️ Not enough {asset} for SELL. Trying to sell: {amount}, Available: {available_crypto}"
-                        }
+                    filled_size = await self.shared_data_manager.trade_recorder.find_latest_filled_size(symbol, side='buy')
+
+                    if amount > filled_size:
+                        if attempts == 1:
+
+                            amount = self.shared_utils_precision.compute_safe_base_size(order_data.available_to_trade_crypto,
+                                                                                        order_data.base_decimal, filled_size)
+                            order_data.trigger["trigger_note"] += f" | clipped to filled size {filled_size}"
+                        else:
+                            return {
+                                'error': 'Insufficient_Balance',
+                                'code': 'INSUFFICIENT_CRYPTO',
+                                'message': f"⚠️ Not enough {asset} for SELL. Trying to sell: {amount}, Available: {available_crypto}"
+                            }
 
                 # ✅ Refresh order book
                 latest_order_book = self.bid_ask_spread.get(order_data.trading_pair)

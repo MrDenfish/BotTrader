@@ -100,14 +100,14 @@ class SharedDataManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision):
+    def get_instance(cls, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision, coinbase_api=None):
         """Ensures only one instance of SharedDataManager is created."""
         if cls._instance is None:
             cls._instance = cls(logger_manager, database_session_manager,
-                                shared_utils_utility,shared_utils_precision)
+                                shared_utils_utility,shared_utils_precision, coinbase_api=None)
         return cls._instance
 
-    def __init__(self, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision):
+    def __init__(self, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision, coinbase_api=None):
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
@@ -116,8 +116,9 @@ class SharedDataManager:
         self.shared_utils_utility = shared_utils_utility
         self.database_session_manager = database_session_manager
         self.shared_utils_precision = shared_utils_precision
+        self.coinbase_api = coinbase_api
         self.trade_recorder = TradeRecorder(self.database_session_manager, logger_manager,
-                                            shared_utils_precision)
+                                            shared_utils_precision, coinbase_api)
         self.market_data = {}
         self.order_management = {}
         self.lock = asyncio.Lock()

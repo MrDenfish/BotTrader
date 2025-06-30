@@ -68,7 +68,7 @@ async def graceful_shutdown(listener, runner):
     await runner.cleanup()
     shutdown_event.set()
 
-async def init_shared_data(logger_manager, shared_logger):
+async def init_shared_data(logger_manager, shared_logger, coinbase_api):
     shared_data_manager = SharedDataManager.__new__(SharedDataManager)
     database_session_manager = DatabaseSessionManager(
         profit_extras=None,
@@ -88,7 +88,7 @@ async def init_shared_data(logger_manager, shared_logger):
     shared_utils_print = PrintData.get_instance(logger_manager, shared_utils_utility)
     shared_utils_color = ColorCodes.get_instance()
     shared_data_manager.__init__(shared_logger, database_session_manager,
-                                 shared_utils_utility, shared_utils_precision)
+                                 shared_utils_utility, shared_utils_precision, coinbase_api=coinbase_api)
 
 
     # Set attributes on the shared data manager
@@ -442,23 +442,30 @@ async def main():
     config.exchange = ExchangeManager.get_instance(config.load_webhook_api_key()).get_exchange()
     startup_event = asyncio.Event()
 
-    (shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility,
-     shared_utils_precision) = await init_shared_data(logger_manager, shared_logger)
 
-    # ✅ Initialize OrderBookManager before listener
-    order_book_manager = OrderBookManager.get_instance(
-        config.exchange,
-        shared_data_manager,
-        shared_data_manager.shared_utils_precision,
-        logger_manager.get_logger("shared_logger"),
-        ccxt_api=None  # Pass your existing ccxt_api if available
-    )
+
+
+
 
     try:
         async with (aiohttp.ClientSession() as session):
 
-            coinbase_api = CoinbaseAPI(session, shared_utils_utility, logger_manager,
-                                       shared_utils_precision)
+            shared_utils_utility = SharedUtility.get_instance(logger_manager)
+            coinbase_api = CoinbaseAPI(session, shared_utils_utility, logger_manager, None)
+            (shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility,
+             shared_utils_precision) = await init_shared_data(logger_manager, shared_logger, coinbase_api)
+
+            coinbase_api.shared_utils_precision = shared_utils_precision
+
+            # ✅ Initialize OrderBookManager before listener
+            order_book_manager = OrderBookManager.get_instance(
+                config.exchange,
+                shared_data_manager,
+                shared_data_manager.shared_utils_precision,
+                logger_manager.get_logger("shared_logger"),
+                ccxt_api=None  # Pass your existing ccxt_api if available
+            )
+
             ticker_manager = TickerManager(
                 config=config,
                 coinbase_api=coinbase_api,

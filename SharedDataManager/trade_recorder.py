@@ -5,7 +5,7 @@ from TableModels.trade_record import TradeRecord
 from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.future import select
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from datetime import datetime
 
 class TradeRecorder:
@@ -13,10 +13,11 @@ class TradeRecorder:
     Handles recording of trades into the trade_records table.
     """
 
-    def __init__(self, database_session_manager, logger, shared_utils_precision):
+    def __init__(self, database_session_manager, logger, shared_utils_precision, coinbase_api):
         self.db_session_manager = database_session_manager
         self.logger = logger
         self.shared_utils_precision = shared_utils_precision
+        self.coinbase_api = coinbase_api
 
     async def record_trade(self, trade_data: dict):
         """
@@ -134,3 +135,45 @@ class TradeRecorder:
                 if self.logger:
                     self.logger.error(f"❌ Error in find_latest_unlinked_buy for {symbol}: {e}", exc_info=True)
                 return None
+
+    async def find_latest_filled_size(self, symbol: str, side: str = 'buy') -> Optional[Decimal]:
+        """
+        Returns the size of the most recent filled trade for a given symbol and side (buy/sell).
+        """
+        async with self.db_session_manager.async_session() as session:
+            try:
+                base_deci, _, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                result = await session.execute(
+                    select(TradeRecord)
+                    .where(TradeRecord.symbol == symbol)
+                    .where(TradeRecord.side == side)
+                    .where(TradeRecord.status.ilike('placed'))  # or 'filled' depending on your usage
+                    .order_by(TradeRecord.order_time.desc())
+                    .limit(1)
+                )
+                record = result.scalar_one_or_none()
+                if record:
+                    return Decimal(record.size).quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
+                else:
+                    # Exchange query here (via a REST manager or injected client)
+                    params = {
+                        "product_id": [symbol],
+                        "order_side": "BUY",
+                        "order_status": ["FILLED"],
+                        "limit": 1
+                    }
+                    result = await self.coinbase_api.get_historical_orders_batch(params)
+                    for order in result.get("orders", []):
+                        if order["status"] == "FILLED":
+                            base_size = Decimal(order.get("filled_size", "0"))
+                            price = Decimal(order.get("average_filled_price", "0"))
+                            return base_size.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
+                            # return {
+                            #     "filled_size": base_size,
+                            #     "price": price,
+                            #     "order_id": order.get("order_id"),
+                            #     "source": "exchange"
+                            # }
+            except Exception as e:
+                self.logger.error(f"❌ Error in find_latest_filled_size for {symbol}: {e}", exc_info=True)
+            return None

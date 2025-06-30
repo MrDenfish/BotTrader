@@ -30,6 +30,13 @@ class PrecisionUtils:
     def usd_pairs(self):
         return self.shared_data_manager.market_data.get('usd_pairs_cache', pd.DataFrame())
 
+    def compute_safe_base_size(self, reported: Decimal, base_decimal: int, max_value: Optional[Decimal] = None) -> Decimal:
+        buffer = Decimal(f"1e-{base_decimal}")
+        safe = reported - buffer
+        if max_value is not None:
+            safe = min(safe, max_value)
+        return safe.quantize(Decimal(f"1e-{base_decimal}"), rounding=ROUND_DOWN)
+
     def safe_decimal(self, value, default="0"):
         try:
             return Decimal(value)

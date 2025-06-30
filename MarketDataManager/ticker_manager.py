@@ -191,6 +191,7 @@ class TickerManager:
         """
         try:
             processed_positions = {}
+            field_precision = None
 
             for asset, data in non_zero_balances.items():
                 # Fetch base (crypto) and quote (USD) decimal precision

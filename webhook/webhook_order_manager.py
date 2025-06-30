@@ -333,9 +333,7 @@ class TradeOrderManager:
                 return False, validation_result
 
             # Step 4: Construct final OrderData
-            order_data = self.validate.build_order_data_from_validation_result(
-                validation_result, order_book_details, precision_data
-            )
+            order_data = self.validate.build_order_data_from_validation_result(validation_result, order_book_details, precision_data)
 
             # print(f' ⚠️ place_order - Order Data: {order_data.debug_summary(verbose=True)}')
             return await self.handle_order(order_data, order_book_details)

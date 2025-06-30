@@ -634,49 +634,70 @@ class WebSocketHelper:
                             else:  # for testing purposes
                                 pass
                         elif order_data.type == 'limit' and order_data.side == 'buy':
+                            await self._handle_active_limit_buy_adjustment(
+                                order_data=order_data,
+                                symbol=symbol,
+                                asset=asset,
+                                precision_data=precision_data
+                            )
 
-                            # Fetch the current order book for the trading pair
-                            order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-                            best_ask = Decimal(min(order_book['order_book']['asks'], key=lambda x: x[0])[0])
-
-                            # Define a threshold for price difference (e.g., 1%)
-                            price_difference = (best_ask - order_data.price) / order_data.price
-
-                            if price_difference > Decimal('0.01'):
-
-                                # Cancel the existing limit buy order because price is out of range
-                                await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-
-                                # Calculate a new limit price (e.g., slightly below the best ask)
-                                new_limit_price = best_ask * Decimal('0.995')  # 0.5% below best ask
-                                new_limit_price = new_limit_price.quantize(Decimal('1.' + '0' * quote_deci))
-
-                                # Build and place a new limit buy order
-                                new_order_data = await self.trade_order_manager.build_order_data(
-                                    'Websocket', 'limit_buy_adjusted', asset, symbol, new_limit_price, None
-                                )
-                                if new_order_data:
-                                    trigger = {"trigger": f"limit_buy_adjusted", "trigger_note": f"new limit price:{new_limit_price}"}
-                                    new_order_data.trigger = trigger
-
+                        # elif order_data.type == 'limit' and order_data.side == 'buy':
+                        #
+                        #     # Fetch the current order book for the trading pair
+                        #     order_book = await self.order_book_manager.get_order_book(order_data, symbol)
+                        #     best_ask = Decimal(min(order_book['order_book']['asks'], key=lambda x: x[0])[0])
+                        #
+                        #     # Define a threshold for price difference (e.g., 1%)
+                        #     price_difference = (best_ask - order_data.price) / order_data.price
+                        #
+                        #     if price_difference > Decimal('0.01'):
+                        #
+                        #         # Cancel the existing limit buy order because price is out of range
+                        #         await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+                        #
+                        #         # Calculate a new limit price (e.g., slightly below the best ask)
+                        #         new_limit_price = best_ask * Decimal('0.995')  # 0.5% below best ask
+                        #         new_limit_price = new_limit_price.quantize(Decimal('1.' + '0' * quote_deci))
+                        #
+                        #         # Build and place a new limit buy order
+                        #         new_order_data = await self.trade_order_manager.build_order_data(
+                        #             'Websocket', 'limit_buy_adjusted', asset, symbol, new_limit_price, None
+                        #         )
+                        #         if new_order_data:
+                        #             trigger = {"trigger": f"limit_buy_adjusted", "trigger_note": f"new limit price:{new_limit_price}"}
+                        #             new_order_data.trigger = trigger
                         elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
                             full_tracker = order_management_snapshot.get("order_tracker", {})
                             full_order = full_tracker.get(order_data.order_id)
                             if full_order:
-                                # Extract old limit price and current price
-                                trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
-                                old_limit_price = Decimal(trigger_config.get('limit_price', '0'))
-                                current_price = Decimal(self.bid_ask_spread.get(symbol, Decimal('0')))
-                                # If we're above the original limit price, reconfigure
-                                if current_price > old_limit_price:
-                                    print(f"🔆TP adjustment: Current price {current_price} > TP {old_limit_price}, "
-                                          f"reconfiguring TP/SL for {symbol} 🔆")
-                                    # Cancel the stale TP/SL order
-                                    await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-                                    # Create new TP/SL order
-                                    new_order_data = await self.trade_order_manager.build_order_data(
-                                        'Websocket','profit', asset,symbol, old_limit_price, None)
-                                    continue
+                                await self._handle_active_tp_sl_decision(
+                                    order_data=order_data,
+                                    full_order=full_order,
+                                    symbol=symbol,
+                                    asset=asset,
+                                    current_price=current_price,
+                                    avg_price=avg_price,
+                                    precision_data=precision_data
+                                )
+
+                        # elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
+                        #     full_tracker = order_management_snapshot.get("order_tracker", {})
+                        #     full_order = full_tracker.get(order_data.order_id)
+                        #     if full_order:
+                        #         # Extract old limit price and current price
+                        #         trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
+                        #         old_limit_price = Decimal(trigger_config.get('limit_price', '0'))
+                        #         current_price = Decimal(self.bid_ask_spread.get(symbol, Decimal('0')))
+                        #         # If we're above the original limit price, reconfigure
+                        #         if current_price > old_limit_price:
+                        #             print(f"🔆TP adjustment: Current price {current_price} > TP {old_limit_price}, "
+                        #                   f"reconfiguring TP/SL for {symbol} 🔆")
+                        #             # Cancel the stale TP/SL order
+                        #             await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+                        #             # Create new TP/SL order
+                        #             new_order_data = await self.trade_order_manager.build_order_data(
+                        #                 'Websocket','profit', asset,symbol, old_limit_price, None)
+                        #             continue
 
                         profit = await self.profit_data_manager.calculate_profitability(
                             symbol, required_prices, self.bid_ask_spread, self.usd_pairs
@@ -708,7 +729,110 @@ class WebSocketHelper:
 
         except Exception as outer_e:
             self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
+    async def _handle_active_limit_buy_adjustment(
+        self,
+        order_data: OrderData,
+        symbol: str,
+        asset: str,
+        precision_data: tuple
+    ):
+        try:
+            # Fetch current order book
+            order_book = await self.order_book_manager.get_order_book(order_data, symbol)
+            best_ask = Decimal(min(order_book['order_book']['asks'], key=lambda x: x[0])[0])
 
+            quote_deci = precision_data[1]
+            old_price = order_data.price.quantize(Decimal('1.' + '0' * quote_deci))
+            best_ask = best_ask.quantize(Decimal('1.' + '0' * quote_deci))
+
+            # Compare to old price
+            price_diff = (best_ask - old_price) / old_price
+
+            if price_diff <= Decimal("0.01"):
+                return  # Skip if within 1%
+
+            await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+
+            # New limit price slightly below best ask
+            new_price = (best_ask * Decimal("0.995")).quantize(Decimal('1.' + '0' * quote_deci))
+
+            trigger = self.trade_order_manager.build_trigger(
+                "limit_buy_adjusted",
+                f"best_ask={best_ask} > old_price={old_price}, new_price={new_price}"
+            )
+
+            new_order_data = await self.trade_order_manager.build_order_data(
+                source="websocket",
+                trigger=trigger,
+                asset=asset,
+                product_id=symbol,
+                stop_price=None,
+                order_type="limit",
+                side="buy"
+            )
+
+            if new_order_data:
+                success, response = await self.trade_order_manager.place_order(new_order_data, precision_data)
+                log_method = self.logger.info if success else self.logger.warning
+                log_method(f"{'✅' if success else '⚠️'} Replaced limit BUY for {symbol}: {response}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in _handle_active_limit_buy_adjustment for {symbol}: {e}", exc_info=True)
+
+
+    async def _handle_active_tp_sl_decision(
+            self,
+            order_data: OrderData,
+            full_order: dict,
+            symbol: str,
+            asset: str,
+            current_price: Decimal,
+            avg_price: Decimal,
+            precision_data: tuple,
+    ):
+        try:
+            quote_deci = precision_data[1]
+            current_price = current_price.quantize(Decimal('1.' + '0' * quote_deci))
+            avg_price = avg_price.quantize(Decimal('1.' + '0' * quote_deci))
+
+            profit_pct = (current_price - avg_price) / avg_price
+
+            trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
+            old_limit_price = Decimal(trigger_config.get('limit_price', '0')).quantize(Decimal('1.' + '0' * quote_deci))
+
+            # Determine if price change justifies update
+            if current_price > old_limit_price:
+                trigger = self.trade_order_manager.build_trigger(
+                    "TP",
+                    f"profit_pct={profit_pct:.2%} → price rose above TP ({current_price} > {old_limit_price})"
+                )
+            elif current_price < old_limit_price:
+                trigger = self.trade_order_manager.build_trigger(
+                    "SL",
+                    f"profit_pct={profit_pct:.2%} → price fell below SL ({current_price} < {old_limit_price})"
+                )
+            else:
+                return  # No update needed
+
+            await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+
+            new_order_data = await self.trade_order_manager.build_order_data(
+                source='websocket',
+                trigger=trigger,
+                asset=asset,
+                product_id=symbol,
+                side='sell',
+            )
+
+            if new_order_data:
+                success, response = await self.trade_order_manager.place_order(new_order_data, precision_data)
+                log_method = self.logger.info if success else self.logger.warning
+                log_method(f"{'✅' if success else '⚠️'} Updated SL/TP for {symbol} at {current_price}: {response}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in _handle_active_tp_sl_decision for {symbol}: {e}", exc_info=True)
+
+    # <><><><><><><><><><><><><><><><><><><><><><><><><>
     async def monitor_untracked_assets(self, market_data_snapshot, order_management_snapshot):
         self.logger.info("📱 Starting monitor_untracked_assets")
 

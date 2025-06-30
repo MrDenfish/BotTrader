@@ -289,6 +289,25 @@ class CoinbaseAPI:
             self.logger.error(f"❌ Exception in batch_cancel: {e}", exc_info=True)
             return {"success": [], "failure": order_ids}
 
+    async def get_historical_orders_batch(self, params: dict) -> dict:
+        request_path = '/api/v3/brokerage/orders/historical/batch'
+        jwt_token = self.generate_rest_jwt('GET', request_path)
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {jwt_token}',
+        }
+        timeout_seconds = 15  # ⏱ To catch long stalls
+        async with aiohttp.ClientSession() as session:
+            resp = await asyncio.wait_for(
+                self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
+                timeout=timeout_seconds
+            )
+            async with resp:
+                if resp.status == 200:
+                    return await resp.json()
+                else:
+                    text = await resp.text()
+                    raise Exception(f"Error {resp.status}: {text}")
 
     async def list_historical_orders(self, *,
             limit: int | None = None,
