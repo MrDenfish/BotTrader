@@ -77,6 +77,7 @@ class WebSocketHelper:
         self.order_tracker_lock = asyncio.Lock()
         self.price_history = {}  # Stores the last 5 minutes of prices per trading pair ROC calculation
 
+
         # Trading parameters
         self._stop_loss = Decimal(self.config.stop_loss)
         self._min_buy_value = Decimal(self.config.min_buy_value)
@@ -132,7 +133,7 @@ class WebSocketHelper:
 
     @property
     def passive_orders(self):
-        return self.shared_data_manager.order_management.get('passive_orders')
+        return self.shared_data_manager.order_management.get('passive_orders') or {}
 
     @property
     def coin_info(self):
@@ -864,7 +865,7 @@ class WebSocketHelper:
 
     def _analyze_position(self, asset, position, usd_prices):
         symbol = f"{asset}-USD"
-        if symbol in ("USD-USD", "SHDW-USD") or symbol in self.passive_orders:
+        if symbol in ("USD-USD", "SHDW-USD") or symbol in self.passive_orders :
             return None
 
         pos = position.to_dict() if hasattr(position, "to_dict") else position
@@ -921,32 +922,51 @@ class WebSocketHelper:
             return True
 
     async def _handle_tp_sl_decision(self, symbol, asset, current_price, qty, avg_entry, profit, profit_pct, snapshot):
-        if asset in self.hodl:
-            return
+        try:
+            if asset in self.hodl:
+                return
 
-        open_order_found, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
+            open_order_found, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
+            info = open_order.get('info', {}) if open_order else {}
+            trigger = {}
 
-        if profit_pct >= self.take_profit:
-            trigger = self.trade_order_manager.build_trigger(
-                "TP",
-                f"profit_pct={profit_pct:.2%} ≥ take_profit={self.take_profit:.2%}"
-            )
-            if open_order_found and current_price > open_order.get("price", Decimal("0")):
-                await self.order_manager.cancel_order(open_order.get("order_id"), symbol)
-                self.logger.info(f"🔁 Replacing TP for {symbol} @ {current_price}")
-            if not open_order_found:
-                await self._place_tp_order("websocket", trigger, asset, symbol, current_price)
+            color = self.shared_utils_color.GREEN if profit_pct >= 0 else self.shared_utils_color.ORANGE
 
-        elif profit_pct <= self.stop_loss:
-            trigger = self.trade_order_manager.build_trigger(
-                "SL",
-                f"profit_pct={profit_pct:.2%} < stop_loss={-self.stop_loss:.2%}"
-            )
-            if open_order_found and current_price < open_order.get("price", Decimal("0")):
-                await self.order_manager.cancel_order(open_order.get("order_id"), symbol)
-                self.logger.info(f"🔁 Replacing SL for {symbol} @ {current_price}")
-            if not open_order_found:
-                await self._place_sl_order(asset, symbol, current_price, profit, profit_pct, trigger)
+            if profit_pct >= self.take_profit:
+                trigger = self.trade_order_manager.build_trigger(
+                    "TP",
+                    f"profit_pct={profit_pct:.2%} ≥ take_profit={self.take_profit:.2%}"
+                )
+
+                if open_order_found and current_price >  Decimal(info.get("average_filled_price", "0")):
+                    await self.order_manager.cancel_order(info.get("order_id"), symbol)
+                    self.logger.info(f"🔁 Replacing TP for {symbol} @ {current_price}")
+                    open_order_found = False  # ✅ Clear flag so TP gets re-placed
+
+                if not open_order_found:
+                    await self._place_tp_order("websocket", trigger, asset, symbol, current_price)
+
+            elif profit_pct <= self.stop_loss:
+                trigger = self.trade_order_manager.build_trigger(
+                    "SL",
+                    f"profit_pct={profit_pct:.2%} < stop_loss={self.stop_loss:.2%}"
+                )
+
+                if open_order_found and current_price < Decimal(info.get("average_filled_price", "0")):
+                    await self.order_manager.cancel_order(info.get("order_id"), symbol)
+                    self.logger.info(f"🔁 Replacing SL for {symbol} @ {current_price}")
+                    open_order_found = False  # ✅ Clear flag so SL gets re-placed
+
+                if not open_order_found:
+                    await self._place_sl_order(asset, symbol, current_price, profit, profit_pct, trigger)
+
+            print(self.shared_utils_color.format(
+                f"{symbol} {trigger.get('trigger', '?')} Trigger → {trigger.get('trigger_note', '?')}",
+                color
+            ))
+
+        except Exception as e:
+            self.logger.error(f"❌ Error handling TP/SL for {symbol}: {e}", exc_info=True)
 
     async def _place_tp_order(self, source, trigger: dict, asset: str, symbol: str, price: Decimal):
         precision_data = self.shared_utils_precision.fetch_precision(symbol)
