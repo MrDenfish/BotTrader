@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+from pathlib import Path
 import pandas as pd
 
 class Debugging:
@@ -82,3 +84,8 @@ class Debugging:
 
         return False, f"order_tracker is of invalid type: {type(order_tracker)}"
 
+    def jasonize_data(self, sample):
+        sample = sample[:25]  # 👈 Adjust sample size as needed
+        Path("/recent_orders.json").write_text(
+            json.dumps(sample, indent=2)
+        )

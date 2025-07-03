@@ -215,7 +215,7 @@ class PortfolioManager:
                 # Fix: Apply absolute value only to 'price change %' and correctly structure conditions
                 filtered_df = rows_to_add[
                     (abs(rows_to_add['price change %']) >= self.roc_sell_24h) &  # use the lowest  roc 24h value
-                    (rows_to_add['quote volume'] >= self.min_volume)
+                    (rows_to_add['quote volume'] >= self.min_volume/2)
                     ]
 
                 return filtered_df  # Return filtered DataFrame

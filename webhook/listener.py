@@ -1,6 +1,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 import time
 import uuid
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -142,6 +143,7 @@ class WebhookListener:
 
     def __init__(self, bot_config, shared_data_manager, shared_utils_color, market_data_updater, database_session_manager, logger_manager, coinbase_api,
               session, market_manager, exchange, alert, order_book_manager):
+
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
             print("REST client is not initialized. Initializing now...")
@@ -190,8 +192,6 @@ class WebhookListener:
         self.websocket_helper = WebSocketHelper(
             listener=self,
             websocket_manager=None,  # Placeholder
-            exchange=self.exchange, # Placeholder
-            ccxt_api=self.ccxt_api, # Placeholder
             logger_manager=self.logger_manager,
             coinbase_api=self.coinbase_api,
             profit_data_manager=None,  # Placeholder
@@ -206,10 +206,8 @@ class WebhookListener:
             order_book_manager=None,  # Placeholder
             snapshot_manager=None,  # Placeholder
             trade_order_manager=None,
-            ohlcv_manager=None,
             shared_data_manager=self.shared_data_manager,
-            market_ws_manager=None,
-            order_manager=None  # Placeholder
+            market_ws_manager=None
 
         )
 
@@ -244,6 +242,7 @@ class WebhookListener:
         self.utility = TradeBotUtils.get_instance(self.logger, self.coinbase_api, self.exchange,
                                                   self.ccxt_api, self.alerts, self.shared_data_manager)
 
+        self.asset_monitor = None
 
         self.ticker_manager = None
 
@@ -308,18 +307,9 @@ class WebhookListener:
             session=self.session
         )
 
-        self.websocket_helper = WebSocketHelper(
-            self, self.websocket_manager, self.exchange, self.ccxt_api, self.logger,
-            self.coinbase_api, self.profit_data_manager, self.order_type_manager,
-            self.shared_utils_date_time, self.shared_utils_print,self.shared_utils_color,
-            self.shared_utils_precision, self.shared_utils_utility,self.shared_utils_debugger,
-            self.trailing_stop_manager,self.order_book_manager, self.snapshot_manager,
-            self.trade_order_manager, None, self.shared_data_manager,
-            self.session, None
 
-        )
         self.market_ws_manager = WebSocketMarketManager(
-            self, self.exchange, self.ccxt_api, self.logger, self.coinbase_api,
+            self,  self.exchange, self.ccxt_api, self.logger, self.coinbase_api,
             self.profit_data_manager, self.order_type_manager, self.shared_utils_print,
             self.shared_utils_color, self.shared_utils_precision, self.shared_utils_utility,
             self.shared_utils_debugger,self.trailing_stop_manager, self.order_book_manager,
@@ -327,6 +317,16 @@ class WebhookListener:
             self.shared_data_manager
         )
 
+        self.websocket_helper = WebSocketHelper(
+            self, self.websocket_manager, self.logger,
+            self.coinbase_api, self.profit_data_manager, self.order_type_manager,
+             self.shared_utils_date_time, self.shared_utils_print,
+            self.shared_utils_color, self.shared_utils_precision, self.shared_utils_utility,
+            self.shared_utils_debugger, self.trailing_stop_manager, self.order_book_manager,
+            self.snapshot_manager, self.trade_order_manager, self.shared_data_manager,
+            self.market_ws_manager, None, None
+
+        )
 
     async def async_init(self):
         """Initialize async components after __init__."""
@@ -406,7 +406,7 @@ class WebhookListener:
                 # Monitor and update active orders
 
                 start = time.monotonic()
-                await self.websocket_helper.monitor_and_update_active_orders(new_market_data, new_order_management)
+                await self.asset_monitor.monitor_all_orders()
                 self.logger.info(f"⏱ monitor_and_update_active_orders took {time.monotonic() - start:.2f}s")
                 pass
 
@@ -802,7 +802,7 @@ class WebhookListener:
                 )
                 open_orders = open_resp.get("orders", []) or []
                 recent_orders = recent_resp.get("orders", []) or []
-
+                # Path("/recent_orders.json").write_text(json.dumps(recent_orders, indent=2)) # debugging
                 print(
                     f"Fetched {len(open_orders)} open orders "
                     f"and {len(recent_orders)} recent orders (since {since_iso})."
@@ -819,57 +819,99 @@ class WebhookListener:
                 # 3) Transform into TradeRecord-shaped dicts
                 # ------------------------------------------------------------------
                 rows: list[dict] = []
+                sample = orders_to_process[:25]  # 👈 Adjust sample size as needed
+                # Path("/recent_orders.json").write_text(
+                #     json.dumps(sample, indent=2)
+                # )
+
                 for o in orders_to_process:
-                    rows.append(
-                        {
-                            "order_id": o["order_id"],
-                            "parent_id": None if o.get("side", "").lower() == "buy" else o.get("originating_order_id"),
-                            "symbol": o["product_id"],
-                            "side": o["side"].lower(),
-                            "order_type": o.get("order_type", "unknown").lower(),
-                            "order_time": self.iso_to_dt(
-                                self.pick(
-                                    o,
-                                    "created_time",
-                                    ("order_configuration", "created_time"),
-                                    ("edit_history", 0, "created_time"),
-                                )
-                            ),
-                            "price": float(
-                                Decimal(
-                                    self.pick(
-                                        o,
-                                        "price",
-                                        ("order_configuration", "price"),
-                                        "average_filled_price",
-                                        ("order_configuration", "trigger_bracket_gtc", "limit_price"),
-                                    ) or 0
-                                )
-                            ),
-                            "size": float(
-                                Decimal(
-                                    self.pick(
-                                        o,
-                                        "size",
-                                        "filled_size",
-                                        "order_size",
-                                        ("order_configuration", "base_size"),
-                                    ) or 0
-                                )
-                            ),
+                    try:
+                        if o.get("status", "").lower() != "filled":
+                            continue  # skip all non-filled orders
+                        symbol = o.get("product_id", "")
+                        side = o.get("side", "").lower()
+                        status = o.get("status", "").lower()
+                        order_id = o.get("order_id")
+                        client_order_id = o.get("client_order_id", "").lower()
+                        trigger_status = o.get("trigger_status", "").lower()
+                        order_type = o.get("order_type", "").lower()
+
+                        # Determine parent_id only for SELL orders
+                        parent_id = None
+                        if side == "sell":
+                            parent_id = o.get("originating_order_id")
+
+                        # Derive trigger more intelligently
+                        trigger = (
+                            trigger_status if trigger_status != "invalid_order_type"
+                            else order_type
+                        )
+
+                        # Infer source from client_order_id prefix
+                        if "passivemm" in client_order_id:
+                            source = "PassiveMM"
+                        elif "webhook" in client_order_id:
+                            source = "webhook"
+                        elif "websocket" in client_order_id:
+                            source = "websocket"
+                        else:
+                            source = "unknown"
+
+                        # Determine timestamp (fallback sequence)
+                        order_time = self.iso_to_dt(
+                            self.pick(
+                                o,
+                                "created_time",
+                                ("order_configuration", "created_time"),
+                                ("edit_history", 0, "created_time"),
+                                "last_fill_time"
+                            )
+                        )
+
+                        # Price fallback preference
+                        price = Decimal(
+                            self.pick(
+                                o,
+                                "average_filled_price",  # best filled price
+                                ("order_configuration", "limit_limit_gtc", "limit_price"),
+                                "price"
+                            ) or "0"
+                        )
+
+                        # Size fallback preference
+                        size = Decimal(
+                            self.pick(
+                                o,
+                                "filled_size",
+                                "size",
+                                ("order_configuration", "limit_limit_gtc", "base_size"),
+                                "order_size"
+                            ) or "0"
+                        )
+
+                        # Fee (optional field)
+                        fee = Decimal(o.get("total_fees", "0") or 0)
+
+                        # Build the TradeRecord-shaped dict
+                        rows.append({
+                            "order_id": order_id,
+                            "parent_id": parent_id,
+                            "symbol": symbol,
+                            "side": side,
+                            "order_type": order_type,
+                            "order_time": order_time,
+                            "price": float(price),
+                            "size": float(size),
                             "pnl_usd": None,
-                            "total_fees_usd": float(
-                                Decimal(
-                                    self.pick(
-                                        o,
-                                        "total_fees",
-                                    ) or 0
-                                )
-                            ),
-                            "trigger": o.get("order_type", "").lower(),
-                            "status": o["status"].lower(),
-                        }
-                    )
+                            "total_fees_usd": float(fee),
+                            "trigger": trigger,
+                            "status": status,
+                            # Optional extras (you can remove if not in your schema):
+                            "source": source,
+                        })
+
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Failed to process order_id {o.get('order_id')} — {e}", exc_info=True)
 
                 # ------------------------------------------------------------------
                 # 4) UPSERT
@@ -887,17 +929,20 @@ class WebhookListener:
                         insert_stmt = pg_insert(TradeRecord).values(batch)
                         # Columns we want to update if the order_id already exists
                         update_cols = {
-                            c: insert_stmt.excluded[c]
-                            for c in (
-                                "parent_id",
-                                "status",
-                                "price",
-                                "size",
-                                "order_time",
-                                "side",
-                                "trigger",
-                            )
+                            "parent_id": insert_stmt.excluded.parent_id,
+                            "parent_ids": insert_stmt.excluded.parent_ids,
+                            "status": insert_stmt.excluded.status,
+                            "price": insert_stmt.excluded.price,
+                            "size": insert_stmt.excluded.size,
+                            "order_time": insert_stmt.excluded.order_time,
+                            "side": insert_stmt.excluded.side,
+                            "trigger": insert_stmt.excluded.trigger,
+                            "order_type": insert_stmt.excluded.order_type,
+                            "source": insert_stmt.excluded.source,
+                            "total_fees_usd": insert_stmt.excluded.total_fees_usd,
+                            "pnl_usd": insert_stmt.excluded.pnl_usd,
                         }
+
                         stmt = insert_stmt.on_conflict_do_update(
                             index_elements=["order_id"],
                             set_=update_cols,

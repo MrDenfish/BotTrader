@@ -126,14 +126,14 @@ class TickerManager:
 
 
             # Calculate average quote volume
-            avg_volume = tickers_cache['24h_quote_volume'].mean()
+            min_volume = tickers_cache['24h_quote_volume'].min()
 
             return {
                 "ticker_cache": tickers_cache,
                 "filtered_vol": supported_vol_markets,
                 "usd_pairs_cache": usd_pairs_cache,
                 "bid_ask_spread": bid_ask_spread,
-                "avg_quote_volume": Decimal(avg_volume).quantize(Decimal('0')),
+                "avg_quote_volume": Decimal(min_volume).quantize(Decimal('0')),
                 "spot_positions": spot_positions
             }, {"non_zero_balances": non_zero_balances, 'order_tracker': open_orders_dict}
 

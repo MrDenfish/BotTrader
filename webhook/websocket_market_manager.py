@@ -121,13 +121,11 @@ class WebSocketMarketManager:
                 self.logger.error("user-payload missing events list")
                 return
 
-            # Load snapshot for market data (static), but always pull fresh order_tracker
             mkt_snap, _ = await self.snapshot_manager.get_snapshots()
             spot_pos = mkt_snap.get("spot_positions", {})
             cur_prices = mkt_snap.get("bid_ask_spread", {})
             usd_pairs = mkt_snap.get("usd_pairs_cache", {})
 
-            # Always get the most up-to-date tracker
             order_tracker = await self.shared_data_manager.get_order_tracker()
 
             for ev in events:
@@ -136,7 +134,6 @@ class WebSocketMarketManager:
                 if not isinstance(orders, list) or not orders:
                     continue
 
-                # ---------------- SNAPSHOT: Replace Entire Tracker & Update the database----------------
                 if ev_type == "snapshot":
                     new_tracker = {}
                     for order in orders:
@@ -152,11 +149,10 @@ class WebSocketMarketManager:
                             self.logger.info(f"📥 Snapshot tracked: {order_id} | {symbol} | {status}")
 
                     await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
-                    await self.shared_data_manager.save_data()  # ✅
+                    await self.shared_data_manager.save_data()
                     self.logger.debug(f"📸 Snapshot processed and persisted: {len(new_tracker)} open orders")
-                    return  # ✅ Exit early — no need to process updates for snapshot
+                    return
 
-                # ---------------- EVENT: Update Existing Tracker ----------------
                 for order in orders:
                     order_id = order.get("order_id")
                     parent_id = order.get("parent_order_id") or order.get("parent_id")
@@ -167,7 +163,6 @@ class WebSocketMarketManager:
                     if not order_id or not symbol:
                         continue
 
-                    # --- Cancel / Cancel Queued ---
                     if status in {"CANCELLED", "CANCEL_QUEUED"}:
                         try:
                             await self.shared_data_manager.trade_recorder.delete_trade(order_id)
@@ -178,7 +173,6 @@ class WebSocketMarketManager:
                         order_tracker.pop(order_id, None)
                         continue
 
-                    # --- SL/TP Child SELL Recording ---
                     if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
                         try:
                             trade = {
@@ -190,16 +184,16 @@ class WebSocketMarketManager:
                                 "amount": order.get("size") or order.get("filled_size") or order.get("order_size") or 0,
                                 "status": status.lower(),
                                 "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
-                                "trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl",
-                                "new_source":'Test Source_sell'
+                                "trigger": {"trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl"},
+                                "source": "websocket",
+                                "total_fees": order.get("total_fees")
                             }
                             await self.shared_data_manager.trade_recorder.record_trade(trade)
                             self.logger.debug(f"TP/SL child stored → {order_id}")
                         except Exception:
                             self.logger.error("record_trade failed", exc_info=True)
 
-                    # --- Update or Remove From Tracker ---
-                    order['source'] = 'websocket' # tag order for tracking
+                    order['source'] = 'websocket'
                     normalized = self.shared_data_manager.normalize_raw_order(order)
                     if normalized:
                         if status in {"PENDING", "OPEN", "ACTIVE"}:
@@ -207,7 +201,6 @@ class WebSocketMarketManager:
                         elif status == "FILLED":
                             order_tracker.pop(order_id, None)
 
-                    # --- Trigger Fills ---
                     if status == "FILLED":
                         try:
                             order_data = OrderData.from_dict(order)
@@ -233,17 +226,29 @@ class WebSocketMarketManager:
                                     pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
                                     self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
 
+                            await self.shared_data_manager.trade_recorder.record_trade({
+                                "order_id": order_id,
+                                "parent_id": parent_id,
+                                "symbol": symbol,
+                                "side": side,
+                                "price": order.get("avg_price") or order.get("price"),
+                                "amount": order.get("filled_size") or order.get("order_size") or 0,
+                                "status": "filled",
+                                "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
+                                "trigger": {"trigger": order.get("order_type") or "market"},
+                                "source": "websocket",
+                                "total_fees": order.get("total_fees")
+                            })
+
                             self.logger.info(f"✅ Order filled: {order_id} at {order.get('avg_price')} with fee {order.get('total_fees')}")
                             await self.listener.handle_order_fill(order_data)
 
                         except Exception:
                             self.logger.error("❌ Error processing filled order", exc_info=True)
 
-            # ✅ Final write to shared state
             await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})
-            await self.shared_data_manager.save_data()  # ✅ 
+            await self.shared_data_manager.save_data()
             self.logger.debug(f"📦 Final tracker updated and persisted → {len(order_tracker)} orders")
-
 
         except Exception:
             self.logger.error("process_user_channel error", exc_info=True)
@@ -302,7 +307,7 @@ class WebSocketMarketManager:
                 symbol = trading_pair.split("/")[0]
                 trigger = {"trigger": f"roc", "trigger_note": f"ROC:{log_roc} % "}
                 roc_order_data = await self.trade_order_manager.build_order_data(
-                    source='Websocket',
+                    source='websocket',
                     trigger=trigger,
                     asset=symbol,
                     trading_pair=trading_pair,
@@ -323,95 +328,6 @@ class WebSocketMarketManager:
 
         except Exception as e:
             self.logger.error(f"Error in _process_single_ticker for {ticker.get('product_id')}: {e}", exc_info=True)
-
-    # async def process_order_for_tracker(self, order, profit_data_list, event_type):
-    #     try:
-    #         async with self.order_tracker_lock:
-    #             # Step 1: Fetch a snapshot of the shared data
-    #
-    #             market_data_snapshot, order_management_snapshot = await self.snapshot_manager.get_snapshots()
-    #
-    #             # Step 2: Work with order_tracker inside the snapshot
-    #             order_tracker = order_management_snapshot.get('order_tracker', {})
-    #             spot_position = market_data_snapshot.get('spot_positions', {})
-    #             bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
-    #             usd_pairs = market_data_snapshot.get('usd_pairs', {})
-    #
-    #             normalized = self.shared_data_manager.normalize_raw_order(order)
-    #             if not normalized:
-    #                 sample = json.dumps(order, indent=2)[:500]
-    #                 self.logger.warning(f"❌ Could not normalize order (truncated):\n{sample}")
-    #                 return
-    #
-    #             # Extract basic order info
-    #             order_id = normalized["order_id"]
-    #             type = normalized["type"]
-    #             symbol = normalized["symbol"]
-    #             asset = symbol.split("/")[0]
-    #             status = normalized["status"]
-    #             side = normalized.get("side", "UNKNOWN")
-    #             # avg_price = normalized.get("average_price", Decimal(0))
-    #             # amount = normalized.get("amount", Decimal(0))
-    #             # limit_price = normalized.get("limit_price")
-    #             # stop_price = normalized.get("stop_price")
-    #
-    #             if not order_id or not symbol:
-    #                 self.logger.warning(f"Invalid order data: {order}")
-    #                 return
-    #
-    #             # Precision
-    #             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-    #
-    #             # Price info fallback logic
-    #             # initial_price = Decimal(order.get('initial_price') or
-    #             #                         spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
-    #             avg_price = Decimal(order.get('avg_price') or
-    #                                 spot_position.get(asset, {}).get('average_entry_price', {}).get('value', 0))
-    #             cost_basis = Decimal(spot_position.get(asset, {}).get('cost_basis', {}).get('value', 0))
-    #             asset_balance = Decimal(spot_position.get(asset, {}).get('total_balance_crypto', 0))
-    #
-    #             # limit_price = Decimal(order.get('limit_price', 0)) if order.get('limit_price') else None
-    #             # stop_price = Decimal(order.get('stop_price', 0)) if order.get('stop_price') else None
-    #             # amount = Decimal(order.get('leaves_quantity', 0)) if order.get('leaves_quantity') else None
-    #
-    #             # Profit calc
-    #             status_of_order = f"{order.get('order_type', 'UNKNOWN')}/{side}/{status}"
-    #             required_prices = {
-    #                 'avg_price': avg_price,
-    #                 'cost_basis': cost_basis,
-    #                 'asset_balance': asset_balance,
-    #                 'current_price': None,
-    #                 'profit': None,
-    #                 'profit_percentage': None,
-    #                 'status_of_order': status_of_order
-    #             }
-    #
-    #             profit = await self.profit_data_manager.calculate_profitability(
-    #                 asset, required_prices, bid_ask_spread, usd_pairs)
-    #             if profit and profit.get("profit"):
-    #                 normalized["profit"] = profit
-    #                 profit_data_list.append(profit)
-    #
-    #             self.profit_data_manager.consolidate_profit_data(profit_data_list)
-    #
-    #             # Manage tracker state
-    #             if status in {"OPEN", "PENDING", "ACTIVE"}:
-    #                 order_tracker[order_id] = normalized
-    #                 self.logger.info(f"Order {order_id} added/updated in tracker.")
-    #             elif status in {"FILLED", "CANCELED"}:
-    #                 if order_id in order_tracker:
-    #                     del order_tracker[order_id]
-    #                     self.logger.info(f"Order {order_id} removed from tracker. Status: {status}")
-    #             else:
-    #                 self.logger.warning(f"Unhandled order status: {status}")
-    #
-    #             print_order_tracker = order_tracker
-    #             # ✅ Save updated tracker back to SharedDataManager
-    #             order_management_snapshot['order_tracker'] = print_order_tracker
-    #             await self.shared_data_manager.set_order_management(order_management_snapshot)
-    #             return print_order_tracker
-    #     except Exception as e:
-    #         self.logger.error(f"Error processing order in process_order_for_tracker: {e}", exc_info=True)
 
     async def _handle_received(self, message):
         # Received = order accepted by engine, not on book yet

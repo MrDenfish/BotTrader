@@ -22,6 +22,7 @@ class ColorCodes:
     RED = "\033[31m"
     GREEN = "\033[32m"
     YELLOW = "\033[33m"
+    ORANGE = "\033[38;5;208m"  # Orange is not standard, using 256-color code
     BLUE = "\033[34m"
     MAGENTA = "\033[35m"
     CYAN = "\033[36m"

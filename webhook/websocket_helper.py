@@ -1,15 +1,9 @@
 import asyncio
-import decimal
 import json
 import time
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Dict, Any
-
 from coinbase import jwt_generator
-
-from Config.config_manager import CentralConfig as Config
-from webhook.webhook_validate_orders import OrderData
 
 BATCH_SIZE = 10
 TASK_TIMEOUT = 10  # per asset
@@ -21,25 +15,20 @@ class WebSocketHelper:
             WebSocketHelper is responsible for managing WebSocket connections and API integrations.
             """
     def __init__(
-            self, listener, websocket_manager, exchange, ccxt_api, logger_manager, coinbase_api, profit_data_manager,
+            self, listener, websocket_manager, logger_manager, coinbase_api, profit_data_manager,
             order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
-            shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager,
-            shared_data_manager, market_ws_manager, order_manager, passive_order_manager=None,  # type: ignore
+            shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, shared_data_manager,
+            market_ws_manager, passive_order_manager=None, asset_monitor=None
             ):
 
         # Core configurations
-        self.config = Config()
+        self.config = listener.bot_config
         self.listener = listener
         self.shared_data_manager = shared_data_manager
         self.websocket_manager = websocket_manager
         self.market_ws_manager = market_ws_manager
-
-        self.exchange = exchange
-        self.ccxt_api = ccxt_api
         self.coinbase_api = coinbase_api
         self.logger = logger_manager
-        # self.alerts = self.listener.alerts  # ✅ Assign alerts from webhook
-        # self.sequence_number = None  # Sequence number tracking
 
         # WebSocket variables
         self.market_ws = None
@@ -53,16 +42,14 @@ class WebSocketHelper:
         self.market_channels, self.user_channels = self.config.load_channels()
         self.jwt_token = self.jwt_expiry = None
 
-        # self.api_algo = self.config.websocket_api.get('algorithm')
+
 
         # WebSocket tasks
         self.market_ws_task = None
         self.user_ws_task = None
 
         # Connection-related settings
-        self.heartbeat_interval = 20
-        self.heartbeat_timeout = 30
-        self.reconnect_delay = 5
+
         self.connection_stable = True
         self.connection_lock = asyncio.Lock()
         self.subscription_lock = asyncio.Lock()
@@ -73,9 +60,6 @@ class WebSocketHelper:
 
         self.market_client = None
         self.user_client = None
-        self.latest_prices = {}
-        self.order_tracker_lock = asyncio.Lock()
-        self.price_history = {}  # Stores the last 5 minutes of prices per trading pair ROC calculation
 
 
         # Trading parameters
@@ -91,12 +75,12 @@ class WebSocketHelper:
 
         # Snapshot and data managers
         self.passive_order_manager = passive_order_manager
+        self.asset_monitor = asset_monitor
         self.profit_data_manager = profit_data_manager
         self.trailing_stop_manager = trailing_stop_manager
         self.order_type_manager = order_type_manager
         self.trade_order_manager = trade_order_manager
         self.order_book_manager = order_book_manager
-        self.order_manager = order_manager
         self.snapshot_manager = snapshot_manager
         self.trade_recorder = self.shared_data_manager.trade_recorder
 
@@ -122,46 +106,45 @@ class WebSocketHelper:
         self.market_channel_activity = {}  # key = channel, value = last_received_timestamp
 
 
-
-    @property
-    def market_data(self):
-        return self.shared_data_manager.market_data
-
-    @property
-    def order_management(self):
-        return self.shared_data_manager.order_management
-
-    @property
-    def passive_orders(self):
-        return self.shared_data_manager.order_management.get('passive_orders') or {}
-
-    @property
-    def coin_info(self):
-        return self.shared_data_manager.market_data.get('filtered_vol', {})
-
-    @property
-    def non_zero_balances(self):
-        return self.shared_data_manager.order_management.get("non_zero_balances", {})
-
-    @property
-    def open_orders(self):
-        return self.shared_data_manager.order_management.get('order_tracker', {})
-
-    @property
-    def ticker_cache(self):
-        return self.shared_data_manager.market_data.get("ticker_cache", {})
-
-    @property
-    def bid_ask_spread(self):
-        return self.shared_data_manager.market_data.get('bid_ask_spread', {})
-
-    @property
-    def spot_positions(self):
-        return self.shared_data_manager.market_data.get("spot_positions", {})
-
-    @property
-    def usd_pairs(self):
-        return self.shared_data_manager.market_data.get("usd_pairs_cache", {})
+    # @property
+    # def market_data(self):
+    #     return self.shared_data_manager.market_data
+    #
+    # @property
+    # def order_management(self):
+    #     return self.shared_data_manager.order_management
+    #
+    # @property
+    # def passive_orders(self):
+    #     return self.shared_data_manager.order_management.get('passive_orders') or {}
+    #
+    # @property
+    # def coin_info(self):
+    #     return self.shared_data_manager.market_data.get('filtered_vol', {})
+    #
+    # @property
+    # def non_zero_balances(self):
+    #     return self.shared_data_manager.order_management.get("non_zero_balances", {})
+    #
+    # @property
+    # def open_orders(self):
+    #     return self.shared_data_manager.order_management.get('order_tracker', {})
+    #
+    # @property
+    # def ticker_cache(self):
+    #     return self.shared_data_manager.market_data.get("ticker_cache", {})
+    #
+    # @property
+    # def bid_ask_spread(self):
+    #     return self.shared_data_manager.market_data.get('bid_ask_spread', {})
+    #
+    # @property
+    # def spot_positions(self):
+    #     return self.shared_data_manager.market_data.get("spot_positions", {})
+    #
+    # @property
+    # def usd_pairs(self):
+    #     return self.shared_data_manager.market_data.get("usd_pairs_cache", {})
 
     @property
     def currency_pairs_ignored(self):
@@ -505,560 +488,628 @@ class WebSocketHelper:
             self.logger.error(f"Error during re-subscription: {e}", exc_info=True)
 
 
-    async def process_event(self, event, profit_data_list, event_type):
-        """Process specific events such as snapshots and updates."""
-        print(f"Processing event: {event_type}")
-        try:
-            orders = event.get("orders", [])
+    # async def process_event(self, event, profit_data_list, event_type):
+    #     """Process specific events such as snapshots and updates."""
+    #     print(f"Processing event: {event_type}")
+    #     try:
+    #         orders = event.get("orders", [])
+    #
+    #         if event_type == "snapshot":
+    #             # Initialize tracker with the snapshot's orders
+    #             for order in orders:
+    #                 await self.market_ws_manager.process_order_for_tracker(order, profit_data_list, event_type)
+    #             profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
+    #         elif event_type == "update":
+    #             # Apply updates to the order tracker
+    #             # determine order type buy sell cancel
+    #             for order in orders:
+    #                 await self.market_ws_manager.handle_order_for_order_tracker(order, profit_data_list, event_type)
+    #     except Exception as e:
+    #         self.logger.error(f"Error processing {event_type} event: {e}", exc_info=True)
 
-            if event_type == "snapshot":
-                # Initialize tracker with the snapshot's orders
-                for order in orders:
-                    await self.market_ws_manager.process_order_for_tracker(order, profit_data_list, event_type)
-                profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
-            elif event_type == "update":
-                # Apply updates to the order tracker
-                # determine order type buy sell cancel
-                for order in orders:
-                    await self.market_ws_manager.handle_order_for_order_tracker(order, profit_data_list, event_type)
-        except Exception as e:
-            self.logger.error(f"Error processing {event_type} event: {e}", exc_info=True)
+    # async def monitor_and_update_active_orders(self, market_data_snapshot, order_management_snapshot):
+    #     """Monitor and manage active orders using modular handlers."""
+    #     try:
+    #         usd_avail = self._get_usd_available()
+    #         profit_data_list = []
+    #
+    #         async with self.order_tracker_lock:
+    #             order_tracker_snapshot = self._normalize_order_tracker_snapshot(order_management_snapshot)
+    #             passive_tracker_snapshot = self._normalize_passive_tracker_snapshot(order_management_snapshot)
+    #
+    #             for order_id, raw_order in order_tracker_snapshot.items():
+    #                 try:
+    #                     order_data = OrderData.from_dict(raw_order)
+    #                     symbol, asset = order_data.trading_pair, order_data.trading_pair.split('/')[0]
+    #
+    #                     if asset not in order_management_snapshot.get('non_zero_balances', {}):
+    #                         continue
+    #
+    #                     precision = self.shared_utils_precision.fetch_precision(symbol)
+    #                     order_data.base_decimal, order_data.quote_decimal = precision[:2]
+    #                     order_data.product_id = symbol
+    #                     order_data.avg_quote_volume = self.avg_quote_volume
+    #                     order_duration = self._compute_order_duration(raw_order.get('datetime'))
+    #
+    #                     current_price = self.bid_ask_spread.get(symbol, Decimal("0"))
+    #                     asset_balance, avg_price, cost_basis = self._get_asset_details(order_management_snapshot, asset, precision)
+    #
+    #                     # Dispatch based on type + side
+    #                     if order_data.type == 'limit':
+    #                         if order_data.side == 'buy':
+    #                             await self._handle_limit_buy(order_data, symbol, asset, precision)
+    #                         elif order_data.side == 'sell':
+    #                             await self._handle_limit_sell(order_data, symbol, asset, precision, order_duration, avg_price, current_price)
+    #
+    #                     elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
+    #                         await self._handle_tp_sl_sell(order_data, order_management_snapshot, symbol, asset, precision, avg_price,
+    #                                                       current_price)
+    #
+    #                     # Collect profitability
+    #                     required_prices = {
+    #                         'avg_price': avg_price,
+    #                         'cost_basis': cost_basis,
+    #                         'asset_balance': asset_balance,
+    #                         'current_price': current_price,
+    #                         'usd_avail': usd_avail,
+    #                         'status_of_order': order_data.status
+    #                     }
+    #
+    #                     profit = await self.profit_data_manager.calculate_profitability(
+    #                         symbol, required_prices, self.bid_ask_spread, self.usd_pairs
+    #                     )
+    #
+    #                     if profit:
+    #                         profit_data_list.append(profit)
+    #
+    #                         if Decimal(profit.get('profit percent', '0').replace('%', '')) / 100 <= self.stop_loss:
+    #                             await self.listener.handle_order_fill(order_data)
+    #
+    #                 except Exception as inner_ex:
+    #                     self.logger.error(f"Error handling tracked order {order_id}: {inner_ex}", exc_info=True)
+    #
+    #         if profit_data_list:
+    #             df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
+    #             print(f'Profit Data Open Orders:\n{df.to_string(index=True)}')
+    #
+    #         await self._run_monitor_untracked_assets()
+    #
+    #     except Exception as outer_e:
+    #         self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
 
-    async def monitor_and_update_active_orders(self, market_data_snapshot, order_management_snapshot):
-        """Monitor active orders and update trailing stops or profitability."""
-        try:
-            usd_avail = self.usd_pairs.set_index('asset').to_dict(orient='index')
-            usd_avail = usd_avail.get('USD',{}).get('free')
-            profit_data_list = []
+    ## <><><><><><><><>><><>><> Handlers for monitor and update active orders  <><><><><><><><>><><>><>
 
-            async with (self.order_tracker_lock):
-                raw_tracker = order_management_snapshot.get("order_tracker", {})
-                if isinstance(raw_tracker, list):
-                    # Convert list of dicts to dict keyed by order_id
-                    order_tracker_snapshot = {
-                        (
-                                o.get("order_id") or
-                                o.get("info", {}).get("order_id") or
-                                o.get("id") or
-                                f"unknown_{i}"
-                        ): o
-                        for i, o in enumerate(raw_tracker)
-                        if isinstance(o, dict)
-                    }
-                else:
-                    # Assume it's already a dict
-                    order_tracker_snapshot = dict(raw_tracker)
-                raw_passive = order_management_snapshot.get("passive_tracker", {})
-                if isinstance(raw_passive, list):
-                    passive_tracker_snapshot = {
-                        o["order_id"]: o for o in raw_passive if isinstance(o, dict) and "order_id" in o
-                    }
-                else:
-                    passive_tracker_snapshot = dict(raw_passive)
+    # def _get_usd_available(self):
+    #     usd_data = self.usd_pairs.set_index('asset').to_dict(orient='index')
+    #     return usd_data.get('USD', {}).get('free', Decimal('0'))
 
-                for order_id, raw_order in order_tracker_snapshot.items():
-                    # Skip passive orders — these are managed by PassiveMM via watchdog
-                    # if raw_order.source.lower() == 'PassiveMM':
-                    #     continue
-                    raw_order['type'] = raw_order.get('type').lower()
-                    raw_order['side'] = raw_order.get('side').lower()
-                    order_id = raw_order.get('order_id', 'UNKNOWN')
-                    order_data = OrderData.from_dict(raw_order)
-                    order_data.avg_quote_volume = self.avg_quote_volume
-                    try:
-                        symbol = order_data.trading_pair
-                        asset = symbol.split('/')[0]
-                        # ✅ Fetch precision values for the asset
-                        precision_data = self.shared_utils_precision.fetch_precision(symbol)
-                        order_data.base_decimal = precision_data[0]
-                        order_data.quote_decimal = precision_data[1]
-                        if asset == 'RAD':
-                           pass
-                        order_duration = raw_order.get('order_duration')
+    # def _normalize_order_tracker_snapshot(self, snapshot):
+    #     tracker = snapshot.get("order_tracker", {})
+    #     if isinstance(tracker, list):
+    #         return {o.get("order_id") or f"unknown_{i}": o for i, o in enumerate(tracker) if isinstance(o, dict)}
+    #     return dict(tracker)
 
-                        # If missing, compute duration from datetime
-                        if order_duration is None:
-                            order_time = raw_order.get('datetime')
-                            if isinstance(order_time, str):
-                                # Parse if it's a string
-                                order_time = self.shared_utils_date_time.parse_iso_time(order_time)
-                            if isinstance(order_time, datetime):
-                                now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
-                                elapsed = now - order_time
-                                order_duration = int(elapsed.total_seconds() // 60)  # whole minutes
-                            else:
-                                order_duration = 0
-                        base_deci, quote_deci, _, _ = precision_data
+    def _normalize_passive_tracker_snapshot(self, snapshot):
+        passive = snapshot.get("passive_tracker", {})
+        if isinstance(passive, list):
+            return {o["order_id"]: o for o in passive if isinstance(o, dict) and "order_id" in o}
+        return dict(passive)
 
-                        # ✅ Add precision values to order_data
-                        order_data.quote_decimal = quote_deci
-                        order_data.base_decimal = base_deci
-                        order_data.product_id = symbol
-                        if asset not in order_management_snapshot.get('non_zero_balances', {}):
+    # def _compute_order_duration(self, order_time_str):
+    #     try:
+    #         order_time = self.shared_utils_date_time.parse_iso_time(order_time_str)
+    #         now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
+    #         return int((now - order_time).total_seconds() // 60)
+    #     except Exception:
+    #         return 0
 
-                            continue
-                        avg_price = order_management_snapshot.get('non_zero_balances', {})[asset]['average_entry_price'].get('value')
-                        avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
-                        asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0))
-                        try:
-                            quantizer = Decimal(f'1e-{quote_deci}')
-                            asset_balance = Decimal(asset_balance).quantize(quantizer)
-                        except decimal.InvalidOperation:
-                            self.logger.warning(f"⚠️ Could not quantize asset_balance={asset_balance} with precision={quote_deci}")
-                            asset_balance = Decimal(asset_balance).scaleb(-quote_deci).quantize(quantizer)
-                        current_price = self.bid_ask_spread.get(symbol, 0)
-                        cost_basis = order_management_snapshot.get('non_zero_balances', {})[asset]['cost_basis'].get('value')
-                        cost_basis = Decimal(cost_basis).quantize(Decimal('1.' + '0' * quote_deci))
+    # def _get_asset_details(self, snapshot, asset, precision):
+    #     quote_deci = precision[1]
+    #     quant = Decimal('1.' + '0' * quote_deci)
+    #     balance_data = snapshot.get('non_zero_balances', {}).get(asset, {})
+    #     avg_price = Decimal(balance_data.get('average_entry_price', {}).get('value', '0')).quantize(quant)
+    #     cost_basis = Decimal(balance_data.get('cost_basis', {}).get('value', '0')).quantize(quant)
+    #     asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0)).quantize(quant)
+    #     return asset_balance, avg_price, cost_basis
 
-                        required_prices = {
-                            'avg_price': avg_price,
-                            'cost_basis': cost_basis,
-                            'asset_balance': asset_balance,
-                            'current_price': None,
-                            'profit': None,
-                            'profit_percentage': None,
-                            'usd_avail': usd_avail,
-                            'status_of_order': order_data.status
-                        }
-                        # if limit sell price < the min(current price, highest bid) and the order is > than 5 minutes old resubmit order
-                        if order_data.type == 'limit' and order_data.side == 'sell':
-                            order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-                            highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
-                            if order_data.price < min(current_price,highest_bid) and order_duration > 5 :
-                                # ✅ Update trailing stop with highest bid
-                                old_ts_limit_price = order_data.price
-                                await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-                                new_order_data = await self.trade_order_manager.build_order_data('Websocket','trailing_stop',
-                                                                                                 asset, symbol, old_ts_limit_price, None)
-                                await self.listener.handle_order_fill(new_order_data)
-                                continue
-                            else:  # for testing purposes
-                                pass
-                        elif order_data.type == 'limit' and order_data.side == 'buy':
-                            await self._handle_active_limit_buy_adjustment(
-                                order_data=order_data,
-                                symbol=symbol,
-                                asset=asset,
-                                precision_data=precision_data
-                            )
+    # async def _handle_limit_sell(self, order_data, symbol, asset, precision, order_duration, avg_price, current_price):
+    #     order_book = await self.order_book_manager.get_order_book(order_data, symbol)
+    #     highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
+    #
+    #     # Adjust trailing stop logic
+    #     if order_data.price < min(current_price, highest_bid) and order_duration > 5:
+    #         await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+    #         new_order_data = await self.trade_order_manager.build_order_data('websocket', 'trailing_stop', asset, symbol, order_data.price, None)
+    #         await self.listener.handle_order_fill(new_order_data)
+    #         return
+    #
+    #     # NEW: adjust limit sell if price is creeping upward from loss
+    #     if order_data.price < avg_price and current_price > order_data.price and order_duration > 5:
+    #         trigger = self.trade_order_manager.build_trigger(
+    #             "limit_sell_adjusted",
+    #             f"Recovering price: old={order_data.price}, current={current_price}, avg={avg_price}"
+    #         )
+    #         await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+    #         new_order_data = await self.trade_order_manager.build_order_data('websocket', trigger, asset, symbol, None, 'limit', 'sell')
+    #         if new_order_data:
+    #             success, response = await self.trade_order_manager.place_order(new_order_data, precision)
+    #             log = self.logger.info if success else self.logger.warning
+    #             log(f"{'✅' if success else '⚠️'} Adjusted limit SELL for {symbol}: {response}")
 
-                        # elif order_data.type == 'limit' and order_data.side == 'buy':
-                        #
-                        #     # Fetch the current order book for the trading pair
-                        #     order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-                        #     best_ask = Decimal(min(order_book['order_book']['asks'], key=lambda x: x[0])[0])
-                        #
-                        #     # Define a threshold for price difference (e.g., 1%)
-                        #     price_difference = (best_ask - order_data.price) / order_data.price
-                        #
-                        #     if price_difference > Decimal('0.01'):
-                        #
-                        #         # Cancel the existing limit buy order because price is out of range
-                        #         await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-                        #
-                        #         # Calculate a new limit price (e.g., slightly below the best ask)
-                        #         new_limit_price = best_ask * Decimal('0.995')  # 0.5% below best ask
-                        #         new_limit_price = new_limit_price.quantize(Decimal('1.' + '0' * quote_deci))
-                        #
-                        #         # Build and place a new limit buy order
-                        #         new_order_data = await self.trade_order_manager.build_order_data(
-                        #             'Websocket', 'limit_buy_adjusted', asset, symbol, new_limit_price, None
-                        #         )
-                        #         if new_order_data:
-                        #             trigger = {"trigger": f"limit_buy_adjusted", "trigger_note": f"new limit price:{new_limit_price}"}
-                        #             new_order_data.trigger = trigger
-                        elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
-                            full_tracker = order_management_snapshot.get("order_tracker", {})
-                            full_order = full_tracker.get(order_data.order_id)
-                            if full_order:
-                                await self._handle_active_tp_sl_decision(
-                                    order_data=order_data,
-                                    full_order=full_order,
-                                    symbol=symbol,
-                                    asset=asset,
-                                    current_price=current_price,
-                                    avg_price=avg_price,
-                                    precision_data=precision_data
-                                )
+    ## <><><><><><><><>><><>><> Handlers for monitor and update active orders  <><><><><><><><>><><>><>
 
-                        # elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
-                        #     full_tracker = order_management_snapshot.get("order_tracker", {})
-                        #     full_order = full_tracker.get(order_data.order_id)
-                        #     if full_order:
-                        #         # Extract old limit price and current price
-                        #         trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
-                        #         old_limit_price = Decimal(trigger_config.get('limit_price', '0'))
-                        #         current_price = Decimal(self.bid_ask_spread.get(symbol, Decimal('0')))
-                        #         # If we're above the original limit price, reconfigure
-                        #         if current_price > old_limit_price:
-                        #             print(f"🔆TP adjustment: Current price {current_price} > TP {old_limit_price}, "
-                        #                   f"reconfiguring TP/SL for {symbol} 🔆")
-                        #             # Cancel the stale TP/SL order
-                        #             await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-                        #             # Create new TP/SL order
-                        #             new_order_data = await self.trade_order_manager.build_order_data(
-                        #                 'Websocket','profit', asset,symbol, old_limit_price, None)
-                        #             continue
+    # async def _handle_limit_buy(self, order_data, symbol, asset, precision):
+    #     await self._handle_active_limit_buy_adjustment(order_data, symbol, asset, precision)
 
-                        profit = await self.profit_data_manager.calculate_profitability(
-                            symbol, required_prices, self.bid_ask_spread, self.usd_pairs
-                        )
+    # async def _handle_tp_sl_sell(self, order_data, snapshot, symbol, asset, precision, avg_price, current_price):
+    #     full_tracker = snapshot.get("order_tracker", {})
+    #     full_order = full_tracker.get(order_data.order_id)
+    #     if full_order:
+    #         await self._handle_active_tp_sl_decision(
+    #             order_data=order_data,
+    #             full_order=full_order,
+    #             symbol=symbol,
+    #             asset=asset,
+    #             current_price=current_price,
+    #             avg_price=avg_price,
+    #             precision_data=precision
+    #         )
 
-                        if profit and profit.get('profit', 0) != 0:
-                            profit_data_list.append(profit)
-                        if Decimal(profit.get('profit percent', '0').replace('%', '')) / 100 <= self.stop_loss:
-                            await self.listener.handle_order_fill(order_data)
-                    except Exception as inner_ex:
-                        self.logger.error(f"Error handling tracked order {order_id}: {inner_ex}", exc_info=True)
+    # async def _run_monitor_untracked_assets(self):
+    #     try:
+    #         await asyncio.wait_for(self.asset_monitor.monitor(),timeout=30)
+    #     except asyncio.TimeoutError:
+    #         self.logger.warning("⚠️ monitor_untracked_assets timed out — skipping.")
 
-            if profit_data_list:
-                profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
-                print(f'Profit Data Open Orders:\n{profit_df.to_string(index=True)}')
-
-            self.logger.info(f"✅ monitor_untracked_assets is {type(self.monitor_untracked_assets)}")
-            self.logger.info("🧪 About to await monitor_untracked_assets")
-
-            try:
-                await asyncio.wait_for(
-                    self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot),
-                    timeout=30  # seconds, or 60 if needed
-                )
-            except asyncio.TimeoutError:
-                self.logger.warning("⚠️ monitor_untracked_assets timed out — skipping.")
-
-            self.logger.info("✅ monitor_untracked_assets completed")
-
-        except Exception as outer_e:
-            self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
-    async def _handle_active_limit_buy_adjustment(
-        self,
-        order_data: OrderData,
-        symbol: str,
-        asset: str,
-        precision_data: tuple
-    ):
-        try:
-            # Fetch current order book
-            order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-            best_ask = Decimal(min(order_book['order_book']['asks'], key=lambda x: x[0])[0])
-
-            quote_deci = precision_data[1]
-            old_price = order_data.price.quantize(Decimal('1.' + '0' * quote_deci))
-            best_ask = best_ask.quantize(Decimal('1.' + '0' * quote_deci))
-
-            # Compare to old price
-            price_diff = (best_ask - old_price) / old_price
-
-            if price_diff <= Decimal("0.01"):
-                return  # Skip if within 1%
-
-            await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-
-            # New limit price slightly below best ask
-            new_price = (best_ask * Decimal("0.995")).quantize(Decimal('1.' + '0' * quote_deci))
-
-            trigger = self.trade_order_manager.build_trigger(
-                "limit_buy_adjusted",
-                f"best_ask={best_ask} > old_price={old_price}, new_price={new_price}"
-            )
-
-            new_order_data = await self.trade_order_manager.build_order_data(
-                source="websocket",
-                trigger=trigger,
-                asset=asset,
-                product_id=symbol,
-                stop_price=None,
-                order_type="limit",
-                side="buy"
-            )
-
-            if new_order_data:
-                success, response = await self.trade_order_manager.place_order(new_order_data, precision_data)
-                log_method = self.logger.info if success else self.logger.warning
-                log_method(f"{'✅' if success else '⚠️'} Replaced limit BUY for {symbol}: {response}")
-
-        except Exception as e:
-            self.logger.error(f"❌ Error in _handle_active_limit_buy_adjustment for {symbol}: {e}", exc_info=True)
-
-
-    async def _handle_active_tp_sl_decision(
-            self,
-            order_data: OrderData,
-            full_order: dict,
-            symbol: str,
-            asset: str,
-            current_price: Decimal,
-            avg_price: Decimal,
-            precision_data: tuple,
-    ):
-        try:
-            quote_deci = precision_data[1]
-            current_price = current_price.quantize(Decimal('1.' + '0' * quote_deci))
-            avg_price = avg_price.quantize(Decimal('1.' + '0' * quote_deci))
-
-            profit_pct = (current_price - avg_price) / avg_price
-
-            trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
-            old_limit_price = Decimal(trigger_config.get('limit_price', '0')).quantize(Decimal('1.' + '0' * quote_deci))
-
-            # Determine if price change justifies update
-            if current_price > old_limit_price:
-                trigger = self.trade_order_manager.build_trigger(
-                    "TP",
-                    f"profit_pct={profit_pct:.2%} → price rose above TP ({current_price} > {old_limit_price})"
-                )
-            elif current_price < old_limit_price:
-                trigger = self.trade_order_manager.build_trigger(
-                    "SL",
-                    f"profit_pct={profit_pct:.2%} → price fell below SL ({current_price} < {old_limit_price})"
-                )
-            else:
-                return  # No update needed
-
-            await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
-
-            new_order_data = await self.trade_order_manager.build_order_data(
-                source='websocket',
-                trigger=trigger,
-                asset=asset,
-                product_id=symbol,
-                side='sell',
-            )
-
-            if new_order_data:
-                success, response = await self.trade_order_manager.place_order(new_order_data, precision_data)
-                log_method = self.logger.info if success else self.logger.warning
-                log_method(f"{'✅' if success else '⚠️'} Updated SL/TP for {symbol} at {current_price}: {response}")
-
-        except Exception as e:
-            self.logger.error(f"❌ Error in _handle_active_tp_sl_decision for {symbol}: {e}", exc_info=True)
+    # async def monitor_and_update_active_orders(self, market_data_snapshot, order_management_snapshot):
+    #     """Monitor active orders and update trailing stops or profitability."""
+    #     try:
+    #         usd_avail = self.usd_pairs.set_index('asset').to_dict(orient='index')
+    #         usd_avail = usd_avail.get('USD',{}).get('free')
+    #         profit_data_list = []
+    #
+    #         async with (self.order_tracker_lock):
+    #             raw_tracker = order_management_snapshot.get("order_tracker", {})
+    #             if isinstance(raw_tracker, list):
+    #                 # Convert list of dicts to dict keyed by order_id
+    #                 order_tracker_snapshot = {
+    #                     (
+    #                             o.get("order_id") or
+    #                             o.get("info", {}).get("order_id") or
+    #                             o.get("id") or
+    #                             f"unknown_{i}"
+    #                     ): o
+    #                     for i, o in enumerate(raw_tracker)
+    #                     if isinstance(o, dict)
+    #                 }
+    #             else:
+    #                 # Assume it's already a dict
+    #                 order_tracker_snapshot = dict(raw_tracker)
+    #             raw_passive = order_management_snapshot.get("passive_tracker", {})
+    #             if isinstance(raw_passive, list):
+    #                 passive_tracker_snapshot = {
+    #                     o["order_id"]: o for o in raw_passive if isinstance(o, dict) and "order_id" in o
+    #                 }
+    #             else:
+    #                 passive_tracker_snapshot = dict(raw_passive)
+    #
+    #             for order_id, raw_order in order_tracker_snapshot.items():
+    #                 # Skip passive orders — these are managed by PassiveMM via watchdog
+    #                 # if raw_order.source.lower() == 'PassiveMM':
+    #                 #     continue
+    #                 raw_order['type'] = raw_order.get('type').lower()
+    #                 raw_order['side'] = raw_order.get('side').lower()
+    #                 order_id = raw_order.get('order_id', 'UNKNOWN')
+    #                 order_data = OrderData.from_dict(raw_order)
+    #                 order_data.avg_quote_volume = self.avg_quote_volume
+    #                 try:
+    #                     symbol = order_data.trading_pair
+    #                     asset = symbol.split('/')[0]
+    #                     # ✅ Fetch precision values for the asset
+    #                     precision_data = self.shared_utils_precision.fetch_precision(symbol)
+    #                     order_data.base_decimal = precision_data[0]
+    #                     order_data.quote_decimal = precision_data[1]
+    #                     if asset == 'RAD':
+    #                        pass
+    #                     order_duration = raw_order.get('order_duration')
+    #
+    #                     # If missing, compute duration from datetime
+    #                     if order_duration is None:
+    #                         order_time = raw_order.get('datetime')
+    #                         if isinstance(order_time, str):
+    #                             # Parse if it's a string
+    #                             order_time = self.shared_utils_date_time.parse_iso_time(order_time)
+    #                         if isinstance(order_time, datetime):
+    #                             now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
+    #                             elapsed = now - order_time
+    #                             order_duration = int(elapsed.total_seconds() // 60)  # whole minutes
+    #                         else:
+    #                             order_duration = 0
+    #                     base_deci, quote_deci, _, _ = precision_data
+    #
+    #                     # ✅ Add precision values to order_data
+    #                     order_data.quote_decimal = quote_deci
+    #                     order_data.base_decimal = base_deci
+    #                     order_data.product_id = symbol
+    #                     if asset not in order_management_snapshot.get('non_zero_balances', {}):
+    #
+    #                         continue
+    #                     avg_price = order_management_snapshot.get('non_zero_balances', {})[asset]['average_entry_price'].get('value')
+    #                     avg_price = Decimal(avg_price).quantize(Decimal('1.' + '0' * quote_deci))
+    #                     asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0))
+    #                     try:
+    #                         quantizer = Decimal(f'1e-{quote_deci}')
+    #                         asset_balance = Decimal(asset_balance).quantize(quantizer)
+    #                     except decimal.InvalidOperation:
+    #                         self.logger.warning(f"⚠️ Could not quantize asset_balance={asset_balance} with precision={quote_deci}")
+    #                         asset_balance = Decimal(asset_balance).scaleb(-quote_deci).quantize(quantizer)
+    #                     current_price = self.bid_ask_spread.get(symbol, 0)
+    #                     cost_basis = order_management_snapshot.get('non_zero_balances', {})[asset]['cost_basis'].get('value')
+    #                     cost_basis = Decimal(cost_basis).quantize(Decimal('1.' + '0' * quote_deci))
+    #
+    #                     required_prices = {
+    #                         'avg_price': avg_price,
+    #                         'cost_basis': cost_basis,
+    #                         'asset_balance': asset_balance,
+    #                         'current_price': None,
+    #                         'profit': None,
+    #                         'profit_percentage': None,
+    #                         'usd_avail': usd_avail,
+    #                         'status_of_order': order_data.status
+    #                     }
+    #                     # if limit sell price < the min(current price, highest bid) and the order is > than 5 minutes old resubmit order
+    #                     if order_data.type == 'limit' and order_data.side == 'sell':
+    #                         order_book = await self.order_book_manager.get_order_book(order_data, symbol)
+    #                         highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
+    #                         if order_data.price < min(current_price,highest_bid) and order_duration > 5 :
+    #                             # ✅ Update trailing stop with highest bid
+    #                             old_ts_limit_price = order_data.price
+    #                             await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+    #                             new_order_data = await self.trade_order_manager.build_order_data('Websocket','trailing_stop',
+    #                                                                                              asset, symbol, old_ts_limit_price, None)
+    #                             await self.listener.handle_order_fill(new_order_data)
+    #                             continue
+    #                         else:  # for testing purposes
+    #                             pass
+    #                     elif order_data.type == 'limit' and order_data.side == 'buy':
+    #                         await self._handle_active_limit_buy_adjustment(
+    #                             order_data=order_data,
+    #                             symbol=symbol,
+    #                             asset=asset,
+    #                             precision_data=precision_data
+    #                         )
+    #
+    #                     elif order_data.type == 'take_profit_stop_loss' and order_data.side == 'sell':
+    #                         full_tracker = order_management_snapshot.get("order_tracker", {})
+    #                         full_order = full_tracker.get(order_data.order_id)
+    #                         if full_order:
+    #                             await self._handle_active_tp_sl_decision(
+    #                                 order_data=order_data,
+    #                                 full_order=full_order,
+    #                                 symbol=symbol,
+    #                                 asset=asset,
+    #                                 current_price=current_price,
+    #                                 avg_price=avg_price,
+    #                                 precision_data=precision_data
+    #                             )
+    #
+    #
+    #                     profit = await self.profit_data_manager.calculate_profitability(
+    #                         symbol, required_prices, self.bid_ask_spread, self.usd_pairs
+    #                     )
+    #
+    #                     if profit and profit.get('profit', 0) != 0:
+    #                         profit_data_list.append(profit)
+    #                     if Decimal(profit.get('profit percent', '0').replace('%', '')) / 100 <= self.stop_loss:
+    #                         await self.listener.handle_order_fill(order_data)
+    #                 except Exception as inner_ex:
+    #                     self.logger.error(f"Error handling tracked order {order_id}: {inner_ex}", exc_info=True)
+    #
+    #         if profit_data_list:
+    #             profit_df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
+    #             print(f'Profit Data Open Orders:\n{profit_df.to_string(index=True)}')
+    #
+    #         self.logger.info(f"✅ monitor_untracked_assets is {type(self.monitor_untracked_assets)}")
+    #         self.logger.info("🧪 About to await monitor_untracked_assets")
+    #
+    #         try:
+    #             await asyncio.wait_for(
+    #                 self.monitor_untracked_assets(market_data_snapshot, order_management_snapshot),
+    #                 timeout=30  # seconds, or 60 if needed
+    #             )
+    #         except asyncio.TimeoutError:
+    #             self.logger.warning("⚠️ monitor_untracked_assets timed out — skipping.")
+    #
+    #         self.logger.info("✅ monitor_untracked_assets completed")
+    #
+    #     except Exception as outer_e:
+    #         self.logger.error(f"Error in monitor_and_update_active_orders: {outer_e}", exc_info=True)
+    # async def _handle_active_limit_buy_adjustment(
+    #     self,
+    #     order_data: OrderData,
+    #     symbol: str,
+    #     asset: str,
+    #     precision_data: tuple
+    # ):
+    #     try:
+    #         # Fetch current order book
+    #         order_book = await self.order_book_manager.get_order_book(order_data, symbol)
+    #         best_ask = Decimal(min(order_book['order_book']['asks'], key=lambda x: x[0])[0])
+    #
+    #         quote_deci = precision_data[1]
+    #         old_price = order_data.price.quantize(Decimal('1.' + '0' * quote_deci))
+    #         best_ask = best_ask.quantize(Decimal('1.' + '0' * quote_deci))
+    #
+    #         # Compare to old price
+    #         price_diff = (best_ask - old_price) / old_price
+    #
+    #         if price_diff <= Decimal("0.01"):
+    #             return  # Skip if within 1%
+    #
+    #         await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+    #
+    #         # New limit price slightly below best ask
+    #         new_price = (best_ask * Decimal("0.995")).quantize(Decimal('1.' + '0' * quote_deci))
+    #
+    #         trigger = self.trade_order_manager.build_trigger(
+    #             "limit_buy_adjusted",
+    #             f"best_ask={best_ask} > old_price={old_price}, new_price={new_price}"
+    #         )
+    #
+    #         new_order_data = await self.trade_order_manager.build_order_data(
+    #             source="websocket",
+    #             trigger=trigger,
+    #             asset=asset,
+    #             product_id=symbol,
+    #             stop_price=None,
+    #             order_type="limit",
+    #             side="buy"
+    #         )
+    #
+    #         if new_order_data:
+    #             success, response = await self.trade_order_manager.place_order(new_order_data, precision_data)
+    #             log_method = self.logger.info if success else self.logger.warning
+    #             log_method(f"{'✅' if success else '⚠️'} Replaced limit BUY for {symbol}: {response}")
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error in _handle_active_limit_buy_adjustment for {symbol}: {e}", exc_info=True)
+    #
+    #
+    # async def _handle_active_tp_sl_decision(self,
+    #         order_data: OrderData,
+    #         full_order: dict,
+    #         symbol: str,
+    #         asset: str,
+    #         current_price: Decimal,
+    #         avg_price: Decimal,
+    #         precision_data: tuple,
+    # ):
+    #     try:
+    #         quote_deci = precision_data[1]
+    #         current_price = current_price.quantize(Decimal('1.' + '0' * quote_deci))
+    #         avg_price = avg_price.quantize(Decimal('1.' + '0' * quote_deci))
+    #
+    #         profit_pct = (current_price - avg_price) / avg_price
+    #
+    #         trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
+    #         old_limit_price = Decimal(trigger_config.get('limit_price', '0')).quantize(Decimal('1.' + '0' * quote_deci))
+    #
+    #         # Determine if price change justifies update
+    #         if current_price > old_limit_price:
+    #             trigger = self.trade_order_manager.build_trigger(
+    #                 "TP",
+    #                 f"profit_pct={profit_pct:.2%} → price rose above TP ({current_price} > {old_limit_price})"
+    #             )
+    #         elif current_price < old_limit_price:
+    #             trigger = self.trade_order_manager.build_trigger(
+    #                 "SL",
+    #                 f"profit_pct={profit_pct:.2%} → price fell below SL ({current_price} < {old_limit_price})"
+    #             )
+    #         else:
+    #             return  # No update needed
+    #
+    #         await self.listener.order_manager.cancel_order(order_data.order_id, symbol)
+    #
+    #         new_order_data = await self.trade_order_manager.build_order_data(
+    #             source='websocket',
+    #             trigger=trigger,
+    #             asset=asset,
+    #             product_id=symbol,
+    #             side='sell',
+    #         )
+    #
+    #         if new_order_data:
+    #             success, response = await self.trade_order_manager.place_order(new_order_data, precision_data)
+    #             log_method = self.logger.info if success else self.logger.warning
+    #             log_method(f"{'✅' if success else '⚠️'} Updated SL/TP for {symbol} at {current_price}: {response}")
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error in _handle_active_tp_sl_decision for {symbol}: {e}", exc_info=True)
 
     # <><><><><><><><><><><><><><><><><><><><><><><><><>
-    async def monitor_untracked_assets(self, market_data_snapshot, order_management_snapshot):
-        self.logger.info("📱 Starting monitor_untracked_assets")
+    # async def monitor_untracked_assets(self, market_data_snapshot, order_management_snapshot):
+    #     self.logger.info("📱 Starting monitor_untracked_assets")
+    #
+    #     usd_prices = self._get_usd_prices()
+    #     if not usd_prices or not self.non_zero_balances:
+    #         self.logger.warning("⚠️ Skipping due to missing prices or balances")
+    #         return
+    #
+    #     for asset, position in self.non_zero_balances.items():
+    #         try:
+    #             result = self._analyze_position(asset, position, usd_prices)
+    #             if not result:
+    #                 continue
+    #
+    #             symbol, asset, current_price, qty, avg_entry, profit, profit_pct, precision_data = result
+    #
+    #             if not await self._passes_holding_cooldown(symbol):
+    #                 continue
+    #
+    #             await self._handle_tp_sl_decision(
+    #                 symbol=symbol,
+    #                 asset=asset,
+    #                 current_price=current_price,
+    #                 qty=qty,
+    #                 avg_entry=avg_entry,
+    #                 profit=profit,
+    #                 profit_pct=profit_pct,
+    #                 precision_data=precision_data,
+    #                 snapshot=order_management_snapshot
+    #             )
+    #         except Exception as e:
+    #             self.logger.error(f"❌ Error analyzing {asset}: {e}", exc_info=True)
+    #
+    #     self.logger.info("✅ monitor_untracked_assets completed")
 
-        usd_prices = self._get_usd_prices()
-        if not usd_prices or not self.non_zero_balances:
-            self.logger.warning("⚠️ Skipping due to missing prices or balances")
-            return
+    # def _get_usd_prices(self):
+    #     if self.usd_pairs.empty:
+    #         return {}
+    #     return self.usd_pairs.set_index("symbol")["price"].to_dict()
 
-        for asset, position in self.non_zero_balances.items():
-            try:
-                result = self._analyze_position(asset, position, usd_prices)
-                symbol = result[0] if result else asset + "-USD"
-                if not result:
-                    continue
+    # def _analyze_position(self, asset, position, usd_prices):
+    #     symbol = f"{asset}-USD"
+    #     if symbol in ("USD-USD", "SHDW-USD") or symbol in self.passive_orders:
+    #         return None
+    #
+    #     pos = position.to_dict() if hasattr(position, "to_dict") else position
+    #     current_price = usd_prices.get(symbol)
+    #     if not current_price:
+    #         return None
+    #
+    #     precision_data = self.shared_utils_precision.fetch_precision(symbol)
+    #     base_deci, quote_deci = precision_data[0], precision_data[1]
+    #     base_q = Decimal("1").scaleb(-base_deci)
+    #     quote_q = Decimal("1").scaleb(-quote_deci)
+    #
+    #     avg_entry = self.shared_utils_precision.safe_quantize(
+    #         Decimal(pos.get("average_entry_price", {}).get("value", "0")), quote_q)
+    #     cost_basis = self.shared_utils_precision.safe_quantize(
+    #         Decimal(pos.get("cost_basis", {}).get("value", "0")), quote_q)
+    #     qty = self.shared_utils_precision.safe_quantize(
+    #         Decimal(pos.get("available_to_trade_crypto", "0")), base_q)
+    #
+    #     if qty <= Decimal("0.0001") or avg_entry <= 0:
+    #         return None
+    #
+    #     profit = (Decimal(current_price) - avg_entry) * qty
+    #     profit_pct = (Decimal(current_price) - avg_entry) / avg_entry
+    #
+    #     return symbol, asset, Decimal(current_price), qty, avg_entry, profit, profit_pct, precision_data
 
-                if not await self._passes_holding_cooldown(symbol):
-                    continue
+    # async def _passes_holding_cooldown(self, symbol: str) -> bool:
+    #     try:
+    #         order_id = await self.trade_recorder.find_latest_unlinked_buy(symbol)
+    #         if not order_id:
+    #             return True  # No recent buy
+    #
+    #         trade = await self.trade_recorder.fetch_trade_by_order_id(order_id)
+    #         if not trade or not trade.order_time:
+    #             return True
+    #
+    #         now = datetime.utcnow().replace(tzinfo=trade.order_time.tzinfo)
+    #         held_for = now - trade.order_time
+    #
+    #         if held_for < timedelta(minutes=self.min_cooldown):
+    #             self.logger.debug(f"⏳ Skipping {symbol} — held for {held_for}, below cooldown")
+    #             return False
+    #         return True
+    #
+    #     except Exception as e:
+    #         self.logger.warning(f"⚠️ Could not evaluate cooldown for {symbol}: {e}", exc_info=True)
+    #         return True
 
-                await self._handle_tp_sl_decision(*result, order_management_snapshot)
-            except Exception as e:
-                self.logger.error(f"❌ Error analyzing {asset}: {e}", exc_info=True)
+    # async def _handle_tp_sl_decision(self, symbol, asset, current_price, qty, avg_entry,
+    #                                  profit, profit_pct, precision_data, snapshot):
+    #     try:
+    #         if asset in self.hodl:
+    #             return
+    #
+    #         open_order = self._get_open_order_for_symbol(symbol)
+    #         info = open_order.get('info', {}) if open_order else {}
+    #         order_price = Decimal(info.get("average_filled_price", "0") or "0")
+    #
+    #         if profit_pct >= self.take_profit:
+    #             trigger = self.trade_order_manager.build_trigger(
+    #                 "TP", f"profit_pct={profit_pct:.2%} ≥ take_profit={self.take_profit:.2%}"
+    #             )
+    #             if open_order and current_price > order_price:
+    #                 await self.order_manager.cancel_order(info.get("order_id"), symbol)
+    #                 open_order = None
+    #             if not open_order:
+    #                 await self._place_tp_order("websocket", trigger, asset, symbol, current_price, precision_data)
+    #
+    #         elif profit_pct <= self.stop_loss:
+    #             trigger = self.trade_order_manager.build_trigger(
+    #                 "SL", f"profit_pct={profit_pct:.2%} < stop_loss={self.stop_loss:.2%}"
+    #             )
+    #             if open_order and current_price < order_price:
+    #                 await self.order_manager.cancel_order(info.get("order_id"), symbol)
+    #                 open_order = None
+    #             if not open_order:
+    #                 await self._place_sl_order(asset, symbol, current_price, trigger, precision_data)
+    #
+    #         self.logger.info(
+    #             self.shared_utils_color.format(
+    #                 f"{symbol} {trigger.get('trigger', '?')} → {trigger.get('trigger_note', profit_pct)}",
+    #                 self.shared_utils_color.GREEN if profit_pct >= 0 else self.shared_utils_color.ORANGE
+    #             )
+    #         )
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error handling TP/SL for {symbol}: {e}", exc_info=True)
 
-        self.logger.info("✅ monitor_untracked_assets completed")
+    # def _get_open_order_for_symbol(self, symbol: str) -> Optional[dict]:
+    #     return next((o for o in self.open_orders.values() if o.get("symbol") == symbol), None)
 
-    def _get_usd_prices(self):
-        if self.usd_pairs.empty:
-            return {}
-        return self.usd_pairs.set_index("symbol")["price"].to_dict()
+    # async def _place_tp_order(self, source, trigger, asset, symbol, price, precision_data):
+    #     order_data = await self.trade_order_manager.build_order_data(
+    #         source=source, trigger=trigger, asset=asset, product_id=symbol, side='sell'
+    #     )
+    #     if not order_data:
+    #         return
+    #     order_data.trigger = trigger
+    #     success, response = await self.trade_order_manager.place_order(order_data, precision_data)
+    #     log = self.logger.info if success else self.logger.warning
+    #     log(f"{'✅' if success else '⚠️'} TP order for {symbol}: {response}")
+    #
+    # async def _place_sl_order(self, asset, symbol, current_price, trigger, precision_data):
+    #     order_data = await self.trade_order_manager.build_order_data(
+    #         source='websocket', trigger=trigger, asset=asset, product_id=symbol, side='sell'
+    #     )
+    #     if not order_data:
+    #         return
+    #     order_data.trigger = trigger
+    #     success, response = await self.trade_order_manager.place_order(order_data, precision_data)
+    #     log = self.logger.info if success else self.logger.warning
+    #     log(f"{'✅' if success else '⚠️'} SL order for {symbol}: {response}")
 
-    def _analyze_position(self, asset, position, usd_prices):
-        symbol = f"{asset}-USD"
-        if symbol in ("USD-USD", "SHDW-USD") or symbol in self.passive_orders :
-            return None
-
-        pos = position.to_dict() if hasattr(position, "to_dict") else position
-        current_price = usd_prices.get(symbol)
-        if not current_price:
-            return None
-
-        precision = self.spot_positions.get(asset, {}).get("precision", {})
-        base_deci = precision.get("amount", 8)
-        quote_deci = precision.get("price", 8)
-        base_q = Decimal("1").scaleb(-base_deci)
-        quote_q = Decimal("1").scaleb(-quote_deci)
-
-        avg_entry = Decimal(pos.get("average_entry_price", {}).get("value", "0"))
-        cost_basis = Decimal(pos.get("cost_basis", {}).get("value", "0"))
-        qty = Decimal(pos.get("available_to_trade_crypto", "0"))
-
-        avg_entry = self.shared_utils_precision.safe_quantize(avg_entry, quote_q)
-        cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_q)
-        qty = self.shared_utils_precision.safe_quantize(qty, base_q)
-
-        if qty <= Decimal("0.0001") or avg_entry <= 0:
-            return None
-
-        profit = (Decimal(current_price) - avg_entry) * qty
-        profit_pct = (Decimal(current_price) - avg_entry) / avg_entry
-
-        return symbol, asset, current_price, qty, avg_entry, profit, profit_pct
-
-    async def _passes_holding_cooldown(self, symbol: str) -> bool:
-        try:
-            order_id = await self.trade_recorder.find_latest_unlinked_buy(symbol)
-            if not order_id:
-                return True  # No buy found — skip cooldown
-
-            # Fetch the full trade record
-            trades = await self.trade_recorder.fetch_all_trades()
-            for trade in trades:
-                if trade.order_id == order_id:
-                    acquired = trade.order_time
-                    break
-            else:
-                return True  # Order ID not found
-
-            now = datetime.utcnow().replace(tzinfo=acquired.tzinfo)
-            held_for = now - acquired
-            if held_for < timedelta(minutes=self.min_cooldown):
-                self.logger.debug(f"⏳ Skipping {symbol} — held for {held_for}, below cooldown")
-                return False
-            return True
-
-        except Exception as e:
-            self.logger.warning(f"⚠️ Could not evaluate cooldown for {symbol}: {e}", exc_info=True)
-            return True
-
-    async def _handle_tp_sl_decision(self, symbol, asset, current_price, qty, avg_entry, profit, profit_pct, snapshot):
-        try:
-            if asset in self.hodl:
-                return
-
-            open_order_found, open_order = self.shared_utils_utility.has_open_orders(symbol, self.open_orders)
-            info = open_order.get('info', {}) if open_order else {}
-            trigger = {}
-
-            color = self.shared_utils_color.GREEN if profit_pct >= 0 else self.shared_utils_color.ORANGE
-
-            if profit_pct >= self.take_profit:
-                trigger = self.trade_order_manager.build_trigger(
-                    "TP",
-                    f"profit_pct={profit_pct:.2%} ≥ take_profit={self.take_profit:.2%}"
-                )
-
-                if open_order_found and current_price >  Decimal(info.get("average_filled_price", "0")):
-                    await self.order_manager.cancel_order(info.get("order_id"), symbol)
-                    self.logger.info(f"🔁 Replacing TP for {symbol} @ {current_price}")
-                    open_order_found = False  # ✅ Clear flag so TP gets re-placed
-
-                if not open_order_found:
-                    await self._place_tp_order("websocket", trigger, asset, symbol, current_price)
-
-            elif profit_pct <= self.stop_loss:
-                trigger = self.trade_order_manager.build_trigger(
-                    "SL",
-                    f"profit_pct={profit_pct:.2%} < stop_loss={self.stop_loss:.2%}"
-                )
-
-                if open_order_found and current_price < Decimal(info.get("average_filled_price", "0")):
-                    await self.order_manager.cancel_order(info.get("order_id"), symbol)
-                    self.logger.info(f"🔁 Replacing SL for {symbol} @ {current_price}")
-                    open_order_found = False  # ✅ Clear flag so SL gets re-placed
-
-                if not open_order_found:
-                    await self._place_sl_order(asset, symbol, current_price, profit, profit_pct, trigger)
-
-            print(self.shared_utils_color.format(
-                f"{symbol} {trigger.get('trigger', '?')} Trigger → {trigger.get('trigger_note', '?')}",
-                color
-            ))
-
-        except Exception as e:
-            self.logger.error(f"❌ Error handling TP/SL for {symbol}: {e}", exc_info=True)
-
-    async def _place_tp_order(self, source, trigger: dict, asset: str, symbol: str, price: Decimal):
-        precision_data = self.shared_utils_precision.fetch_precision(symbol)
-
-        order_data = await self.trade_order_manager.build_order_data(
-            source='websocket', trigger=trigger, asset=asset, product_id=symbol, side='sell'
-        )
-        if order_data:
-            if isinstance(trigger, str):
-                order_data.trigger = self.trade_order_manager.build_trigger("TP", f"price={price}")
-            else:
-                order_data.trigger = trigger
-
-            # Check if there's already an open order
-            if any(o.get("symbol") == symbol for o in self.open_orders.values()):
-                self.logger.info(f"⏸️ Skipping TP order for {symbol}: open order exists")
-                return
-            if order_data.side == 'buy':
-                pass
-            success, response = await self.trade_order_manager.place_order(order_data, precision_data)
-            log_method = self.logger.info if success else self.logger.error
-            log_method(f"{'✅' if success else '❌'} TP order for {symbol}: {response}")
-
-    async def _place_sl_order(self, asset: str, symbol: str, current_price: Decimal, profit: Decimal, profit_pct: Decimal, trigger: dict):
-        try:
-            # Step 1: Build OrderData
-            order_data = await self.trade_order_manager.build_order_data(
-                source='websocket', trigger=trigger, asset=asset, product_id=symbol, side='sell',
-            )
-            if not order_data:
-                return
-
-            order_data.trigger = self.trade_order_manager.build_trigger("SL", f"stop_loss={self.stop_loss}%")
-
-            # Step 2: Skip if passive order already exists for this asset
-            if asset in self.passive_orders:
-                return
-
-            # Step 3: Look for existing open orders
-            matching_orders = [
-                o for o in self.open_orders.values()
-                if o.get("symbol") == symbol
-            ] if self.open_orders else []
-
-            for o in matching_orders:
-                order_id = o.get("order_id")
-                order_type = o.get("type", "").upper()
-                limit_price = self._extract_price(o)
-
-                if order_type == "TAKE_PROFIT_STOP_LOSS" and current_price <= limit_price:
-                    await self.listener.order_manager.cancel_order(order_id, symbol)
-                    self.logger.info(f"🛑 Canceled SL order {order_id} at limit {limit_price}")
-                    break  # Only cancel one matching SL order
-                else:
-                    return  # Skip placing a new one if an active order exists
-
-            # Step 4: Submit SL order if no conflicting order exists
-            if not order_data.open_orders.get("open_order") and order_data.side == 'sell':
-                precision_data = self.shared_utils_precision.fetch_precision(symbol)
-                success, response = await self.trade_order_manager.place_order(order_data, precision_data)
-                log_method = self.logger.info if success else self.logger.error
-                log_method(f"{'✅' if success else '❌'} SL order for {symbol}: {response}")
-
-        except Exception as e:
-            self.logger.error(f"Error building or submitting SL order for {symbol}: {e}", exc_info=True)
-
-    def _extract_price(self, order: dict) -> Decimal:
-        """
-        Extracts the appropriate SL/limit price from various open order structures.
-        """
-        try:
-            info = order.get("info", {}) or {}
-            order_config = info.get("order_configuration", {})
-
-            if "trigger_bracket_gtc" in order_config:
-                sl_price = order_config["trigger_bracket_gtc"].get("stop_loss_price") \
-                           or order_config["trigger_bracket_gtc"].get("stop_trigger_price")
-                return Decimal(sl_price)
-
-            if "limit_limit_gtc" in order_config:
-                return Decimal(order_config["limit_limit_gtc"].get("limit_price"))
-
-            # Fallback to legacy formats or simplified views
-            return Decimal(
-                order.get("stop_loss_price")
-                or order.get("stop_trigger_price")
-                or order.get("limit_price")
-                or order.get("price")
-                or "0"
-            )
-        except Exception:
-            self.logger.warning(f"⚠️ Failed to extract SL price from order: {order}")
-            return Decimal("0")
+    # def _extract_price(self, order: dict) -> Decimal:
+    #     """
+    #     Extracts the appropriate SL/limit price from various open order structures.
+    #     """
+    #     try:
+    #         info = order.get("info", {}) or {}
+    #         order_config = info.get("order_configuration", {})
+    #
+    #         if "trigger_bracket_gtc" in order_config:
+    #             sl_price = order_config["trigger_bracket_gtc"].get("stop_loss_price") \
+    #                        or order_config["trigger_bracket_gtc"].get("stop_trigger_price")
+    #             return Decimal(sl_price)
+    #
+    #         if "limit_limit_gtc" in order_config:
+    #             return Decimal(order_config["limit_limit_gtc"].get("limit_price"))
+    #
+    #         # Fallback to legacy formats or simplified views
+    #         return Decimal(
+    #             order.get("stop_loss_price")
+    #             or order.get("stop_trigger_price")
+    #             or order.get("limit_price")
+    #             or order.get("price")
+    #             or "0"
+    #         )
+    #     except Exception:
+    #         self.logger.warning(f"⚠️ Failed to extract SL price from order: {order}")
+    #         return Decimal("0")
 
 

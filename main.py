@@ -18,6 +18,7 @@ from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
+from MarketDataManager.asset_monitor import AssetMonitor
 from SharedDataManager.shared_data_manager import SharedDataManager
 from Shared_Utils.alert_system import AlertSystem
 from TestingDebugging.debugger import Debugging
@@ -129,16 +130,30 @@ async def build_websocket_components(config, listener, shared_data_manager):
         max_lifetime=90,  # cancel / refresh after 90 s
     )
 
+    asset_monitor = AssetMonitor(
+        listener=listener,
+        logger=listener.logger,
+        config=config,
+        shared_data_manager=shared_data_manager,
+        trade_order_manager=listener.trade_order_manager,
+        order_manager=listener.order_manager,
+        trade_recorder=shared_data_manager.trade_recorder,
+        profit_data_manager=listener.profit_data_manager,
+        order_book_manager=listener.order_book_manager,
+        shared_utils_precision=listener.shared_utils_precision,
+        shared_utils_color=listener.shared_utils_color,
+        shared_utils_date_time=listener.shared_utils_date_time,
+    )
+
+    listener.asset_monitor = asset_monitor
+
     websocket_helper = WebSocketHelper(
         listener=listener,
         websocket_manager=None,
-        exchange=listener.exchange,
-        ccxt_api=listener.ccxt_api,
         logger_manager=listener.logger,
         coinbase_api=listener.coinbase_api,
         profit_data_manager=listener.profit_data_manager,
         order_type_manager=listener.order_type_manager,
-        order_manager=listener.order_manager,
         shared_utils_date_time=listener.shared_utils_date_time,
         shared_utils_print=listener.shared_utils_print,
         shared_utils_color=listener.shared_utils_color,
@@ -149,10 +164,10 @@ async def build_websocket_components(config, listener, shared_data_manager):
         order_book_manager=listener.order_book_manager,
         snapshot_manager=listener.snapshot_manager,
         trade_order_manager=listener.trade_order_manager,
-        ohlcv_manager=listener.ohlcv_manager,
         shared_data_manager=shared_data_manager,
         market_ws_manager=None,
         passive_order_manager=passive_order_manager,
+        asset_monitor=asset_monitor,
 
     )
 

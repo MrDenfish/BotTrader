@@ -367,33 +367,36 @@ class PassiveOrderManager:
             Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP
         )
         quote_quantizer = Decimal("1").scaleb(-quote_deci)
-        spread= Decimal(quote_od.spread)
+        spread = Decimal(quote_od.spread)
         quote_od.spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
-        trigger = {"trigger": f"passive_{quote_od.side}", "trigger_note": f"price:{price}"}
-        quote_od.trigger = trigger
+        quote_od.trigger = {"trigger": f"passive_{quote_od.side}", "trigger_note": f"price:{price}"}
         quote_od.source = 'PassiveMM'
+
         if not self._passes_balance_check(quote_od):
             return
+
         print(f"📈 Placing Passive order: {quote_od}")
 
         ok, res = await self.tom.place_order(quote_od)
+
         if ok:
-            order_id = res['details'].get('order_id')
+            order_id = res.get("order_id") or res.get("details", {}).get("order_id")
             if order_id:
                 quote_od.open_orders = True
-                quote_od.order_id = order_id  # ✅ patch with real ID
+                quote_od.order_id = order_id
                 print(f"✅ Saving Passive order: {quote_od.side.upper()} {trading_pair} @ {price}")
                 await self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
             else:
                 self.logger.warning(f"⚠️ No order_id returned in order placement response: {res}")
             self.logger.info(f"✅ Passive {quote_od.side.upper()} {trading_pair} @ {price}")
-        elif res.get('code') in {'411', '414', '415', '500'}:
-            print(f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {res.get('error') or res.get('message')}")
         else:
-            self.logger.warning(
-                f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {res.get('message')}",
-                exc_info=True
-            )
+            # New unified structure for failed responses
+            reason = res.get("reason", "UNKNOWN")
+            msg = res.get("message", "No message")
+            attempts = res.get("attempts", "N/A")
+
+            print(f"⚠️ Passive {quote_od.side.upper()} {trading_pair} attempt {attempts} failed — Reason: {reason} | Msg: {msg}")
+            self.logger.warning(f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {msg}", exc_info=True)
 
     # ------------------------------------------------------------------
     # Helper methods
