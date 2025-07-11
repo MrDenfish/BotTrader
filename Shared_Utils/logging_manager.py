@@ -163,7 +163,7 @@ class LoggerManager:
     def log_method_call(func):
         async def wrapper(*args, **kwargs):
             logger = logging.getLogger('webhook_logger')
-            logger.debug(f"Calling {func.__name__} with args {args} and kwargs {kwargs}")
+            print(f"🪲 Calling {func.__name__} with args {args} and kwargs {kwargs}🪲 ") #DEBUG
             result = await func(*args, **kwargs)
             logger.debug(f"{func.__name__} returned {result}")
             return result

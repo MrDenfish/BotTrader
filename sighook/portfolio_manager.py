@@ -118,21 +118,26 @@ class PortfolioManager:
         Filter ticker cache by volume > 1 million and price change > roc_sell_24h %.
         Excludes coins listed in self.shill_coins (e.g., 'UNFI,TRUMP')
         """
-        # ✅ Convert shill string to set
-        shill_coins = set([coin.strip().upper() for coin in self.shill_coins.split(',')])
+        try:
+            # ✅ Convert shill string to set
+            shill_coins = set([coin.strip().upper() for coin in self.shill_coins.split(',')])
 
-        # Extract list of unique cryptocurrencies from buy_sell_matrix
-        if not buy_sell_matrix.empty:
-            unique_coins = buy_sell_matrix['asset'].unique()
-            df = self.ticker_cache[self.ticker_cache['asset'].isin(unique_coins)]
-        else:
-            df = self.ticker_cache
-            df = df[df['asset'] != 'USD']  # remove USD/USD pair
+            # Extract list of unique cryptocurrencies from buy_sell_matrix
+            if not buy_sell_matrix.empty:
+                unique_coins = buy_sell_matrix['asset'].unique()
+                df = self.ticker_cache[self.ticker_cache['asset'].isin(unique_coins)]
+            else:
+                df = self.ticker_cache
+                df = df[df['asset'] != 'USD']  # remove USD/USD pair
 
-        # ✅ Filter out shill coins
-        df = df[~df['asset'].str.upper().isin(shill_coins)]
+            # ✅ Filter out shill coins
+            df = df[~df['asset'].str.upper().isin(shill_coins)]
 
-        return df
+            return df
+        except Exception as e:
+            self.logger.error(f"❌ Error in filter_ticker_cache_matrix: {e}", exc_info=True)
+            return pd.DataFrame()
+
 
     def get_portfolio_data(self, start_time, threshold=0.01):
         """Part II: Retrieve portfolio data for a given start time and threshold.

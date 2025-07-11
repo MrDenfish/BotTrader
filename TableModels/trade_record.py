@@ -26,6 +26,8 @@ class TradeRecord(Base):
     order_type = Column(String, nullable=True)
     status = Column(String, nullable=True)
     source = Column(String, nullable=True)
+    remaining_size = Column(Float, nullable=True)
+    realized_profit = Column(Float, nullable=True)  # NEW: for performance tracking
 
     __table_args__ = (
         Index('idx_trade_records_symbol_order_time', 'symbol', 'order_time'),

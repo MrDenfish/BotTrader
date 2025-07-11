@@ -56,6 +56,9 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
         logger.info("⏳ Checking startup snapshot state...")
 
         market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater,ticker_manager)
+        # ✅ Explicitly assign to shared_data_manager
+        shared_data_manager.market_data = market_data or {}
+        shared_data_manager.order_management = order_mgmt or {}
         logger.info("✅ Market data preloaded successfully with data from the database.")
         return market_data, order_mgmt
     except Exception as e:
@@ -101,7 +104,6 @@ async def init_shared_data(logger_manager, shared_logger, coinbase_api):
 
     await shared_data_manager.initialize()
     return shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility, shared_utils_precision
-
 
 async def build_websocket_components(config, listener, shared_data_manager):
     # --- NEW: pull latest maker / taker rates -------------
@@ -436,9 +438,6 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, market
     await graceful_shutdown(listener, runner)
     return listener
 
-
-
-
 async def main():
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
     parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both')
@@ -456,11 +455,6 @@ async def main():
 
     config.exchange = ExchangeManager.get_instance(config.load_webhook_api_key()).get_exchange()
     startup_event = asyncio.Event()
-
-
-
-
-
 
     try:
         async with (aiohttp.ClientSession() as session):
@@ -510,6 +504,14 @@ async def main():
                 ticker_manager=ticker_manager,
                 market_data_updater=market_data_updater  # ✅ pass it in
             )
+
+            shared_utils_precision.set_trade_parameters()
+
+            try:
+                await shared_data_manager.trade_recorder.backfill_pnl_and_parents()
+            except Exception as e:
+                shared_logger.warning(f"⚠️ Skipping PnL backfill due to error: {e}", exc_info=True)
+
 
             if args.run == 'webhook':
                 await run_webhook(
@@ -609,6 +611,200 @@ async def main():
         if alert:
             alert.callhome("Bot main process crashed", str(e), mode="email")
         raise
+
+# async def main():
+#     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
+#     parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both')
+#     args = parser.parse_args()
+#
+#     config = await load_config()
+#     log_config = {"log_level": logging.INFO}
+#     logger_manager = LoggerManager(log_config)
+#
+#     webhook_logger = logger_manager.get_logger("webhook_logger")
+#     sighook_logger = logger_manager.get_logger("sighook_logger")
+#     shared_logger = logger_manager.get_logger("shared_logger")
+#
+#     alert = AlertSystem(logger_manager) if args.run != 'webhook' else None
+#
+#     config.exchange = ExchangeManager.get_instance(config.load_webhook_api_key()).get_exchange()
+#     startup_event = asyncio.Event()
+#
+#     try:
+#         async with aiohttp.ClientSession() as session:
+#
+#             # ✅ Pre-step: Coinbase and Shared Utility
+#             shared_utils_utility = SharedUtility.get_instance(logger_manager)
+#             coinbase_api = CoinbaseAPI(session, shared_utils_utility, logger_manager, None)
+#
+#             # ✅ Step 1: Initialize SharedDataManager and PrecisionUtils (usd_pairs not loaded yet)
+#             (shared_data_manager,
+#              shared_utils_debugger,
+#              shared_utils_print,
+#              shared_utils_color,
+#              shared_utils_utility,
+#              shared_utils_precision) = await init_shared_data(logger_manager, shared_logger, coinbase_api)
+#
+#             coinbase_api.shared_utils_precision = shared_utils_precision
+#
+#             # ✅ Step 2: Initialize Market Infrastructure
+#             order_book_manager = OrderBookManager.get_instance(
+#                 config.exchange,
+#                 shared_data_manager,
+#                 shared_data_manager.shared_utils_precision,
+#                 shared_logger,
+#                 ccxt_api=None
+#             )
+#
+#             ticker_manager = TickerManager(
+#                 config=config,
+#                 coinbase_api=coinbase_api,
+#                 shared_utils_debugger=shared_utils_debugger,
+#                 shared_utils_print=shared_utils_print,
+#                 shared_utils_color=shared_utils_color,
+#                 logger_manager=logger_manager,
+#                 order_book_manager=order_book_manager,
+#                 rest_client=config.rest_client,
+#                 portfolio_uuid=config.portfolio_uuid,
+#                 exchange=config.exchange,
+#                 ccxt_api=None,
+#                 shared_data_manager=shared_data_manager,
+#                 shared_utils_precision=shared_utils_precision
+#             )
+#
+#             market_data_updater = await MarketDataUpdater.get_instance(
+#                 ticker_manager=ticker_manager,
+#                 logger_manager=logger_manager,
+#                 websocket_helper=None,
+#                 shared_data_manager=shared_data_manager
+#             )
+#
+#             # ✅ Step 3: Load market data snapshot → usd_pairs_cache is populated here
+#             await preload_market_data(
+#                 logger_manager=logger_manager,
+#                 shared_data_manager=shared_data_manager,
+#                 ticker_manager=ticker_manager,
+#                 market_data_updater=market_data_updater
+#             )
+#
+#             # ✅ Step 4: Now initialize Precision values with proper usd_pairs_cache loaded
+#             print(f"🧪 Debug: market_data keys = {list(shared_data_manager.market_data.keys())}")
+#             df = shared_data_manager.market_data.get('usd_pairs_cache')
+#             if df is None or df.empty:
+#                 print("🚨 Warning: usd_pairs_cache is still empty before set_trade_parameters()")
+#             else:
+#                 print(f"✅ usd_pairs_cache contains {len(df)} rows")
+#             shared_utils_precision.set_trade_parameters()
+#
+#             # ✅ Step 5: Now it's safe to backfill PnL + realized profit
+#             try:
+#                 await shared_data_manager.trade_recorder.backfill_pnl_and_parents()
+#             except Exception as e:
+#                 shared_logger.warning(f"⚠️ Skipping PnL backfill due to error: {e}", exc_info=True)
+#
+#             # ✅ Step 6: Launch component(s) based on --run
+#             if args.run == 'webhook':
+#                 await run_webhook(
+#                     config=config,
+#                     session=session,
+#                     coinbase_api=coinbase_api,
+#                     shared_data_manager=shared_data_manager,
+#                     market_data_updater=market_data_updater,
+#                     logger_manager=logger_manager,
+#                     alert=alert,
+#                     shared_utils_debugger=shared_utils_debugger,
+#                     shared_utils_print=shared_utils_print,
+#                     shared_utils_color=shared_utils_color,
+#                     order_book_manager=order_book_manager
+#                 )
+#
+#             elif args.run == 'sighook':
+#                 await run_sighook(
+#                     config=config,
+#                     shared_data_manager=shared_data_manager,
+#                     market_data_updater=market_data_updater,
+#                     rest_client=config.rest_client,
+#                     portfolio_uuid=config.portfolio_uuid,
+#                     logger_manager=logger_manager,
+#                     alert=alert,
+#                     order_book_manager=None,
+#                     shared_utils_debugger=shared_utils_debugger,
+#                     shared_utils_print=shared_utils_print,
+#                     shared_utils_color=shared_utils_color
+#                 )
+#
+#             elif args.run == 'both':
+#                 # ✅ Step 1: Start Webhook first
+#                 listener, websocket_manager, app, runner = await init_webhook(
+#                     config=config,
+#                     session=session,
+#                     coinbase_api=coinbase_api,
+#                     shared_data_manager=shared_data_manager,
+#                     market_data_updater=market_data_updater,
+#                     logger_manager=logger_manager,
+#                     shared_utils_debugger=shared_utils_debugger,
+#                     shared_utils_print=shared_utils_print,
+#                     shared_utils_color=shared_utils_color,
+#                     startup_event=startup_event,
+#                     trade_bot=None,
+#                     alert=alert,
+#                     order_book_manager=order_book_manager
+#                 )
+#
+#                 # ✅ Step 2: Then start Sighook
+#                 sighook_task = asyncio.create_task(run_sighook(
+#                     config=config,
+#                     shared_data_manager=shared_data_manager,
+#                     market_data_updater=market_data_updater,
+#                     rest_client=config.rest_client,
+#                     portfolio_uuid=config.portfolio_uuid,
+#                     logger_manager=logger_manager,
+#                     alert=alert,
+#                     order_book_manager=order_book_manager,
+#                     shared_utils_debugger=shared_utils_debugger,
+#                     shared_utils_print=shared_utils_print,
+#                     shared_utils_color=shared_utils_color,
+#                     startup_event=startup_event,
+#                     listener=listener
+#                 ))
+#
+#                 # ✅ Step 3: Webhook background tasks
+#                 background_tasks = [
+#                     asyncio.create_task(periodic_runner(listener.refresh_market_data, 30, name="Market Data Refresher")),
+#                     asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
+#                     asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
+#                     asyncio.create_task(websocket_manager.start_websockets())
+#                 ]
+#
+#                 try:
+#                     await shutdown_event.wait()
+#                 except Exception as e:
+#                     shared_logger.error("Unhandled exception in webhook:", exc_info=True)
+#                     if alert:
+#                         alert.callhome("webhook crashed", str(e), mode="email")
+#
+#                 # ✅ Step 4: Clean shutdown
+#                 for task in background_tasks:
+#                     task.cancel()
+#                     try:
+#                         await task
+#                     except asyncio.CancelledError:
+#                         pass
+#                 sighook_task.cancel()
+#                 try:
+#                     await sighook_task
+#                 except asyncio.CancelledError:
+#                     pass
+#
+#                 await graceful_shutdown(listener, runner)
+#
+#     except Exception as e:
+#         if alert:
+#             alert.callhome("Bot main process crashed", str(e), mode="email")
+#         raise
+
+
+
 
 
 if __name__ == "__main__":

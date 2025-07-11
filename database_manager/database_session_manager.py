@@ -43,13 +43,16 @@ class DatabaseSessionManager:
         self.database = Database(self.config.database_url, min_size=5, max_size=15)
 
         # Initialize the SQLAlchemy async engine
-        self.engine = create_async_engine(self.config.database_url, echo=False)
-
-        self.async_session_factory = sessionmaker(
-            bind=self.engine,
-            expire_on_commit=False,
-            class_=AsyncSession
+        self.engine = create_async_engine(
+            self.config.database_url,
+            echo=False,
+            pool_size=5,  # same as databases.Database min_size
+            max_overflow=10,  # allow extra temporary connections
+            pool_timeout=30,  # wait before raising TimeoutError
+            future=True
         )
+
+        self.async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
         self.database_ops = None  # Will be set later after components are initialized
 
     async def initialize_schema(self):

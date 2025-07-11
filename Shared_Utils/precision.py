@@ -11,10 +11,10 @@ class PrecisionUtils:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager,shared_data_manager):
+    def get_instance(cls, logger_manager, shared_data_manager):
         """ Ensures only one instance of PrecisionUtils is created. """
         if cls._instance is None:
-            cls._instance = cls(logger_manager,shared_data_manager)
+            cls._instance = cls(logger_manager, shared_data_manager)
         return cls._instance
 
     def __init__(self, logger_manager, shared_data_manager):
@@ -26,9 +26,26 @@ class PrecisionUtils:
         self.shared_data_manager = shared_data_manager
 
 
+
+    def set_trade_parameters(self):
+        if not self.shared_data_manager:
+            self.logger.error("❌ Cannot set parameters: shared_data_manager not bound")
+            return
+
+        usd_pairs = self.shared_data_manager.market_data.get('usd_pairs_cache')
+        if usd_pairs is None or usd_pairs.empty:
+            self.logger.warning("⚠️ usd_pairs_cache is empty during set_trade_parameters")
+            return
+
+        self._usd_pairs = usd_pairs
+        self.logger.info(f"✅ PrecisionUtils set_trade_parameters() — {len(usd_pairs)} pairs loaded")
+
     @property
     def usd_pairs(self):
-        return self.shared_data_manager.market_data.get('usd_pairs_cache', pd.DataFrame())
+        return self._usd_pairs
+
+    # def bind_shared_data(self, shared_data_manager):
+    #     self.shared_data_manager = shared_data_manager
 
     def compute_safe_base_size(self, reported: Decimal, base_decimal: int, max_value: Optional[Decimal] = None) -> Decimal:
         buffer = Decimal(f"1e-{base_decimal}")

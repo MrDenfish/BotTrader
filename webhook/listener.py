@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 import uuid
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import case, literal_column
 from datetime import datetime, timezone
 import datetime as dt
 from decimal import Decimal
@@ -57,16 +58,30 @@ class WebSocketManager:
         self.user_ws_task = None
 
         self.reconnect_attempts = 0
+        self.reconnect_limit = 5
+
+    # async def start_websockets(self):
+    #     """Start both Market and User WebSockets."""
+    #     try:
+    #         self.market_ws_task = asyncio.create_task(
+    #             self.connect_websocket(self.market_ws_url, is_user_ws=False)
+    #         )
+    #         self.user_ws_task = asyncio.create_task(
+    #             self.connect_websocket(self.user_ws_url, is_user_ws=True)
+    #         )
+    #
+    #         asyncio.create_task(self.periodic_restart())
+    #         asyncio.create_task(self.websocket_helper.monitor_user_channel_activity())
+    #         asyncio.create_task(self.websocket_helper.monitor_market_channel_activity())
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"Error starting WebSockets: {e}", exc_info=True)
 
     async def start_websockets(self):
         """Start both Market and User WebSockets."""
         try:
-            self.market_ws_task = asyncio.create_task(
-                self.connect_websocket(self.market_ws_url, is_user_ws=False)
-            )
-            self.user_ws_task = asyncio.create_task(
-                self.connect_websocket(self.user_ws_url, is_user_ws=True)
-            )
+            await self.connect_market_stream()
+            await self.connect_user_stream()
 
             asyncio.create_task(self.periodic_restart())
             asyncio.create_task(self.websocket_helper.monitor_user_channel_activity())
@@ -77,40 +92,85 @@ class WebSocketManager:
 
     async def connect_market_stream(self):
         """Reconnect the market WebSocket."""
-        await self.connect_websocket(self.market_ws_url, is_user_ws=False)
+        if self.market_ws_task:
+            self.logger.warning("🔄 Cancelling old market_ws_task...")
+            self.market_ws_task.cancel()
+            try:
+                await self.market_ws_task
+            except asyncio.CancelledError:
+                self.logger.info("🧹 Previous market_ws_task cancelled cleanly.")
+        self.market_ws_task = asyncio.create_task(self.connect_websocket(self.market_ws_url, is_user_ws=False))
 
     async def connect_user_stream(self):
         """Reconnect the user WebSocket."""
-        await self.connect_websocket(self.user_ws_url, is_user_ws=True)
+        if self.user_ws_task:
+            self.logger.warning("🔄 Cancelling old user_ws_task...")
+            self.user_ws_task.cancel()
+            try:
+                await self.user_ws_task
+            except asyncio.CancelledError:
+                self.logger.info("🧹 Previous user_ws_task cancelled cleanly.")
+        self.user_ws_task = asyncio.create_task(self.connect_websocket(self.user_ws_url, is_user_ws=True))
+
+    async def reconnect(self):
+        """Reconnects both market and user WebSockets with exponential backoff."""
+        if self.reconnect_attempts >= self.reconnect_limit:
+            self.logger.error("❌ Max reconnect attempts reached. Manual intervention needed.")
+            return
+
+        delay = min(2 ** self.reconnect_attempts, 60)
+        self.logger.warning(f"🔁 Reconnecting in {delay} seconds...")
+        await asyncio.sleep(delay)
+
+        try:
+            await self.connect_market_stream()
+            await self.connect_user_stream()
+            self.reconnect_attempts = 0
+            self.logger.info("✅ Reconnected successfully.")
+
+            try:
+                self.logger.info("🔄 Syncing open orders after reconnect...")
+                await self.coinbase_api.fetch_open_orders()
+            except Exception as e:
+                self.logger.warning(f"⚠️ Open orders sync failed after reconnect: {e}")
+
+        except Exception as e:
+            self.reconnect_attempts += 1
+            self.logger.error(f"❌ Reconnection failed: {e}", exc_info=True)
+            await self.reconnect()  # recursive retry with backoff
 
     async def periodic_restart(self):
         """Restart WebSockets every 4 hours to ensure stability."""
         while True:
             await asyncio.sleep(14400)  # 4 hours
-            self.logger.info("Restarting WebSockets to ensure stability...")
-            await self.websocket_helper.reconnect()
+            self.logger.info("♻️ Periodic WebSocket restart triggered.")
+            await self.reconnect()
 
     async def connect_websocket(self, ws_url, is_user_ws=False):
         """Establish and manage a WebSocket connection."""
         while True:
             try:
-                async with websockets.connect(ws_url, max_size=2 ** 24) as ws:  # 16 MB
+                async with websockets.connect(
+                    ws_url,
+                    ping_interval=20,
+                    ping_timeout=10,
+                    max_size=2 ** 24,
+                ) as ws:
                     self.reconnect_attempts = 0
 
-                    # Setup connection target
                     if is_user_ws:
                         self.websocket_helper.user_ws = ws
+                        # 🚨 Clear cached subscriptions so Coinbase server resends them
+                        self.websocket_helper.subscribed_channels.clear()
                         await self.websocket_helper.subscribe_user()
                         self.logger.info(f"✅ Connected and subscribed to user WebSocket: {ws_url}")
                     else:
                         self.websocket_helper.market_ws = ws
                         await asyncio.sleep(1)
                         self.logger.info(f"✅ Connected to market WebSocket: {ws_url}")
-                        self.logger.info("⚡ Subscribing to Market Channels...")
                         await self.websocket_helper.subscribe_market()
                         self.logger.info("📡 Market WebSocket subscription complete.")
 
-                    # Start listening
                     self.logger.info(f"🎧 Listening on: {ws_url}")
 
                     async for message in ws:
@@ -124,16 +184,14 @@ class WebSocketManager:
 
             except asyncio.CancelledError:
                 self.logger.warning("⚠️ WebSocket connection task was cancelled.")
-                raise
+                return  # gracefully exit the loop
             except websockets.exceptions.ConnectionClosedError as e:
                 self.logger.warning(f"🔌 WebSocket closed unexpectedly: {e}. Reconnecting...")
-                await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
-                self.reconnect_attempts += 1
             except Exception as general_error:
                 self.logger.error(f"🔥 Unexpected WebSocket error: {general_error}", exc_info=True)
-                await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
-                self.reconnect_attempts += 1
 
+            await asyncio.sleep(min(2 ** self.reconnect_attempts, 60))
+            self.reconnect_attempts += 1
 
 class WebhookListener:
     """The WebhookListener class is the central orchestrator of the bot,
@@ -169,7 +227,7 @@ class WebhookListener:
 
         # Core Utilities
         self.shared_utils_exchange = self.exchange
-        self.shared_utils_precision = PrecisionUtils.get_instance(self.logger_manager, self.shared_data_manager)
+        self.shared_utils_precision = PrecisionUtils.get_instance(self.logger_manager, shared_data_manager)
 
         self.shared_utils_date_time = DatesAndTimes.get_instance(self.logger_manager)
         self.shared_utils_utility = SharedUtility.get_instance(self.logger_manager)
@@ -908,6 +966,8 @@ class WebhookListener:
                             "status": status,
                             # Optional extras (you can remove if not in your schema):
                             "source": source,
+                            "remaining_size": float(size) if side == 'buy' else None,
+                            "realized_profit": 0.0 if side == 'buy' else None,
                         })
 
                     except Exception as e:
@@ -927,10 +987,17 @@ class WebhookListener:
                     for i in range(0, len(rows), CHUNK):
                         batch = rows[i: i + CHUNK]
                         insert_stmt = pg_insert(TradeRecord).values(batch)
-                        # Columns we want to update if the order_id already exists
+
                         update_cols = {
-                            "parent_id": insert_stmt.excluded.parent_id,
-                            "parent_ids": insert_stmt.excluded.parent_ids,
+                            "parent_id": case(
+                        (insert_stmt.excluded.parent_id != None, insert_stmt.excluded.parent_id),
+                                else_=literal_column("trade_records.parent_id")
+                            ),
+
+                            "parent_ids": case(
+                                (insert_stmt.excluded.parent_ids != None, insert_stmt.excluded.parent_ids),
+                                else_=literal_column("trade_records.parent_ids")
+                            ),
                             "status": insert_stmt.excluded.status,
                             "price": insert_stmt.excluded.price,
                             "size": insert_stmt.excluded.size,
@@ -941,17 +1008,19 @@ class WebhookListener:
                             "source": insert_stmt.excluded.source,
                             "total_fees_usd": insert_stmt.excluded.total_fees_usd,
                             "pnl_usd": insert_stmt.excluded.pnl_usd,
+                            "remaining_size": insert_stmt.excluded.remaining_size,
+                            "realized_profit": insert_stmt.excluded.realized_profit,
                         }
 
                         stmt = insert_stmt.on_conflict_do_update(
                             index_elements=["order_id"],
                             set_=update_cols,
                         )
+
                         result = await sess.execute(stmt)
-                        # rowcount = # rows inserted **or** updated in this chunk
-                        # We cannot distinguish easily without RETURNING, so we add them all
                         updated_total += result.rowcount
                     await sess.commit()
+
                 self.logger.info(
                     f"✅ sync_open_orders → upserted {updated_total} rows "
                     f"({len(open_orders)} open / {len(recent_orders)} recent)"

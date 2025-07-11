@@ -150,7 +150,7 @@ class WebSocketMarketManager:
 
                     await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
                     await self.shared_data_manager.save_data()
-                    self.logger.debug(f"📸 Snapshot processed and persisted: {len(new_tracker)} open orders")
+                    print(f"📸 Snapshot processed and persisted: {len(new_tracker)} open orders") # debug
                     return
 
                 for order in orders:
@@ -189,7 +189,7 @@ class WebSocketMarketManager:
                                 "total_fees": order.get("total_fees")
                             }
                             await self.shared_data_manager.trade_recorder.record_trade(trade)
-                            self.logger.debug(f"TP/SL child stored → {order_id}")
+                            print(f"TP/SL child stored → {order_id}") #debug
                         except Exception:
                             self.logger.error("record_trade failed", exc_info=True)
 
@@ -225,10 +225,12 @@ class WebSocketMarketManager:
                                 if p and p.get("profit"):
                                     pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
                                     self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")
-
+                            if side == "sell" and not parent_id:
+                                parent_id = await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy(symbol)
                             await self.shared_data_manager.trade_recorder.record_trade({
                                 "order_id": order_id,
-                                "parent_id": parent_id,
+                                "parent_id": order_id if side == "buy" else parent_id,
+                                "parent_ids": [order_id] if side == "buy" else [parent_id] if parent_id else None,
                                 "symbol": symbol,
                                 "side": side,
                                 "price": order.get("avg_price") or order.get("price"),
@@ -248,7 +250,7 @@ class WebSocketMarketManager:
 
             await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})
             await self.shared_data_manager.save_data()
-            self.logger.debug(f"📦 Final tracker updated and persisted → {len(order_tracker)} orders")
+            print(f"🪲 Final tracker updated and persisted → {len(order_tracker)} orders DEBUG 🪲") # debug
 
         except Exception:
             self.logger.error("process_user_channel error", exc_info=True)
@@ -333,7 +335,7 @@ class WebSocketMarketManager:
         # Received = order accepted by engine, not on book yet
         client_oid = message.get("client_oid")
         if client_oid:
-            self.logger.debug(f"Order received: {client_oid}")
+            print(f" 🪲Order received: {client_oid} 🪲")#debug
 
     async def _handle_open(self, message):
         # Order now open on the order book
@@ -341,19 +343,19 @@ class WebSocketMarketManager:
         remaining = message.get("remaining_size")
         price = message.get("price")
         side = message.get("side")
-        self.logger.debug(f"Order open: {order_id} at {price} ({remaining}) [{side}]")
+        print(f" 🪲 Order open: {order_id} at {price} ({remaining}) [{side}] 🪲") #debug
 
     async def _handle_done(self, message):
         order_id = message.get("order_id")
         reason = message.get("reason")
-        self.logger.debug(f"Order done: {order_id}, reason: {reason}")
+        print(f" 🪲 Order done: {order_id}, reason: {reason} 🪲") #debug
 
     async def _handle_match(self, message):
         price = message.get("price")
         size = message.get("size")
         maker_id = message.get("maker_order_id")
         taker_id = message.get("taker_order_id")
-        self.logger.debug(f"Match: {size} at {price} between {maker_id} and {taker_id}")
+        print(f" 🪲 Match: {size} at {price} between {maker_id} and {taker_id} 🪲") #debug
 
     async def _handle_change(self, message):
         order_id = message.get("order_id")

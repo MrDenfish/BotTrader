@@ -11,6 +11,7 @@ import pandas as pd
 from asyncio import Event
 import asyncio
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import text
 from SharedDataManager.trade_recorder import TradeRecorder
 from webhook.webhook_validate_orders import OrderData
@@ -121,6 +122,10 @@ class SharedDataManager:
                                             shared_utils_precision, coinbase_api)
         self.market_data = {}
         self.order_management = {}
+
+        self._last_save_ts = 0
+        self._save_throttle_seconds = 2  # configurable
+
         self.lock = asyncio.Lock()
         self._initialized_event = Event()
 
@@ -362,86 +367,98 @@ class SharedDataManager:
                 self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
                 return {}, {}
 
-    async def update_data(self, data_type, data, conn):
-        """Update shared data in the database."""
+    async def update_data(self, data_type: str, data: dict, session: AsyncSession):
+        """Update shared data in the database using a pooled session."""
         try:
-            encoded_data = json.dumps(data, cls=DecimalEncoderIn)  # Convert to JSON
-            await conn.execute(
-                text(f"""
-                INSERT INTO shared_data (data_type, data, last_updated)
-                VALUES (:data_type, :data, NOW())
-                ON CONFLICT (data_type) DO UPDATE SET
-                    data = :data,
-                    last_updated = NOW()
+            encoded_data = json.dumps(data, cls=DecimalEncoderIn)
+            await session.execute(
+                text("""
+                    INSERT INTO shared_data (data_type, data, last_updated)
+                    VALUES (:data_type, :data, NOW())
+                    ON CONFLICT (data_type) DO UPDATE SET
+                        data = :data,
+                        last_updated = NOW()
                 """),
                 {"data_type": data_type, "data": encoded_data},
             )
+            self.logger.debug(f"✅ Updated shared_data row for: {data_type}")
         except Exception as e:
             self.logger.error(f"❌ Error updating {data_type}: {e}", exc_info=True)
 
     async def save_data(self):
-        """Save shared data to the database using an active connection."""
+        """Efficiently save shared data to the database using pooled session."""
         try:
-            print("Starting to save shared data...")
-            async with self.database_session_manager.engine.begin() as conn:
-                # Clear old data from snapshot tables
-                await self.clear_old_data(conn, "market_data_snapshots")
-                await self.clear_old_data(conn, "order_management_snapshots")
+            now = time.time()
+            if now - self._last_save_ts < self._save_throttle_seconds:
+                self.logger.debug("⏳ Skipping save_data — throttled.")
+                return
+            self._last_save_ts = now
 
-                # Save new snapshots
-                saved_market_data = await self.save_market_data_snapshot(conn, self.market_data)
-                saved_order_management = await self.save_order_management_snapshot(conn, self.order_management)
+            self.logger.debug("💾 Starting save_data...")
+            start_time = time.time()
 
-                # 🔒 Don't persist runtime-only keys
-                saved_order_management_clean = {
-                    k: v for k, v in saved_order_management.items() if k != "passive_orders"
-                }
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():  # start transaction
+                    # Clear old snapshots
+                    await self.clear_old_data(session, "market_data_snapshots")
+                    await self.clear_old_data(session, "order_management_snapshots")
 
-                # ✅ Write cleaned version to DB
-                if self.market_data:
-                    await self.update_data("market_data", saved_market_data, conn)
-                if self.order_management:
-                    await self.update_data("order_management", saved_order_management_clean, conn)
+                    # Save new snapshots
+                    saved_market_data = await self.save_market_data_snapshot(session, self.market_data)
+                    saved_order_management = await self.save_order_management_snapshot(session, self.order_management)
 
-                # ✅ Re-attach runtime-only keys in memory
-                if "passive_orders" in self.order_management:
-                    saved_order_management_clean["passive_orders"] = self.order_management["passive_orders"]
+                    # Remove runtime-only keys
+                    saved_order_management_clean = {
+                        k: v for k, v in saved_order_management.items() if k != "passive_orders"
+                    }
 
-                self.order_management = saved_order_management_clean
+                    # Write cleaned data
+                    if self.market_data:
+                        await self.update_data("market_data", saved_market_data, session)
+                    if self.order_management:
+                        await self.update_data("order_management", saved_order_management_clean, session)
+
+            # Restore passive_orders in memory (runtime only)
+            if "passive_orders" in self.order_management:
+                saved_order_management_clean["passive_orders"] = self.order_management["passive_orders"]
+
+            self.order_management = saved_order_management_clean
+            duration = round(time.time() - start_time, 2)
+            self.logger.debug(f"✅ save_data completed in {duration}s")
 
         except Exception as e:
             self.logger.error(f"❌ Error saving shared data: {e}", exc_info=True)
 
-    async def save_market_data_snapshot(self, conn, market_data):
-        """Save a snapshot of market data."""
+    async def save_market_data_snapshot(self, session: AsyncSession, market_data: dict) -> dict:
+        """Save a snapshot of market data using pooled session."""
         try:
-            # Preprocess the market_data to ensure it's JSON-serializable
             processed_data = preprocess_market_data(market_data)
             encoded_data = json.dumps(processed_data, cls=DecimalEncoderIn)
 
-            await conn.execute(
+            await session.execute(
                 text("""
                     INSERT INTO market_data_snapshots (data, snapshot_time)
                     VALUES (:data, NOW())
                 """),
                 {"data": encoded_data},
             )
-            print("Market data snapshot saved.")
+
+            self.logger.debug("📊 Market data snapshot saved.")
             return processed_data
         except Exception as e:
-            self.logger.error(f"❌ Error saving market data snapshot: {e}", exc_info=True)
+            self.logger.error(
+                f"❌ Error saving market data snapshot: {e}",
+                exc_info=True
+            )
+            return {}
 
-    async def save_order_management_snapshot(self, conn, order_management):
-        """Save a snapshot of dismantled order management data."""
+    async def save_order_management_snapshot(self, session: AsyncSession, order_management: dict) -> dict:
+        """Save a snapshot of dismantled order management data using pooled session."""
         try:
-            # Dismantle the order_management structure
             dismantled = self.dismantle_order_management(order_management)
-
-            # Serialize dismantled data to JSON
             encoded_data = json.dumps(dismantled, cls=DecimalEncoderIn)
 
-            # Save to the database
-            await conn.execute(
+            await session.execute(
                 text("""
                     INSERT INTO order_management_snapshots (data, snapshot_time)
                     VALUES (:data, NOW())
@@ -449,13 +466,14 @@ class SharedDataManager:
                 {"data": encoded_data},
             )
 
-            self.logger.debug("Order management snapshot saved successfully.")
+            self.logger.debug("📝 Order management snapshot saved.")
             return dismantled
         except Exception as e:
             self.logger.error(
                 f"❌ Error saving order management snapshot: {e}",
                 exc_info=True
             )
+            return {}
 
     @staticmethod
     def dismantle_order_management(order_management: dict) -> dict:
@@ -514,17 +532,13 @@ class SharedDataManager:
 
         return reassembled
 
-    async def clear_old_data(self, conn, table_name):
-        """Clear all old data from the specified table."""
+    async def clear_old_data(self, session: AsyncSession, table_name: str):
+        """Clear all old data from the specified snapshot table using a pooled session."""
         try:
-            await conn.execute(
-                text(f"DELETE FROM {table_name}")
-            )
-            self.logger.debug(f"Cleared old data from {table_name}.")
+            await session.execute(text(f"DELETE FROM {table_name}"))
+            self.logger.debug(f"🧹 Cleared old data from {table_name}")
         except Exception as e:
-            self.logger.error(
-                f"❌ Error clearing old data from {table_name}: {e}", exc_info=True
-            )
+            self.logger.error(f"❌ Error clearing old data from {table_name}: {e}", exc_info=True)
 
     def normalize_raw_order(self, order: dict) -> dict:
         """
