@@ -823,6 +823,98 @@ class WebhookListener:
                 self.logger.error(f"Error during periodic save: {e}", exc_info=True)
             await asyncio.sleep(interval)
 
+    async def reconcile_with_rest_api(self, limit: int = 100):
+        logger = self.logger
+        coinbase_api = self.coinbase_api
+        shared_data_manager = self.shared_data_manager
+
+        try:
+            logger.info("🔁 Starting reconciliation via REST API...")
+
+            # Fetch open orders
+            open_orders = await coinbase_api.fetch_open_orders(limit=limit)
+            logger.info(f"📥 Retrieved {len(open_orders)} open orders")
+
+            tracker = shared_data_manager.order_management.setdefault("order_tracker", {})
+
+            for raw_order in open_orders:
+                normalized = shared_data_manager.normalize_raw_order(raw_order)
+                if not normalized:
+                    continue
+
+                order_id = normalized.get("order_id")
+                if order_id not in tracker:
+                    tracker[order_id] = normalized
+                    logger.info(f"📌 Added missing open order: {order_id}")
+
+            # Fetch recent FILLED orders
+            params = {
+                "limit": limit,
+                "order_status": ["FILLED"],
+            }
+            filled_response = await coinbase_api.get_historical_orders_batch(params)
+            orders = filled_response.get("orders", [])
+            logger.info(f"📘 Retrieved {len(orders)} filled orders")
+
+            for order in orders:
+                print(f"Processing order: {order.get('order_id')}")
+                order_id = order.get("order_id")
+                if not order_id or order.get("status") != "FILLED":
+                    continue
+
+                existing_trade = await shared_data_manager.trade_recorder.fetch_trade_by_order_id(order_id)
+
+                # Only skip if parent_id and parent_ids are already set
+                if existing_trade:
+                    if existing_trade.parent_id and existing_trade.parent_ids:
+                        continue
+                    else:
+                        logger.warning(f"⚠️ Trade {order_id} found in DB but incomplete — will reprocess.")
+
+                side = (order.get("side") or "").lower()
+                symbol = order.get("product_id")
+                price = order.get("average_filled_price") or order.get("price")
+                size = order.get("filled_size") or order.get("order_size") or "0"
+                order_time = order.get("created_time") or order.get("completed_time") or datetime.utcnow().isoformat()
+                order_time = order_time.rstrip("Z") if isinstance(order_time, str) else order_time
+
+                total_fees = order.get("total_fees")
+
+                parent_id = None
+                parent_ids = None
+                if side == "buy":
+                    parent_id = order_id  # use self-reference
+                    parent_ids = [order_id]
+                elif side == "sell":
+                    parent_id = await shared_data_manager.trade_recorder.find_latest_unlinked_buy(symbol)
+                    parent_ids = [parent_id] if parent_id else None
+
+
+
+                await shared_data_manager.trade_recorder.record_trade({
+                    "order_id": order_id,
+                    "parent_id": parent_id,
+                    "parent_ids": parent_ids,
+                    "symbol": symbol,
+                    "side": side,
+                    "price": price,
+                    "amount": size,
+                    "status": "filled",
+                    "order_time": order_time,
+                    "trigger": {"trigger": order.get("order_type", "market")},
+                    "source": "rest",
+                    "total_fees": total_fees,
+                })
+
+                logger.info(f"🧾 Reconciled and recorded trade: {order_id}")
+
+            await shared_data_manager.set_order_management({"order_tracker": tracker})
+            await shared_data_manager.save_data()
+
+            logger.info("✅ Reconciliation complete.")
+        except Exception as e:
+            logger.error(f"❌ reconcile_with_rest_api() failed: {e}", exc_info=True)
+
     async def sync_open_orders(self, interval: int = 60 * 60) -> None:
         """
         Periodically sync Coinbase open orders and recently-updated orders with the

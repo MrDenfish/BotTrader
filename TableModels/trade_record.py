@@ -26,6 +26,9 @@ class TradeRecord(Base):
     order_type = Column(String, nullable=True)
     status = Column(String, nullable=True)
     source = Column(String, nullable=True)
+    cost_basis_usd = Column(Float, nullable=True)  # NEW: for performance tracking
+    sale_proceeds_usd = Column(Float, nullable=True)  # NEW: for performance tracking
+    net_sale_proceeds_usd = Column(Float, nullable=True)  # NEW: for performance tracking
     remaining_size = Column(Float, nullable=True)
     realized_profit = Column(Float, nullable=True)  # NEW: for performance tracking
 

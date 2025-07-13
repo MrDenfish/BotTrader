@@ -563,12 +563,20 @@ class SharedDataManager:
                 "side": order.get("side") or info.get("order_side") or order.get("order_side"),
                 "type": order.get("type") or info.get("order_type") or order.get("order_type"),
                 "status": order.get("status") or info.get("status"),
-                "filled": order.get("filled") or Decimal(info.get("filled_size", 0)) or Decimal(order.get('filled_value')),
-                "remaining": order.get("remaining") or Decimal(info.get("leaves_quantity", 0)) or
-                Decimal(order.get("leaves_quantity", 0)),
-                "stopPrice": order.get("stopPrice") or Decimal(info.get("stop_price") or 0),
-                "price": order.get("price") or Decimal(info.get("limit_price") or 0) or
-                Decimal(order.get("limit_price") or 0),
+                "filled": self.shared_utils_precision.safe_decimal(order.get("filled"), default="0")
+                          or self.shared_utils_precision.safe_decimal(info.get("filled_size"), default="0")
+                          or self.shared_utils_precision.safe_decimal(order.get("filled_value"), default="0"),
+
+                "remaining": self.shared_utils_precision.safe_decimal(order.get("remaining"), default="0")
+                            or self.shared_utils_precision.safe_decimal(info.get("leaves_quantity"), default="0"),
+
+
+                "stopPrice": self.shared_utils_precision.safe_decimal(order.get("stopPrice"), default="0")
+                          or self.shared_utils_precision.safe_decimal(info.get("stop_price"), default="0"),
+
+                "price": self.shared_utils_precision.safe_decimal(order.get("price"), default="0")
+                          or self.shared_utils_precision.safe_decimal(info.get("limit_price"), default="0"),
+
                 "datetime": order.get("datetime") or info.get("created_time") or order.get("creation_time"),
                 "trigger_status": info.get("trigger_status", "Not Active"),
                 "clientOrderId": order.get("clientOrderId") or info.get("client_order_id"),
@@ -582,8 +590,16 @@ class SharedDataManager:
                 normalized["stop_trigger_price"] = Decimal(trigger_bracket.get("stop_trigger_price", 0))
             else:
                 # fallback to top-level values if available
-                normalized["amount"] = order.get("amount") or Decimal(info.get("leaves_quantity", 0))
-                normalized["limit_price"] = order.get("limit_price") or Decimal(info.get("limit_price", 0))
+                normalized["amount"] = (
+                        self.shared_utils_precision.safe_decimal(order.get("amount"))
+                        or self.shared_utils_precision.safe_decimal(info.get("leaves_quantity"), default="0")
+                )
+
+                normalized["limit_price"] = (
+                        self.shared_utils_precision.safe_decimal(order.get("limit_price"), default="0")
+                        or Decimal("0")  # Optional fallback
+                )
+
 
             return normalized
 

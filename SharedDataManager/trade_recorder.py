@@ -4,7 +4,7 @@ from TableModels.trade_record import TradeRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from typing import Optional
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from sqlalchemy.future import select
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime
@@ -22,62 +22,62 @@ class TradeRecorder:
 
     async def record_trade(self, trade_data: dict):
         """
-        Records a new trade into the database. Computes PnL for sells.
+        Records a new trade into the database. Computes PnL and cost tracking for sells.
         Uses upsert to handle duplicate order_id conflicts gracefully.
         """
         async with self.db_session_manager.async_session_factory() as session:
             try:
                 order_time_raw = trade_data.get('order_time', datetime.utcnow())
                 order_time = (
-                    datetime.fromisoformat(order_time_raw)
+                    datetime.fromisoformat(order_time_raw.rstrip("Z"))
                     if isinstance(order_time_raw, str)
                     else order_time_raw
                 )
 
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(trade_data['symbol'])
+                symbol = trade_data['symbol']
+                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                base_q = Decimal("1").scaleb(-base_deci)
+                quote_q = Decimal("1").scaleb(-quote_deci)
+
                 side = trade_data['side'].lower()
                 amount = self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci)
                 price = self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci)
-                symbol = trade_data['symbol']
                 order_id = trade_data['order_id']
                 status = trade_data['status']
                 total_fees_raw = trade_data.get('total_fees') or trade_data.get('total_fees_usd')
-                total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else None
+                total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
                 trigger = trade_data.get('trigger')
                 source = trade_data.get('source')
 
                 parent_id = trade_data.get('parent_id')
                 parent_ids = []
                 pnl_usd = None
+                cost_basis_usd = None
+                sale_proceeds_usd = None
+                net_sale_proceeds_usd = None
+                update_instructions = []
 
                 if side == 'sell':
-                    parent_trades = await self.find_unlinked_buys(symbol)
-                    TOLERANCE = Decimal("0.000001")
-                    total_cost = Decimal("0")
-                    filled_size = Decimal("0")
-                    target_size = Decimal(amount)
+                    result = await self.compute_cost_basis_and_sale_proceeds(
+                        session=session,
+                        symbol=symbol,
+                        size=amount,
+                        sell_price=price,
+                        total_fees=total_fees,
+                        quote_q=quote_q,
+                        base_q=base_q
+                    )
 
-                    for pt in parent_trades:
-                        pt_size = Decimal(pt.size)
-                        pt_price = Decimal(pt.price)
-                        usable = min(pt_size, target_size - filled_size)
-                        total_cost += usable * pt_price
-                        filled_size += usable
-                        parent_ids.append(pt.order_id)
-                        if filled_size >= target_size - TOLERANCE:
-                            break
-
-                    if filled_size >= target_size - TOLERANCE:
-                        revenue = target_size * price
-                        pnl_usd = float(revenue - total_cost - (total_fees or 0))
-
-                    if parent_ids:
-                        revenue = filled_size * price
-                        pnl_usd = float(revenue - total_cost - (total_fees or 0))
+                    parent_ids = result["parent_ids"]
+                    cost_basis_usd = result["cost_basis_usd"]
+                    sale_proceeds_usd = result["sale_proceeds_usd"]
+                    net_sale_proceeds_usd = result["net_sale_proceeds_usd"]
+                    pnl_usd = result["pnl_usd"]
+                    update_instructions = result["update_instructions"]
 
                 elif side == 'buy':
-                    parent_id = order_id
-                    parent_ids = [order_id]
+                    parent_id = parent_id or order_id
+                    parent_ids = [parent_id]
 
                 trade_dict = {
                     "order_id": order_id,
@@ -94,81 +94,33 @@ class TradeRecorder:
                     "order_type": trade_data.get("order_type"),
                     "status": status,
                     "source": source,
+                    "cost_basis_usd": cost_basis_usd,
+                    "sale_proceeds_usd": sale_proceeds_usd,
+                    "net_sale_proceeds_usd": net_sale_proceeds_usd,
                     "remaining_size": amount if side == 'buy' else None,
                     "realized_profit": 0.0 if side == 'buy' else None
                 }
 
-                # 🚨 Check existing record
-                existing = await session.get(TradeRecord, order_id)
-                if existing:
-                    if side == "buy" and not existing.parent_id:
-                        self.logger.warning(f"⚠️ Existing BUY trade missing parent_id: {order_id}")
-                    self.logger.debug(f"🔁 Updating existing trade: {order_id}")
-                else:
-                    self.logger.debug(f"🆕 Inserting new trade: {order_id}")
-
                 insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
-
                 update_stmt = insert_stmt.on_conflict_do_update(
                     index_elements=["order_id"],
-                    set_={
-                        "parent_id": insert_stmt.excluded.parent_id,
-                        "parent_ids": insert_stmt.excluded.parent_ids,
-                        "order_time": insert_stmt.excluded.order_time,
-                        "price": insert_stmt.excluded.price,
-                        "size": insert_stmt.excluded.size,
-                        "pnl_usd": insert_stmt.excluded.pnl_usd,
-                        "total_fees_usd": insert_stmt.excluded.total_fees_usd,
-                        "trigger": insert_stmt.excluded.trigger,
-                        "order_type": insert_stmt.excluded.order_type,
-                        "status": insert_stmt.excluded.status,
-                        "source": insert_stmt.excluded.source,
-                        "remaining_size": insert_stmt.excluded.remaining_size,
-                        "realized_profit": insert_stmt.excluded.realized_profit,
-                    }
+                    set_={key: insert_stmt.excluded[key] for key in trade_dict}
                 )
-
-
-
                 await session.execute(update_stmt)
 
-                # ✅ Update parent buys after successful sell trade
-                if side == 'sell' and parent_ids and pnl_usd is not None:
-                    sell_remaining = target_size  # e.g., 4.882 units
-
-                    for parent_order_id in parent_ids:
-                        buy_record = await session.get(TradeRecord, parent_order_id)
-                        if not buy_record:
-                            self.logger.warning(f"⚠️ Could not find parent buy {parent_order_id} for sell {order_id}")
+                # 🔄 Update parent BUY records for a SELL
+                if update_instructions:
+                    for instruction in update_instructions:
+                        parent_record = await session.get(TradeRecord, instruction["order_id"])
+                        if not parent_record:
+                            self.logger.warning(f"⚠️ Could not find parent buy {instruction['order_id']}")
                             continue
+                        parent_record.remaining_size = float(instruction["remaining_size"])
+                        parent_record.realized_profit = float(instruction["realized_profit"])
+                        session.add(parent_record)
 
-                        buy_remaining = Decimal(buy_record.remaining_size or 0)
-                        if buy_remaining <= 0:
-                            continue  # Skip exhausted buys
-
-                        # Portion of sell attributed to this buy
-                        used_size = min(sell_remaining, buy_remaining)
-                        buy_cost = Decimal(buy_record.price) * used_size
-                        sell_revenue = price * used_size
-                        portion_fees = (Decimal(total_fees or 0) * (used_size / target_size)).quantize(Decimal("0.00000001"))
-
-                        realized_pnl = sell_revenue - buy_cost - portion_fees
-                        buy_record.remaining_size = float((buy_remaining - used_size).quantize(Decimal("0.00000001")))
-                        buy_record.realized_profit = float(
-                            (Decimal(buy_record.realized_profit or 0) + realized_pnl).quantize(Decimal("0.00000001"))
-                        )
-
-                        session.add(buy_record)  # schedule update
-                        sell_remaining -= used_size
-
-                        if sell_remaining <= Decimal("0.0000001"):
-                            break  # done allocating
-
-                    if sell_remaining > 0:
-                        self.logger.warning(f"⚠️ Sell {order_id} was only partially matched to buys — leftover: {sell_remaining}")
-
-                await session.flush()  # 🧠 Important in async context
-                await session.commit()  # ✅ Ensures write completes
+                await session.flush()
+                await session.commit()
 
                 if self.logger:
                     self.logger.info(
@@ -179,6 +131,88 @@ class TradeRecorder:
                 await session.rollback()
                 if self.logger:
                     self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
+
+    async def compute_cost_basis_and_sale_proceeds(
+            self,
+            session,
+            symbol: str,
+            size: Decimal,
+            sell_price: Decimal,
+            total_fees: Decimal,
+            quote_q: Decimal,
+            base_q: Decimal
+    ) -> dict:
+        """
+        Allocates cost basis and computes sale proceeds using FIFO logic.
+
+        Returns a dictionary with:
+            - cost_basis_usd
+            - sale_proceeds_usd (gross)
+            - net_sale_proceeds_usd (after fees)
+            - pnl_usd
+            - parent_ids
+            - update_instructions (for buy records)
+        """
+        TOLERANCE = Decimal("1").scaleb(-base_q.as_tuple().exponent)
+        parent_ids = []
+        cost_basis = Decimal("0")
+        filled_size = Decimal("0")
+        target_size = size
+        update_instructions = []
+
+        parent_trades = await self.find_unlinked_buys(symbol)
+
+        for pt in parent_trades:
+            pt_size = Decimal(pt.remaining_size or pt.size)
+            pt_price = Decimal(pt.price)
+            usable = min(pt_size, target_size - filled_size)
+
+            if usable <= Decimal("0"):
+                continue
+
+            cost_basis += usable * pt_price
+            filled_size += usable
+            parent_ids.append(pt.order_id)
+
+            new_remaining = pt_size - usable
+            realized_profit = usable * (sell_price - pt_price)
+
+            update_instructions.append({
+                "order_id": pt.order_id,
+                "remaining_size": self.shared_utils_precision.safe_quantize(new_remaining, base_q),
+                "realized_profit": self.shared_utils_precision.safe_quantize(
+                    Decimal(pt.realized_profit or 0) + realized_profit, quote_q
+                )
+            })
+
+            if filled_size >= target_size - TOLERANCE:
+                break
+
+        if filled_size == Decimal("0"):
+            return {
+                "parent_ids": [],
+                "cost_basis_usd": None,
+                "sale_proceeds_usd": None,
+                "net_sale_proceeds_usd": None,
+                "pnl_usd": None,
+                "update_instructions": []
+            }
+
+        used_size = min(filled_size, target_size)
+        cost_basis = cost_basis.quantize(quote_q)
+        sale_proceeds = (used_size * sell_price).quantize(quote_q)
+        net_sale_proceeds = (sale_proceeds - total_fees).quantize(quote_q)
+        pnl_usd = (net_sale_proceeds - cost_basis).quantize(quote_q)
+
+        return {
+            "parent_ids": parent_ids,
+            "cost_basis_usd": float(cost_basis),
+            "sale_proceeds_usd": float(sale_proceeds),
+            "net_sale_proceeds_usd": float(net_sale_proceeds),
+            "pnl_usd": float(pnl_usd),
+            "update_instructions": update_instructions
+        }
+
 
     async def find_unlinked_buys(self, symbol: str):
         """Find buy trades not yet linked to any sell, ordered oldest first."""
@@ -323,139 +357,76 @@ class TradeRecorder:
                 self.logger.error(f"❌ Error in find_latest_filled_size for {symbol}: {e}", exc_info=True)
             return None
 
-    async def backfill_pnl_and_parents(self):
+    async def backfill_trade_metrics(self):
         """
-        Goes through existing SELL trades and reassigns parent_id, parent_ids,
-        calculates pnl_usd, deducts from BUY.remaining_size, and updates BUY.realized_profit.
+        Recalculates cost basis, sale proceeds, and PnL for existing sell trades
+        that are missing these metrics. Applies FIFO logic using remaining_size
+        on associated BUY trades.
         """
-        try:
-            async with self.db_session_manager.async_session() as session:
+        async with self.db_session_manager.async_session_factory() as session:
+            try:
+                self.logger.info("🧮 Starting backfill of cost basis and sale proceeds...")
+
+                # Load sell trades missing metrics
                 result = await session.execute(
                     select(TradeRecord)
-                    .where(TradeRecord.side == "sell")
-                    .order_by(TradeRecord.order_time.asc())
+                    .where(
+                        TradeRecord.side == "sell",
+                        or_(
+                            TradeRecord.cost_basis_usd.is_(None),
+                            TradeRecord.sale_proceeds_usd.is_(None),
+                            TradeRecord.pnl_usd.is_(None)
+                        )
+                    )
+                    .order_by(TradeRecord.order_time)
                 )
                 sell_trades = result.scalars().all()
 
-                if not sell_trades:
-                    self.logger.info("📭 No sell trades to backfill.")
-                    return
+                self.logger.info(f"🔎 Found {len(sell_trades)} sell trades to backfill.")
 
-                updated_count = 0
-                TOLERANCE = Decimal("0.000001")
+                for trade in sell_trades:
+                    symbol = trade.symbol
+                    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                    base_q = Decimal("1").scaleb(-base_deci)
+                    quote_q = Decimal("1").scaleb(-quote_deci)
 
-                for sell in sell_trades:
-                    if sell.pnl_usd is not None:
-                        continue  # Already processed
+                    size = Decimal(trade.size)
+                    price = Decimal(trade.price)
+                    total_fees = Decimal(trade.total_fees_usd or 0)
 
-                    filled_size = Decimal(str(sell.size))
-                    total_cost = Decimal("0")
-                    used_size = Decimal("0")
-                    parent_ids = []
+                    results = await self.compute_cost_basis_and_sale_proceeds(
+                        session=session,
+                        symbol=symbol,
+                        size=size,
+                        sell_price=price,
+                        total_fees=total_fees,
+                        quote_q=quote_q,
+                        base_q=base_q
+                    )
 
-                    # Fetch matching BUYs with remaining size
-                    buy_result = await session.execute(text("""
-                        SELECT * FROM trade_records
-                        WHERE symbol = :symbol
-                          AND side = 'buy'
-                          AND remaining_size IS NOT NULL
-                          AND remaining_size > 0
-                        ORDER BY order_time ASC
-                    """), {"symbol": sell.symbol})
-                    parent_trades = buy_result.fetchall()
+                    if results.get('parent_ids'):
+                        trade.cost_basis_usd = results.get('cost_basis')
+                        trade.sale_proceeds_usd = results.get('proceeds')
+                        trade.pnl_usd = results.get('pnl_usd')
+                        trade.parent_ids = results.get('parent_ids')
+                        trade.parent_id = results.get('parent_ids'[0])
 
-                    if not parent_trades:
-                        self.logger.warning(f"⚠️ No parent buys found for sell {sell.order_id} ({sell.symbol})")
-                        continue
-
-                    for b in parent_trades:
-                        b_order_id = b.order_id
-                        b_size = Decimal(str(b.remaining_size or b.size or 0))
-                        b_price = Decimal(str(b.price))
-                        usable = min(b_size, filled_size - used_size)
-
-                        if usable <= 0:
-                            continue
-
-                        total_cost += usable * b_price
-                        used_size += usable
-                        parent_ids.append(b_order_id)
-
-                        # ✅ Fetch ORM instance to safely modify it
-                        buy_record = await session.get(TradeRecord, b_order_id)
-                        if buy_record:
-                            symbol = sell.symbol
-                            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
-                            base_quantizer = Decimal("1").scaleb(-base_deci)
-                            quote_quantizer = Decimal("1").scaleb(-quote_deci)
-                            remaining_size = Decimal(str(buy_record.remaining_size or b_size)) - usable
-                            remaining_size = self.shared_utils_precision.safe_quantize(remaining_size, base_quantizer)
-                            buy_record.remaining_size = remaining_size
-                            realized_profit = Decimal(str(buy_record.realized_profit or 0)) + (usable * Decimal(str(sell.price)) - usable * b_price)
-                            realized_profit = self.shared_utils_precision.safe_quantize(realized_profit, quote_quantizer)
-                            buy_record.realized_profit = realized_profit
-                            session.add(buy_record)
-
-                        if used_size >= filled_size - TOLERANCE:
-                            break
-
-                    if used_size == 0:
-                        self.logger.warning(f"⚠️ No usable buys found for sell {sell.order_id}")
-                        continue
-
-                    revenue = filled_size * Decimal(str(sell.price))
-                    total_fees = Decimal(str(sell.total_fees_usd or 0))
-                    pnl = revenue - total_cost - total_fees
-
-                    # Update the SELL trade
-                    sell.parent_id = parent_ids[0] if parent_ids else None
-                    sell.parent_ids = parent_ids
-                    sell.pnl_usd = float(pnl)
-
-                    session.add(sell)
-                    updated_count += 1
+                        self.logger.info(
+                            f"📈 Backfilled {trade.order_id} "
+                            f"| Cost: {results.get('cost_basis')} "
+                            f"| Proceeds: {results.get('proceeds')} "
+                            f"| PnL: {results.get('pnl_usd')}"
+                        )
+                        session.add(trade)
+                    else:
+                        self.logger.warning(f"⚠️ Could not match parents for {trade.order_id} — skipping")
 
                 await session.commit()
-                self.logger.info(f"✅ Backfilled PnL, realized_profit, and remaining_size for {updated_count} SELL trades.")
+                self.logger.info("✅ Backfill complete.")
 
-        except Exception as e:
-            self.logger.error(f"❌ Failed to backfill PnL and realized profit: {e}", exc_info=True)
-
-    async def backfill_buy_parent_ids(self):
-        """
-        Backfills parent_id and parent_ids for buy trades that are missing them.
-        """
-        async with self.db_session_manager.async_session() as session:
-            try:
-                result = await session.execute(text("""
-                    SELECT order_id, symbol, side
-                    FROM trade_records
-                    WHERE side = 'buy' AND parent_id IS NULL
-                """))
-                missing_trades = result.fetchall()
-
-                if not missing_trades:
-                    self.logger.info("✅ No buy trades missing parent_id.")
-                    return
-
-                self.logger.info(f"🔄 Backfilling parent_id for {len(missing_trades)} buy trades...")
-
-                for row in missing_trades:
-
-                    order_id, symbol, side = row
-                    if symbol == "POND-USD":
-                        pass
-                    update_stmt = text("""
-                        UPDATE trade_records
-                        SET parent_id = :order_id,
-                            parent_ids = ARRAY[:order_id]
-                        WHERE order_id = :order_id
-                    """)
-                    await session.execute(update_stmt, {"order_id": order_id})
-
-                await session.commit()
-                self.logger.info(f"✅ Backfilled parent_id for {len(missing_trades)} buy trades.")
             except Exception as e:
                 await session.rollback()
-                self.logger.error(f"❌ Failed to backfill buy parent_ids: {e}", exc_info=True)
+                self.logger.error(f"❌ Error during backfill: {e}", exc_info=True)
+
+
 
