@@ -2,9 +2,9 @@
 
 from TableModels.trade_record import TradeRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased
 from typing import Optional
-from sqlalchemy import text, or_
+from sqlalchemy import select, func, and_, or_, not_
 from sqlalchemy.future import select
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime
@@ -27,132 +27,132 @@ class TradeRecorder:
         Performs precheck to avoid inserting fallback duplicates.
         """
         async with self.db_session_manager.async_session_factory() as session:
-            try:
-                # 📅 Parse order time
-                order_time_raw = trade_data.get('order_time', datetime.utcnow())
-                order_time = (
-                    datetime.fromisoformat(order_time_raw.rstrip("Z"))
-                    if isinstance(order_time_raw, str)
-                    else order_time_raw
-                )
-
-                symbol = trade_data['symbol']
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
-                base_q = Decimal("1").scaleb(-base_deci)
-                quote_q = Decimal("1").scaleb(-quote_deci)
-
-                side = trade_data['side'].lower()
-                amount = self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci)
-                if amount <= 0:
-                    pass #debug
-                price = self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci)
-                order_id = trade_data['order_id']
-                status = trade_data['status']
-                total_fees_raw = trade_data.get('total_fees') or trade_data.get('total_fees_usd')
-                total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
-                trigger = trade_data.get('trigger')
-                source = trade_data.get('source')
-
-                # ⏭️ Skip fallback if real order exists
-                if ("-FALLBACK" in order_id or "-FILL-" in order_id) and source == "websocket":
-                    base_order_id = order_id.split("-F")[0]  # handles both FILL and FALLBACK
-
-                    exists = await session.get(TradeRecord, base_order_id)
-                    if exists and exists.size and exists.size > 0:
-                        if self.logger:
-                            self.logger.info(f"⏭️ Skipping duplicate {order_id} — real trade already recorded")
-                        return
-
-                    # 🕓 Inherit timestamp from original order if available
-                    fallback_parent = await session.get(TradeRecord, trade_data.get("parent_id"))
-                    if fallback_parent and fallback_parent.order_time:
-                        order_time = fallback_parent.order_time
-
-                parent_id = trade_data.get('parent_id')
-                parent_ids = []
-                pnl_usd = None
-                cost_basis_usd = None
-                sale_proceeds_usd = None
-                net_sale_proceeds_usd = None
-                update_instructions = []
-
-                # 📈 SELL logic with cost basis tracking
-                if side == 'sell':
-                    result = await self.compute_cost_basis_and_sale_proceeds(
-                        session=session,
-                        symbol=symbol,
-                        size=amount,
-                        sell_price=price,
-                        total_fees=total_fees,
-                        quote_q=quote_q,
-                        base_q=base_q
+            async with session.begin():
+                try:
+                    # 📅 Parse order time
+                    order_time_raw = trade_data.get('order_time', datetime.utcnow())
+                    order_time = (
+                        datetime.fromisoformat(order_time_raw.rstrip("Z"))
+                        if isinstance(order_time_raw, str)
+                        else order_time_raw
                     )
 
-                    parent_ids = result["parent_ids"]
-                    cost_basis_usd = result["cost_basis_usd"]
-                    sale_proceeds_usd = result["sale_proceeds_usd"]
-                    net_sale_proceeds_usd = result["net_sale_proceeds_usd"]
-                    pnl_usd = result["pnl_usd"]
-                    update_instructions = result["update_instructions"]
+                    symbol = trade_data['symbol']
+                    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                    base_q = Decimal("1").scaleb(-base_deci)
+                    quote_q = Decimal("1").scaleb(-quote_deci)
 
-                # 📅 BUY logic with defaults
-                elif side == 'buy':
-                    parent_id = parent_id or order_id
-                    parent_ids = [parent_id]
+                    side = trade_data['side'].lower()
+                    amount = self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci)
+                    if amount <= 0:
+                        pass #debug
+                    price = self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci)
+                    order_id = trade_data['order_id']
+                    status = trade_data['status']
+                    total_fees_raw = trade_data.get('total_fees') or trade_data.get('total_fees_usd')
+                    total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
+                    trigger = trade_data.get('trigger')
+                    source = trade_data.get('source')
 
-                trade_dict = {
-                    "order_id": order_id,
-                    "parent_id": parent_id,
-                    "parent_ids": parent_ids or None,
-                    "symbol": symbol,
-                    "side": side,
-                    "order_time": order_time,
-                    "price": price,
-                    "size": amount,
-                    "pnl_usd": pnl_usd,
-                    "total_fees_usd": total_fees,
-                    "trigger": trigger,
-                    "order_type": trade_data.get("order_type"),
-                    "status": status,
-                    "source": source,
-                    "cost_basis_usd": cost_basis_usd,
-                    "sale_proceeds_usd": sale_proceeds_usd,
-                    "net_sale_proceeds_usd": net_sale_proceeds_usd,
-                    "remaining_size": amount if side == 'buy' else None,
-                    "realized_profit": 0.0 if side == 'buy' else None
-                }
+                    # ⏭️ Skip fallback if real order exists
+                    if ("-FALLBACK" in order_id or "-FILL-" in order_id) and source == "websocket":
+                        base_order_id = order_id.split("-F")[0]  # handles both FILL and FALLBACK
 
-                # 🧾 Upsert trade
-                insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
-                update_stmt = insert_stmt.on_conflict_do_update(
-                    index_elements=["order_id"],
-                    set_={key: insert_stmt.excluded[key] for key in trade_dict}
-                )
-                await session.execute(update_stmt)
+                        exists = await session.get(TradeRecord, base_order_id)
+                        if exists and exists.size and exists.size > 0:
+                            if self.logger:
+                                self.logger.info(f"⏭️ Skipping duplicate {order_id} — real trade already recorded")
+                            return
 
-                # 🔄 Update parent BUY records
-                if update_instructions:
-                    for instruction in update_instructions:
-                        parent_record = await session.get(TradeRecord, instruction["order_id"])
-                        if not parent_record:
-                            self.logger.warning(f"⚠️ Could not find parent buy {instruction['order_id']}")
-                            continue
-                        parent_record.remaining_size = float(instruction["remaining_size"])
-                        parent_record.realized_profit = float(instruction["realized_profit"])
-                        session.add(parent_record)
+                        # 🕓 Inherit timestamp from original order if available
+                        fallback_parent = await session.get(TradeRecord, trade_data.get("parent_id"))
+                        if fallback_parent and fallback_parent.order_time:
+                            order_time = fallback_parent.order_time
 
-                await session.flush()
-                await session.commit()
+                    parent_id = trade_data.get('parent_id')
+                    parent_ids = []
+                    pnl_usd = None
+                    cost_basis_usd = None
+                    sale_proceeds_usd = None
+                    net_sale_proceeds_usd = None
+                    update_instructions = []
 
-                if self.logger:
-                    self.logger.info(
-                        f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | PnL: {pnl_usd} | Parents: {parent_ids}"
+                    # 📈 SELL logic with cost basis tracking
+                    if side == 'sell':
+                        result = await self.compute_cost_basis_and_sale_proceeds(
+                            session=session,
+                            symbol=symbol,
+                            size=amount,
+                            sell_price=price,
+                            total_fees=total_fees,
+                            quote_q=quote_q,
+                            base_q=base_q
+                        )
+
+                        parent_ids = result["parent_ids"]
+                        cost_basis_usd = result["cost_basis_usd"]
+                        sale_proceeds_usd = result["sale_proceeds_usd"]
+                        net_sale_proceeds_usd = result["net_sale_proceeds_usd"]
+                        pnl_usd = result["pnl_usd"]
+                        update_instructions = result["update_instructions"]
+
+                    # 📅 BUY logic with defaults
+                    elif side == 'buy':
+                        parent_id = parent_id or order_id
+                        parent_ids = [parent_id]
+
+                    trade_dict = {
+                        "order_id": order_id,
+                        "parent_id": parent_id,
+                        "parent_ids": parent_ids or None,
+                        "symbol": symbol,
+                        "side": side,
+                        "order_time": order_time,
+                        "price": price,
+                        "size": amount,
+                        "pnl_usd": pnl_usd,
+                        "total_fees_usd": total_fees,
+                        "trigger": trigger,
+                        "order_type": trade_data.get("order_type"),
+                        "status": status,
+                        "source": source,
+                        "cost_basis_usd": cost_basis_usd,
+                        "sale_proceeds_usd": sale_proceeds_usd,
+                        "net_sale_proceeds_usd": net_sale_proceeds_usd,
+                        "remaining_size": amount if side == 'buy' else None,
+                        "realized_profit": 0.0 if side == 'buy' else None
+                    }
+
+                    # 🧾 Upsert trade
+                    insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
+                    update_stmt = insert_stmt.on_conflict_do_update(
+                        index_elements=["order_id"],
+                        set_={key: insert_stmt.excluded[key] for key in trade_dict}
                     )
+                    await session.execute(update_stmt)
 
-            except Exception as e:
-                await session.rollback()
-                if self.logger:
-                    self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
+                    # 🔄 Update parent BUY records
+                    if update_instructions:
+                        for instruction in update_instructions:
+                            parent_record = await session.get(TradeRecord, instruction["order_id"])
+                            if not parent_record:
+                                self.logger.warning(f"⚠️ Could not find parent buy {instruction['order_id']}")
+                                continue
+                            parent_record.remaining_size = float(instruction["remaining_size"])
+                            parent_record.realized_profit = float(instruction["realized_profit"])
+                            session.add(parent_record)
+
+                    await session.flush()
+
+                    if self.logger:
+                        self.logger.info(
+                            f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | PnL: {pnl_usd} | Parents: {parent_ids}"
+                        )
+
+                except Exception as e:
+                    await session.rollback()
+                    if self.logger:
+                        self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
 
 
 
@@ -178,35 +178,61 @@ class TradeRecorder:
         cost_basis = Decimal("0")
         filled_size = Decimal("0")
         update_instructions = []
+        try:
+            # Fetch eligible parent BUY trades
+            parent_trades = await self.find_unlinked_buys(symbol)
 
-        # Fetch eligible parent BUY trades
-        parent_trades = await self.find_unlinked_buys(symbol)
+            for pt in parent_trades:
+                pt_size = Decimal(pt.remaining_size or pt.size)
+                pt_price = Decimal(pt.price)
+                usable = min(pt_size, size - filled_size)
 
-        for pt in parent_trades:
-            pt_size = Decimal(pt.remaining_size or pt.size)
-            pt_price = Decimal(pt.price)
-            usable = min(pt_size, size - filled_size)
+                if usable <= Decimal("0"):
+                    continue
 
-            if usable <= Decimal("0"):
-                continue
+                cost_basis += usable * pt_price
+                filled_size += usable
+                parent_ids.append(pt.order_id)
 
-            cost_basis += usable * pt_price
-            filled_size += usable
-            parent_ids.append(pt.order_id)
+                remaining_after = pt_size - usable
+                realized_profit = (usable * sell_price) - (usable * pt_price)
 
-            remaining_after = pt_size - usable
-            realized_profit = (usable * sell_price) - (usable * pt_price)
+                update_instructions.append({
+                    "order_id": pt.order_id,
+                    "remaining_size": float(remaining_after.quantize(base_q)),
+                    "realized_profit": float(realized_profit.quantize(quote_q))
+                })
 
-            update_instructions.append({
-                "order_id": pt.order_id,
-                "remaining_size": float(remaining_after.quantize(base_q)),
-                "realized_profit": float(realized_profit.quantize(quote_q))
-            })
+                if filled_size >= size - TOLERANCE:
+                    break
 
-            if filled_size >= size - TOLERANCE:
-                break
+            if filled_size == Decimal("0"):
+                return {
+                    "cost_basis_usd": None,
+                    "sale_proceeds_usd": None,
+                    "net_sale_proceeds_usd": None,
+                    "pnl_usd": None,
+                    "parent_ids": [],
+                    "update_instructions": []
+                }
 
-        if filled_size == Decimal("0"):
+            used_size = min(filled_size, size)
+            cost_basis = cost_basis.quantize(quote_q)
+            sale_proceeds = (used_size * sell_price).quantize(quote_q)
+            net_proceeds = (sale_proceeds - total_fees).quantize(quote_q)
+            pnl_usd = (net_proceeds - cost_basis).quantize(quote_q)
+
+            return {
+                "cost_basis_usd": float(cost_basis),
+                "sale_proceeds_usd": float(sale_proceeds),
+                "net_sale_proceeds_usd": float(net_proceeds),
+                "pnl_usd": float(pnl_usd),
+                "parent_ids": parent_ids,
+                "update_instructions": update_instructions
+            }
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error in compute_cost_basis_and_sale_proceeds for {symbol}: {e}", exc_info=True)
             return {
                 "cost_basis_usd": None,
                 "sale_proceeds_usd": None,
@@ -216,21 +242,7 @@ class TradeRecorder:
                 "update_instructions": []
             }
 
-        used_size = min(filled_size, size)
-        cost_basis = cost_basis.quantize(quote_q)
-        sale_proceeds = (used_size * sell_price).quantize(quote_q)
-        net_proceeds = (sale_proceeds - total_fees).quantize(quote_q)
-        pnl_usd = (net_proceeds - cost_basis).quantize(quote_q)
-
-        return {
-            "cost_basis_usd": float(cost_basis),
-            "sale_proceeds_usd": float(sale_proceeds),
-            "net_sale_proceeds_usd": float(net_proceeds),
-            "pnl_usd": float(pnl_usd),
-            "parent_ids": parent_ids,
-            "update_instructions": update_instructions
-        }
-
+    from sqlalchemy import select, func, and_, or_, not_
 
     async def find_unlinked_buys(self, symbol: str):
         """
@@ -238,90 +250,118 @@ class TradeRecorder:
         Orders by oldest (FIFO) and ignores fallback duplicates and empty remnants.
         """
         async with self.db_session_manager.async_session() as session:
-            result = await session.execute(text("""
-                SELECT * FROM trade_records
-                WHERE symbol = :symbol
-                  AND side = 'buy'
-                  AND (remaining_size IS NULL OR remaining_size > 0)
-                  AND NOT order_id LIKE '%-FILL-%'
-                  AND NOT order_id LIKE '%-FALLBACK'
-                  AND order_id NOT IN (
-                      SELECT unnest(parent_ids)
-                      FROM trade_records
-                      WHERE symbol = :symbol
-                        AND side = 'sell'
-                        AND parent_ids IS NOT NULL
-                  )
-                ORDER BY order_time ASC
-            """), {"symbol": symbol})
-            return result.fetchall()
+            async with session.begin():
+                # Subquery to get all parent_ids used by sell trades
+                subquery = (
+                    select(func.unnest(TradeRecord.parent_ids))
+                    .where(
+                        TradeRecord.symbol == symbol,
+                        TradeRecord.side == "sell",
+                        TradeRecord.parent_ids.isnot(None)
+                    )
+                )
+
+                stmt = (
+                    select(TradeRecord)
+                    .where(
+                        TradeRecord.symbol == symbol,
+                        TradeRecord.side == "buy",
+                        or_(
+                            TradeRecord.remaining_size.is_(None),
+                            TradeRecord.remaining_size > 0
+                        ),
+                        not_(TradeRecord.order_id.like('%-FILL-%')),
+                        not_(TradeRecord.order_id.like('%-FALLBACK')),
+                        not_(TradeRecord.order_id.in_(subquery))
+                    )
+                    .order_by(TradeRecord.order_time.asc())
+                )
+
+                result = await session.execute(stmt)
+                return result.scalars().all()
 
     async def fetch_all_trades(self):
         """
         Fetch all recorded trades.
         """
         async with self.db_session_manager.async_session() as session:
-            result = await session.execute(select(TradeRecord))
-            trades = result.scalars().all()
-            return trades
+            async with session.begin():
+                result = await session.execute(select(TradeRecord))
+                trades = result.scalars().all()
+                return trades
 
     async def fetch_recent_trades(self, limit=10):
         """
         Fetch the most recent trades (default: last 10).
         """
         async with self.db_session_manager.async_session() as session:
-            result = await session.execute(
-                select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
-            )
-            trades = result.scalars().all()
-            return trades
+            async with session.begin():
+                result = await session.execute(
+                    select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
+                )
+                trades = result.scalars().all()
+                return trades
 
     async def delete_trade(self, order_id: str):
         """
         Deletes a trade from the database by its order_id.
         """
         async with self.db_session_manager.async_session_factory() as session:
-            try:
-                result = await session.get(TradeRecord, order_id)
-                if result:
-                    await session.delete(result)
-                    await session.commit()
+            async with session.begin():
+                try:
+                    result = await session.get(TradeRecord, order_id)
+                    if result:
+                        await session.delete(result)
+                        if self.logger:
+                            self.logger.info(f"🗑️ Deleted trade record for order_id {order_id}")
+                    else:
+                        if self.logger:
+                            self.logger.warning(f"⚠️ Tried to delete trade {order_id}, but it was not found.")
+                except Exception as e:
+                    await session.rollback()
                     if self.logger:
-                        self.logger.info(f"🗑️ Deleted trade record for order_id {order_id}")
-                else:
-                    if self.logger:
-                        self.logger.warning(f"⚠️ Tried to delete trade {order_id}, but it was not found.")
-            except Exception as e:
-                await session.rollback()
-                if self.logger:
-                    self.logger.error(f"❌ Failed to delete trade {order_id}: {e}", exc_info=True)
+                        self.logger.error(f"❌ Failed to delete trade {order_id}: {e}", exc_info=True)
 
     from sqlalchemy import text
 
     async def find_latest_unlinked_buy(self, symbol: str) -> Optional[str]:
         """
-        Finds the most recent buy order for a symbol that has not yet been linked to a sell.
+        Finds the most recent BUY trade for a symbol that has not yet been linked to a SELL.
         Returns the order_id if found, else None.
         """
         async with self.db_session_manager.async_session() as session:
-            try:
-                result = await session.execute(text("""
-                    SELECT order_id FROM trade_records
-                    WHERE symbol = :symbol
-                      AND side = 'buy'
-                      AND order_id NOT IN (
-                          SELECT parent_id FROM trade_records
-                          WHERE symbol = :symbol AND side = 'sell'
-                      )
-                    ORDER BY order_time DESC
-                    LIMIT 1
-                """), {"symbol": symbol})
-                row = result.fetchone()
-                return row[0] if row else None
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"❌ Error in find_latest_unlinked_buy for {symbol}: {e}", exc_info=True)
-                return None
+            async with session.begin():
+                try:
+                    # Subquery to find all parent_ids already linked in sell trades
+                    subq = (
+                        select(func.unnest(TradeRecord.parent_ids))
+                        .where(
+                            TradeRecord.symbol == symbol,
+                            TradeRecord.side == 'sell',
+                            TradeRecord.parent_ids.isnot(None)
+                        )
+                    )
+
+                    # Select the latest BUY trade not linked to any SELL
+                    stmt = (
+                        select(TradeRecord.order_id)
+                        .where(
+                            TradeRecord.symbol == symbol,
+                            TradeRecord.side == 'buy',
+                            not_(TradeRecord.order_id.in_(subq))
+                        )
+                        .order_by(TradeRecord.order_time.desc())
+                        .limit(1)
+                    )
+
+                    result = await session.execute(stmt)
+                    row = result.scalar_one_or_none()
+                    return row
+
+                except Exception as e:
+                    if self.logger:
+                        self.logger.error(f"❌ Error in find_latest_unlinked_buy for {symbol}: {e}", exc_info=True)
+                    return None
 
     async def fetch_trade_by_order_id(self, order_id: str) -> Optional[TradeRecord]:
         """
@@ -344,42 +384,43 @@ class TradeRecorder:
         Returns the size of the most recent filled trade for a given symbol and side (buy/sell).
         """
         async with self.db_session_manager.async_session() as session:
-            try:
-                base_deci, _, _, _ = self.shared_utils_precision.fetch_precision(symbol)
-                result = await session.execute(
-                    select(TradeRecord)
-                    .where(TradeRecord.symbol == symbol)
-                    .where(TradeRecord.side == side)
-                    .where(TradeRecord.status.ilike('placed'))  # or 'filled' depending on your usage
-                    .order_by(TradeRecord.order_time.desc())
-                    .limit(1)
-                )
-                record = result.scalar_one_or_none()
-                if record:
-                    return Decimal(record.size).quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
-                else:
-                    # Exchange query here (via a REST manager or injected client)
-                    params = {
-                        "product_id": [symbol],
-                        "order_side": "BUY",
-                        "order_status": ["FILLED"],
-                        "limit": 1
-                    }
-                    result = await self.coinbase_api.get_historical_orders_batch(params)
-                    for order in result.get("orders", []):
-                        if order["status"] == "FILLED":
-                            base_size = Decimal(order.get("filled_size", "0"))
-                            price = Decimal(order.get("average_filled_price", "0"))
-                            return base_size.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
-                            # return {
-                            #     "filled_size": base_size,
-                            #     "price": price,
-                            #     "order_id": order.get("order_id"),
-                            #     "source": "exchange"
-                            # }
-            except Exception as e:
-                self.logger.error(f"❌ Error in find_latest_filled_size for {symbol}: {e}", exc_info=True)
-            return None
+            async with session.begin():
+                try:
+                    base_deci, _, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                    result = await session.execute(
+                        select(TradeRecord)
+                        .where(TradeRecord.symbol == symbol)
+                        .where(TradeRecord.side == side)
+                        .where(TradeRecord.status.ilike('placed'))  # or 'filled' depending on your usage
+                        .order_by(TradeRecord.order_time.desc())
+                        .limit(1)
+                    )
+                    record = result.scalar_one_or_none()
+                    if record:
+                        return Decimal(record.size).quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
+                    else:
+                        # Exchange query here (via a REST manager or injected client)
+                        params = {
+                            "product_id": [symbol],
+                            "order_side": "BUY",
+                            "order_status": ["FILLED"],
+                            "limit": 1
+                        }
+                        result = await self.coinbase_api.get_historical_orders_batch(params)
+                        for order in result.get("orders", []):
+                            if order["status"] == "FILLED":
+                                base_size = Decimal(order.get("filled_size", "0"))
+                                price = Decimal(order.get("average_filled_price", "0"))
+                                return base_size.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
+                                # return {
+                                #     "filled_size": base_size,
+                                #     "price": price,
+                                #     "order_id": order.get("order_id"),
+                                #     "source": "exchange"
+                                # }
+                except Exception as e:
+                    self.logger.error(f"❌ Error in find_latest_filled_size for {symbol}: {e}", exc_info=True)
+                return None
 
     async def backfill_trade_metrics(self):
         """
@@ -388,69 +429,69 @@ class TradeRecorder:
         on associated BUY trades.
         """
         async with self.db_session_manager.async_session_factory() as session:
-            try:
-                self.logger.info("🧮 Starting backfill of cost basis and sale proceeds...")
+            async with session.begin():
+                try:
+                    self.logger.info("🧮 Starting backfill of cost basis and sale proceeds...")
 
-                # Load sell trades missing metrics
-                result = await session.execute(
-                    select(TradeRecord)
-                    .where(
-                        TradeRecord.side == "sell",
-                        or_(
-                            TradeRecord.cost_basis_usd.is_(None),
-                            TradeRecord.sale_proceeds_usd.is_(None),
-                            TradeRecord.pnl_usd.is_(None)
+                    # Load sell trades missing metrics
+                    result = await session.execute(
+                        select(TradeRecord)
+                        .where(
+                            TradeRecord.side == "sell",
+                            or_(
+                                TradeRecord.cost_basis_usd.is_(None),
+                                TradeRecord.sale_proceeds_usd.is_(None),
+                                TradeRecord.pnl_usd.is_(None)
+                            )
                         )
+                        .order_by(TradeRecord.order_time)
                     )
-                    .order_by(TradeRecord.order_time)
-                )
-                sell_trades = result.scalars().all()
+                    sell_trades = result.scalars().all()
 
-                self.logger.info(f"🔎 Found {len(sell_trades)} sell trades to backfill.")
+                    self.logger.info(f"🔎 Found {len(sell_trades)} sell trades to backfill.")
 
-                for trade in sell_trades:
-                    symbol = trade.symbol
-                    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
-                    base_q = Decimal("1").scaleb(-base_deci)
-                    quote_q = Decimal("1").scaleb(-quote_deci)
+                    for trade in sell_trades:
+                        symbol = trade.symbol
+                        base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+                        base_q = Decimal("1").scaleb(-base_deci)
+                        quote_q = Decimal("1").scaleb(-quote_deci)
 
-                    size = Decimal(trade.size)
-                    price = Decimal(trade.price)
-                    total_fees = Decimal(trade.total_fees_usd or 0)
+                        size = Decimal(trade.size)
+                        price = Decimal(trade.price)
+                        total_fees = Decimal(trade.total_fees_usd or 0)
 
-                    results = await self.compute_cost_basis_and_sale_proceeds(
-                        session=session,
-                        symbol=symbol,
-                        size=size,
-                        sell_price=price,
-                        total_fees=total_fees,
-                        quote_q=quote_q,
-                        base_q=base_q
-                    )
-
-                    if results.get('parent_ids'):
-                        trade.cost_basis_usd = results.get('cost_basis')
-                        trade.sale_proceeds_usd = results.get('proceeds')
-                        trade.pnl_usd = results.get('pnl_usd')
-                        trade.parent_ids = results.get('parent_ids')
-                        trade.parent_id = results.get('parent_ids'[0])
-
-                        self.logger.info(
-                            f"📈 Backfilled {trade.order_id} "
-                            f"| Cost: {results.get('cost_basis')} "
-                            f"| Proceeds: {results.get('proceeds')} "
-                            f"| PnL: {results.get('pnl_usd')}"
+                        results = await self.compute_cost_basis_and_sale_proceeds(
+                            session=session,
+                            symbol=symbol,
+                            size=size,
+                            sell_price=price,
+                            total_fees=total_fees,
+                            quote_q=quote_q,
+                            base_q=base_q
                         )
-                        session.add(trade)
-                    else:
-                        self.logger.warning(f"⚠️ Could not match parents for {trade.order_id} — skipping")
 
-                await session.commit()
-                self.logger.info("✅ Backfill complete.")
+                        if results.get('parent_ids'):
+                            trade.cost_basis_usd = results.get('cost_basis')
+                            trade.sale_proceeds_usd = results.get('proceeds')
+                            trade.pnl_usd = results.get('pnl_usd')
+                            trade.parent_ids = results.get('parent_ids')
+                            trade.parent_id = results.get('parent_ids'[0])
 
-            except Exception as e:
-                await session.rollback()
-                self.logger.error(f"❌ Error during backfill: {e}", exc_info=True)
+                            self.logger.info(
+                                f"📈 Backfilled {trade.order_id} "
+                                f"| Cost: {results.get('cost_basis')} "
+                                f"| Proceeds: {results.get('proceeds')} "
+                                f"| PnL: {results.get('pnl_usd')}"
+                            )
+                            session.add(trade)
+                        else:
+                            self.logger.warning(f"⚠️ Could not match parents for {trade.order_id} — skipping")
+
+                    self.logger.info("✅ Backfill complete.")
+
+                except Exception as e:
+                    await session.rollback()
+                    self.logger.error(f"❌ Error during backfill: {e}", exc_info=True)
 
 
 

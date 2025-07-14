@@ -643,9 +643,10 @@ class SharedDataManager:
 
     async def load_all_passive_orders(self) -> list[tuple[str, str, dict]]:
         async with self.database_session_manager.async_session() as session:
-            result = await session.execute(select(PassiveOrder))
-            rows = result.scalars().all()
-            return [(r.symbol, r.side, r.order_data) for r in rows]
+            async with session.begin():
+                result = await session.execute(select(PassiveOrder))
+                rows = result.scalars().all()
+                return [(r.symbol, r.side, r.order_data) for r in rows]
 
 
     async def reconcile_passive_orders(self):
@@ -667,8 +668,9 @@ class SharedDataManager:
 
             # Step 2: Fetch all passive orders from DB
             async with self.database_session_manager.async_session() as session:
-                result = await session.execute(select(PassiveOrder.order_id))
-                db_order_ids = {row[0] for row in result.all()}
+                async with session.begin():
+                    result = await session.execute(select(PassiveOrder.order_id))
+                    db_order_ids = {row[0] for row in result.all()}
 
             # Step 3: Determine stale passive orders
             stale_ids = db_order_ids - active_order_ids
