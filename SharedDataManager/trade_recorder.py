@@ -95,9 +95,9 @@ class TradeRecorder:
                         net_sale_proceeds_usd = result["net_sale_proceeds_usd"]
                         pnl_usd = result["pnl_usd"]
                         update_instructions = result["update_instructions"]
-
-                    # 📅 BUY logic with defaults
-                    elif side == 'buy':
+                        realized_profit_total = Decimal(sum(Decimal(instr["realized_profit"]) for instr in update_instructions)).quantize(quote_q)
+                    else:
+                        realized_profit_total = Decimal("0.0")
                         parent_id = parent_id or order_id
                         parent_ids = [parent_id]
 
@@ -120,7 +120,7 @@ class TradeRecorder:
                         "sale_proceeds_usd": sale_proceeds_usd,
                         "net_sale_proceeds_usd": net_sale_proceeds_usd,
                         "remaining_size": amount if side == 'buy' else None,
-                        "realized_profit": 0.0 if side == 'buy' else None
+                        "realized_profit": float(realized_profit_total)
                     }
 
                     # 🧾 Upsert trade
@@ -141,6 +141,8 @@ class TradeRecorder:
                             parent_record.remaining_size = float(instruction["remaining_size"])
                             parent_record.realized_profit = float(instruction["realized_profit"])
                             session.add(parent_record)
+
+
 
                     await session.flush()
 
@@ -249,7 +251,7 @@ class TradeRecorder:
         Returns BUY trades that are not linked to any SELL, using a duplicate-safe filter.
         Orders by oldest (FIFO) and ignores fallback duplicates and empty remnants.
         """
-        async with self.db_session_manager.async_session() as session:
+        async with self.db_session_manager.async_session_factory() as session:
             async with session.begin():
                 # Subquery to get all parent_ids used by sell trades
                 subquery = (
@@ -284,7 +286,7 @@ class TradeRecorder:
         """
         Fetch all recorded trades.
         """
-        async with self.db_session_manager.async_session() as session:
+        async with self.db_session_manager.async_session_factory() as session:
             async with session.begin():
                 result = await session.execute(select(TradeRecord))
                 trades = result.scalars().all()
@@ -294,7 +296,7 @@ class TradeRecorder:
         """
         Fetch the most recent trades (default: last 10).
         """
-        async with self.db_session_manager.async_session() as session:
+        async with self.db_session_manager.async_session_factory() as session:
             async with session.begin():
                 result = await session.execute(
                     select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
@@ -329,7 +331,7 @@ class TradeRecorder:
         Finds the most recent BUY trade for a symbol that has not yet been linked to a SELL.
         Returns the order_id if found, else None.
         """
-        async with self.db_session_manager.async_session() as session:
+        async with self.db_session_manager.async_session_factory() as session:
             async with session.begin():
                 try:
                     # Subquery to find all parent_ids already linked in sell trades
@@ -367,23 +369,24 @@ class TradeRecorder:
         """
         Fetches a single trade record by its order_id.
         """
-        async with self.db_session_manager.async_session() as session:
-            try:
-                result = await session.execute(
-                    select(TradeRecord).where(TradeRecord.order_id == order_id)
-                )
-                return result.scalar_one_or_none()
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"❌ Error in fetch_trade_by_order_id for {order_id}: {e}", exc_info=True)
-                return None
+        async with self.db_session_manager.async_session_factory() as session:
+            async with session.begin():
+                try:
+                    result = await session.execute(
+                        select(TradeRecord).where(TradeRecord.order_id == order_id)
+                    )
+                    return result.scalar_one_or_none()
+                except Exception as e:
+                    if self.logger:
+                        self.logger.error(f"❌ Error in fetch_trade_by_order_id for {order_id}: {e}", exc_info=True)
+                    return None
 
 
     async def find_latest_filled_size(self, symbol: str, side: str = 'buy') -> Optional[Decimal]:
         """
         Returns the size of the most recent filled trade for a given symbol and side (buy/sell).
         """
-        async with self.db_session_manager.async_session() as session:
+        async with self.db_session_manager.async_session_factory() as session:
             async with session.begin():
                 try:
                     base_deci, _, _, _ = self.shared_utils_precision.fetch_precision(symbol)
@@ -424,16 +427,14 @@ class TradeRecorder:
 
     async def backfill_trade_metrics(self):
         """
-        Recalculates cost basis, sale proceeds, and PnL for existing sell trades
-        that are missing these metrics. Applies FIFO logic using remaining_size
-        on associated BUY trades.
+        Recalculates cost basis, sale proceeds, PnL, and realized profit for existing SELL trades
+        that are missing these metrics. Applies FIFO logic using remaining_size on associated BUY trades.
         """
         async with self.db_session_manager.async_session_factory() as session:
             async with session.begin():
                 try:
                     self.logger.info("🧮 Starting backfill of cost basis and sale proceeds...")
 
-                    # Load sell trades missing metrics
                     result = await session.execute(
                         select(TradeRecord)
                         .where(
@@ -441,7 +442,8 @@ class TradeRecorder:
                             or_(
                                 TradeRecord.cost_basis_usd.is_(None),
                                 TradeRecord.sale_proceeds_usd.is_(None),
-                                TradeRecord.pnl_usd.is_(None)
+                                TradeRecord.pnl_usd.is_(None),
+                                TradeRecord.realized_profit.is_(None)
                             )
                         )
                         .order_by(TradeRecord.order_time)
@@ -471,19 +473,29 @@ class TradeRecorder:
                         )
 
                         if results.get('parent_ids'):
-                            trade.cost_basis_usd = results.get('cost_basis')
-                            trade.sale_proceeds_usd = results.get('proceeds')
+                            trade.cost_basis_usd = results.get('cost_basis_usd')
+                            trade.sale_proceeds_usd = results.get('sale_proceeds_usd')
+                            trade.net_sale_proceeds_usd = results.get('net_sale_proceeds_usd')
                             trade.pnl_usd = results.get('pnl_usd')
                             trade.parent_ids = results.get('parent_ids')
-                            trade.parent_id = results.get('parent_ids'[0])
+                            trade.parent_id = results.get('parent_ids')[0] if results.get('parent_ids') else None
+
+                            # 🧮 Patch: Calculate and update realized_profit
+                            try:
+                                realized_profit_total = Decimal(
+                                    sum(Decimal(instr["realized_profit"]) for instr in results.get("update_instructions", []))
+                                ).quantize(quote_q)
+                                trade.realized_profit = float(realized_profit_total)
+                            except Exception as e:
+                                self.logger.warning(f"⚠️ Failed to compute realized_profit for {trade.order_id}: {e}")
+
+                            session.add(trade)
 
                             self.logger.info(
-                                f"📈 Backfilled {trade.order_id} "
-                                f"| Cost: {results.get('cost_basis')} "
-                                f"| Proceeds: {results.get('proceeds')} "
-                                f"| PnL: {results.get('pnl_usd')}"
+                                f"📈 Backfilled {trade.order_id} | Cost: {trade.cost_basis_usd} | "
+                                f"Proceeds: {trade.sale_proceeds_usd} | PnL: {trade.pnl_usd} | "
+                                f"Realized Profit: {trade.realized_profit}"
                             )
-                            session.add(trade)
                         else:
                             self.logger.warning(f"⚠️ Could not match parents for {trade.order_id} — skipping")
 
@@ -492,6 +504,7 @@ class TradeRecorder:
                 except Exception as e:
                     await session.rollback()
                     self.logger.error(f"❌ Error during backfill: {e}", exc_info=True)
+
 
 
 

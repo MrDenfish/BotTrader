@@ -97,10 +97,16 @@ class AssetMonitor:
                         "status_of_order": order_data.status
                     }
 
-                    profit = await self.profit_data_manager.calculate_profitability(
-                        symbol, required_prices, self.bid_ask_spread, self.usd_pairs
-                    )
+                    profit = await self.profit_data_manager.calculate_profitability(symbol, required_prices, self.bid_ask_spread, self.usd_pairs)
                     if profit:
+                        if order_data.type == "limit" and order_data.side == "buy":
+                            await self._handle_active_tp_sl_decision(order_data, raw_order, symbol, asset,
+                                                                     current_price, avg_price, precision,
+                                                                     profit)
+                        elif order_data.type == "limit" and order_data.side == "sell":
+                            await self._handle_limit_sell(order_data, symbol, asset, precision,
+                                                      order_duration, avg_price, current_price)
+
                         profit_data_list.append(profit)
 
                 except Exception as e:
@@ -119,7 +125,7 @@ class AssetMonitor:
 
         for asset, position in self.non_zero_balances.items():
             try:
-                result = self._analyze_position(asset, position, usd_prices)
+                result = await self._analyze_position(asset, position, usd_prices)
                 if not result:
                     continue
 
@@ -140,9 +146,9 @@ class AssetMonitor:
             return {}
         return self.usd_pairs.set_index("symbol")["price"].to_dict()
 
-    def _analyze_position(self, asset, position, usd_prices):
+    async def _analyze_position(self, asset, position, usd_prices):
         symbol = f"{asset}-USD"
-        if symbol in ("USD-USD") or symbol in self.passive_orders:
+        if symbol == "USD-USD" or symbol in self.passive_orders:
             return None
 
         pos = position.to_dict() if hasattr(position, "to_dict") else position
@@ -155,15 +161,42 @@ class AssetMonitor:
         base_q = Decimal("1").scaleb(-base_deci)
         quote_q = Decimal("1").scaleb(-quote_deci)
 
-        avg_entry = self.shared_utils_precision.safe_quantize(Decimal(pos.get("average_entry_price", {}).get("value", "0")), quote_q)
-        cost_basis = self.shared_utils_precision.safe_quantize(Decimal(pos.get("cost_basis", {}).get("value", "0")), quote_q)
-        qty = self.shared_utils_precision.safe_quantize(Decimal(pos.get("available_to_trade_crypto", "0")), base_q)
+        avg_entry = self.shared_utils_precision.safe_quantize(
+            Decimal(pos.get("average_entry_price", {}).get("value", "0")), quote_q
+        )
+        cost_basis = self.shared_utils_precision.safe_quantize(
+            Decimal(pos.get("cost_basis", {}).get("value", "0")), quote_q
+        )
+        qty = self.shared_utils_precision.safe_quantize(
+            Decimal(pos.get("available_to_trade_crypto", "0")), base_q
+        )
 
         if qty <= Decimal("0.0001") or avg_entry <= 0:
             return None
 
-        profit = (Decimal(current_price) - avg_entry) * qty
-        profit_pct = (Decimal(current_price) - avg_entry) / avg_entry
+        # ✅ Call calculate_profitability()
+        required_prices = {
+            "avg_price": avg_entry,
+            "cost_basis": cost_basis,
+            "asset_balance": qty,
+            "current_price": Decimal(current_price),
+            "usd_avail": self._get_usd_available(),
+            "status_of_order": "UNTRACKED"
+        }
+
+        profit_data = await self.profit_data_manager.calculate_profitability(
+            symbol, required_prices, self.bid_ask_spread, self.usd_pairs
+        )
+
+        if not profit_data:
+            return None
+
+        try:
+            profit_pct = Decimal(profit_data["profit percent"].strip('%')) / 100
+        except Exception:
+            profit_pct = (Decimal(current_price) - avg_entry) / avg_entry
+
+        profit = Decimal(profit_data["profit"])
 
         return symbol, asset, Decimal(current_price), qty, avg_entry, profit, profit_pct, precision
 
@@ -277,13 +310,14 @@ class AssetMonitor:
             current_price: Decimal,
             avg_price: Decimal,
             precision_data: tuple,
+            profit_data: dict,  # new
     ):
         try:
             quote_deci = precision_data[1]
             current_price = current_price.quantize(Decimal('1.' + '0' * quote_deci))
             avg_price = avg_price.quantize(Decimal('1.' + '0' * quote_deci))
 
-            profit_pct = (current_price - avg_price) / avg_price
+            profit_pct = Decimal(profit_data["profit percent"].strip('%')) / 100
 
             trigger_config = full_order['info']['order_configuration']['trigger_bracket_gtc']
             old_limit_price = Decimal(trigger_config.get('limit_price', '0')).quantize(Decimal('1.' + '0' * quote_deci))
