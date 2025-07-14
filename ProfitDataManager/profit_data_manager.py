@@ -1,7 +1,7 @@
 
 from decimal import Decimal
 from inspect import stack  # debugging
-
+import re
 import pandas as pd
 
 from Config.config_manager import CentralConfig as config
@@ -91,15 +91,24 @@ class ProfitDataManager:
         """
         try:
             # ✅ Normalize Symbol Format
-            ticker = symbol.replace('-', '/') if '-' in symbol else symbol
-            if '/' not in ticker:
-                ticker = f"{ticker}/USD"
-            asset = ticker.split('/')[0]
+            # Normalize to slash format for internal use
+            base, quote = re.split(r'[-/]', symbol)
+            normalized_symbol = f"{base}/{quote}"
+            alt_symbol = f"{base}-{quote}"  # alternative format for lookup
 
-            # ✅ Get Market Price
-            current_price = Decimal(bid_ask_spread.get(ticker, 0))
-            if current_price == 0 and ticker not in ['USD', 'USDC']:
-                print(f"Current price for {ticker} not available.")
+            # Try both formats in bid_ask_spread
+            current_price_raw = bid_ask_spread.get(normalized_symbol) or bid_ask_spread.get(alt_symbol)
+            # Extract just the price (if dict), or use 0 fallback
+            if isinstance(current_price_raw, dict):
+                current_price = Decimal(current_price_raw.get("bid") or 0)
+            else:
+                current_price = Decimal(current_price_raw or 0)
+
+            # For asset label
+            asset = base
+
+            if current_price == 0 and quote not in ['USD', 'USDC']:
+                print(f"Current price for {normalized_symbol} not available.")
                 profit_data = {
                     'asset': asset,
                     'balance': round(Decimal(required_prices.get('asset_balance', 0)), 2),
@@ -114,7 +123,7 @@ class ProfitDataManager:
                 return profit_data
 
             # ✅ Fetch Precision Once
-            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(ticker)
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
 
 
 

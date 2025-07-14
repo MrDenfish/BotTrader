@@ -100,7 +100,6 @@ class AssetMonitor:
                     profit = await self.profit_data_manager.calculate_profitability(
                         symbol, required_prices, self.bid_ask_spread, self.usd_pairs
                     )
-
                     if profit:
                         profit_data_list.append(profit)
 
@@ -237,13 +236,20 @@ class AssetMonitor:
         return usd_data.get('USD', {}).get('free', Decimal('0'))
 
     def _get_asset_details(self, snapshot, asset, precision):
-        quote_deci = precision[1]
-        quant = Decimal('1.' + '0' * quote_deci)
-        balance_data = snapshot.get('non_zero_balances', {}).get(asset, {})
-        avg_price = Decimal(balance_data['average_entry_price']['value']).quantize(quant)
-        cost_basis = Decimal(balance_data['cost_basis']['value']).quantize(quant)
-        asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0)).quantize(quant)
-        return asset_balance, avg_price, cost_basis
+        try:
+            quote_deci = precision[1]
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+            balance_data = snapshot.get('non_zero_balances', {}).get(asset, {})
+            avg_price = Decimal(balance_data['average_entry_price']['value'])
+            avg_price = self.shared_utils_precision.safe_quantize(avg_price, quote_quantizer)
+            cost_basis = Decimal(balance_data['cost_basis']['value'])
+            cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_quantizer)
+            asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0))
+            asset_balance = self.shared_utils_precision.safe_quantize(asset_balance, quote_quantizer)
+            return asset_balance, avg_price, cost_basis
+        except Exception as e:
+            self.logger.error(f"❌ Error getting asset details for {asset}: {e}", exc_info=True)
+            return Decimal('0'), Decimal('0'), Decimal('0')
 
     def _compute_order_duration(self, order_time_str):
         try:

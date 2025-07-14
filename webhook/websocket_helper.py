@@ -443,7 +443,7 @@ class WebSocketHelper:
                     self.logger.error("🚫 Subscription aborted — product_ids list is empty.")
                     return
 
-                print(f"📦 Subscribing with product_ids: {self.product_ids} DEBUG") #debug
+                # print(f"📦 Subscribing with product_ids: {self.product_ids} DEBUG") #debug
 
                 for channel in new_channels:
                     subscription_message = {
