@@ -1,5 +1,6 @@
 import asyncio
 import time
+import re
 from decimal import Decimal
 from datetime import datetime, timedelta
 from webhook.webhook_validate_orders import OrderData
@@ -67,7 +68,7 @@ class AssetMonitor:
                 try:
                     order_data = OrderData.from_dict(raw_order)
                     symbol = order_data.trading_pair
-                    asset = symbol.split("/")[0]
+                    asset = re.split(r'[-/]', symbol)[0]
 
                     if asset not in order_mgmt.get("non_zero_balances", {}):
                         continue
@@ -75,13 +76,14 @@ class AssetMonitor:
                     precision = self.shared_utils_precision.fetch_precision(symbol)
                     order_data.base_decimal, order_data.quote_decimal = precision[:2]
                     order_data.product_id = symbol
-
-                    order_duration = self._compute_order_duration(raw_order.get("datetime"))
+                    info = raw_order.get("info", {})
+                    order_duration = self._compute_order_duration(info.get("created_time",raw_order.get("datetime", "")))
                     current_price = self.bid_ask_spread.get(symbol, Decimal("0"))
                     asset_balance, avg_price, cost_basis = self._get_asset_details(order_mgmt, asset, precision)
 
                     if order_data.type == "limit" and order_data.side == "buy":
-                        await self._handle_limit_buy(order_data, symbol, asset, precision)
+                        await self._handle_active_tp_sl_decision(order_data, raw_order, symbol, asset,
+                                                                 current_price , avg_price, precision)
                     elif order_data.type == "limit" and order_data.side == "sell":
                         await self._handle_limit_sell(order_data, symbol, asset, precision,
                                                       order_duration, avg_price, current_price)
@@ -141,7 +143,7 @@ class AssetMonitor:
 
     def _analyze_position(self, asset, position, usd_prices):
         symbol = f"{asset}-USD"
-        if symbol in ("USD-USD", "SHDW-USD") or symbol in self.passive_orders:
+        if symbol in ("USD-USD") or symbol in self.passive_orders:
             return None
 
         pos = position.to_dict() if hasattr(position, "to_dict") else position
@@ -178,6 +180,10 @@ class AssetMonitor:
 
             now = datetime.utcnow().replace(tzinfo=trade.order_time.tzinfo)
             held_for = now - trade.order_time
+            if held_for.total_seconds() < 0:
+                self.logger.warning(f"⚠️ Time anomaly detected for {symbol}: negative hold duration {held_for}")
+                return True
+
             return held_for >= timedelta(minutes=self.min_cooldown)
         except Exception as e:
             self.logger.warning(f"⚠️ Could not evaluate cooldown for {symbol}: {e}", exc_info=True)
@@ -234,17 +240,26 @@ class AssetMonitor:
         quote_deci = precision[1]
         quant = Decimal('1.' + '0' * quote_deci)
         balance_data = snapshot.get('non_zero_balances', {}).get(asset, {})
-        avg_price = Decimal(balance_data.get('average_entry_price', {}).get('value', '0')).quantize(quant)
-        cost_basis = Decimal(balance_data.get('cost_basis', {}).get('value', '0')).quantize(quant)
+        avg_price = Decimal(balance_data['average_entry_price']['value']).quantize(quant)
+        cost_basis = Decimal(balance_data['cost_basis']['value']).quantize(quant)
         asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0)).quantize(quant)
         return asset_balance, avg_price, cost_basis
 
     def _compute_order_duration(self, order_time_str):
         try:
-            order_time = datetime.fromisoformat(order_time_str)
+            # Strip 'Z' and replace with timezone-aware UTC if needed
+            if isinstance(order_time_str, str):
+                if order_time_str.endswith('Z'):
+                    order_time_str = order_time_str.replace('Z', '+00:00')
+                order_time = datetime.fromisoformat(order_time_str)
+            else:
+                return 0
+
             now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
             return int((now - order_time).total_seconds() // 60)
-        except Exception:
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"⚠️ Failed to compute order duration for time {order_time_str}: {e}")
             return 0
 
     async def _handle_active_tp_sl_decision(
@@ -299,23 +314,11 @@ class AssetMonitor:
         except Exception as e:
             self.logger.error(f"❌ Error in _handle_active_tp_sl_decision for {symbol}: {e}", exc_info=True)
 
-    # async def _handle_tp_sl_sell(self, order_data, snapshot, symbol, asset, precision, avg_price, current_price):
-    #     full_tracker = snapshot.get("order_tracker", {})
-    #     full_order = full_tracker.get(order_data.order_id)
-    #     if full_order:
-    #         await self._handle_active_tp_sl_decision(
-    #             order_data=order_data,
-    #             full_order=full_order,
-    #             symbol=symbol,
-    #             asset=asset,
-    #             current_price=current_price,
-    #             avg_price=avg_price,
-    #             precision_data=precision
-    #         )
 
     async def _handle_limit_sell(self, order_data, symbol, asset, precision, order_duration, avg_price, current_price):
         order_book = await self.order_book_manager.get_order_book(order_data, symbol)
-        highest_bid = Decimal(max(order_book['order_book']['bids'], key=lambda x: x[0])[0])
+        highest_bid = order_book["highest_bid"] if order_book and order_book.get("highest_bid") else current_price
+
 
         # Adjust trailing stop logic
         if order_data.price < min(current_price, highest_bid) and order_duration > 5:

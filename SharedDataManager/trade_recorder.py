@@ -24,9 +24,11 @@ class TradeRecorder:
         """
         Records a new trade into the database. Computes PnL and cost tracking for sells.
         Uses upsert to handle duplicate order_id conflicts gracefully.
+        Performs precheck to avoid inserting fallback duplicates.
         """
         async with self.db_session_manager.async_session_factory() as session:
             try:
+                # 📅 Parse order time
                 order_time_raw = trade_data.get('order_time', datetime.utcnow())
                 order_time = (
                     datetime.fromisoformat(order_time_raw.rstrip("Z"))
@@ -41,6 +43,8 @@ class TradeRecorder:
 
                 side = trade_data['side'].lower()
                 amount = self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci)
+                if amount <= 0:
+                    pass #debug
                 price = self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci)
                 order_id = trade_data['order_id']
                 status = trade_data['status']
@@ -48,6 +52,21 @@ class TradeRecorder:
                 total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
                 trigger = trade_data.get('trigger')
                 source = trade_data.get('source')
+
+                # ⏭️ Skip fallback if real order exists
+                if ("-FALLBACK" in order_id or "-FILL-" in order_id) and source == "websocket":
+                    base_order_id = order_id.split("-F")[0]  # handles both FILL and FALLBACK
+
+                    exists = await session.get(TradeRecord, base_order_id)
+                    if exists and exists.size and exists.size > 0:
+                        if self.logger:
+                            self.logger.info(f"⏭️ Skipping duplicate {order_id} — real trade already recorded")
+                        return
+
+                    # 🕓 Inherit timestamp from original order if available
+                    fallback_parent = await session.get(TradeRecord, trade_data.get("parent_id"))
+                    if fallback_parent and fallback_parent.order_time:
+                        order_time = fallback_parent.order_time
 
                 parent_id = trade_data.get('parent_id')
                 parent_ids = []
@@ -57,6 +76,7 @@ class TradeRecorder:
                 net_sale_proceeds_usd = None
                 update_instructions = []
 
+                # 📈 SELL logic with cost basis tracking
                 if side == 'sell':
                     result = await self.compute_cost_basis_and_sale_proceeds(
                         session=session,
@@ -75,6 +95,7 @@ class TradeRecorder:
                     pnl_usd = result["pnl_usd"]
                     update_instructions = result["update_instructions"]
 
+                # 📅 BUY logic with defaults
                 elif side == 'buy':
                     parent_id = parent_id or order_id
                     parent_ids = [parent_id]
@@ -101,6 +122,7 @@ class TradeRecorder:
                     "realized_profit": 0.0 if side == 'buy' else None
                 }
 
+                # 🧾 Upsert trade
                 insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
                 update_stmt = insert_stmt.on_conflict_do_update(
                     index_elements=["order_id"],
@@ -108,7 +130,7 @@ class TradeRecorder:
                 )
                 await session.execute(update_stmt)
 
-                # 🔄 Update parent BUY records for a SELL
+                # 🔄 Update parent BUY records
                 if update_instructions:
                     for instruction in update_instructions:
                         parent_record = await session.get(TradeRecord, instruction["order_id"])
@@ -132,40 +154,38 @@ class TradeRecorder:
                 if self.logger:
                     self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
 
+
+
     async def compute_cost_basis_and_sale_proceeds(
-            self,
-            session,
-            symbol: str,
-            size: Decimal,
-            sell_price: Decimal,
-            total_fees: Decimal,
-            quote_q: Decimal,
-            base_q: Decimal
+        self,
+        session,
+        symbol: str,
+        size: Decimal,
+        sell_price: Decimal,
+        total_fees: Decimal,
+        quote_q: Decimal,
+        base_q: Decimal
     ) -> dict:
         """
         Allocates cost basis and computes sale proceeds using FIFO logic.
 
-        Returns a dictionary with:
-            - cost_basis_usd
-            - sale_proceeds_usd (gross)
-            - net_sale_proceeds_usd (after fees)
-            - pnl_usd
-            - parent_ids
-            - update_instructions (for buy records)
+        Returns:
+            dict with cost_basis_usd, sale_proceeds_usd, net_sale_proceeds_usd,
+            pnl_usd, parent_ids, update_instructions
         """
         TOLERANCE = Decimal("1").scaleb(-base_q.as_tuple().exponent)
         parent_ids = []
         cost_basis = Decimal("0")
         filled_size = Decimal("0")
-        target_size = size
         update_instructions = []
 
+        # Fetch eligible parent BUY trades
         parent_trades = await self.find_unlinked_buys(symbol)
 
         for pt in parent_trades:
             pt_size = Decimal(pt.remaining_size or pt.size)
             pt_price = Decimal(pt.price)
-            usable = min(pt_size, target_size - filled_size)
+            usable = min(pt_size, size - filled_size)
 
             if usable <= Decimal("0"):
                 continue
@@ -174,53 +194,57 @@ class TradeRecorder:
             filled_size += usable
             parent_ids.append(pt.order_id)
 
-            new_remaining = pt_size - usable
-            realized_profit = usable * (sell_price - pt_price)
+            remaining_after = pt_size - usable
+            realized_profit = (usable * sell_price) - (usable * pt_price)
 
             update_instructions.append({
                 "order_id": pt.order_id,
-                "remaining_size": self.shared_utils_precision.safe_quantize(new_remaining, base_q),
-                "realized_profit": self.shared_utils_precision.safe_quantize(
-                    Decimal(pt.realized_profit or 0) + realized_profit, quote_q
-                )
+                "remaining_size": float(remaining_after.quantize(base_q)),
+                "realized_profit": float(realized_profit.quantize(quote_q))
             })
 
-            if filled_size >= target_size - TOLERANCE:
+            if filled_size >= size - TOLERANCE:
                 break
 
         if filled_size == Decimal("0"):
             return {
-                "parent_ids": [],
                 "cost_basis_usd": None,
                 "sale_proceeds_usd": None,
                 "net_sale_proceeds_usd": None,
                 "pnl_usd": None,
+                "parent_ids": [],
                 "update_instructions": []
             }
 
-        used_size = min(filled_size, target_size)
+        used_size = min(filled_size, size)
         cost_basis = cost_basis.quantize(quote_q)
         sale_proceeds = (used_size * sell_price).quantize(quote_q)
-        net_sale_proceeds = (sale_proceeds - total_fees).quantize(quote_q)
-        pnl_usd = (net_sale_proceeds - cost_basis).quantize(quote_q)
+        net_proceeds = (sale_proceeds - total_fees).quantize(quote_q)
+        pnl_usd = (net_proceeds - cost_basis).quantize(quote_q)
 
         return {
-            "parent_ids": parent_ids,
             "cost_basis_usd": float(cost_basis),
             "sale_proceeds_usd": float(sale_proceeds),
-            "net_sale_proceeds_usd": float(net_sale_proceeds),
+            "net_sale_proceeds_usd": float(net_proceeds),
             "pnl_usd": float(pnl_usd),
+            "parent_ids": parent_ids,
             "update_instructions": update_instructions
         }
 
 
     async def find_unlinked_buys(self, symbol: str):
-        """Find buy trades not yet linked to any sell, ordered oldest first."""
+        """
+        Returns BUY trades that are not linked to any SELL, using a duplicate-safe filter.
+        Orders by oldest (FIFO) and ignores fallback duplicates and empty remnants.
+        """
         async with self.db_session_manager.async_session() as session:
             result = await session.execute(text("""
                 SELECT * FROM trade_records
                 WHERE symbol = :symbol
                   AND side = 'buy'
+                  AND (remaining_size IS NULL OR remaining_size > 0)
+                  AND NOT order_id LIKE '%-FILL-%'
+                  AND NOT order_id LIKE '%-FALLBACK'
                   AND order_id NOT IN (
                       SELECT unnest(parent_ids)
                       FROM trade_records

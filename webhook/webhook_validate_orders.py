@@ -100,6 +100,13 @@ class OrderData:
                 except (KeyError, TypeError, ValueError, decimal.InvalidOperation):
                     return Decimal(default)
 
+            def get_first_nonzero_decimal(*keys, default='0'):
+                for key in keys:
+                    val = get_decimal(key)
+                    if val != 0:
+                        return val
+                return Decimal(default)
+
             def extract_base_quote(pair: str):
                 if not pair:
                     return '', ''
@@ -113,13 +120,38 @@ class OrderData:
             base_decimal = int(data.get("base_decimal") or 8)
             quote_increment = Decimal("1").scaleb(-quote_decimal)
 
+            # Fallback-resilient values
+            amount = get_first_nonzero_decimal(
+                'order_amount_crypto',
+                'amount',
+                'filled_size',
+                'cumulative_quantity',
+                ['info', 'order_configuration', 'limit_limit_gtc', 'base_size'],
+                ['info', 'filled_size'],
+            )
+
+            price = get_first_nonzero_decimal(
+                'price',
+                'avg_price',
+                'limit_price',
+                ['info', 'limit_price'],
+                ['info', 'order_configuration', 'limit_limit_gtc', 'limit_price'],
+            )
+
+            status = data.get('status', 'UNKNOWN')
+
+            # Debug anomaly detection
+            if amount == 0 and status.upper() == "FILLED":
+                print(f"‼️ FILLED order has amount=0: {data.get('order_id')} — check raw input structure. Raw keys: {list(data.keys())}")
+            info_keys = data.get('info', {})
+            order_config = info_keys.get('order_configuration', {})
             return cls(
                 trading_pair=product_id,
                 time_order_placed=data.get('time_order_placed', None),
                 type=data.get('type', 'limit'),
-                order_id=data.get('order_id', 'UNKNOWN'),
-                side=data.get('side', 'buy'),
-                filled_price=get_decimal(['filled_price']),
+                order_id=data.get('order_id') or order_config.get('order_id', 'UNKNOWN'),
+                side=data.get('side') or data.get('order_side', 'buy'),
+                filled_price=get_decimal(['filled_price']) or price,
                 base_currency=base_currency,
                 quote_currency=quote_currency,
                 usd_balance=get_decimal('usd_balance'),
@@ -132,19 +164,19 @@ class OrderData:
                 taker=get_decimal('taker_fee'),
                 spread=get_decimal('spread'),
                 open_orders=data.get('open_orders', None),
-                status=data.get('status', 'UNKNOWN'),
+                status=status,
                 source=data.get('source', 'UNKNOWN'),
                 trigger=data.get("trigger"),
                 base_avail_balance=get_decimal('base_avail_balance'),
                 total_balance_crypto=get_decimal('total_balance_crypto'),
                 available_to_trade_crypto=get_decimal('available_to_trade_crypto'),
                 usd_avail_balance=get_decimal('usd_avail_balance'),
-                order_amount_fiat=get_decimal('order_amount_fiat'),
-                order_amount_crypto=get_decimal('order_amount_crypto'),
-                price=get_decimal('price'),
+                order_amount_fiat=get_decimal('order_amount_fiat') or get_decimal('filled_value'),
+                order_amount_crypto=amount,
+                price=price,
                 cost_basis=get_decimal('cost_basis'),
                 limit_price=get_decimal('limit_price'),
-                average_price=get_decimal('average_price'),
+                average_price=get_decimal('average_price') or get_decimal('avg_price'),
                 adjusted_price=get_decimal('adjusted_price'),
                 adjusted_size=get_decimal('adjusted_size'),
                 stop_loss_price=get_decimal('stop_loss_price'),
@@ -152,8 +184,9 @@ class OrderData:
                 avg_quote_volume=get_decimal('avg_quote_volume'),
                 volume_24h=get_decimal('volume_24h'),
             )
+
         except Exception as e:
-            print(f"❌ Error creating OrderData from dict: {e}")
+            print(f"‼️WARNING  Error creating OrderData from dict: {e}  ‼️")
             raise
 
     def debug_summary(self, verbose: bool = False) -> str:
@@ -728,8 +761,8 @@ class ValidateOrders:
 
             # ✅ Order book check and price buffer
             order_book = await self.order_book.get_order_book(order_data)
-            latest_lowest_ask = Decimal(order_book['order_book']['asks'][0][0]) if order_book['order_book']['asks'] else price
-            latest_highest_bid = Decimal(order_book['order_book']['bids'][0][0]) if order_book['order_book']['bids'] else price
+            latest_lowest_ask = order_book['lowest_ask'] or price
+            latest_highest_bid = order_book['highest_bid'] or price
 
             price_buffer_pct = Decimal('0.001')
             min_buffer = Decimal('0.0000001')
