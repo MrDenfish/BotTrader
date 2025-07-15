@@ -23,62 +23,49 @@ class TradeRecorder:
     async def record_trade(self, trade_data: dict):
         """
         Records a new trade into the database. Computes PnL and cost tracking for sells.
-        Uses upsert to handle duplicate order_id conflicts gracefully.
-        Performs precheck to avoid inserting fallback duplicates.
+        Uses separate short-lived sessions for trade insert and parent updates to reduce connection pool pressure.
         """
-        async with self.db_session_manager.async_session_factory() as session:
-            async with session.begin():
-                try:
-                    # 📅 Parse order time
-                    order_time_raw = trade_data.get('order_time', datetime.utcnow())
-                    order_time = (
-                        datetime.fromisoformat(order_time_raw.rstrip("Z"))
-                        if isinstance(order_time_raw, str)
-                        else order_time_raw
-                    )
+        # -----------------------------
+        # Phase 0: Pre-calculation logic
+        # -----------------------------
+        try:
+            # 📅 Parse order time
+            order_time_raw = trade_data.get('order_time', datetime.utcnow())
+            order_time = (
+                datetime.fromisoformat(order_time_raw.rstrip("Z"))
+                if isinstance(order_time_raw, str)
+                else order_time_raw
+            )
 
-                    symbol = trade_data['symbol']
-                    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
-                    base_q = Decimal("1").scaleb(-base_deci)
-                    quote_q = Decimal("1").scaleb(-quote_deci)
+            symbol = trade_data['symbol']
+            base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+            base_q = Decimal("1").scaleb(-base_deci)
+            quote_q = Decimal("1").scaleb(-quote_deci)
 
-                    side = trade_data['side'].lower()
-                    amount = self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci)
-                    if amount <= 0:
-                        pass #debug
-                    price = self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci)
-                    order_id = trade_data['order_id']
-                    status = trade_data['status']
-                    total_fees_raw = trade_data.get('total_fees') or trade_data.get('total_fees_usd')
-                    total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
-                    trigger = trade_data.get('trigger')
-                    source = trade_data.get('source')
+            side = trade_data['side'].lower()
+            amount = self.shared_utils_precision.safe_convert(trade_data['amount'], base_deci)
+            price = self.shared_utils_precision.safe_convert(trade_data['price'], quote_deci)
+            order_id = trade_data['order_id']
+            status = trade_data['status']
+            total_fees_raw = trade_data.get('total_fees') or trade_data.get('total_fees_usd')
+            total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
+            trigger = trade_data.get('trigger')
+            source = trade_data.get('source')
 
-                    # ⏭️ Skip fallback if real order exists
-                    if ("-FALLBACK" in order_id or "-FILL-" in order_id) and source == "websocket":
-                        base_order_id = order_id.split("-F")[0]  # handles both FILL and FALLBACK
+            parent_id = trade_data.get('parent_id')
+            parent_ids = []
+            pnl_usd = None
+            cost_basis_usd = None
+            sale_proceeds_usd = None
+            net_sale_proceeds_usd = None
+            update_instructions = []
 
-                        exists = await session.get(TradeRecord, base_order_id)
-                        if exists and exists.size and exists.size > 0:
-                            if self.logger:
-                                self.logger.info(f"⏭️ Skipping duplicate {order_id} — real trade already recorded")
-                            return
-
-                        # 🕓 Inherit timestamp from original order if available
-                        fallback_parent = await session.get(TradeRecord, trade_data.get("parent_id"))
-                        if fallback_parent and fallback_parent.order_time:
-                            order_time = fallback_parent.order_time
-
-                    parent_id = trade_data.get('parent_id')
-                    parent_ids = []
-                    pnl_usd = None
-                    cost_basis_usd = None
-                    sale_proceeds_usd = None
-                    net_sale_proceeds_usd = None
-                    update_instructions = []
-
-                    # 📈 SELL logic with cost basis tracking
-                    if side == 'sell':
+            # -----------------------------
+            # Phase 1: Compute SELL metrics
+            # -----------------------------
+            if side == 'sell':
+                async with self.db_session_manager.async_session_factory() as session:
+                    async with session.begin():
                         result = await self.compute_cost_basis_and_sale_proceeds(
                             session=session,
                             symbol=symbol,
@@ -89,50 +76,62 @@ class TradeRecorder:
                             base_q=base_q
                         )
 
-                        parent_ids = result["parent_ids"]
-                        cost_basis_usd = result["cost_basis_usd"]
-                        sale_proceeds_usd = result["sale_proceeds_usd"]
-                        net_sale_proceeds_usd = result["net_sale_proceeds_usd"]
-                        pnl_usd = result["pnl_usd"]
-                        update_instructions = result["update_instructions"]
-                        realized_profit_total = Decimal(sum(Decimal(instr["realized_profit"]) for instr in update_instructions)).quantize(quote_q)
-                    else:
-                        realized_profit_total = Decimal("0.0")
-                        parent_id = parent_id or order_id
-                        parent_ids = [parent_id]
+                parent_ids = result["parent_ids"]
+                cost_basis_usd = result["cost_basis_usd"]
+                sale_proceeds_usd = result["sale_proceeds_usd"]
+                net_sale_proceeds_usd = result["net_sale_proceeds_usd"]
+                pnl_usd = result["pnl_usd"]
+                update_instructions = result["update_instructions"]
+                realized_profit_total = Decimal(
+                    sum(Decimal(instr["realized_profit"]) for instr in update_instructions)
+                ).quantize(quote_q)
 
-                    trade_dict = {
-                        "order_id": order_id,
-                        "parent_id": parent_id,
-                        "parent_ids": parent_ids or None,
-                        "symbol": symbol,
-                        "side": side,
-                        "order_time": order_time,
-                        "price": price,
-                        "size": amount,
-                        "pnl_usd": pnl_usd,
-                        "total_fees_usd": total_fees,
-                        "trigger": trigger,
-                        "order_type": trade_data.get("order_type"),
-                        "status": status,
-                        "source": source,
-                        "cost_basis_usd": cost_basis_usd,
-                        "sale_proceeds_usd": sale_proceeds_usd,
-                        "net_sale_proceeds_usd": net_sale_proceeds_usd,
-                        "remaining_size": amount if side == 'buy' else None,
-                        "realized_profit": float(realized_profit_total)
-                    }
+            else:
+                realized_profit_total = Decimal("0.0")
+                parent_id = parent_id or order_id
+                parent_ids = [parent_id]
 
-                    # 🧾 Upsert trade
+            # -----------------------------
+            # Phase 2: Insert/Update trade
+            # -----------------------------
+            trade_dict = {
+                "order_id": order_id,
+                "parent_id": parent_id,
+                "parent_ids": parent_ids or None,
+                "symbol": symbol,
+                "side": side,
+                "order_time": order_time,
+                "price": price,
+                "size": amount,
+                "pnl_usd": pnl_usd,
+                "total_fees_usd": total_fees,
+                "trigger": trigger,
+                "order_type": trade_data.get("order_type"),
+                "status": status,
+                "source": source,
+                "cost_basis_usd": cost_basis_usd,
+                "sale_proceeds_usd": sale_proceeds_usd,
+                "net_sale_proceeds_usd": net_sale_proceeds_usd,
+                "remaining_size": amount if side == 'buy' else None,
+                "realized_profit": float(realized_profit_total)
+            }
+
+            async with self.db_session_manager.async_session_factory() as session:
+                async with session.begin():
                     insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
                     update_stmt = insert_stmt.on_conflict_do_update(
                         index_elements=["order_id"],
                         set_={key: insert_stmt.excluded[key] for key in trade_dict}
                     )
                     await session.execute(update_stmt)
+                    await session.flush()
 
-                    # 🔄 Update parent BUY records
-                    if update_instructions:
+            # -----------------------------
+            # Phase 3: Update parent BUYs
+            # -----------------------------
+            if update_instructions:
+                async with self.db_session_manager.async_session_factory() as session:
+                    async with session.begin():
                         for instruction in update_instructions:
                             parent_record = await session.get(TradeRecord, instruction["order_id"])
                             if not parent_record:
@@ -141,22 +140,16 @@ class TradeRecorder:
                             parent_record.remaining_size = float(instruction["remaining_size"])
                             parent_record.realized_profit = float(instruction["realized_profit"])
                             session.add(parent_record)
+                        await session.flush()
 
+            if self.logger:
+                self.logger.info(
+                    f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | PnL: {pnl_usd} | Parents: {parent_ids}"
+                )
 
-
-                    await session.flush()
-
-                    if self.logger:
-                        self.logger.info(
-                            f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | PnL: {pnl_usd} | Parents: {parent_ids}"
-                        )
-
-                except Exception as e:
-                    await session.rollback()
-                    if self.logger:
-                        self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
-
-
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
 
     async def compute_cost_basis_and_sale_proceeds(
         self,
