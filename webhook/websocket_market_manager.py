@@ -188,7 +188,7 @@ class WebSocketMarketManager:
                                 "source": "websocket",
                                 "total_fees": order.get("total_fees")
                             }
-                            await self.shared_data_manager.trade_recorder.record_trade(trade)
+                            await self.shared_data_manager.trade_recorder.enqueue_trade(trade)
                             print(f"TP/SL child stored → {order_id}") #debug
                         except Exception:
                             self.logger.error("record_trade failed", exc_info=True)
@@ -213,7 +213,7 @@ class WebSocketMarketManager:
                                 unique_fill_id = f"{parent_id}-FALLBACK"
                                 self.logger.warning(f"⚠️ No fills found for {parent_id} — using fallback record")
 
-                                await self.shared_data_manager.trade_recorder.record_trade({
+                                await self.shared_data_manager.trade_recorder.enqueue_trade({
                                     "order_id": unique_fill_id,
                                     "parent_id": parent_id if side == "buy" else await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy(
                                         symbol),
@@ -235,7 +235,7 @@ class WebSocketMarketManager:
                                     fill_fee = fill.get("fee") or 0
                                     fill_time = fill.get("trade_time") or fill.get("event_time") or fill.get("created_time")
 
-                                    await self.shared_data_manager.trade_recorder.record_trade({
+                                    await self.shared_data_manager.trade_recorder.enqueue_trade({
                                         "order_id": unique_fill_id,
                                         "parent_id": parent_id if side == "buy" else await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy(
                                             symbol),

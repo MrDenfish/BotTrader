@@ -266,8 +266,11 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
     except Exception as e:
         sighook_logger.error("Unhandled exception in sighook:", exc_info=True)
         alert.callhome("sighook crashed", str(e), mode="email")
+
     finally:
         sighook_logger.info("sighook shutdown complete.")
+        # ✅ Stop TradeRecorder worker at shutdown
+        await shared_data_manager.trade_recorder.stop_worker()
 
 async def create_trade_bot(config, coinbase_api, shared_data_manager, market_data_updater, order_book_manager, logger_manager,
                            shared_utils_debugger, shared_utils_print, shared_utils_color, websocket_helper=None) -> TradeBot:
@@ -435,6 +438,8 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, market
             await task
         except asyncio.CancelledError:
             pass
+    # ✅ Stop TradeRecorder worker before final shutdown
+    await shared_data_manager.trade_recorder.stop_worker()
 
     await graceful_shutdown(listener, runner)
     return listener
@@ -467,7 +472,8 @@ async def main():
 
             coinbase_api.shared_utils_precision = shared_utils_precision
 
-            # ✅ Initialize OrderBookManager before listener
+            await shared_data_manager.trade_recorder.start_worker()
+
             order_book_manager = OrderBookManager.get_instance(
                 config.exchange,
                 shared_data_manager,
@@ -607,6 +613,10 @@ async def main():
                     await sighook_task
                 except asyncio.CancelledError:
                     pass
+
+                # ✅ Stop TradeRecorder worker before shutting down listener
+                await shared_data_manager.trade_recorder.stop_worker()
+
                 await graceful_shutdown(listener, runner)
 
     except Exception as e:

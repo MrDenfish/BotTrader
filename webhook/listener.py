@@ -891,7 +891,7 @@ class WebhookListener:
 
 
 
-                await shared_data_manager.trade_recorder.record_trade({
+                await shared_data_manager.trade_recorder.enqueue_trade({
                     "order_id": order_id,
                     "parent_id": parent_id,
                     "parent_ids": parent_ids,

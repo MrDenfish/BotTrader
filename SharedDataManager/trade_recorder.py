@@ -1,8 +1,8 @@
 
-
+import asyncio
 from TableModels.trade_record import TradeRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import aliased
+from asyncio import Queue
 from typing import Optional
 from sqlalchemy import select, func, and_, or_, not_
 from sqlalchemy.future import select
@@ -20,16 +20,58 @@ class TradeRecorder:
         self.shared_utils_precision = shared_utils_precision
         self.coinbase_api = coinbase_api
 
+        self.trade_queue: Queue = Queue()
+        self.worker_task: Optional[asyncio.Task] = None
+
+    # =====================================================
+    # ✅ Worker Management
+    # =====================================================
+    async def start_worker(self):
+        """Starts the background trade recording worker."""
+        if not self.worker_task:
+            self.logger.info("🚀 Starting TradeRecorder worker...")
+            self.worker_task = asyncio.create_task(self._trade_worker_loop())
+
+    async def stop_worker(self):
+        """Gracefully stops the background trade worker."""
+        if self.worker_task:
+            self.logger.info("🛑 Stopping TradeRecorder worker...")
+            self.worker_task.cancel()
+            try:
+                await self.worker_task
+            except asyncio.CancelledError:
+                pass
+            self.worker_task = None
+
+    async def enqueue_trade(self, trade_data: dict):
+        """Enqueues a trade for async processing."""
+        await self.trade_queue.put(trade_data)
+        self.logger.debug(f"📥 Trade queued: {trade_data.get('symbol')} {trade_data.get('side')}")
+
+    async def _trade_worker_loop(self):
+        """Continuously processes queued trades in FIFO order."""
+        while True:
+            trade_data = await self.trade_queue.get()
+            try:
+                await self.record_trade(trade_data)
+            except Exception as e:
+                self.logger.error(f"❌ Failed to record trade {trade_data.get('order_id')}: {e}", exc_info=True)
+            finally:
+                self.trade_queue.task_done()
+
+    # =====================================================
+    # ✅ Main Trade Recording Logic (Option 1 + Option 2)
+    # =====================================================
+
     async def record_trade(self, trade_data: dict):
         """
-        Records a new trade into the database. Computes PnL and cost tracking for sells.
-        Uses separate short-lived sessions for trade insert and parent updates to reduce connection pool pressure.
+        Records a new trade into the database. Uses short-lived sessions for each step
+        to reduce pool pressure. Intended to be called by the queue worker.
         """
-        # -----------------------------
-        # Phase 0: Pre-calculation logic
-        # -----------------------------
         try:
-            # 📅 Parse order time
+            # -----------------------------
+            # Phase 0: Pre-calculation logic
+            # -----------------------------
             order_time_raw = trade_data.get('order_time', datetime.utcnow())
             order_time = (
                 datetime.fromisoformat(order_time_raw.rstrip("Z"))
@@ -60,8 +102,16 @@ class TradeRecorder:
             net_sale_proceeds_usd = None
             update_instructions = []
 
+            # Skip duplicate FALLBACK/FILL records if real one exists
+            if ("-FALLBACK" in order_id or "-FILL-" in order_id) and source == "websocket":
+                async with self.db_session_manager.async_session_factory() as session:
+                    exists = await session.get(TradeRecord, order_id.split("-F")[0])
+                    if exists and exists.size and exists.size > 0:
+                        self.logger.info(f"⏭️ Skipping duplicate {order_id} — real trade already recorded")
+                        return
+
             # -----------------------------
-            # Phase 1: Compute SELL metrics
+            # Phase 1: SELL metrics (short-lived session)
             # -----------------------------
             if side == 'sell':
                 async with self.db_session_manager.async_session_factory() as session:
@@ -85,14 +135,13 @@ class TradeRecorder:
                 realized_profit_total = Decimal(
                     sum(Decimal(instr["realized_profit"]) for instr in update_instructions)
                 ).quantize(quote_q)
-
             else:
                 realized_profit_total = Decimal("0.0")
                 parent_id = parent_id or order_id
                 parent_ids = [parent_id]
 
             # -----------------------------
-            # Phase 2: Insert/Update trade
+            # Phase 2: Insert/Upsert trade (short-lived session)
             # -----------------------------
             trade_dict = {
                 "order_id": order_id,
@@ -127,7 +176,7 @@ class TradeRecorder:
                     await session.flush()
 
             # -----------------------------
-            # Phase 3: Update parent BUYs
+            # Phase 3: Update parent BUY records (short-lived session)
             # -----------------------------
             if update_instructions:
                 async with self.db_session_manager.async_session_factory() as session:
@@ -144,7 +193,8 @@ class TradeRecorder:
 
             if self.logger:
                 self.logger.info(
-                    f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | PnL: {pnl_usd} | Parents: {parent_ids}"
+                    f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | "
+                    f"PnL: {pnl_usd} | Parents: {parent_ids}"
                 )
 
         except Exception as e:
