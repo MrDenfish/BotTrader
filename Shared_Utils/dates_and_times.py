@@ -50,7 +50,7 @@ class DatesAndTimes:
 
     def time_sanity_check(self, safe_since_ms: int) -> int:
         """Ensure the given timestamp is not in the future. If it is, roll it back by 6 minutes."""
-        now_ms = int(datetime.utcnow().timestamp() * 1000)
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         if safe_since_ms >= now_ms:
             self.logger.warning("Adjusted `since` timestamp is in the future. Using fallback.")
             return now_ms - 6 * 60 * 1000  # Roll back 6 minutes
@@ -72,7 +72,7 @@ class DatesAndTimes:
             time_format = "%Y-%m-%dT%H:%M:%S.%fZ"
             order_time = datetime.strptime(time_string, time_format)
             current_time1 = datetime.now(timezone.utc)
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             difference = current_time - order_time
             difference_in_minutes = difference.total_seconds() / 60
             return f"{int(difference_in_minutes)} minutes"
@@ -126,6 +126,6 @@ class DatesAndTimes:
         if isinstance(order_time, str):
             order_time = self.parse_iso_time(order_time)
         if isinstance(order_time, datetime):
-            now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
+            now = datetime.now(timezone.utc).replace(tzinfo=order_time.tzinfo)
             return int((now - order_time).total_seconds() // 60)
         return 0

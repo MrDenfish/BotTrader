@@ -623,7 +623,7 @@ class SharedDataManager:
                         order_id=order_id,
                         symbol=symbol,
                         side=side,
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         order_data=json_string  # ✅ Explicit string
                     )
                     session.add(po)

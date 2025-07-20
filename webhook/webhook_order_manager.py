@@ -38,6 +38,7 @@ class TradeOrderManager:
         """
         self.config = config()
         self.coinbase_api = coinbase_api
+        self.test_mode = self.config.test_mode
         self._take_profit = Decimal(self.config.take_profit)
         self._stop_loss = Decimal(self.config.stop_loss)
         self._min_order_amount_fiat = self.config.min_order_amount_fiat

@@ -25,7 +25,7 @@ from TestingDebugging.debugger import Debugging
 from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
-from  Shared_Utils.print_data import ColorCodes
+from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility

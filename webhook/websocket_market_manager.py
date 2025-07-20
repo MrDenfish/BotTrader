@@ -183,7 +183,7 @@ class WebSocketMarketManager:
                                 "price": order.get("limit_price") or order.get("price"),
                                 "amount": order.get("size") or order.get("filled_size") or order.get("order_size") or 0,
                                 "status": status.lower(),
-                                "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
+                                "order_time": order.get("event_time") or order.get("created_time") or datetime.now(timezone.utc).isoformat(),
                                 "trigger": {"trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl"},
                                 "source": "websocket",
                                 "total_fees": order.get("total_fees")
@@ -222,7 +222,7 @@ class WebSocketMarketManager:
                                     "price": order.get("avg_price") or order.get("price"),
                                     "amount": order.get("filled_size") or order.get("order_size") or order.get("cumulative_quantity") or 0,
                                     "status": "filled",
-                                    "order_time": order.get("event_time") or order.get("created_time") or datetime.utcnow().isoformat(),
+                                    "order_time": order.get("event_time") or order.get("created_time") or datetime.now(timezone.utc).isoformat(),
                                     "trigger": {"trigger": order.get("order_type") or "market"},
                                     "source": "websocket",
                                     "total_fees": order.get("total_fees")
@@ -244,7 +244,7 @@ class WebSocketMarketManager:
                                         "price": fill_price,
                                         "amount": fill_size,
                                         "status": "filled",
-                                        "order_time": fill_time or datetime.utcnow().isoformat(),
+                                        "order_time": fill_time or datetime.now(timezone.utc).isoformat(),
                                         "trigger": {"trigger": order.get("order_type") or "market"},
                                         "source": "websocket",
                                         "total_fees": fill_fee

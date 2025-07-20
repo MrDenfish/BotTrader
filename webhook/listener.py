@@ -454,7 +454,7 @@ class WebhookListener:
                 # Update shared state via SharedDataManager
 
                 start = time.monotonic()
-                new_market_data["last_updated"] = datetime.utcnow()
+                new_market_data["last_updated"] = datetime.now(timezone.utc)
                 new_market_data["fee_info"] = await self.coinbase_api.get_fee_rates()
 
                 await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
@@ -909,7 +909,7 @@ class WebhookListener:
                 symbol = order.get("product_id")
                 price = order.get("average_filled_price") or order.get("price")
                 size = order.get("filled_size") or order.get("order_size") or "0"
-                order_time = order.get("created_time") or order.get("completed_time") or datetime.utcnow().isoformat()
+                order_time = order.get("created_time") or order.get("completed_time") or datetime.now(timezone.utc).isoformat()
                 order_time = order_time.rstrip("Z") if isinstance(order_time, str) else order_time
 
                 total_fees = order.get("total_fees")
@@ -971,7 +971,7 @@ class WebhookListener:
                 # ------------------------------------------------------------------
                 lookback_hours = SYNC_LOOKBACK if first_run else 1
                 since_iso = (
-                                    dt.datetime.utcnow() - dt.timedelta(hours=lookback_hours)
+                                    dt.datetime.now(timezone.utc) - dt.timedelta(hours=lookback_hours)
                             ).isoformat(timespec="seconds") + "Z"
                 first_run = False
 

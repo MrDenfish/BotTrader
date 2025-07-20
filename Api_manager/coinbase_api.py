@@ -8,7 +8,7 @@ import hmac, hashlib, base64, time
 
 from typing import Optional, List
 from coinbase import jwt_generator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from Shared_Utils.enum import ValidationCode
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.logging_manager import LoggerManager
@@ -47,7 +47,7 @@ class CoinbaseAPI:
 
         # low volume coins that produce no candles get cached
         self.empty_ohlcv_cache = set()
-        self.last_cache_clear_time = datetime.utcnow()
+        self.last_cache_clear_time = datetime.now(timezone.utc)
 
         self.jwt_token = None
         self.jwt_expiry = None
@@ -68,7 +68,7 @@ class CoinbaseAPI:
         }
 
     def clear_ohlcv_cache_if_stale(self):
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if now - self.last_cache_clear_time >= timedelta(hours=1):
             self.empty_ohlcv_cache.clear()
             self.last_cache_clear_time = now
@@ -84,7 +84,7 @@ class CoinbaseAPI:
                 raise ValueError("JWT token is empty!")
 
             self.jwt_token = jwt_token
-            self.jwt_expiry = datetime.utcnow() + timedelta(minutes=5)
+            self.jwt_expiry = datetime.now(timezone.utc) + timedelta(minutes=5)
 
             return jwt_token
         except Exception as e:
@@ -93,7 +93,7 @@ class CoinbaseAPI:
 
     def refresh_jwt_if_needed(self):
         """Refresh JWT only if it is close to expiration."""
-        if not self.jwt_token or datetime.utcnow() >= self.jwt_expiry - timedelta(seconds=60):
+        if not self.jwt_token or datetime.now(timezone.utc) >= self.jwt_expiry - timedelta(seconds=60):
             self.logger.info("Refreshing JWT token...")
             self.jwt_token = self.generate_rest_jwt()  # ✅ Only refresh if expired
 

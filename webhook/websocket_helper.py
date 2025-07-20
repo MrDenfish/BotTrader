@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from coinbase import jwt_generator
 
@@ -192,7 +192,7 @@ class WebSocketHelper:
                 raise ValueError("JWT token is empty!")
 
             self.jwt_token = jwt_token
-            self.jwt_expiry = datetime.utcnow() + timedelta(minutes=5)
+            self.jwt_expiry = datetime.now(timezone.utc) + timedelta(minutes=5)
 
             return jwt_token
         except Exception as e:
@@ -201,7 +201,7 @@ class WebSocketHelper:
 
     async def generate_jwt(self):
         """Generate and refresh JWT if expired."""
-        if not self.jwt_token or datetime.utcnow() >= self.jwt_expiry - timedelta(seconds=60):
+        if not self.jwt_token or datetime.now(timezone.utc) >= self.jwt_expiry - timedelta(seconds=60):
             return self.generate_ws_jwt()  # ✅ Use WebSocketHelper's method
 
         return self.jwt_token

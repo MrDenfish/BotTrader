@@ -42,7 +42,7 @@ class PerformanceTracker:
                 'duration_minutes': float(duration),
                 'buy_id': buy_order['order_id'],
                 'sell_id': sell_order['order_id'],
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
             self.completed_trades.append(result)

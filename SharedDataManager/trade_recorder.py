@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select, func, and_, or_, not_
 from sqlalchemy.future import select
 from decimal import Decimal, ROUND_DOWN
-from datetime import datetime
+from datetime import datetime, timezone
 
 class TradeRecorder:
     """
@@ -72,12 +72,23 @@ class TradeRecorder:
             # -----------------------------
             # Phase 0: Pre-calculation logic
             # -----------------------------
-            order_time_raw = trade_data.get('order_time', datetime.utcnow())
-            order_time = (
-                datetime.fromisoformat(order_time_raw.rstrip("Z"))
-                if isinstance(order_time_raw, str)
-                else order_time_raw
-            )
+            order_time_raw = trade_data.get('order_time', datetime.now(timezone.utc))
+
+            # ✅ Normalize to a timezone-aware UTC datetime
+            if isinstance(order_time_raw, str):
+                # Parse ISO string and force UTC
+                parsed_time = datetime.fromisoformat(order_time_raw.replace("Z", "+00:00"))
+            else:
+                parsed_time = order_time_raw
+
+            if parsed_time.tzinfo is None:
+                # If naive, explicitly set to UTC
+                parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+            else:
+                # If timezone-aware, convert to UTC
+                parsed_time = parsed_time.astimezone(timezone.utc)
+
+            order_time = parsed_time
 
             symbol = trade_data['symbol']
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)

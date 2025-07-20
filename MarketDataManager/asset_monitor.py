@@ -2,7 +2,7 @@ import asyncio
 import time
 import re
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 
 
@@ -210,10 +210,15 @@ class AssetMonitor:
             if not trade or not trade.order_time:
                 return True
 
-            now = datetime.utcnow().replace(tzinfo=trade.order_time.tzinfo)
-            held_for = now - trade.order_time
+            now = datetime.now(timezone.utc)
+            trade_time = trade.order_time.astimezone(timezone.utc)
+            held_for = now - trade_time
+
             if held_for.total_seconds() < 0:
-                self.logger.warning(f"⚠️ Time anomaly detected for {symbol}: negative hold duration {held_for}")
+                self.logger.warning(
+                    f"⚠️ Time anomaly detected for {symbol}: negative hold duration {held_for} "
+                    f"(now={now}, trade_time={trade_time})"
+                )
                 return True
 
             return held_for >= timedelta(minutes=self.min_cooldown)
@@ -294,7 +299,7 @@ class AssetMonitor:
             else:
                 return 0
 
-            now = datetime.utcnow().replace(tzinfo=order_time.tzinfo)
+            now = datetime.now(timezone.utc).replace(tzinfo=order_time.tzinfo)
             return int((now - order_time).total_seconds() // 60)
         except Exception as e:
             if self.logger:

@@ -363,10 +363,9 @@ class PassiveOrderManager:
         quote_od.adjusted_size = (fiat / price).quantize(
             Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN
         )
-        quote_od.cost_basis = (price * quote_od.adjusted_size).quantize(
-            Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP
-        )
         quote_quantizer = Decimal("1").scaleb(-quote_deci)
+
+        quote_od.cost_basis = self.shared_utils_precision.safe_quantize(price * quote_od.adjusted_size,quote_quantizer)
         spread = Decimal(quote_od.spread)
         quote_od.spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
         quote_od.trigger = {"trigger": f"passive_{quote_od.side}", "trigger_note": f"price:{price}"}

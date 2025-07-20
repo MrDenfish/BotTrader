@@ -24,7 +24,7 @@ class FeeMonitor:
             "symbol": symbol,
             "fee": fee,
             "fee_type": fee_type,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.now(timezone.utc)
         }
         self.logger.debug(f"💸 Logged {fee_type} fee for {symbol}: ${fee:.4f} on order {order_id}")
 
@@ -63,7 +63,7 @@ class FeeMonitor:
         """
         Remove old logs to keep memory use in check.
         """
-        threshold = datetime.utcnow() - timedelta(days=older_than_days)
+        threshold = datetime.now(timezone.utc) - timedelta(days=older_than_days)
         self.order_fee_log = {
             oid: data for oid, data in self.order_fee_log.items()
             if data["timestamp"] > threshold

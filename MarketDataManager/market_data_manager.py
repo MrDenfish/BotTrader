@@ -9,7 +9,7 @@ async def market_data_watchdog(shared_data_manager, listener, logger, check_inte
     If data hasn't updated in `max_age_sec`, automatically calls listener.refresh_market_data().
     """
     last_prices = None
-    last_update_time = datetime.utcnow()
+    last_update_time = datetime.now(timezone.utc)
 
     while True:
         await asyncio.sleep(check_interval)
@@ -23,15 +23,15 @@ async def market_data_watchdog(shared_data_manager, listener, logger, check_inte
 
             if bid_ask_spread != last_prices:
                 last_prices = bid_ask_spread.copy()
-                last_update_time = datetime.utcnow()
+                last_update_time = datetime.now(timezone.utc)
             else:
-                age = (datetime.utcnow() - last_update_time).total_seconds()
+                age = (datetime.now(timezone.utc) - last_update_time).total_seconds()
                 if age > max_age_sec:
                     logger.warning(
                         f"⚠️ [Watchdog] Market prices haven't updated for {int(age)} seconds. Triggering refresh..."
                     )
                     await listener.refresh_market_data()
-                    last_update_time = datetime.utcnow()  # Reset after recovery attempt
+                    last_update_time = datetime.now(timezone.utc)  # Reset after recovery attempt
         except Exception as e:
             logger.error(f"❌ [Watchdog] Unexpected error: {e}", exc_info=True)
 
