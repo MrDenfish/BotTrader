@@ -17,6 +17,7 @@ from Shared_Utils.database_checker import DatabaseIntegrity
 from Shared_Utils.dates_and_times import DatesAndTimes
 from TestingDebugging.debugger import Debugging
 from Shared_Utils.precision import PrecisionUtils
+from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
@@ -40,10 +41,11 @@ shutdown_event = asyncio.Event()
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, coinbase_api, shared_data_mgr, market_data_updater,rest_client, portfolio_uuid, exchange, order_book_manager,
+    def __init__(self, coinbase_api, shared_data_mgr, trade_recorder, market_data_updater,rest_client, portfolio_uuid, exchange, order_book_manager,
                  logger_manager=None, websocket_helper=None, shared_utils_debugger=None, shared_utils_print=None, shared_utils_color=None):
         self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_mgr
+        self.trade_recorder = trade_recorder
         self.market_data_updater = market_data_updater
         self.websocket_helper = websocket_helper
         self.app_config = bot_config()
@@ -68,7 +70,7 @@ class TradeBot:
         self.profit_manager = self.profit_helper = self.order_manager = self.market_manager = None
         self.ticker_cache = self.market_cache_vol = self.bid_ask_spread = None
         self.filtered_balances = self.start_time = self.exchange_class = self.session = None
-        self.sharded_utils = self.profit_data_manager = self.snapshots_manager =  self.ticker_manager = None
+        self.shared_utils = self.profit_data_manager = self.snapshots_manager =  self.ticker_manager = None
         self.sleep_time = self.app_config.sleep_time
         self.order_book_manager = order_book_manager
         self.web_url = self.app_config.web_url
@@ -218,7 +220,7 @@ class TradeBot:
         self.shared_utils_precision = PrecisionUtils.get_instance(self.logger_manager, self.shared_data_manager)
         self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.logger_manager)
         self.shared_utils_utility = SharedUtility.get_instance(self.logger_manager)
-        # self.sharded_utils = PrintData.get_instance(self.logger)
+        self.shared_utils_color = ColorCodes.get_instance()
         self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
 
 
@@ -265,22 +267,21 @@ class TradeBot:
 
         self.webhook = SenderWebhook.get_instance(
             self.exchange, self.alerts, self.logger, self.shared_utils_utility,
-            self.web_url, self.shared_data_manager
+            self.web_url, self.shared_data_manager, self.shared_utils_color
         )
 
-        self.trading_strategy = TradingStrategy.get_instance(
-            self.webhook, self.ticker_manager, self.exchange, self.alerts,
-            self.logger, self.ccxt_api, None, self.max_concurrent_tasks,
-            self.database_session_mngr, self.shared_utils_print, self.db_tables,
-            self.shared_utils_precision, self.shared_data_manager
+        self.trading_strategy = TradingStrategy.get_instance(self.logger,self.shared_utils_precision,
+                                                             self.shared_data_manager, self.trade_recorder
         )
 
         self.order_manager = OrderManager.get_instance(
             self.trading_strategy, self.ticker_manager, self.exchange,
             self.webhook, self.alerts, self.logger, self.coinbase_api, self.ccxt_api,
-            self.shared_utils_precision, self.shared_data_manager,
-            self.web_url, self.max_concurrent_tasks,
+            self.shared_utils_precision, self.shared_utils_color, self.shared_data_manager,
+            self.web_url, self.trading_strategy.signal_manager, self.max_concurrent_tasks,
+
         )
+
 
         self.market_manager = MarketManager.get_instance(
             self.tradebot, self.exchange, self.order_manager, self.trading_strategy,

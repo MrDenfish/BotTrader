@@ -242,7 +242,7 @@ class WebSocketHelper:
                 self.logger.info(f"✅ First message received from user channel: {channel}")
 
             if channel == "user":
-                print(self.shared_utils_color.format(f" 💚 {self.listener.alerts.summarize_user_snapshot(data)}", self.shared_utils_color.BLUE))
+                #print(self.shared_utils_color.format(f" 💚 {self.listener.alerts.summarize_user_snapshot(data)}", self.shared_utils_color.BLUE))
                 # print(f'💚  {self.listener.alerts.summarize_user_snapshot(data)}')
                 await self.market_ws_manager.process_user_channel(data)
             elif channel == "heartbeats":

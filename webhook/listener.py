@@ -199,8 +199,8 @@ class WebhookListener:
 
     _exchange_instance_count = 0
 
-    def __init__(self, bot_config, shared_data_manager, shared_utils_color, market_data_updater, database_session_manager, logger_manager, coinbase_api,
-              session, market_manager, exchange, alert, order_book_manager):
+    def __init__(self, bot_config, shared_data_manager, shared_utils_color, market_data_updater, database_session_manager, logger_manager,
+                 coinbase_api, session, market_manager, exchange, alert, order_book_manager):
 
         self.bot_config = bot_config
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
@@ -676,7 +676,8 @@ class WebhookListener:
 
     async def process_webhook(self, request_json, ip_address) -> web.Response:
         try:
-            webhook_uuid = request_json.get('uuid')
+            # ✅ Validate UUID and deduplicate
+            webhook_uuid = request_json.get("uuid")
             if not webhook_uuid:
                 return web.json_response(
                     {"success": False, "message": "Missing 'uuid' in request"},
@@ -692,7 +693,8 @@ class WebhookListener:
 
             await self.add_uuid_to_cache(webhook_uuid)
 
-            if not request_json.get('action'):
+            # ✅ Basic request validation
+            if not request_json.get("action"):
                 return web.json_response(
                     {"success": False, "message": "Missing action"},
                     status=int(ValidationCode.MISSING_ACTION.value)
@@ -704,25 +706,30 @@ class WebhookListener:
                     status=int(ValidationCode.UNAUTHORIZED.value)
                 )
 
-            if not WebhookListener.is_valid_origin(request_json.get('origin', '')):
+            if not WebhookListener.is_valid_origin(request_json.get("origin", "")):
                 return web.json_response(
                     {"success": False, "message": "FORBIDDEN"},
                     status=int(ValidationCode.FORBIDDEN.value)
                 )
 
-            # Parse trade data and fetch market/order snapshots
+            # ✅ Parse normalized trade data (now includes `test_mode`)
             trade_data = self.webhook_manager.parse_webhook_request(request_json)
-            product_id = trade_data.get('trading_pair')
-            asset = product_id.split('/')[0]
+            if trade_data is None:
+                return web.json_response(
+                    {"success": False, "message": "Failed to parse webhook request"},
+                    status=int(ValidationCode.INVALID_JSON_FORMAT.value)
+                )
 
+            product_id = trade_data["trading_pair"]
+            asset = trade_data["base_currency"]
+
+            # ✅ Fetch market snapshots
             combined_snapshot = await self.snapshot_manager.get_market_data_snapshot()
             market_data_snapshot = combined_snapshot["market_data"]
             order_management_snapshot = combined_snapshot["order_management"]
-            usd_pairs = market_data_snapshot.get("usd_pairs_cache", {})
 
+            # ✅ Precision validation
             precision_data = self.shared_utils_precision.fetch_precision(trade_data["trading_pair"])
-
-
             if not self.is_valid_precision(precision_data):
                 return web.json_response(
                     {"success": False, "message": "Failed to fetch precision data"},
@@ -730,42 +737,59 @@ class WebhookListener:
                 )
 
             base_price_in_fiat, quote_price_in_fiat = await self.get_prices(trade_data, market_data_snapshot)
-
             asset_obj = order_management_snapshot.get("non_zero_balances", {}).get(asset)
 
+            # ✅ Update fee cache if changed
             new_maker = self.fee_info.get("maker")
             old_maker = self.passive_order_manager.fee.get("maker")
-
             if new_maker is not None and new_maker != old_maker:
                 await self.passive_order_manager.update_fee_cache(self.fee_info)
-            _, _, base_value = self.calculate_order_size_fiat(trade_data, base_price_in_fiat, quote_price_in_fiat,
-                                                         precision_data, self.fee_info)
-            if trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
+
+            # ✅ Order size validation
+            _, _, base_value = self.calculate_order_size_fiat(
+                trade_data, base_price_in_fiat, quote_price_in_fiat, precision_data, self.fee_info
+            )
+
+            # ✅ Test mode (already parsed in trade_data)
+            test_mode = trade_data.get("test_mode", False)
+            if test_mode:
+                self.logger.warning(f"⚠️ [TEST MODE ENABLED] Building test order for {product_id}")
+
+            # ✅ Normal balance validation unless in test mode
+            if not test_mode and trade_data["side"] == "sell" and base_value < float(self.min_sell_value):
                 return web.json_response(
-                    {"success": False, "message": f"Insufficient balance to sell {asset} (requires {self.min_sell_value} USD)"},
+                    {
+                        "success": False,
+                        "message": f"Insufficient balance to sell {asset} (requires {self.min_sell_value} USD)"
+                    },
                     status=int(ValidationCode.INSUFFICIENT_BASE.value)
                 )
 
+            # ✅ Build order (pass test_mode directly)
+            source = "Webhook"
+            trigger = trade_data.get("trigger", "strategy")
+            trigger = {"trigger": f"{trigger}", "trigger_note": "from webhook"}
 
-            # Build order and place it
-            source = 'Webhook'
-            trigger = trade_data.get('trigger','strategy')
-            trigger = {"trigger": f"{trigger}", "trigger_note": f"from webhook"}
-            order_details = await self.trade_order_manager.build_order_data(source, trigger, asset, product_id, None)
+            order_details = await self.trade_order_manager.build_order_data(
+                source, trigger, asset, product_id, stop_price=None, test_mode=test_mode
+            )
             if order_details is None:
                 return web.json_response(
-                    {"success": False, "message": f"Order build failed"},
+                    {"success": False, "message": "Order build failed"},
                     status=int(ValidationCode.ORDER_BUILD_FAILED.value)
                 )
+
             order_details.trigger = trigger
-            print(f'')
-            print(f' 🟠️ process_webhook - Order Data: 🟠   {order_details.debug_summary(verbose=True)}  ')  # Debug
-            print(f'')
+
+            # ✅ Debug summary
+            print(f"\n 🟠️ process_webhook - Order Data: 🟠\n{order_details.debug_summary(verbose=True)}\n")
+
+            # ✅ Delegate to action handler
             response = await self.webhook_manager.handle_action(order_details, precision_data)
             code = response.get("code", 200)
 
-            # ✅ Convert Decimals to JSON-safe format
             return self.shared_utils_utility.safe_json_response(response, status=code)
+
         except Exception as e:
             self.logger.error(f"Error processing webhook: {e}", exc_info=True)
             return web.json_response(
@@ -779,10 +803,20 @@ class WebhookListener:
             asset = trade_data['base_currency']
             usd_pairs = market_data_snapshot.get('usd_pairs_cache', {})
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
+
             bid_ask_spread = market_data_snapshot.get('bid_ask_spread', {})
-            base_price_in_fiat = self.shared_utils_precision.float_to_decimal(bid_ask_spread.get(trading_pair, 0), quote_deci)
+            spread_data = bid_ask_spread.get(trading_pair, {})
+
+            # ✅ Select the appropriate price
+            if isinstance(spread_data, dict):
+                base_price_raw = spread_data.get("ask") or spread_data.get("bid") or 0
+            else:
+                base_price_raw = spread_data  # fallback if it's already a float
+
+            base_price_in_fiat = self.shared_utils_precision.float_to_decimal(base_price_raw, quote_deci)
             quote_price_in_fiat = Decimal(1.00)
             return base_price_in_fiat, quote_price_in_fiat
+
         except Exception as e:
             self.logger.error(f"Error fetching prices: {e}", exc_info=True)
             return Decimal(0), Decimal(0)

@@ -548,6 +548,47 @@ class TradeRecorder:
                     await session.rollback()
                     self.logger.error(f"❌ Error during backfill: {e}", exc_info=True)
 
+    async def fetch_trade_records_for_tp_sl(self, symbol: str) -> list:
+        """
+        Fetches active (unlinked or partially filled) BUY trades for TP/SL evaluation.
+
+        Returns:
+            List of dicts:
+            [
+                {
+                    "order_id": str,
+                    "remaining_size": float,
+                    "entry_price": float,
+                    "cost_basis_usd": float,
+                    "order_time": datetime
+                },
+                ...
+            ]
+        """
+        try:
+            trades = await self.find_unlinked_buys(symbol)
+            result = []
+
+            for trade in trades:
+                remaining_size = float(trade.remaining_size or trade.size or 0.0)
+                if remaining_size <= 0:
+                    continue
+
+                result.append({
+                    "order_id": trade.order_id,
+                    "remaining_size": remaining_size,
+                    "entry_price": float(trade.price),
+                    "cost_basis_usd": float((Decimal(trade.price) * Decimal(remaining_size))),
+                    "order_time": trade.order_time
+                })
+
+            return result
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error in fetch_trade_records_for_tp_sl for {symbol}: {e}", exc_info=True)
+            return []
+
 
 
 

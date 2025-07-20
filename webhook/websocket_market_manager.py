@@ -146,7 +146,7 @@ class WebSocketMarketManager:
                         normalized = self.shared_data_manager.normalize_raw_order(order)
                         if normalized and status in {"PENDING", "OPEN", "ACTIVE"}:
                             new_tracker[order_id] = normalized
-                            self.logger.info(f"📥 Snapshot tracked: {order_id} | {symbol} | {status}")
+                            self.logger.debug(f"📥 Snapshot tracked: {order_id} | {symbol} | {status}")
 
                     await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
                     await self.shared_data_manager.save_data()
@@ -273,7 +273,7 @@ class WebSocketMarketManager:
                                     "profit_percentage": None,
                                     "status_of_order": status,
                                 }
-                                p = await self.profit_data_manager.calculate_profitability(asset, req, cur_prices, usd_pairs)
+                                p = await self.profit_data_manager.calculate_profitability(symbol, req, cur_prices, usd_pairs)
                                 if p and p.get("profit"):
                                     pf = self.shared_utils_precision.adjust_precision(base_d, quote_d, p["profit"], "quote")
                                     self.logger.info(f"💰 {symbol} SELL profit {pf:.2f} USD")

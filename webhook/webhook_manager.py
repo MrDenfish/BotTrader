@@ -3,7 +3,7 @@ import time
 from decimal import Decimal
 from decimal import ROUND_HALF_UP
 from inspect import stack  # debugging
-
+from typing import Optional
 from Api_manager.api_exceptions import (InsufficientFundsException, ProductIDException, SizeTooSmallException,
                                         MaintenanceException)
 from Api_manager.api_exceptions import RateLimitException, BadRequestException, NotFoundException, InternalServerErrorException
@@ -151,51 +151,70 @@ class WebHookManager:
             self.logger.error(f'calculate_order_size_fiat: An unexpected error occurred: {e}', exc_info=True)
             return None, None, None  # Return safe defaults on error
 
-    def parse_webhook_request(self, request_json):
+    def parse_webhook_request(self, request_json: dict) -> Optional[dict]:
         """
-        Parses incoming webhook request data and returns a formatted dictionary.
+        Parses incoming webhook request data and returns a normalized trade data dictionary.
 
         Args:
-            request_json (dict): Incoming webhook data.
+            request_json (dict): Raw incoming webhook data.
 
         Returns:
-            dict: Parsed order data.
+            dict: Normalized trade data with safe defaults.
         """
         try:
+            pair = request_json.get("pair", "UNKNOWN-UNKNOWN").replace("/", "-")
+            base_currency, quote_currency = (
+                pair.split("-")[0],
+                pair.split("-")[1] if "-" in pair else "UNKNOWN"
+            )
+
+            # ✅ Normalize side detection (default to SELL if unclear)
+            action = request_json.get("action", "").lower()
+            side = "buy" if "open" in action or action == "buy" else "sell"
+
+            # ✅ Safe conversion for balances and order size
+            quote_avail_balance = Decimal(str(request_json.get("quote_avail_balance", 0)))
+            base_avail_balance = (
+                Decimal("0")
+                if "open" in action
+                else Decimal(str(request_json.get("base_avail_to_trade", 0)))
+            )
+
+            # ✅ Correct handling of order_amount_fiat
+            raw_order_amount = request_json.get("order_amount_fiat")
+            if raw_order_amount is not None:
+                order_amount_fiat = Decimal(str(raw_order_amount))
+            else:
+                # Fallback to default bot-configured order size
+                order_amount_fiat = getattr(self, "_order_size_fiat", Decimal("0"))
+
+            # ✅ Test mode detection (centralized flag for downstream use)
+            trigger = request_json.get("trigger")
+            test_mode = any([
+                request_json.get("origin") == "SIGHOOK",
+                trigger == "manual_test",
+                isinstance(trigger, dict) and trigger.get("trigger") == "manual_test"
+            ])
+
             return {
-                # ✅ Extract trading pair safely
-                'trading_pair': request_json.get('pair', 'UNKNOWN/UNKNOWN'),
-
-                # ✅ Determine side safely
-                'side': 'buy' if 'open' in request_json.get('action', '') or request_json.get('action') == 'buy' else 'sell',
-
-                # ✅ Convert quote_amount safely to Decimal, default to 0 if missing
-                'quote_avail_balance': Decimal(request_json.get('quote_avail_balance', '0')), # amount od USD available to buy crypto
-
-                'order_amount_fiat': self._order_size_fiat if not request_json.get('order_amount_fiat') else Decimal(0), #Decimal(request_json.get('order_amount')),
-
-                # ✅ Ensure base_amount is correctly assigned for buy/sell conditions
-                'base_avail_balance': Decimal('0') if 'open' in request_json.get('action', '') else Decimal(request_json.get(
-                    'base_avail_to_trade', '0')),
-
-                # ✅ Extract base and quote currencies safely
-                'base_currency': request_json.get('pair', 'UNKNOWN/UNKNOWN').split('/')[0],
-                'quote_currency': request_json.get('pair', 'UNKNOWN/UNKNOWN').split('/')[1],
-
-                # ✅ Extract other key values safely
-                'action': request_json.get('action', 'UNKNOWN'),
-                'origin': request_json.get('origin', 'UNKNOWN'),
-                'uuid': request_json.get('uuid'),  # Default to a random UUID if missing
-
-                # ✅ Ensure timestamp is always an integer (milliseconds)
-                'time': int(request_json.get('timestamp', time.time() * 1000)),
+                "trading_pair": pair,
+                "side": side,
+                "quote_avail_balance": quote_avail_balance,
+                "order_amount_fiat": order_amount_fiat,
+                "base_avail_balance": base_avail_balance,
+                "base_currency": base_currency,
+                "quote_currency": quote_currency,
+                "action": request_json.get("action", "UNKNOWN"),
+                "origin": request_json.get("origin", "UNKNOWN"),
+                "uuid": request_json.get("uuid"),
+                "time": int(request_json.get("timestamp", time.time() * 1000)),
+                "trigger": trigger,
+                "test_mode": test_mode  # ✅ downstream convenience
             }
 
         except Exception as e:
             self.logger.error(f"❌ Error parsing webhook request: {e}", exc_info=True)
             return None
-
-
 
     async def handle_webhook_error(self, e, order_details, precision_data):
         """Handle errors that occur while processing an old_webhook request."""

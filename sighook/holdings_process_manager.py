@@ -126,7 +126,7 @@ class HoldingsProcessor:
             # Calculate profitability
             if asset == 'USD':
                 pass
-            profitability = await self.profit_data_manager.calculate_profitability(asset, required_prices,
+            profitability = await self.profit_data_manager.calculate_profitability(symbol, required_prices,
                                                                             self.bid_ask_spread, self.usd_pairs)
 
             trailing_stop = (

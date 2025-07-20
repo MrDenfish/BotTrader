@@ -237,6 +237,7 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
+        trade_recorder=shared_data_manager.trade_recorder,
         market_data_updater=market_data_updater,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
@@ -246,7 +247,8 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
         shared_utils_debugger=shared_utils_debugger,
         shared_utils_print=shared_utils_print,
         shared_utils_color=shared_utils_color,
-        websocket_helper=websocket_helper
+        websocket_helper=websocket_helper,
+
     )
     await trade_bot.async_init(validate_startup_data=False,
                                shared_utils_debugger=shared_utils_debugger,
@@ -277,6 +279,7 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, market_dat
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
+        trade_recorder=shared_data_manager.trade_recorder,
         market_data_updater = market_data_updater,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
@@ -447,9 +450,15 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, market
 async def main():
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
     parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both')
+    parser.add_argument(
+        '--test',
+        action='store_true',
+        help="Run the bot in test mode (bypass balance validation, use dummy values)"
+    )
     args = parser.parse_args()
 
     config = await load_config()
+    config.test_mode = args.test  # ✅ Globally toggle test_mode            python main.py --run webhook --test
     log_config = {"log_level": logging.INFO}
     logger_manager = LoggerManager(log_config)
 

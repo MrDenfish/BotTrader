@@ -28,6 +28,7 @@ class CentralConfig:
             self._load_configuration()
             self.initialize_rest_client()
             self._is_loaded = True  # ✅ Mark it done here
+            self.test_mode = False  # ✅ Default to False for production
 
     def _initialize_default_values(self):
         """Set default values for all configuration attributes."""
@@ -45,7 +46,7 @@ class CentralConfig:
         self._docker_staticip = self._tv_whitelist = self._coin_whitelist = None
         self._trailing_stop = self._min_sell_value = self._min_buy_value = None
         self._trailing_limit = self._db_pool_size = self._db_max_overflow = None
-        self._sighook_api_key_path = self._websocket_api_key_path = None
+        self._sighook_api_key_path = self._websocket_api_key_path = self._swing_window = None
         self._webhook_api_key_path = self._api_key = self._api_secret = None
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
         self._assets_ignored = self._buy_target = self._sell_target = self._min_value_to_monitor = None
@@ -130,6 +131,7 @@ class CentralConfig:
             "_sma_fast": "SMA_FAST",
             "_sma_slow": "SMA_SLOW",
             "_sma": "SMA",
+            "_swing_window": "SWING_WINDOW",
             "_sma_volatility": "SMA_VOLATILITY",
             "_api_url": "API_URL",
             "_pagekite_whitelist": "PAGEKITE_WHITELIST",
@@ -558,6 +560,9 @@ class CentralConfig:
     def sma_volatility(self):
         return self._sma_volatility
 
+    @property
+    def swing_window(self):
+        return self._swing_window
     @property
     def max_ohlcv_rows(self):
         return self._max_ohlcv_rows

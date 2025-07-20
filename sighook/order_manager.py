@@ -3,11 +3,12 @@ import asyncio
 import time
 import uuid
 from decimal import Decimal
-
+from typing import Union, Optional
 import aiohttp
 import pandas as pd
-
 from Config.config_manager import CentralConfig
+
+
 
 
 class OrderManager:
@@ -15,32 +16,42 @@ class OrderManager:
 
     @classmethod
     def get_instance(cls, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, coinbase_api, ccxt_api,
-                     shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks=10):
+                     shared_utils_precision, shared_utils_color, shared_data_manager, web_url, signal_manager, max_concurrent_tasks=10
+                     ):  # ✅ debugging
+
         if cls._instance is None:
             cls._instance = cls(trading_strategy, ticker_manager, exchange, webhook, alerts,
                                 logger_manager, coinbase_api, ccxt_api, shared_utils_precision,
-                                shared_data_manager, web_url, max_concurrent_tasks)
+                                shared_utils_color, shared_data_manager, web_url,
+                                signal_manager, max_concurrent_tasks)
         return cls._instance
 
     def __init__(self, trading_strategy, ticker_manager, exchange, webhook, alerts, logger_manager, coinbase_api, ccxt_api,
-                 shared_utils_precision, shared_data_manager, web_url, max_concurrent_tasks=10):
+                 shared_utils_precision, shared_utils_color, shared_data_manager, web_url, signal_manager, max_concurrent_tasks=10
+                 ):  # ✅ debugging
         self.config = CentralConfig()
         self.shared_data_manager = shared_data_manager
+        self.signal_manager = signal_manager
         self.trading_strategy = trading_strategy
         self.exchange = exchange
         self.webhook = webhook
         self.ticker_manager = ticker_manager
         self.shared_utils_precision = shared_utils_precision
+        self.shared_utils_color = shared_utils_color
         self.alerts = alerts
         self.logger = logger_manager  # 🙂
         self.ccxt_api = ccxt_api
         self.coinbase_api = coinbase_api
         self._version = self.config.program_version
+        # ✅ TP/SL thresholds (ensure Decimal types)
+        self.tp_threshold = Decimal(str(self.config.take_profit or .03))
+        self.sl_threshold = Decimal(str(self.config.stop_loss or -.02))
+
         self._min_sell_value = Decimal(self.config.min_sell_value)
         self._order_size_fiat = Decimal(self.config.order_size_fiat)
+        self._min_order_amount_fiat = Decimal(self.config.min_order_amount_fiat)  # Minimum order amount in fiat
         self._trailing_percentage = Decimal(self.config.trailing_percentage)  # Default trailing stop at 0.5%
         self._hodl = self.config.hodl
-        self._take_profit = Decimal(self.config.take_profit)
         self._cxl_buy = self.config.cxl_buy
         self._cxl_sell = self.config.cxl_sell
         self._currency_pairs_ignored = self.config.currency_pairs_ignored
@@ -99,16 +110,16 @@ class OrderManager:
         return self._order_size_fiat
 
     @property
+    def min_order_amount_fiat(self):
+        return self._min_order_amount_fiat
+
+    @property
     def cxl_buy(self):
         return self._cxl_buy
 
     @property
     def cxl_sell(self):
         return self._cxl_sell
-
-    @property
-    def take_profit(self):
-        return self._take_profit
 
     @property
     def trailing_percentage(self):
@@ -378,19 +389,26 @@ class OrderManager:
         """Process buy, sell, and trailing stop conditions based on the order action."""
         await self.open_http_session()  # Ensure session is open
         try:
-            asset = order['asset']
+            asset = order['asset']  # e.g., "XRP-USD"
             symbol = order['symbol']
             action_type = order.get('action')
 
             base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset)
-
-
-
             price = self.shared_utils_precision.float_to_decimal(order['price'], quote_deci)
-            base_avail_to_trade = Decimal(self.filtered_balances.get(asset, {})['available_to_trade_crypto'])
-            base_avail_to_trade = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,base_avail_to_trade,convert='base')
-            quote_avail_balance = Decimal(self.filtered_balances.get('USD', {})['available_to_trade_fiat'])
-            quote_avail_balance = self.shared_utils_precision.adjust_precision(base_deci,quote_deci,quote_avail_balance,convert='quote')
+
+            # ✅ Safely fetch balances with defaults for buy orders
+            asset_balance_info = self.filtered_balances.get(asset, {})
+            base_avail_to_trade = Decimal(asset_balance_info.get('available_to_trade_crypto', 0))
+            base_avail_to_trade = self.shared_utils_precision.adjust_precision(
+                base_deci, quote_deci, base_avail_to_trade, convert='base'
+            )
+
+            usd_balance_info = self.filtered_balances.get('USD', {})
+            print(f"USD Balance Info: {usd_balance_info}")  # debug
+            quote_avail_balance = Decimal(usd_balance_info['available_to_trade_fiat'])
+            quote_avail_balance = self.shared_utils_precision.adjust_precision(
+                base_deci, quote_deci, quote_avail_balance, convert='quote'
+            )
 
             action_methods = {
                 'buy': self.handle_buy_action,
@@ -399,7 +417,9 @@ class OrderManager:
             }
 
             if action_type in action_methods:
-                return await action_methods[action_type](holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order)
+                return await action_methods[action_type](
+                    holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order
+                )
             else:
                 self.logger.warning(f"Unknown action type: {action_type}")
                 return None
@@ -408,124 +428,331 @@ class OrderManager:
             self.logger.error(f"❌ Error handling action {order}: {e}", exc_info=True)
             return None
 
-    async def handle_buy_action(self, holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order):
-        """Handles buy actions for market and limit orders."""
+    async def handle_buy_action(
+            self,
+            holdings,
+            symbol: str,
+            base_avail_to_trade: float,
+            quote_avail_balance: float,
+            price: float,
+            order: dict
+    ) -> Optional[dict]:
+        """
+        Handles buy actions for TP/SL-first behavior.
+        Automatically calculates TP & SL based on configured thresholds.
+
+        Args:
+            holdings: Current holdings (list or DataFrame, not used here for BUY).
+            symbol: Trading pair (e.g., "ETH-USD").
+            base_avail_to_trade: Base currency available to trade (may be 0 for new buys).
+            quote_avail_balance: USD balance available.
+            price: Current market or limit price.
+            order: Strategy-generated order dict (type, trigger, score, etc.).
+
+        Returns:
+            dict: Standardized response or None if blocked.
+        """
         try:
             usd_balance = quote_avail_balance
-            coin_balance_value = base_avail_to_trade * price
-            coin = symbol.split('/')[0]
-            trigger = order.get('trigger')
-            score = order.get('score')
+            coin = symbol.split("-")[0]
+            trigger = order.get("trigger", "score")
+            score = order.get("score", {})
 
-            if ((usd_balance > 100 and coin_balance_value < self.min_sell_value) or
-                    (usd_balance > 50 and coin not in self.hodl and coin not in [self.currency_pairs_ignored, self.assets_ignored])):
-                buy_order = 'market' if trigger == 'market_buy' else 'limit'
-                webhook_payload = self.build_webhook_payload(symbol, 'buy', buy_order, price, trigger, score,
-                                                             base_avail_to_trade, quote_avail_balance)
+            # ✅ Skip HODL assets
+            if coin in self.hodl:
+                self.logger.info(f"⏭️ Skipping {symbol}: marked as HODL.")
+                return None
 
-                if webhook_payload.get('verified') == 'valid':
-                    response = await self.throttled_send(webhook_payload)
-                    if response and response.status in [403, 429, 500]:
-                        await self.close_http_session()
-                        return []
+            # ✅ Check sufficient USD balance
+            if usd_balance < float(self.min_order_amount_fiat): #debug
+            # if usd_balance < float(self._order_size_fiat):
+                self.logger.info(f"⚠️ Insufficient USD balance (${usd_balance}) to buy {symbol}")
+                return None
 
-                    self.logger.buy(f'✅ {symbol} buy signal triggered @ {buy_order} price {price}, USD balance: ${usd_balance}')
-                    return {'buy_action': 'open_at_limit', 'buy_pair': symbol, 'buy_limit': price, 'curr_band_ratio': order.get('band_ratio'),
-                            'trigger': order.get('trigger')}
-                return[]
+            # ✅ Calculate TP/SL thresholds based on config
+            take_profit = None
+            stop_loss = None
 
-            self.logger.info(
-                f'Insufficient funds ${usd_balance} to buy {symbol}' if usd_balance <= 100 else
-                f'Currently holding {symbol}. Buy signal will not be processed.'
-                )
-            return None
+            try:
+                tp_pct = Decimal(str(self.tp_threshold)) if self.tp_threshold else Decimal("0")
+                sl_pct = Decimal(str(self.trailing_percentage)) if self.trailing_percentage else Decimal("0")
+
+                if tp_pct > 0:
+                    take_profit = float(price * (1 + tp_pct))  # e.g., 3% profit → 1.03 * price
+                if sl_pct > 0:
+                    stop_loss = float(price * (1 - sl_pct))  # e.g., 0.5% trailing stop → 0.995 * price
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed to calculate TP/SL thresholds for {symbol}: {e}")
+
+            # ✅ Always TP/SL-first
+            webhook_payload = self.build_webhook_payload(
+                symbol=symbol,
+                side="buy",
+                order_type="tp_sl",  # explicitly TP/SL
+                price=price,
+                trigger=trigger,
+                score=score,
+                base_avail_to_trade=base_avail_to_trade,  # usually 0 for new buys
+                quote_avail_balance=quote_avail_balance,
+                take_profit=take_profit,
+                stop_loss=stop_loss
+            )
+
+            # ✅ Validate & Submit
+            if webhook_payload.get("verified") != "valid":
+                self.logger.warning(f"⚠️ BUY payload for {symbol} not verified: {webhook_payload}")
+                return None
+
+            response = await self.throttled_send(webhook_payload)
+            if response and response.status in [403, 429, 500]:
+                await self.close_http_session()
+                return []
+
+            self.logger.buy(
+                f"✅ {symbol} BUY triggered @ {price} | "
+                f"TP: {take_profit or 'N/A'} | SL: {stop_loss or 'N/A'} | "
+                f"USD balance: ${usd_balance}"
+            )
+
+            return {
+                "buy_action": "open_at_limit",
+                "buy_pair": symbol,
+                "buy_limit": price,
+                "trigger": trigger,
+                "tp": take_profit,
+                "sl": stop_loss
+            }
 
         except Exception as e:
-            self.logger.error(f'❌ handle_buy_action: Error processing order {symbol}: {e}', exc_info=True)
+            self.logger.error(f"❌ handle_buy_action: Error processing {symbol}: {e}", exc_info=True)
             return None
 
-    async def handle_sell_action(self, holdings, symbol, base_avail_to_trade, quote_amount,price, order):
-        """Handles sell actions for market, limit, and bracket orders."""
+    async def handle_sell_action(
+            self,
+            holdings: Union[list, pd.DataFrame],
+            symbol: str,
+            base_avail_to_trade: float,
+            quote_amount: float,
+            price: float,
+            order: dict
+    ) -> Optional[dict]:
+        """
+        Unified handler for sell actions, including TP/SL and normal sell signals.
+
+        Args:
+            holdings: Current holdings (list or DataFrame).
+            symbol: Trading pair (e.g., "ETH-USD").
+            base_avail_to_trade: Base currency available to trade.
+            quote_amount: Available quote currency balance.
+            price: Current market price.
+            order: Strategy-generated order dict (type, trigger, score, etc.).
+
+        Returns:
+            dict: Standardized response with sell details, or None if no action.
+        """
         try:
             coin = symbol.split('/')[0]
-            type = order.get('type')
-            trigger = order.get('trigger')
-            sell_cond = order.get('sell_cond')
-            score = order.get('score')
-            if type not in ['tp_sl']:  # Process market & limit orders
-                sell_action, sell_symbol, sell_limit, sell_order = self.trading_strategy.sell_signal_from_indicators(
-                    symbol, price, trigger, type, holdings
-                    )
+            type_ = order.get("type", "limit")
+            trigger = order.get("trigger", "score")
+            score = order.get("score", {})
+            action = order.get("action", "sell")
 
-                if sell_action and coin not in self.hodl:  # Skip coins marked for accumulation
-                    webhook_payload = self.build_webhook_payload(symbol, 'sell', sell_order, price, trigger,
-                                                                 score, base_avail_to_trade, quote_amount)
-                    if webhook_payload.get('verified') == 'valid':
-                        await self.throttled_send(webhook_payload)
-                        self.logger.sell(f'{symbol} sell signal triggered from {trigger} @ {sell_action} price {sell_limit}')
-                        return {'sell_action': sell_action, 'sell_symbol': sell_symbol, 'sell_limit': sell_limit, 'sell_cond': sell_cond,
-                                'trigger': trigger}
-                    return[]
-            else:
-                await self.execute_tp_sl_order(symbol, price, base_avail_to_trade, quote_amount,
-                                               trigger, score, coin)  # this may not be correct in how variables are being passed.
+            # ✅ Skip if in HODL list
+            if coin in self.hodl:
+                self.logger.info(f"⏭️ Skipping {symbol}: marked as HODL.")
+                return None
+
+            # ✅ Check TP/SL conditions first (overrides manual scoring)
+            tp_sl_trigger = await self.signal_manager.evaluate_tp_sl_conditions(symbol, price)
+            if tp_sl_trigger in {"profit", "loss"}:
+                return await self._execute_sell_order(
+                    symbol=symbol,
+                    sell_type="tp_sl",
+                    trigger=tp_sl_trigger,
+                    price=price,
+                    base_avail_to_trade=base_avail_to_trade,
+                    quote_amount=quote_amount,
+                    score=score
+                )
+
+            # ✅ Normal SELL logic (limit or market)
+            if action == "sell" and type_ in {"limit", "market"}:
+                return await self._execute_sell_order(
+                    symbol=symbol,
+                    sell_type=type_,
+                    trigger=trigger,
+                    price=price,
+                    base_avail_to_trade=base_avail_to_trade,
+                    quote_amount=quote_amount,
+                    score=score
+                )
+
             return None
 
         except Exception as e:
-            self.logger.error(f'❌ handle_sell_action: Error processing order for {symbol}: {e}', exc_info=True)
+            self.logger.error(f"❌ Error in handle_sell_action for {symbol}: {e}", exc_info=True)
             return None
 
-    # async def handle_trailing_stop(self, holdings, symbol, base_avail_to_trade, quote_avail_balance, price, order):
-    #     """Handles trailing stop sell orders when available."""
-    #     return await self.handle_sell_action(holdings, symbol, base_avail_to_trade, quote_avail_balance,
-    #                                          price, order)
+    async def _execute_sell_order(
+            self,
+            symbol: str,
+            sell_type: str,
+            trigger: str,
+            price: float,
+            base_avail_to_trade: float,
+            quote_amount: float,
+            score: dict
+    ) -> Optional[dict]:
+        """
+        Internal helper to execute sell orders (TP/SL or normal).
+        Builds payload, sends webhook, and logs accordingly.
+        """
+        try:
+            webhook_payload = self.build_webhook_payload(
+                symbol=symbol,
+                side="sell",
+                order_type=sell_type,
+                price=price,
+                trigger=trigger,
+                score=score,
+                base_avail_to_trade=base_avail_to_trade,
+                quote_avail_balance=quote_amount
+            )
 
-    async def execute_tp_sl_order(self, symbol, price, base_avail_to_trade, quote_avail_balance, trigger, score, coin):
-        """Submits a tp_sl order (take profit/loss) when applicable."""
-        webhook_payload = self.build_webhook_payload(symbol, 'sell', 'tp_sl', price, trigger, score,
-                                                     base_avail_to_trade, quote_avail_balance)
-        if webhook_payload.get('verified') == 'valid':
+            if webhook_payload.get("verified") != "valid":
+                self.logger.warning(f"⚠️ Sell payload for {symbol} not verified: {webhook_payload}")
+                return None
+
             await self.throttled_send(webhook_payload)
-            if trigger == 'profit' and coin not in self.hodl:
-                self.logger.take_profit(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
-            elif trigger == 'loss' and coin not in self.hodl:
-                self.logger.take_loss(f'{symbol} sell signal triggered {trigger} @ sell price {price}')
 
-    def build_webhook_payload(self, symbol, side, order_type, price, trigger, score, base_avail_to_trade=0, quote_avail_balance=0):
-        """Constructs the webhook payload for sending orders."""
+            # ✅ Logging based on trigger
+            if sell_type == "limit":
+                if trigger == "profit":
+                    self.logger.take_profit(f"✅ {symbol}: TP triggered @ {price}")
+                elif trigger == "loss":
+                    self.logger.take_loss(f"✅ {symbol}: SL triggered @ {price}")
+            else:
+                self.logger.sell(f"✅ {symbol}: Sell triggered ({trigger}) @ {price}")
 
-        # Convert Decimal values to float
+            return {
+                "sell_action": "close_position" if sell_type == "tp_sl" else "limit_sell",
+                "sell_symbol": symbol,
+                "sell_limit": price,
+                "sell_cond": sell_type,
+                "trigger": trigger,
+                "score":score,
+            }
+
+        except Exception as e:
+            self.logger.error(f"❌ Error executing sell order for {symbol}: {e}", exc_info=True)
+            return None
+
+    def build_webhook_payload(
+            self,
+            symbol: str,
+            side: str,
+            order_type: str,
+            price: float,
+            trigger: str,
+            score: dict,
+            base_avail_to_trade: float = 0.0,
+            quote_avail_balance: float = 0.0,
+            take_profit: float = None,
+            stop_loss: float = None
+    ) -> dict:
+        """
+        Constructs the webhook payload for sending orders.
+
+        ✅ TP/SL-first behavior for BUY orders:
+            - Default BUYs to TP/SL type
+            - Optionally attach TP and SL thresholds for downstream processing/logging
+        """
+
+        # --- Normalize values ---
         price = float(price) if isinstance(price, Decimal) else price
-        base_avail_to_trade = float(base_avail_to_trade) if isinstance(base_avail_to_trade, Decimal) else float(base_avail_to_trade)
-        quote_avail_balance = float(quote_avail_balance) if isinstance(quote_avail_balance, Decimal) else float(quote_avail_balance)
-        valid_order = 'valid'
-        if base_avail_to_trade * price < self.min_sell_value and side == 'sell':
-            valid_order = 'invalid'
-        elif quote_avail_balance < self._order_size_fiat and side == 'buy':
-            valid_order = 'invalid'
-        else:
-            if quote_avail_balance < self._order_size_fiat and side == 'buy':
-                valid_order = 'invalid'
+        base_avail_to_trade = float(base_avail_to_trade or 0.0)
+        quote_avail_balance = float(quote_avail_balance or 0.0)
+        take_profit = float(take_profit) if take_profit else None
+        stop_loss = float(stop_loss) if stop_loss else None
 
-        # Construct payload
+        # --- Default BUYs to TP/SL ---
+        if side.lower() == "buy":
+            order_type = "tp_sl"
+
+        # --- Validate order ---
+        valid_order = "valid"
+        if side.lower() == "sell" and base_avail_to_trade * price < self.min_sell_value:
+            valid_order = "invalid"
+        elif side.lower() == "buy" and quote_avail_balance < 20.00:
+        #elif side.lower() == "buy" and quote_avail_balance < self._order_size_fiat:
+            valid_order = "invalid"
+
+        # --- Build Payload ---
         payload = {
-            'timestamp': int(time.time() * 1000),
-            'pair': symbol,
-            'order_id': str(uuid.uuid4()),  # Generate unique order ID
-            'action': 'close_at_limit' if side == 'sell' and order_type == 'bracket' else side.lower(),
-            'order_type': order_type,
-            'order_amount_fiat': float(self.order_size_fiat) if side == 'buy' else base_avail_to_trade,
-            'side': side.lower(),
-            'quote_avail_balance': quote_avail_balance,
-            'base_avail_to_trade': base_avail_to_trade,
-            'limit_price': price,
-            'stop_loss': None,
-            'take_profit': None,
-            'origin': "SIGHOOK",
-            'trigger': trigger,
-            'score': score,
-            'verified': valid_order
+            "timestamp": int(time.time() * 1000),
+            "pair": symbol,
+            "order_id": str(uuid.uuid4()),  # Unique client order ID
+            "action": "close_at_limit" if side.lower() == "sell" and order_type == "bracket" else side.lower(),
+            "order_type": order_type,
+            "order_amount_fiat": float(20.00) if side.lower() == "buy" else base_avail_to_trade,#debugging
+            #"order_amount_fiat": float(self.order_size_fiat) if side.lower() == "buy" else base_avail_to_trade,
+            "side": side.lower(),
+            "quote_avail_balance": quote_avail_balance,
+            "base_avail_to_trade": base_avail_to_trade,
+            "limit_price": price,
+            "origin": "SIGHOOK",
+            "trigger": trigger,
+            "score": score,
+            "verified": valid_order
         }
 
-        # Remove `None` values
-        return {k: v for k, v in payload.items() if v is not None}
+        # ✅ Optionally include TP/SL thresholds for logging/debugging (not required for actual placement)
+        if take_profit:
+            payload["take_profit"] = take_profit
+        if stop_loss:
+            payload["stop_loss"] = stop_loss
+
+        return payload
+
+    # async def test_handle_buy_action_sanity(self, order_manager):
+    #     """
+    #     Quick sanity test for handle_buy_action() to ensure TP/SL-first payload is correct.
+    #     """
+    #     test_orders = [
+    #         {
+    #             "asset": "ETH-USD",
+    #             "symbol": "ETH-USD",
+    #             "action": "buy",
+    #             "type": "limit",
+    #             "price": Decimal("1500.00"),
+    #             "trigger": "score",
+    #             "score": {"Buy Score": 4.0, "Sell Score": 0.0}
+    #         },
+    #         {
+    #             "asset": "XRP-USD",
+    #             "symbol": "XRP-USD",
+    #             "action": "buy",
+    #             "type": "limit",
+    #             "price": Decimal("0.58"),
+    #             "trigger": "score",
+    #             "score": {"Buy Score": 2.7, "Sell Score": 0.0}
+    #         }
+    #     ]
+    #
+    #     fake_holdings = []
+    #     fake_base_trade = 0.0
+    #     fake_usd_balance = 100.0
+    #
+    #     for order in test_orders:
+    #         print(f"\n🔍 Testing BUY Action for {order['symbol']}")
+    #         result = await order_manager.handle_buy_action(
+    #             holdings=fake_holdings,
+    #             symbol=order["symbol"],
+    #             base_avail_to_trade=fake_base_trade,
+    #             quote_avail_balance=fake_usd_balance,
+    #             price=order["price"],
+    #             order=order
+    #         )
+    #         print(f"✅ Result → {result}")
+    #         if not result:
+    #             break

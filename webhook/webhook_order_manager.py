@@ -63,6 +63,7 @@ class TradeOrderManager:
         self.profit_manager = profit_manager
         self.session = session
 
+
     @property
     def default_maker_fee(self):
         return self._default_maker_fee
@@ -160,75 +161,115 @@ class TradeOrderManager:
             product_id: str,
             stop_price: Optional[Decimal] = None,
             order_type: Optional[str] = None,
-            side: Optional[str] = None
+            side: Optional[str] = None,
+            test_mode: bool = False
     ) -> Optional[OrderData]:
+        """
+        Builds a fully prepared OrderData instance, including validation and test-mode overrides.
+
+        Args:
+            source (str): The source of the order (e.g., 'Webhook', 'PassiveMM').
+            trigger (str|dict): Triggering reason or trigger dict.
+            asset (str): Base asset symbol (e.g., 'ETH').
+            product_id (str): Full trading pair (e.g., 'ETH-USD').
+            stop_price (Decimal|None): Optional stop price for stop-limit or TP/SL orders.
+            order_type (str|None): Order type (e.g., 'limit', 'stop_limit').
+            side (str|None): Side ('buy' or 'sell'). Determined automatically if None.
+            test_mode (bool): If True, overrides balance and price validation for testing.
+
+        Returns:
+            Optional[OrderData]: Fully constructed OrderData or None if validation fails.
+        """
         try:
-            # Abort if market data is missing or incomplete
-            if self.market_data_updater.get_empty_keys(self.market_data):
+            # ✅ Market data validation
+            if not test_mode and self.market_data_updater.get_empty_keys(self.market_data):
                 self.logger.warning(f"⚠️ Market data incomplete — skipping {asset}")
                 return None
+            elif test_mode:
+                self.logger.warning(f"⚠️ [TEST MODE] Skipping market data completeness check for {asset}")
 
+            # ✅ Basic setup
             trading_pair = product_id.replace("/", "-")
             spot = self.spot_position.get(asset, {})
-            # 🔧 Precision and quantization setup
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
             quote_quantizer = Decimal("1").scaleb(-quote_deci)
-            passive_order_data = self.passive_orders .get(asset, {})
+
+            passive_order_data = self.passive_orders.get(asset, {})
             usd_data = self.spot_position.get("USD", {})
             usd_balance = Decimal(usd_data.get("total_balance_fiat", 0))
-            usd_avail = Decimal(usd_data.get("available_to_trade_fiat", 0))
-            usd_avail = self.shared_utils_precision.safe_quantize(usd_avail, quote_quantizer)
-
+            usd_avail = self.shared_utils_precision.safe_quantize(
+                Decimal(usd_data.get("available_to_trade_fiat", 0)),
+                quote_quantizer
+            )
             min_order_threshold = getattr(self, "min_order_threshold", Decimal("5.00"))
 
-            # 🔍 Handle assets not yet in wallet or passive tracker
+            # ✅ Bid/Ask & initial pricing
+            bid_ask = self.bid_ask_spread.get(trading_pair, {})
+            bid = Decimal(bid_ask.get("bid", 0))
+            ask = Decimal(bid_ask.get("ask", 0))
+            current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
+            current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
+            spread = Decimal(bid_ask.get("spread", 0))
+            price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
+
+            # ✅ Determine order amounts before overrides
+            total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
+            available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
+            fiat_amt = usd_avail
+            crypto_amt = available_to_trade
+            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
+                side if side else "buy", fiat_amt, crypto_amt
+            )
+
+            # ✅ Centralized test mode overrides
+            if test_mode:
+                (usd_avail, usd_balance, spot, price,
+                 order_amount_fiat, order_amount_crypto) = self.apply_test_mode_overrides(
+                    asset=asset,
+                    usd_avail=usd_avail,
+                    usd_balance=usd_balance,
+                    spot=spot,
+                    price=price,
+                    order_amount_fiat=order_amount_fiat,
+                    order_amount_crypto=order_amount_crypto
+                )
+
+            # ✅ Handle new assets (with test-mode skip)
             if not spot and not passive_order_data and not side:
-                if usd_avail >= min_order_threshold:
-                    self.logger.info(f"💡 Proceeding with buy for new asset {asset} — USD available, no wallet entry or passive order.")
+                if usd_avail >= min_order_threshold or test_mode:
+                    self.logger.info(f"💡 {'[TEST MODE] ' if test_mode else ''}Proceeding with buy for new asset {asset}")
                     spot = {}  # Allow downstream logic
                 else:
                     self.logger.warning(f"⚠️ Skipping {asset} — no wallet, no passive order, and USD < {min_order_threshold}")
                     return None
 
-            # 🔍 Allow PassiveMM to quote new assets
+            # ✅ PassiveMM quoting allowed for new assets
             if source == "PassiveMM":
                 if not passive_order_data:
-                    if usd_avail >= min_order_threshold:
-                        self.logger.info(f"💡 PassiveMM: initializing first-time quote for {asset} — no passive order data.")
+                    if usd_avail >= min_order_threshold or test_mode:
+                        self.logger.info(
+                            f"💡 {'[TEST MODE] ' if test_mode else ''}PassiveMM initializing first-time quote for {asset}"
+                        )
                         passive_order_data = {}
                     else:
                         self.logger.warning(f"⚠️ PassiveMM skipping {asset} — no passive data and insufficient USD.")
                         return None
                 self.shared_utils_utility.get_passive_order_data(passive_order_data)
 
-
-
-            # 🔧 Balance and available-to-trade values
-            total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
-            available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
-
-            bid = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("bid", 0))
-            ask = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("ask", 0))
-            current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
-            current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
-            spread = Decimal(self.bid_ask_spread.get(trading_pair, {}).get("spread", 0))
-
-            price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
+            # ✅ Final price validation (after overrides)
             if price == 0:
                 self.logger.warning(f"⚠️ Price is zero for {trading_pair} — skipping order")
                 return None
 
-            # 🔧 Side fallback logic
+            # ✅ Side fallback logic
             if side is None:
-                side = "buy" if usd_avail >= self.order_size else "sell"
-            # ✅ Skip BUY orders if 24h price change is negative or missing
-            usd_pairs =self.usd_pairs.set_index("asset")
-            if side == "buy":
-                try:
-                    price_change_24h = None
-                    if asset in usd_pairs.index:
-                        price_change_24h = usd_pairs.loc[asset, 'price_percentage_change_24h']
+                side = "buy" if usd_avail >= self.order_size or test_mode else "sell"
 
+            # ✅ Skip 24h price change checks in test_mode
+            if side == "buy" and not test_mode:
+                try:
+                    usd_pairs = self.usd_pairs.set_index("asset")
+                    price_change_24h = usd_pairs.loc[asset, 'price_percentage_change_24h'] if asset in usd_pairs.index else None
                     if price_change_24h is None or Decimal(price_change_24h) <= 0:
                         self.logger.info(f"📉 Skipping BUY for {asset} — 24h price change {price_change_24h}% not favorable")
                         return None
@@ -236,24 +277,18 @@ class TradeOrderManager:
                     self.logger.warning(f"⚠️ Failed to check price change for {asset}: {e}")
                     return None
 
-            # 🔧 Fee setup
+            # ✅ Fee setup
             if not self.fee_info:
                 maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
             else:
                 maker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('maker') or self.default_maker_fee)
                 taker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('taker') or self.default_taker_fee)
 
-            # 🔧 Determine amount to order
-            fiat_amt = min(self.order_size, usd_avail)
-            crypto_amt = available_to_trade
-            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
-                side, fiat_amt, crypto_amt
-            )
-
+            # ✅ Trigger formatting
             trigger_note = f"triggered by {trigger}" if isinstance(trigger, str) else trigger.get("trigger_note", "")
             trigger_dict = trigger if isinstance(trigger, dict) else self.build_trigger(trigger, trigger_note)
 
-            # ✅ Construct final OrderData
+            # ✅ Return final OrderData
             return OrderData(
                 trading_pair=trading_pair,
                 time_order_placed=None,
@@ -267,9 +302,9 @@ class TradeOrderManager:
                 quote_currency="USD",
                 usd_avail_balance=usd_avail,
                 usd_balance=usd_balance,
-                base_avail_balance=available_to_trade,
-                total_balance_crypto=total_balance_crypto,
-                available_to_trade_crypto=available_to_trade,
+                base_avail_balance=Decimal(spot.get("available_to_trade_crypto", 0)),
+                total_balance_crypto=Decimal(spot.get("total_balance_crypto", 0)),
+                available_to_trade_crypto=Decimal(spot.get("available_to_trade_crypto", 0)),
                 base_decimal=base_deci,
                 quote_decimal=quote_deci,
                 quote_increment=quote_quantizer,
@@ -297,6 +332,58 @@ class TradeOrderManager:
         except Exception as e:
             self.logger.error(f"❌ Error in build_order_data for {asset} {trigger}: {e}", exc_info=True)
             return None
+
+    def apply_test_mode_overrides(
+            self,
+            asset: str,
+            usd_avail: Decimal,
+            usd_balance: Decimal,
+            spot: dict,
+            price: Optional[Decimal] = None,
+            order_amount_fiat: Optional[Decimal] = None,
+            order_amount_crypto: Optional[Decimal] = None
+    ) -> tuple:
+        """
+        Centralized test mode overrides for balances, price, and order amounts.
+        Ensures safe dummy values for testing without affecting live trading logic.
+
+        Args:
+            asset (str): The base asset being traded (e.g., 'ETH').
+            usd_avail (Decimal): Available USD balance before overrides.
+            usd_balance (Decimal): Total USD balance before overrides.
+            spot (dict): Spot balance dict for the asset (crypto amounts).
+            price (Decimal|None): Current calculated price (fallbacks to 1.00 if zero).
+            order_amount_fiat (Decimal|None): Fiat order amount before overrides.
+            order_amount_crypto (Decimal|None): Crypto order amount before overrides.
+
+        Returns:
+            tuple: (usd_avail, usd_balance, spot, price, order_amount_fiat, order_amount_crypto)
+                   with test mode adjustments applied.
+        """
+        self.logger.warning(f"⚠️ [TEST MODE] Applying overrides for {asset}")
+
+        # ✅ Ensure dummy USD balances (cap to configured order size)
+        usd_avail = min(usd_avail, self.order_size)
+        usd_balance = min(usd_balance, self.order_size)
+
+        # ✅ Ensure dummy crypto balances (safe fallback for SELL or TP/SL logic)
+        spot = {
+            "total_balance_crypto": max(Decimal(spot.get("total_balance_crypto", 0)), Decimal("1.0")),
+            "available_to_trade_crypto": max(Decimal(spot.get("available_to_trade_crypto", 0)), Decimal("1.0"))
+        }
+
+        # ✅ Force safe fallback price if missing or zero
+        if price is not None and price <= 0:
+            self.logger.warning(f"⚠️ [TEST MODE] Forcing dummy price for {asset}")
+            price = Decimal("1.00")
+
+        # ✅ Ensure reasonable order amounts for testing
+        if order_amount_fiat is not None:
+            order_amount_fiat = min(order_amount_fiat, usd_avail)
+        if order_amount_crypto is not None:
+            order_amount_crypto = max(order_amount_crypto, Decimal("0.01"))
+
+        return usd_avail, usd_balance, spot, price, order_amount_fiat, order_amount_crypto
 
     def build_trigger(self,trigger_type: str, note: str = "") -> dict:
         return {
@@ -505,20 +592,21 @@ class TradeOrderManager:
                 if side == 'buy':
                     cost = order_data.adjusted_price * order_data.adjusted_size
                     if cost > order_data.usd_avail_balance:
-                        return False, {
-                            'success': False,
-                            'status': 'rejected',
-                            'reason': 'INSUFFICIENT_USD',
-                            'trigger': order_data.trigger,
-                            'source': order_data.source,
-                            'symbol': symbol,
-                            'side': side.upper(),
-                            'price': str(order_data.adjusted_price),
-                            'amount': str(order_data.adjusted_size),
-                            'attempts': attempt,
-                            'message': f"Need ${cost:.2f}, have ${order_data.usd_avail_balance:.2f}",
-                            'note': 'Balance check failed'
-                        }
+                        if not self.test_mode:
+                            return False, {
+                                'success': False,
+                                'status': 'rejected',
+                                'reason': 'INSUFFICIENT_USD',
+                                'trigger': order_data.trigger,
+                                'source': order_data.source,
+                                'symbol': symbol,
+                                'side': side.upper(),
+                                'price': str(order_data.adjusted_price),
+                                'amount': str(order_data.adjusted_size),
+                                'attempts': attempt,
+                                'message': f"Need ${cost:.2f}, have ${order_data.usd_avail_balance:.2f}",
+                                'note': 'Balance check failed'
+                            }
 
                 # Order submission
                 if order_type == 'limit':

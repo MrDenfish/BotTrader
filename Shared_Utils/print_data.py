@@ -1,7 +1,7 @@
 
 import time
 from decimal import Decimal, ROUND_UP
-
+from typing import Dict, Any, Optional
 import pandas as pd
 from tabulate import tabulate
 
@@ -336,32 +336,36 @@ class PrintData:
 
     def print_condensed_buy_sell_matrix(self,condensed_matrix):
         # Define logical column groups
-        meta_cols = ['price', 'bVol', 'qVol', 'chg%']
-        buy_cols = ['bRt', 'Buy Touch', 'W-Bottom', 'bRSI', 'bROC', 'bMACD', 'Buy Swing']
-        sell_cols = ['sRt', 'Sell Touch', 'M-Top', 'sRSI', 'sROC', 'sMACD', 'Sell Swing']
-        signal_cols = ['bSig', 'sSig']
+        try:
+            meta_cols = ['price', 'bVol', 'qVol', 'chg%']
+            buy_cols = ['bRt', 'Buy Touch', 'W-Bottom', 'bRSI', 'bROC', 'bMACD', 'Buy Swing']
+            sell_cols = ['sRt', 'Sell Touch', 'M-Top', 'sRSI', 'sROC', 'sMACD', 'Sell Swing']
+            signal_cols = ['bSig', 'sSig']
 
-        # Slice data rows and filter for non-empty signals or threshold row
-        filtered_matrix = condensed_matrix.loc[
-            (condensed_matrix.index == 'Threshold') |
-            ((condensed_matrix[signal_cols] != 0).any(axis=1))
-            ].copy()
+            # Slice data rows and filter for non-empty signals or threshold row
+            filtered_matrix = condensed_matrix.loc[
+                (condensed_matrix.index == 'Threshold') |
+                ((condensed_matrix[signal_cols] != 0).any(axis=1))
+                ].copy()
 
-        # Optional: Format index into a column for cleaner tabulate output
-        filtered_matrix.insert(0, 'Symbol', filtered_matrix.index)
+            # Optional: Format index into a column for cleaner tabulate output
+            filtered_matrix.insert(0, 'Symbol', filtered_matrix.index)
 
-        # Display metadata
-        print("\n📊 Market Overview (Price & Volume)")
-        print(tabulate(filtered_matrix[['Symbol'] + meta_cols], headers='keys', tablefmt='fancy_grid'))
+            # Display metadata
+            print("\n📊 Market Overview (Price & Volume)")
+            print(tabulate(filtered_matrix[['Symbol'] + meta_cols], headers='keys', tablefmt='fancy_grid'))
 
-        # Display buy indicators
-        print("\n📈 Buy Indicators")
-        print(tabulate(filtered_matrix[['Symbol'] + buy_cols], headers='keys', tablefmt='fancy_grid'))
+            # Display buy indicators
+            print("\n📈 Buy Indicators")
+            print(tabulate(filtered_matrix[['Symbol'] + buy_cols], headers='keys', tablefmt='fancy_grid'))
 
-        # Display sell indicators
-        print("\n📉 Sell Indicators")
-        print(tabulate(filtered_matrix[['Symbol'] + sell_cols], headers='keys', tablefmt='fancy_grid'))
+            # Display sell indicators
+            print("\n📉 Sell Indicators")
+            print(tabulate(filtered_matrix[['Symbol'] + sell_cols], headers='keys', tablefmt='fancy_grid'))
 
-        # Display signal scores
-        print("\n🚨 Trade Signals")
-        print(tabulate(filtered_matrix[['Symbol'] + signal_cols], headers='keys', tablefmt='fancy_grid'))
+            # Display signal scores
+            print("\n🚨 Trade Signals")
+            print(tabulate(filtered_matrix[['Symbol'] + signal_cols], headers='keys', tablefmt='fancy_grid'))
+        except Exception as e:
+            self.logger_manager.error(f"Error printing condensed buy/sell matrix: {e}", exc_info=True)
+            print(f"❌ Error printing condensed buy/sell matrix: {e}")

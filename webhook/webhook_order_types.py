@@ -72,6 +72,7 @@ class OrderTypeManager:
         self._min_sell_value = Decimal(self.config.min_sell_value)
         self._hodl = Config.hodl
 
+
     @property
     def hodl(self):
         return self._hodl
@@ -116,112 +117,131 @@ class OrderTypeManager:
     def min_sell_value(self):
         return self._min_sell_value
 
-    async def process_limit_and_tp_sl_orders(self, source: str,order_data: OrderData,
-                                             take_profit: Optional[Decimal] = None,
-                                             stop_loss: Optional[Decimal] = None) -> Union[dict, None]:
+    async def process_limit_and_tp_sl_orders(
+            self,
+            source: str,
+            order_data: OrderData,
+            take_profit: Optional[Decimal] = None,
+            stop_loss: Optional[Decimal] = None
+    ) -> Union[dict, None]:
         """
-        Places a limit order with attached TP and SL. Does not record the trade until filled.
+        Places a limit order with attached TP and SL (TP/SL-first behavior).
+        Assumes upstream validation & precision adjustment already done.
+
+        Args:
+            source: Origin of the request (e.g., 'sighook', 'webhook').
+            order_data: Validated and normalized order data.
+            take_profit: Optional TP override (Decimal).
+            stop_loss: Optional SL override (Decimal).
+
+        Returns:
+            dict: Coinbase API response enriched with metadata, or None on failure.
         """
         try:
-            caller_function = stack()[1].function
-            self.shared_utils_utility.log_event_loop(f"{caller_function}")
-
+            trading_pair = order_data.trading_pair.replace("/", "-")
             asset = order_data.base_currency
-            trading_pair = order_data.trading_pair
+
             print_order_data = self.shared_utils_utility.pretty_summary(order_data)
-            print(f"✅ Processing TP SL Order from {source}: {print_order_data}")
+            print(f"✅ Processing TP/SL Order from {source}: {print_order_data}")
 
-            all_open_orders = self.open_orders  # shared state
-            has_open_order, open_order = self.shared_utils_utility.has_open_orders(trading_pair, all_open_orders)
-
+            # ✅ Avoid duplicate open orders
+            has_open_order, open_order = self.shared_utils_utility.has_open_orders(
+                trading_pair, self.open_orders
+            )
             if has_open_order:
                 return {
-                    'error': 'open_order',
-                    'code': 411,
-                    'message': f"⚠️ Order Blocked - Existing Open Order for {trading_pair}"
+                    "error": "open_order",
+                    "code": 411,
+                    "message": f"⚠️ Order Blocked - Existing Open Order for {trading_pair}"
                 }
 
-            # ✅ Revalidate
+            # ✅ Validation Recheck (failsafe)
             validation_result = self.validate.fetch_and_validate_rules(order_data)
-            if not validation_result.get('is_valid'):
-                condition = validation_result.details.get("condition", validation_result.get('error'))
+            if not validation_result.get("is_valid"):
+                condition = validation_result.details.get("condition", validation_result.get("error"))
                 return {
-                    'error': 'order_not_valid',
-                    'code': validation_result.get('code'),
-                    'message': f"⚠️ Order Blocked {asset} - Trading Rules Violation: {condition}"
+                    "error": "order_not_valid",
+                    "code": validation_result.get("code"),
+                    "message": f"⚠️ Order Blocked {asset} - Trading Rules Violation: {condition}"
                 }
 
-            # ✅ Adjust sizes and limits
+            # ✅ Precision-Safe Adjustments
             base_quant = Decimal(f"1e-{order_data.base_decimal}")
             quote_quant = Decimal(f"1e-{order_data.quote_decimal}")
+
             adjusted_size = Decimal(order_data.adjusted_size).quantize(base_quant, rounding=ROUND_DOWN)
-            if take_profit:
-                take_profit = Decimal(take_profit).quantize(quote_quant, rounding=ROUND_DOWN)
-            if stop_loss:
-                stop_loss = Decimal(stop_loss).quantize(quote_quant, rounding=ROUND_DOWN)
+            adjusted_price = Decimal(order_data.adjusted_price).quantize(quote_quant, rounding=ROUND_DOWN)
 
-            side = order_data.side.upper()
-            usd_required = adjusted_size * order_data.adjusted_price * (1 + order_data.maker)
-            usd_required = Decimal(usd_required).quantize(quote_quant, rounding=ROUND_DOWN)
+            # ✅ TP/SL from upstream (or override if passed explicitly)
+            tp_price = Decimal(take_profit or order_data.take_profit_price or 0).quantize(quote_quant, rounding=ROUND_DOWN)
+            sl_price = Decimal(stop_loss or order_data.stop_loss_price or 0).quantize(quote_quant, rounding=ROUND_DOWN)
 
-            if side == 'BUY' and usd_required > Decimal(order_data.usd_balance):
+            # ✅ Basic balance checks (especially for BUYs)
+            if order_data.side.upper() == "BUY":
+                usd_required = adjusted_size * adjusted_price * (1 + order_data.maker)
+                if usd_required > Decimal(order_data.usd_balance):
+                    return {
+                        "error": "Insufficient_USD",
+                        "code": 402,
+                        "message": (
+                            f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_balance}) "
+                            f"for {asset} BUY. Required: ${usd_required}"
+                        )
+                    }
+                if adjusted_size <= 0:
+                    return {
+                        "error": "Zero_Size",
+                        "code": 400,
+                        "message": f"⚠️ Order Blocked - Zero Size for {asset} BUY."
+                    }
+            elif order_data.side.upper() == "SELL" and adjusted_size > Decimal(order_data.available_to_trade_crypto):
                 return {
-                    'error': 'Insufficient_USD',
-                    'code': validation_result.get('code'),
-                    'message': f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_balance}) for {asset} BUY. Required: ${usd_required}"
-                }
-            elif side == 'BUY' and adjusted_size == 0:
-                return {
-                    'error': 'Zero_Size',
-                    'code': validation_result.get('code'),
-                    'message': f"⚠️ Order Blocked - Zero Size for {asset} BUY."
-                }
-            elif side == 'SELL' and adjusted_size > Decimal(order_data.available_to_trade_crypto):
-                return {
-                    'error': 'Insufficient_crypto',
-                    'code': validation_result.get('code'),
-                    'message': f"⚠️ Order Blocked - Insufficient Crypto to sell {asset}."
+                    "error": "Insufficient_crypto",
+                    "code": 403,
+                    "message": f"⚠️ Order Blocked - Insufficient Crypto to sell {asset}."
                 }
 
-            # ✅ Build and submit the order
+            # ✅ Coinbase Order Payload (TP/SL attached)
             client_order_id = str(uuid.uuid4())
             order_payload = {
                 "client_order_id": client_order_id,
-                "product_id": trading_pair.replace("/", "-"),
-                "side": side,
+                "product_id": trading_pair,
+                "side": order_data.side.upper(),
                 "order_configuration": {
                     "limit_limit_gtc": {
-                        "baseSize": str(adjusted_size),
-                        "limitPrice": str(order_data.adjusted_price)
+                        "base_size": str(adjusted_size),
+                        "limit_price": str(adjusted_price)
                     }
                 },
                 "attached_order_configuration": {
                     "trigger_bracket_gtc": {
-                        "limit_price": str(take_profit),
-                        "stop_trigger_price": str(stop_loss)
+                        "limit_price": str(tp_price),
+                        "stop_trigger_price": str(sl_price)
                     }
                 }
             }
 
-            self.logger.debug(f"📤 Submitting Order: {order_payload}")
+            self.logger.debug(f"📤 Submitting TP/SL Order → {order_payload}")
             order_data.time_order_placed = datetime.now()
-            print(f'⚠️ process_limit_and_tp_sl_orders - Order Data: {order_data.debug_summary(verbose=True)}')
 
+            # ✅ Submit to Coinbase API
             response = await self.coinbase_api.create_order(order_payload)
 
-            if response.get('success') and response.get('success_response', {}).get('order_id'):
-                order_id = response['success_response']['order_id']
-                print(f"✅ Order Placed Successfully with TP/SL: {order_id} ✅")
+            if response.get("success") and response.get("success_response", {}).get("order_id"):
+                order_id = response["success_response"]["order_id"]
+                print(f"✅ TP/SL Order Placed Successfully → {order_id}")
+                return {
+                    **response,
+                    "status": "placed",
+                    "trigger": order_data.trigger,
+                    "source": order_data.source,
+                    "order_id": order_id,
+                    "tp": float(tp_price),
+                    "sl": float(sl_price)
+                }
 
-                # ✅ Add context to the response (but don’t save the trade yet)
-                response['trigger'] = order_data.trigger
-                response['status'] = 'placed'
-                response['source'] = order_data.source
-                response['order_id'] = order_id
-                return response
-            else:
-                print(f"❗️ Order Rejected TP/SL: {response.get('error_response', {}).get('message')} ❗️")
-                return response
+            print(f"❗️ TP/SL Order Rejected → {response.get('error_response', {}).get('message')}")
+            return response
 
         except Exception as e:
             self.logger.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)

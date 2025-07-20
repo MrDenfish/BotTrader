@@ -13,12 +13,13 @@ class SenderWebhook:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager):
+    def get_instance(cls, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager, shared_utils_color):
         if cls._instance is None:
-            cls._instance = cls(exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager)
+            cls._instance = cls(exchange, alerts, logger_manager, shared_utils_utility,
+                                web_url, shared_data_manager, shared_utils_color)
         return cls._instance
 
-    def __init__(self, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager):
+    def __init__(self, exchange, alerts, logger_manager, shared_utils_utility, web_url, shared_data_manager, shared_utils_color):
         self.config = CentralConfig()
 
         self._phone = self.config.phone
@@ -29,6 +30,7 @@ class SenderWebhook:
         self._order_size_fiat = self.config.order_size_fiat
         self._version = self.config.program_version
         self.shared_utils_utility = shared_utils_utility
+        self.shared_utils_color = shared_utils_color
         self.logger = logger_manager  # 🙂
         self.shared_data_manager = shared_data_manager
         self.exchange = exchange
@@ -91,7 +93,8 @@ class SenderWebhook:
                 return None
             self.processed_uuids.add(uuid)
 
-        print(f"🔹 Sending webhook: {webhook_payload}")
+        print(self.shared_utils_color.format(f" 🔹 Sending webhook: {webhook_payload}", self.shared_utils_color.MAGENTA))
+
 
         for attempt in range(1, retries + 1):
             try:
