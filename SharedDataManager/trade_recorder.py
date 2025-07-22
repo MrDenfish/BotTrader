@@ -343,23 +343,33 @@ class TradeRecorder:
         """
         Fetch all recorded trades.
         """
-        async with self.db_session_manager.async_session_factory() as session:
-            async with session.begin():
-                result = await session.execute(select(TradeRecord))
-                trades = result.scalars().all()
-                return trades
+        try:
+            async with self.db_session_manager.async_session_factory() as session:
+                async with session.begin():
+                    result = await session.execute(select(TradeRecord))
+                    trades = result.scalars().all()
+                    return trades
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error fetching all trades: {e}", exc_info=True)
+            return []
 
     async def fetch_recent_trades(self, limit=10):
         """
         Fetch the most recent trades (default: last 10).
         """
-        async with self.db_session_manager.async_session_factory() as session:
-            async with session.begin():
-                result = await session.execute(
-                    select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
-                )
-                trades = result.scalars().all()
-                return trades
+        try:
+            async with self.db_session_manager.async_session_factory() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
+                    )
+                    trades = result.scalars().all()
+                    return trades
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error fetching recent trades: {e}", exc_info=True)
+            return []
 
     async def delete_trade(self, order_id: str):
         """

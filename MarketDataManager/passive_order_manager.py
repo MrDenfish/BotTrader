@@ -25,6 +25,8 @@ import asyncio
 import copy
 import time
 import  json
+import pandas as pd
+from datetime import datetime, timedelta
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
@@ -93,80 +95,82 @@ class PassiveOrderManager:
 
     async def monitor_passive_position(self, symbol: str, od: OrderData):
         """
-        Monitors a passive BUY order. If price moves unfavorably or favorably:
-        - Triggers a stop-loss (SL)
-        - Triggers a take-profit (TP)
-        - Triggers a trailing stop-loss (TSL)
+        Monitors a passive BUY order. Dynamically adjusts SL, TP, and TSL thresholds based on volatility.
         """
         try:
             quote_deci = od.quote_decimal
             base_deci = od.base_decimal
 
-            # Evaluate exit conditions
-            decision = await self.evaluate_exit_conditions(od)
-            if decision:
-                self.logger.info(f"✅ Exit condition met: {decision['trigger']}")
+            # Get current price
             ticker_data = await self.ccxt_api.ccxt_api_call(self.exchange.fetch_ticker, 'public', symbol)
-            # reformat deci size:
-            quote_quantizer = Decimal("1").scaleb(-quote_deci)
-            base_quantizer = Decimal("1").scaleb(-base_deci)
             current_price = Decimal(ticker_data['last'])
-            current_price = self.shared_utils_precision.safe_quantize(current_price, quote_quantizer)
-            # spread =  self.shared_utils_precision.safe_quantize(od.spread, quote_quantizer)
+            current_price = self.shared_utils_precision.safe_quantize(
+                current_price, Decimal("1").scaleb(-quote_deci)
+            )
 
             entry = self.passive_order_tracker.get(symbol, {})
             peak_price = entry.get("peak_price", od.limit_price)
 
-            print(f" 🔷 Passive Active Order: {symbol} Current price:{current_price}  Entry:{entry}  peak price:{peak_price}  🔷")
-            # Update peak price for TSL tracking
+            # ✅ NEW: Volatility factor (spread as proxy, can later replace w/ ATR)
+            normalized_spread_pct = (
+                od.spread / od.limit_price if od.limit_price and od.spread else Decimal("0")
+            )
+            volatility_multiplier = max(Decimal("1.0"), normalized_spread_pct * Decimal("10"))
+
+            print(
+                f"🔷 Passive Active Order: {symbol} Current:{current_price} Entry:{entry} "
+                f"Peak:{peak_price} Spread%:{normalized_spread_pct:.4%}"
+            )
+
+            # Update peak price (for TSL tracking)
             if current_price > peak_price:
                 entry["peak_price"] = current_price
                 peak_price = current_price
 
-            # ----- STOP-LOSS (SL) -----
-            normalized_spread_pct = (
-                od.spread / od.limit_price if od.limit_price and od.spread else Decimal("0")
+            # ✅ Dynamic STOP-LOSS (SL)
+            dynamic_sl_pct = max(
+                self.fee["taker"] * Decimal(2),
+                normalized_spread_pct * Decimal("1.5") * volatility_multiplier
             )
-            dynamic_sl_pct = max(self.fee["taker"] * Decimal(2), normalized_spread_pct * Decimal("1.25"))
             stop_price = od.limit_price * (Decimal("1.0") - dynamic_sl_pct)
-            stop_price = self.shared_utils_precision.safe_quantize(stop_price, quote_quantizer)
-
+            stop_price = self.shared_utils_precision.safe_quantize(
+                stop_price, Decimal("1").scaleb(-quote_deci)
+            )
 
             if current_price <= stop_price:
-                self.logger.warning(f"🔻 Stop-loss triggered for {symbol} @ {current_price} (SL threshold: {stop_price})")
+                self.logger.warning(
+                    f"🔻 Stop-loss triggered for {symbol} @ {current_price} (SL: {stop_price})"
+                )
                 await self._submit_passive_sell(
-                    symbol,
-                    od,
-                    current_price,
-                    reason="stop_loss",
-                    note=f"SL threshold: {stop_price}"
+                    symbol, od, current_price, reason="stop_loss", note=f"SL:{stop_price}"
                 )
                 return
 
-            # ----- TAKE-PROFIT (TP) -----
-            take_profit_price = od.limit_price * (Decimal("1.0") + self._take_profit)
+            # ✅ Dynamic TAKE-PROFIT (TP)
+            take_profit_price = od.limit_price * (
+                    Decimal("1.0") + (self._take_profit * volatility_multiplier)
+            )
             if current_price >= take_profit_price:
-                self.logger.info(f"📈 Take-profit triggered for {symbol} @ {current_price} (TP threshold: {take_profit_price})")
+                self.logger.info(
+                    f"📈 Take-profit triggered for {symbol} @ {current_price} (TP: {take_profit_price})"
+                )
                 await self._submit_passive_sell(
-                    symbol,
-                    od,
-                    current_price,
-                    reason="take_profit",
-                    note=f"TP threshold: {take_profit_price}"
+                    symbol, od, current_price, reason="take_profit", note=f"TP:{take_profit_price}"
                 )
                 return
 
-            # ----- TRAILING STOP-LOSS (TSL) -----
-            trailing_stop_price = peak_price * (Decimal("1.0") - self._trailing_percentage)
+            # ✅ Dynamic TRAILING STOP-LOSS (TSL)
+            trailing_stop_price = peak_price * (
+                    Decimal("1.0") - (self._trailing_percentage * volatility_multiplier)
+            )
             if current_price <= trailing_stop_price:
                 self.logger.warning(
-                    f"🔻 Trailing SL triggered for {symbol} @ {current_price} (peak: {peak_price}, trailing stop: {trailing_stop_price})")
+                    f"🔻 Trailing SL triggered for {symbol} @ {current_price} "
+                    f"(Peak:{peak_price}, TSL:{trailing_stop_price})"
+                )
                 await self._submit_passive_sell(
-                    symbol,
-                    od,
-                    current_price,
-                    reason="trailing_stop",
-                    note=f"Peak: {peak_price}, trailing stop: {trailing_stop_price}"
+                    symbol, od, current_price, reason="trailing_stop",
+                    note=f"Peak:{peak_price},TSL:{trailing_stop_price}"
                 )
                 return
 
@@ -217,9 +221,23 @@ class PassiveOrderManager:
     async def place_passive_orders(self, asset: str, product_id: str) -> None:
         """
         Attempt to quote both sides of the book for *product_id*.
-        Will return silently if market conditions aren't favorable.
+
+        ✅ Step 1: Adaptive spread requirement scaled by volatility.
+        ✅ Step 2: Skip unprofitable & illiquid symbols based on all historical trades.
         """
         trading_pair = product_id.replace("/", "-")
+
+        # ✅ Step 2: Skip unprofitable or illiquid symbols (all trade sources considered)
+        profitable_symbols = await self.get_profitable_symbols(
+            min_trades=5,
+            min_pnl_usd=Decimal("1.0"),
+            lookback_days=7,
+            source_filter=None,  # Include ALL trade sources
+            min_24h_volume=Decimal("1000000")
+        )
+        if trading_pair not in profitable_symbols:
+            self.logger.info(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
+            return
 
         try:
             od: OrderData | None = await self.tom.build_order_data(
@@ -240,21 +258,27 @@ class PassiveOrderManager:
 
         mid_price = (od.lowest_ask + od.highest_bid) / 2
         spread_pct = spread / mid_price
-        price = od.limit_price or od.price
 
-        required_edge = self.fee["maker"] * Decimal("2.5")
-        min_required_spread = max(required_edge, self.min_spread_pct)
-        if spread_pct < min_required_spread:
-            print(
-                f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < threshold {min_required_spread:.4%}"
+        # ✅ Step 1: Adaptive minimum spread requirement
+        volatility_factor = max(
+            Decimal("1.0"),
+            spread / (mid_price * Decimal("0.01"))  # % spread (e.g., 1% => 1.0)
+        )
+
+        dynamic_min_spread = max(
+            self.fee["maker"] * (Decimal("2.0") + (volatility_factor / 2)),
+            self.min_spread_pct
+        )
+
+        if spread_pct < dynamic_min_spread:
+            self.logger.info(
+                f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < dynamic threshold {dynamic_min_spread:.4%}"
             )
             return
 
         try:
             tick = self.shared_utils_precision.safe_convert(od.quote_increment, od.quote_decimal)
-            pct_nudge = Decimal("0.3") / Decimal("100")
 
-            # Fetch OHLCV once for use in SELL side
             try:
                 oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
             except Exception as exc:
@@ -321,36 +345,71 @@ class PassiveOrderManager:
             except Exception as e:
                 self.logger.warning(f"⚠️ Failed to restore passive order for {symbol}/{side}: {e}", exc_info=True)
 
-
     async def _quote_passive_buy(self, od: OrderData, trading_pair: str, tick: Decimal):
-        quote_od = self._clone_order_data(od, side="buy", post_only=True)
-        total_value = quote_od.price * quote_od.total_balance_crypto
-        if total_value <= self._min_buy_value:
-            target_px = min(od.highest_bid, od.lowest_ask - tick)
-            quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+        """
+        Quotes a passive BUY order with size scaled by spread quality.
+        """
+        try:
+            quote_od = self._clone_order_data(od, side="buy", post_only=True)
+
+            # ✅ Step 3: Dynamic size scaling based on spread quality
+            min_required_spread = max(self.fee["maker"] * Decimal("2.0"), self.min_spread_pct)
+            spread_factor = max(Decimal("1.0"), (od.spread / (od.limit_price * min_required_spread)))
+
+            # Cap size increase to avoid overexposure (e.g., max 3x baseline)
+            spread_factor = min(spread_factor, Decimal("3.0"))
+
+            target_buy_value = (self._min_buy_value * spread_factor).quantize(Decimal("0.01"))
+            quote_od.order_amount_fiat = target_buy_value
+
+            total_value = quote_od.price * quote_od.total_balance_crypto
+
+            # Original logic preserved, but with adjusted price placement
+            if total_value <= self._min_buy_value:
+                target_px = min(od.highest_bid, od.lowest_ask - tick)
+                quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+
             await self._finalize_passive_order(quote_od, trading_pair)
+        except Exception as e:
+            self.logger.error(f"❌ Error in _quote_passive_buy for {trading_pair}: {e}", exc_info=True)
 
     async def _quote_passive_sell(
             self, od: OrderData, trading_pair: str, tick: Decimal, average_close: Decimal | None
     ):
-        quote_od = self._clone_order_data(od, side="sell", post_only=True)
-        total_value = quote_od.price * quote_od.total_balance_crypto
-        if total_value <= self._min_order_amount_fiat:
-            return
+        """
+        Quotes a passive SELL order with size scaled by spread quality.
+        """
+        try:
+            quote_od = self._clone_order_data(od, side="sell", post_only=True)
 
-        min_profit_pct = self._take_profit + self.fee["maker"]
-        min_sell_price = od.price * (Decimal("1.0") + min_profit_pct)
-        current_price = od.lowest_ask
+            total_value = quote_od.price * quote_od.total_balance_crypto
+            if total_value <= self._min_order_amount_fiat:
+                return
 
-        if average_close and average_close < current_price:
-            self.logger.info(
-                f"📉 Skipping passive SELL for {trading_pair} — average_close ({average_close}) < current_price ({current_price})"
-            )
-            return
+            # ✅ Step 3: Dynamic size scaling based on spread quality
+            min_required_spread = max(self.fee["maker"] * Decimal("2.0"), self.min_spread_pct)
+            spread_factor = max(Decimal("1.0"), (od.spread / (od.limit_price * min_required_spread)))
+            spread_factor = min(spread_factor, Decimal("3.0"))
 
-        target_px = max(min_sell_price, od.highest_bid + tick)
-        quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
-        await self._finalize_passive_order(quote_od, trading_pair)
+            target_sell_value = (self._min_order_amount_fiat * spread_factor).quantize(Decimal("0.01"))
+            quote_od.order_amount_fiat = target_sell_value
+
+            min_profit_pct = self._take_profit + self.fee["maker"]
+            min_sell_price = od.price * (Decimal("1.0") + min_profit_pct)
+            current_price = od.lowest_ask
+
+            if average_close and average_close < current_price:
+                self.logger.info(
+                    f"📉 Skipping passive SELL for {trading_pair} — average_close ({average_close}) < current_price ({current_price})"
+                )
+                return
+
+            target_px = max(min_sell_price, od.highest_bid + tick)
+            quote_od.adjusted_price = target_px.quantize(tick, rounding=ROUND_DOWN)
+
+            await self._finalize_passive_order(quote_od, trading_pair)
+        except Exception as e:
+            self.logger.error(f"❌ Error in _quote_passive_sell for {trading_pair}: {e}", exc_info=True)
 
     async def _finalize_passive_order(self, quote_od: OrderData, trading_pair: str):
         # Set price/size/cost basis
@@ -447,60 +506,148 @@ class PassiveOrderManager:
     # Housekeeping – cancel and refresh stale quotes
     # ------------------------------------------------------------------
     async def _watchdog(self) -> None:
-        """Background coroutine that clears expired resting orders and reconciles DB."""
-        counter = 0  # to track periodic execution
+        """
+        Optimized background coroutine:
+        ✅ Runs lightweight cleanup every 30s.
+        ✅ Spawns per-symbol async tasks for active buy order monitoring.
+        """
+        counter = 0
 
         while True:
             try:
-                await asyncio.sleep(5)
+                await asyncio.sleep(30)  # Reduced frequency for global cleanup
                 now = time.time()
 
-                # Passive order cleanup logic
-                if len(self.passive_order_tracker)>0:
-                    print(self.shared_utils_color.format(f" {self.passive_order_tracker}",self.shared_utils_color.MAGENTA))
-
+                # 🔁 Periodic cleanup of expired orders
                 for symbol, entry in list(self.passive_order_tracker.items()):
-                    if now - entry.get("timestamp", 0) < self.max_lifetime:
-                        # Monitor active BUYs
-                        if "buy" in entry:
-                            od = entry.get("order_data")
-                            if isinstance(od, OrderData):
-                                await self.monitor_passive_position(symbol, od)
-                        continue
+                    if now - entry.get("timestamp", 0) >= self.max_lifetime:
+                        # Cancel & cleanup expired orders
+                        for side in ("buy", "sell"):
+                            old_id = entry.get(side)
+                            if isinstance(old_id, dict):
+                                old_id = old_id.get("order_id")
 
-                    # Cancel & cleanup expired orders
-                    for side in ("buy", "sell"):
-                        old_id = entry.get(side)
-                        if isinstance(old_id, dict):
-                            old_id = old_id.get("order_id")
+                            if old_id:
+                                try:
+                                    await self.order_manager.cancel_order(old_id, symbol)
+                                except Exception as exc:
+                                    self.logger.warning(
+                                        f"⚠️ Failed to cancel expired {side} {symbol} (ID:{old_id}): {exc}",
+                                        exc_info=True
+                                    )
+                                try:
+                                    await self.shared_data_manager.remove_passive_order(old_id)
+                                except Exception as exc:
+                                    self.logger.warning(
+                                        f"⚠️ Failed to remove passive order {old_id}: {exc}",
+                                        exc_info=True
+                                    )
+                            else:
+                                self.logger.info(
+                                    f"ℹ️ No order_id for expired {side} {symbol}, skipping cancel."
+                                )
 
-                        if old_id:
-                            try:
-                                await self.order_manager.cancel_order(old_id, symbol)
-                            except Exception as exc:
-                                self.logger.warning(
-                                    f"⚠️ Failed to cancel expired {side} {symbol} (ID: {old_id}): {exc}", exc_info=True
-                                )
-                            try:
-                                await self.shared_data_manager.remove_passive_order(old_id)
-                            except Exception as exc:
-                                self.logger.warning(
-                                    f"⚠️ Failed to remove passive order {old_id} from DB: {exc}", exc_info=True
-                                )
-                        else:
-                            self.logger.info(
-                                f"ℹ️ No order_id for expired {side} {symbol} — skipping cancel, attempting DB cleanup"
+                        self.passive_order_tracker.pop(symbol, None)
+                        print(f"🧹 Cleaned expired: {symbol}")
+
+                    else:
+                        # ✅ Ensure active buys are monitored by a dedicated task
+                        if "buy" in entry and not entry.get("monitor_task"):
+                            entry["monitor_task"] = asyncio.create_task(
+                                self._monitor_active_symbol(symbol, entry)
                             )
 
-                    self.passive_order_tracker.pop(symbol, None)
-                    print(f"🔍 Monitoring: {list(self.passive_order_tracker.keys())}")
-
-                # 🔁 Reconcile DB every 12 cycles (~1 min)
+                # 🔁 Reconcile DB every ~5 min (10 cycles at 30s each)
                 counter += 1
-                if counter % 12 == 0:
+                if counter % 10 == 0:
                     await self.shared_data_manager.reconcile_passive_orders()
 
-
             except Exception as ex:
-                self.logger.error(f"Watchdog error {ex}", exc_info=True)
+                self.logger.error(f"⚠️ Watchdog error {ex}", exc_info=True)
+
+    async def _monitor_active_symbol(self, symbol: str, entry: dict):
+        """
+        Per-symbol monitoring loop for active buy orders.
+        Runs frequently (every 5s) and stops automatically when order is gone.
+        """
+        self.logger.info(f"▶️ Starting monitor for active order: {symbol}")
+
+        try:
+            while symbol in self.passive_order_tracker and "buy" in entry:
+                od = entry.get("order_data")
+                if isinstance(od, OrderData):
+                    await self.monitor_passive_position(symbol, od)
+
+                await asyncio.sleep(5)
+
+            self.logger.info(f"⏹️ Monitor stopped for {symbol}")
+
+        except asyncio.CancelledError:
+            self.logger.info(f"⏹️ Monitor cancelled for {symbol}")
+        except Exception as e:
+            self.logger.error(f"❌ Error in _monitor_active_symbol for {symbol}: {e}", exc_info=True)
+
+    async def get_profitable_symbols(
+            self,
+            min_trades: int = 5,
+            min_pnl_usd: Decimal = Decimal("0.0"),
+            lookback_days: int = 7,
+            source_filter: str | None = None,
+            min_24h_volume: Decimal = Decimal("1000000")
+    ) -> set:
+        """
+        Returns symbols with at least `min_trades` in the last `lookback_days`
+        and total realized_profit >= `min_pnl_usd`.
+
+        ✅ Includes all trade sources by default (PassiveMM + others).
+        ✅ Filters by technical liquidity (24h volume).
+        """
+        try:
+            from datetime import datetime, timedelta, timezone
+
+            cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+            trades = await self.shared_data_manager.trade_recorder.fetch_all_trades()
+
+            if not trades:
+                return set()
+
+            df = pd.DataFrame([t.__dict__ for t in trades])
+            df = df[pd.to_datetime(df['order_time']) >= cutoff_time]
+
+            if source_filter:
+                df = df[df['source'] == source_filter]
+
+            grouped = df.groupby('symbol').agg(
+                trade_count=('order_id', 'count'),
+                total_profit=('realized_profit', 'sum')
+            )
+
+            filtered = grouped[
+                (grouped['trade_count'] >= min_trades) &
+                (grouped['total_profit'] >= float(min_pnl_usd))
+                ]
+
+            profitable_symbols = set(filtered.index)
+
+            # ✅ Cross-check with technical filter (24h volume > threshold)
+            try:
+                usd_pairs = self.shared_data_manager.market_data.get("usd_pairs_cache", pd.DataFrame())
+                if not usd_pairs.empty and 'volume_24h' in usd_pairs.columns:
+                    liquid_symbols = set(
+                        usd_pairs[usd_pairs['volume_24h'] >= float(min_24h_volume)]['symbol']
+                    )
+                    profitable_symbols = profitable_symbols.intersection(liquid_symbols)
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed 24h volume filter: {e}")
+
+            self.logger.info(
+                f"✅ Profitable & Liquid symbols (last {lookback_days}d): {profitable_symbols}"
+            )
+            return profitable_symbols
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to fetch profitable symbols: {e}", exc_info=True)
+            return set()
+
+
 
