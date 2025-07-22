@@ -46,9 +46,10 @@ class DatabaseSessionManager:
         self.engine = create_async_engine(
             self.config.database_url,
             echo=False,
-            pool_size=5,  # same as databases.Database min_size
-            max_overflow=10,  # allow extra temporary connections
-            pool_timeout=30,  # wait before raising TimeoutError
+            pool_size=10,  # same as databases.Database min_size
+            max_overflow=20,  # allow extra temporary connections
+            pool_timeout=60,  # wait before raising TimeoutError
+            pool_recycle=1800,  # recycle idle connections every 30 min
             future=True
         )
 

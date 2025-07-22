@@ -26,7 +26,7 @@ import copy
 import time
 import  json
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
@@ -81,10 +81,19 @@ class PassiveOrderManager:
         # Data managers
         self.ohlcv_manager = ohlcv_manager
 
+        # ✅ Cache structure (class-level or init-level)
+        self._profitable_symbols_cache = {
+            "last_update": 0,
+            "symbols": set()
+        }
+
         # launch watchdog
         asyncio.create_task(self._watchdog())
 
     _fee_lock: asyncio.Lock = asyncio.Lock()
+
+
+
     async def update_fee_cache(self, new_fee: Dict[str, Decimal]) -> None:
         """Hot-swap maker/taker fees atomically."""
         async with self._fee_lock:
@@ -232,8 +241,9 @@ class PassiveOrderManager:
             min_trades=5,
             min_pnl_usd=Decimal("1.0"),
             lookback_days=7,
-            source_filter=None,  # Include ALL trade sources
-            min_24h_volume=Decimal("1000000")
+            source_filter=None,
+            min_24h_volume=Decimal("1000000"),
+            refresh_interval=300
         )
         if trading_pair not in profitable_symbols:
             self.logger.info(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
@@ -593,20 +603,29 @@ class PassiveOrderManager:
             min_pnl_usd: Decimal = Decimal("0.0"),
             lookback_days: int = 7,
             source_filter: str | None = None,
-            min_24h_volume: Decimal = Decimal("1000000")
+            min_24h_volume: Decimal = Decimal("1000000"),
+            refresh_interval: int = 300  # 5 minutes
     ) -> set:
         """
-        Returns symbols with at least `min_trades` in the last `lookback_days`
-        and total realized_profit >= `min_pnl_usd`.
+        Returns profitable & liquid symbols based on recent trades.
 
+        ✅ Uses caching to avoid DB overload (refresh every `refresh_interval` seconds).
+        ✅ Fetches only trades in the last `lookback_days` (not the entire table).
         ✅ Includes all trade sources by default (PassiveMM + others).
-        ✅ Filters by technical liquidity (24h volume).
+        ✅ Filters by technical liquidity (24h volume > threshold).
         """
         try:
-            from datetime import datetime, timedelta, timezone
+            now = time.time()
+            # ✅ Return cached results if refresh interval not exceeded
+            if now - self._profitable_symbols_cache["last_update"] < refresh_interval:
+                return self._profitable_symbols_cache["symbols"]
 
             cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-            trades = await self.shared_data_manager.trade_recorder.fetch_all_trades()
+
+            # ✅ Fetch only recent trades instead of full-table
+            trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades(
+                days=lookback_days
+            )
 
             if not trades:
                 return set()
@@ -629,7 +648,7 @@ class PassiveOrderManager:
 
             profitable_symbols = set(filtered.index)
 
-            # ✅ Cross-check with technical filter (24h volume > threshold)
+            # ✅ Cross-check with liquidity filter (24h volume > threshold)
             try:
                 usd_pairs = self.shared_data_manager.market_data.get("usd_pairs_cache", pd.DataFrame())
                 if not usd_pairs.empty and 'volume_24h' in usd_pairs.columns:
@@ -638,10 +657,16 @@ class PassiveOrderManager:
                     )
                     profitable_symbols = profitable_symbols.intersection(liquid_symbols)
             except Exception as e:
-                self.logger.warning(f"⚠️ Failed 24h volume filter: {e}")
+                self.logger.warning(f"⚠️ 24h volume filter failed: {e}")
+
+            # ✅ Cache results for next call
+            self._profitable_symbols_cache.update({
+                "last_update": now,
+                "symbols": profitable_symbols
+            })
 
             self.logger.info(
-                f"✅ Profitable & Liquid symbols (last {lookback_days}d): {profitable_symbols}"
+                f"✅ Profitable & Liquid symbols (cached for {refresh_interval}s): {profitable_symbols}"
             )
             return profitable_symbols
 

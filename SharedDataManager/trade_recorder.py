@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select, func, and_, or_, not_
 from sqlalchemy.future import select
 from decimal import Decimal, ROUND_DOWN
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 class TradeRecorder:
     """
@@ -354,18 +354,16 @@ class TradeRecorder:
                 self.logger.error(f"❌ Error fetching all trades: {e}", exc_info=True)
             return []
 
-    async def fetch_recent_trades(self, limit=10):
-        """
-        Fetch the most recent trades (default: last 10).
-        """
+    async def fetch_recent_trades(self, days: int = 7):
+        """Fetch trades from the last `days` days only (optimizing DB usage)."""
         try:
+            cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
             async with self.db_session_manager.async_session_factory() as session:
                 async with session.begin():
                     result = await session.execute(
-                        select(TradeRecord).order_by(TradeRecord.order_time.desc()).limit(limit)
+                        select(TradeRecord).where(TradeRecord.order_time >= cutoff_time)
                     )
-                    trades = result.scalars().all()
-                    return trades
+                    return result.scalars().all()
         except Exception as e:
             if self.logger:
                 self.logger.error(f"❌ Error fetching recent trades: {e}", exc_info=True)
