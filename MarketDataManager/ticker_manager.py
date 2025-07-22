@@ -146,30 +146,75 @@ class TickerManager:
             self.logger.error(f"❌ Error in update_ticker_cache: {e}", exc_info=True)
             return {}, {}
 
-
     async def fetch_and_filter_balances(self, portfolio_uuid: str) -> dict:
         """
-        Fetch portfolio breakdown and filter non-zero balances.
+        Fetch portfolio breakdown and filter non-zero balances, including staked funds.
 
         Args:
             portfolio_uuid (str): The UUID of the portfolio.
 
         Returns:
-            dict: Non-zero balances filtered by wallet account type.
+            dict: Consolidated non-zero balances as PortfolioPosition objects
+                  (wallet + staked funds merged).
         """
         try:
             portfolio_data = await self.get_portfolio_breakdown(portfolio_uuid)
             if not portfolio_data:
                 raise ValueError("Portfolio breakdown data is empty or invalid.")
 
-            # Extract non-zero balances
             spot_positions = portfolio_data.breakdown.spot_positions
-            non_zero_balances = {
-                pos["asset"]: pos
-                for pos in spot_positions
-                if Decimal(pos["total_balance_fiat"]) > self.min_value_to_monitor or pos['asset'] == 'USD'
-            }
+            non_zero_balances = {}
+
+            for pos in spot_positions:
+                asset = pos.asset  # ✅ PortfolioPosition object attribute
+                total_balance_fiat = Decimal(str(pos.total_balance_fiat))
+
+                # ✅ Only include if above min threshold or USD
+                if total_balance_fiat <= self.min_value_to_monitor and asset != "USD":
+                    continue
+
+                if asset in non_zero_balances:
+                    existing = non_zero_balances[asset]
+
+                    # ---- Convert both to dicts for merging ----
+                    existing_dict = existing.__dict__.copy()
+                    pos_dict = pos.__dict__.copy()
+
+                    # ---- Merge balances ----
+                    existing_balance = Decimal(str(existing_dict.get("total_balance_crypto", "0")))
+                    new_balance = Decimal(str(pos_dict.get("total_balance_crypto", "0")))
+                    total_balance_crypto = existing_balance + new_balance
+
+                    # ---- Merge cost basis ----
+                    existing_cost_basis = Decimal(str(existing_dict.get("cost_basis", {}).get("value", "0")))
+                    new_cost_basis = Decimal(str(pos_dict.get("cost_basis", {}).get("value", "0")))
+                    total_cost_basis = existing_cost_basis + new_cost_basis
+
+                    # ---- Weighted average entry price ----
+                    existing_avg_price = Decimal(str(existing_dict.get("average_entry_price", {}).get("value", "0")))
+                    new_avg_price = Decimal(str(pos_dict.get("average_entry_price", {}).get("value", "0")))
+
+                    if total_balance_crypto > 0:
+                        weighted_avg_price = (
+                                                     (existing_avg_price * existing_balance) + (new_avg_price * new_balance)
+                                             ) / total_balance_crypto
+                    else:
+                        weighted_avg_price = new_avg_price
+
+                    # ✅ Update merged dict
+                    existing_dict["total_balance_crypto"] = float(total_balance_crypto)
+                    existing_dict["cost_basis"]["value"] = str(total_cost_basis)
+                    existing_dict["average_entry_price"]["value"] = str(weighted_avg_price)
+
+                    # ✅ Convert back to PortfolioPosition object
+                    non_zero_balances[asset] = type(existing)(**existing_dict)
+
+                else:
+                    # ✅ Keep original PortfolioPosition object
+                    non_zero_balances[asset] = pos
+
             return non_zero_balances
+
         except Exception as e:
             self.logger.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
             return {}
@@ -504,6 +549,9 @@ class TickerManager:
                     wait = min(2 ** attempt, 60) + random.uniform(0, 1)
                     self.logger.warning(f"⏳ Rate limit hit. Sleeping for {wait:.2f}s...")
                     await asyncio.sleep(wait)
+                elif "401" in str(e):
+                    self.logger.error("❌ ❌ Unauthorized access. Check your API keys and internet connection.❌ ❌")
+                    break
                 else:
                     self.logger.error(f"❌ HTTP error during get_portfolio_breakdown: {e}")
                     break

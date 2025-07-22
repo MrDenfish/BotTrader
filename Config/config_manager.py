@@ -1,7 +1,7 @@
 import json
 import os
 from decimal import Decimal
-
+from typing import Any, Optional
 from coinbase.rest import RESTClient
 from dotenv import load_dotenv
 
@@ -53,6 +53,7 @@ class CentralConfig:
         self._quote_currency = self._trailing_percentage = self._min_volume = self._min_cooldown = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
+        self.exchange: Optional[Any] = None
 
         # Default values
         self._json_config = {}

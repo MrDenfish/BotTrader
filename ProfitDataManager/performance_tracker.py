@@ -1,5 +1,5 @@
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class PerformanceTracker:

@@ -18,13 +18,14 @@ class WebSocketHelper:
     def __init__(
             self, listener, websocket_manager, logger_manager, coinbase_api, profit_data_manager,
             order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
-            shared_utils_debugger, trailing_stop_manager, order_book_manager, snapshot_manager, trade_order_manager, shared_data_manager,
-            market_ws_manager, passive_order_manager=None, asset_monitor=None
+            shared_utils_debugger, order_book_manager, snapshot_manager, trade_order_manager, shared_data_manager,
+            market_ws_manager, database_session_manager, passive_order_manager=None, asset_monitor=None
             ):
 
         # Core configurations
         self.config = listener.bot_config
         self.listener = listener
+        self.database_session_manager = database_session_manager
         self.shared_data_manager = shared_data_manager
         self.websocket_manager = websocket_manager
         self.market_ws_manager = market_ws_manager
@@ -78,7 +79,6 @@ class WebSocketHelper:
         self.passive_order_manager = passive_order_manager
         self.asset_monitor = asset_monitor
         self.profit_data_manager = profit_data_manager
-        self.trailing_stop_manager = trailing_stop_manager
         self.order_type_manager = order_type_manager
         self.trade_order_manager = trade_order_manager
         self.order_book_manager = order_book_manager
@@ -285,7 +285,7 @@ class WebSocketHelper:
                 if inactivity_detected:
                     self.logger.warning("🔍 Running websocket health diagnostics before reconnect...")
                     await self.debug_websocket_health()  # 🔍 Run the new diagnostic
-                    await self.websocket_manager.reconnect()
+                    await self.websocket_manager.force_reconnect()
 
                 await asyncio.sleep(timeout)
 
@@ -315,7 +315,7 @@ class WebSocketHelper:
                         )
 
                 if inactivity_detected:
-                    await self.websocket_manager.reconnect()
+                    await self.websocket_manager.force_reconnect()
 
                 await asyncio.sleep(timeout)
 
@@ -329,7 +329,7 @@ class WebSocketHelper:
 
             if data.get("type") == "error":
                 self.logger.error(f"❌ ❌ Market WebSocket Error: {data.get('message')} | Full message: {data} ❌❌")
-                await self.websocket_manager.reconnect()
+                await self.websocket_manager.force_reconnect()
                 return
 
             channel = data.get("channel")
@@ -482,6 +482,21 @@ class WebSocketHelper:
 
         except Exception as e:
             self.logger.error(f"Error during re-subscription: {e}", exc_info=True)
+
+    async def resubscribe_all_channels(self):
+        """
+        Resubscribes to all previously subscribed channels after a reconnect.
+        Uses existing subscribe_user() and subscribe_market() methods.
+        """
+        try:
+            self.logger.info("🔄 Resubscribing to all channels after reconnect...")
+            if self.user_ws:
+                await self.subscribe_user()
+            if self.market_ws:
+                await self.subscribe_market()
+            self.logger.info("✅ Resubscription complete.")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to resubscribe all channels: {e}", exc_info=True)
 
     def _normalize_passive_tracker_snapshot(self, snapshot):
         passive = snapshot.get("passive_tracker", {})

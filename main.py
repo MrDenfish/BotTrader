@@ -9,7 +9,7 @@ import time
 import aiohttp
 from decimal import Decimal
 from aiohttp import web
-
+from AccumulationManager.accumulation_manager import AccumulationManager
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
 from Api_manager.coinbase_api import CoinbaseAPI
@@ -51,8 +51,9 @@ async def load_config():
     return Config(is_docker=is_docker_env())
 
 async def preload_market_data(logger_manager, shared_data_manager, market_data_updater, ticker_manager ):
+    logger = logger_manager.get_logger("shared_logger")
     try:
-        logger = logger_manager.get_logger("shared_logger")
+
         logger.info("⏳ Checking startup snapshot state...")
 
         market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater,ticker_manager)
@@ -162,14 +163,15 @@ async def build_websocket_components(config, listener, shared_data_manager):
         shared_utils_precision=listener.shared_utils_precision,
         shared_utils_utility=listener.shared_utils_utility,
         shared_utils_debugger=listener.shared_utils_debugger,
-        trailing_stop_manager=listener.trailing_stop_manager,
         order_book_manager=listener.order_book_manager,
         snapshot_manager=listener.snapshot_manager,
         trade_order_manager=listener.trade_order_manager,
         shared_data_manager=shared_data_manager,
         market_ws_manager=None,
+        database_session_manager=shared_data_manager.database_session_manager,
         passive_order_manager=passive_order_manager,
         asset_monitor=asset_monitor,
+
 
     )
 
@@ -186,12 +188,12 @@ async def build_websocket_components(config, listener, shared_data_manager):
         shared_utils_precision=listener.shared_utils_precision,
         shared_utils_utility=listener.shared_utils_utility,
         shared_utils_debugger=listener.shared_utils_debugger,
-        trailing_stop_manager=listener.trailing_stop_manager,
         order_book_manager=listener.order_book_manager,
         snapshot_manager=listener.snapshot_manager,
         trade_order_manager=listener.trade_order_manager,
         ohlcv_manager=listener.ohlcv_manager,
-        shared_data_manager=shared_data_manager
+        shared_data_manager=shared_data_manager,
+        database_session_manager=shared_data_manager.database_session_manager
     )
     market_ws_manager.passive_order_manager = passive_order_manager
     # 🔁 Restore any passive orders
@@ -237,11 +239,12 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
+        shutdown_event=shutdown_event,
         trade_recorder=shared_data_manager.trade_recorder,
         market_data_updater=market_data_updater,
         rest_client=config.rest_client,
         portfolio_uuid=config.portfolio_uuid,
-        exchange=config.exchange,
+        exchange=exchange,
         order_book_manager=order_book_manager,
         logger_manager=logger_manager,
         shared_utils_debugger=shared_utils_debugger,
@@ -279,6 +282,7 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, market_dat
     trade_bot = TradeBot(
         coinbase_api=coinbase_api,
         shared_data_mgr=shared_data_manager,
+        shutdown_event=shutdown_event,
         trade_recorder=shared_data_manager.trade_recorder,
         market_data_updater = market_data_updater,
         rest_client=config.rest_client,
@@ -307,6 +311,7 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, marke
     listener = WebhookListener(
         bot_config=config,
         shared_data_manager=shared_data_manager,
+        shutdown_event=shutdown_event,
         shared_utils_color=shared_utils_color,
         market_data_updater=market_data_updater,
         database_session_manager=shared_data_manager.database_session_manager,
@@ -483,6 +488,23 @@ async def main():
 
             await shared_data_manager.trade_recorder.start_worker()
 
+
+
+            accumulation_manager = AccumulationManager(
+                exchange=config.exchange,  # or coinbase_api if preferred
+                logger_manager=logger_manager,
+                shared_data_manager=shared_data_manager,
+                shutdown_event=shutdown_event,
+                accumulation_symbol="ETH-USD",
+                signal_based_enabled=True,
+                profit_based_enabled=False,  # stubbed for later
+                profit_allocation_pct=0.5,
+                accumulation_threshold=25.0,
+                accumulation_amount_per_signal=25.0
+            )
+
+            # ✅ Optionally attach to shared_data_manager for global access
+            shared_data_manager.accumulation_manager = accumulation_manager
             order_book_manager = OrderBookManager.get_instance(
                 config.exchange,
                 shared_data_manager,
@@ -599,7 +621,8 @@ async def main():
                     asyncio.create_task(periodic_runner(listener.reconcile_with_rest_api, interval=300)), # 5 minutes
                     asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
                     asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
-                    asyncio.create_task(websocket_manager.start_websockets())
+                    asyncio.create_task(websocket_manager.start_websockets()),
+                    asyncio.create_task(accumulation_manager.start_daily_runner())
                 ]
 
                 # ✅ Step 4: Wait for shutdown signal

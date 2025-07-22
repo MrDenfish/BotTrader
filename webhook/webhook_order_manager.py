@@ -216,7 +216,7 @@ class TradeOrderManager:
             # ✅ Determine order amounts before overrides
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
-            fiat_amt = usd_avail
+            fiat_amt = min(usd_avail, self.order_size)  # Cap to order size
             crypto_amt = available_to_trade
             order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
                 side if side else "buy", fiat_amt, crypto_amt
@@ -614,8 +614,8 @@ class TradeOrderManager:
                     response = await self.order_types.place_limit_order(order_data.source, order_data)
                 elif order_type == 'tp_sl':
                     response = await self.order_types.process_limit_and_tp_sl_orders(order_data.source, order_data, tp, sl)
-                elif order_type == 'trailing_stop':
-                    response = await self.order_types.place_trailing_stop_order(order_book, order_data, highest_bid)
+                # elif order_type == 'trailing_stop':
+                #     response = await self.order_types.place_trailing_stop_order(order_book, order_data, highest_bid)
                 else:
                     return False, {
                         'success': False,

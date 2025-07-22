@@ -29,6 +29,7 @@ class WebHookManager:
         Initializes the WebHookManager.
         """
         self.config = Config()
+        self.test_mode = self.config.test_mode
         self.alerts = alerts
         self.shared_utils_precision = shared_utils_precision
         self.trade_order_manager = trade_order_manager
@@ -190,11 +191,6 @@ class WebHookManager:
 
             # ✅ Test mode detection (centralized flag for downstream use)
             trigger = request_json.get("trigger")
-            test_mode = any([
-                request_json.get("origin") == "SIGHOOK",
-                trigger == "manual_test",
-                isinstance(trigger, dict) and trigger.get("trigger") == "manual_test"
-            ])
 
             return {
                 "trading_pair": pair,
@@ -208,8 +204,7 @@ class WebHookManager:
                 "origin": request_json.get("origin", "UNKNOWN"),
                 "uuid": request_json.get("uuid"),
                 "time": int(request_json.get("timestamp", time.time() * 1000)),
-                "trigger": trigger,
-                "test_mode": test_mode  # ✅ downstream convenience
+                "trigger": trigger
             }
 
         except Exception as e:

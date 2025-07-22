@@ -35,16 +35,17 @@ from sighook.trading_strategy import TradingStrategy
 # from pyinstrument import Profiler # debugging
 
 # Event to signal that a shutdown has been requested
-shutdown_event = asyncio.Event()
+# shutdown_event = asyncio.Event() I started using it in main.py
 
 
 class TradeBot:
     _exchange_instance_count = 0
 
-    def __init__(self, coinbase_api, shared_data_mgr, trade_recorder, market_data_updater,rest_client, portfolio_uuid, exchange, order_book_manager,
+    def __init__(self, coinbase_api, shared_data_mgr, shutdown_event: asyncio.Event,trade_recorder, market_data_updater,rest_client, portfolio_uuid, exchange, order_book_manager,
                  logger_manager=None, websocket_helper=None, shared_utils_debugger=None, shared_utils_print=None, shared_utils_color=None):
         self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_mgr
+        self.shutdown_event = shutdown_event
         self.trade_recorder = trade_recorder
         self.market_data_updater = market_data_updater
         self.websocket_helper = websocket_helper
@@ -329,7 +330,7 @@ class TradeBot:
         test_token = 0
         try:
             loop = asyncio.get_running_loop()  # Get the correct running loop
-            while not AsyncFunctions.shutdown_event.is_set():
+            while not self.shutdown_event.is_set():
                 print(f"<", "-" * 160, ">")
                 print(f"Starting new bot iteration at {datetime.datetime.now()}")
                 print(f"<", "-" * 160, ">")
@@ -445,7 +446,7 @@ class TradeBot:
             await self.exchange.close()
             if self._is_initialized:
                 TradeBot._exchange_instance_count -= 1
-            if AsyncFunctions.shutdown_event.is_set():
+            if self.shutdown_event.is_set():
                 await AsyncFunctions.shutdown(asyncio.get_running_loop(), http_session=self.http_session)
             print("Program has exited.")
 

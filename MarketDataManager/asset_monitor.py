@@ -58,54 +58,104 @@ class AssetMonitor:
         await self.monitor_untracked_assets()
 
     async def monitor_active_orders(self):
+        """
+        Monitor active open orders, calculate profitability, and handle active TP/SL or limit orders.
+        Now fully standardized for both limit and TP/SL orders.
+        """
         profit_data_list = []
         usd_avail = self._get_usd_available()
         order_mgmt = self.shared_data_manager.order_management
 
         async with self.order_tracker_lock:
             order_tracker = self._normalize_order_tracker_snapshot(order_mgmt)
+
             for order_id, raw_order in order_tracker.items():
                 try:
                     order_data = OrderData.from_dict(raw_order)
                     symbol = order_data.trading_pair
                     asset = re.split(r'[-/]', symbol)[0]
 
+                    # ✅ Skip if asset not in non-zero balances (not held)
                     if asset not in order_mgmt.get("non_zero_balances", {}):
                         continue
 
+                    # ✅ Get precision and asset details (wallet + staked funds included)
                     precision = self.shared_utils_precision.fetch_precision(symbol)
                     order_data.base_decimal, order_data.quote_decimal = precision[:2]
                     order_data.product_id = symbol
+
                     info = raw_order.get("info", {})
-                    order_duration = self._compute_order_duration(info.get("created_time",raw_order.get("datetime", "")))
+                    order_duration = self._compute_order_duration(
+                        info.get("created_time", raw_order.get("datetime", ""))
+                    )
+
                     current_price = self.bid_ask_spread.get(symbol, Decimal("0"))
                     asset_balance, avg_price, cost_basis = self._get_asset_details(order_mgmt, asset, precision)
 
-                    if order_data.type == "limit" and order_data.side == "buy":
-                        await self._handle_active_tp_sl_decision(order_data, raw_order, symbol, asset,
-                                                                 current_price , avg_price, precision)
-                    elif order_data.type == "limit" and order_data.side == "sell":
-                        await self._handle_limit_sell(order_data, symbol, asset, precision,
-                                                      order_duration, avg_price, current_price)
+                    # ✅ Handle active orders (limit and TP/SL now unified)
+                    if order_data.side == "sell":
+                        # Optional debug for TP/SL orders
+                        if order_data.trigger.get("tp_sl_flag"):
+                            self.logger.debug(f"TP/SL order treated as standard limit sell: {symbol}")
 
+                        await self._handle_limit_sell(
+                            order_data,
+                            symbol,
+                            asset,
+                            precision,
+                            order_duration,
+                            avg_price,
+                            current_price
+                        )
+
+                    elif order_data.side == "buy":
+                        await self._handle_active_tp_sl_decision(
+                            order_data,
+                            raw_order,
+                            symbol,
+                            asset,
+                            current_price,
+                            avg_price,
+                            precision
+                        )
+
+                    # ✅ Prepare profitability calculation
                     required_prices = {
                         "avg_price": avg_price,
                         "cost_basis": cost_basis,
                         "asset_balance": asset_balance,
                         "current_price": current_price,
                         "usd_avail": usd_avail,
-                        "status_of_order": order_data.status
+                        "status_of_order": order_data.status,
                     }
 
-                    profit = await self.profit_data_manager.calculate_profitability(symbol, required_prices, self.bid_ask_spread, self.usd_pairs)
+                    profit = await self.profit_data_manager.calculate_profitability(
+                        symbol, required_prices, self.bid_ask_spread, self.usd_pairs
+                    )
+
                     if profit:
-                        if order_data.type == "limit" and order_data.side == "buy":
-                            await self._handle_active_tp_sl_decision(order_data, raw_order, symbol, asset,
-                                                                     current_price, avg_price, precision,
-                                                                     profit)
-                        elif order_data.type == "limit" and order_data.side == "sell":
-                            await self._handle_limit_sell(order_data, symbol, asset, precision,
-                                                      order_duration, avg_price, current_price)
+                        # Re-run handling with profitability info if needed
+                        if order_data.side == "sell":
+                            await self._handle_limit_sell(
+                                order_data,
+                                symbol,
+                                asset,
+                                precision,
+                                order_duration,
+                                avg_price,
+                                current_price
+                            )
+                        elif order_data.side == "buy":
+                            await self._handle_active_tp_sl_decision(
+                                order_data,
+                                raw_order,
+                                symbol,
+                                asset,
+                                current_price,
+                                avg_price,
+                                precision,
+                                profit
+                            )
 
                         profit_data_list.append(profit)
 
@@ -263,11 +313,33 @@ class AssetMonitor:
         log = self.logger.info if success else self.logger.warning
         log(f"{'✅' if success else '⚠️'} Order for {symbol}: {response}")
 
-    def _normalize_order_tracker_snapshot(self, snapshot):
-        tracker = snapshot.get("order_tracker", {})
-        if isinstance(tracker, list):
-            return {o.get("order_id") or f"unknown_{i}": o for i, o in enumerate(tracker) if isinstance(o, dict)}
-        return dict(tracker)
+    def _normalize_order_tracker_snapshot(self, order_mgmt: dict) -> dict:
+        tracker = order_mgmt.get("order_tracker", {})
+        normalized_tracker = {}
+
+        for order_id, raw in tracker.items():
+            order_type = raw.get("type")
+
+            if order_type == "TAKE_PROFIT_STOP_LOSS":
+                trigger_cfg = (
+                    raw.get("info", {})
+                    .get("order_configuration", {})
+                    .get("trigger_bracket_gtc", {})
+                )
+
+                normalized_tracker[order_id] = {
+                    **raw,
+                    "type": "limit",  # Treat as limit for consistency
+                    "tp_sl_flag": True,
+                    "amount": Decimal(trigger_cfg.get("base_size", "0")),
+                    "price": Decimal(trigger_cfg.get("limit_price", "0")),
+                    "stop_price": Decimal(trigger_cfg.get("stop_trigger_price", "0")),
+                    "parent_order_id": raw.get("info", {}).get("originating_order_id"),
+                }
+            else:
+                normalized_tracker[order_id] = raw
+
+        return normalized_tracker
 
     def _get_usd_available(self):
         usd_data = self.usd_pairs.set_index('asset').to_dict(orient='index')
@@ -276,15 +348,31 @@ class AssetMonitor:
     def _get_asset_details(self, snapshot, asset, precision):
         try:
             quote_deci = precision[1]
+            base_deci = precision[0]
+            base_quantizer = Decimal("1").scaleb(-base_deci)
             quote_quantizer = Decimal("1").scaleb(-quote_deci)
+
+            # Pull from non_zero_balances first
             balance_data = snapshot.get('non_zero_balances', {}).get(asset, {})
-            avg_price = Decimal(balance_data['average_entry_price']['value'])
+
+            avg_price = Decimal(str(balance_data['average_entry_price'].get('value', '0')))
             avg_price = self.shared_utils_precision.safe_quantize(avg_price, quote_quantizer)
-            cost_basis = Decimal(balance_data['cost_basis']['value'])
+
+            cost_basis = Decimal(str(balance_data['cost_basis'].get('value', '0')))
             cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_quantizer)
-            asset_balance = Decimal(self.spot_positions.get(asset, {}).get('total_balance_crypto', 0))
-            asset_balance = self.shared_utils_precision.safe_quantize(asset_balance, quote_quantizer)
+
+            # ✅ Fallback to spot_positions if non_zero_balances is missing or empty
+            asset_balance = Decimal(
+                self.spot_positions.get(asset, {}).get('total_balance_crypto', 0)
+            )
+            asset_balance = self.shared_utils_precision.safe_quantize(asset_balance, base_quantizer)
+
+            # ✅ Recompute cost_basis if not present but we have avg_price & balance
+            if cost_basis == 0 and asset_balance > 0 and avg_price > 0:
+                cost_basis = (asset_balance * avg_price).quantize(quote_quantizer)
+
             return asset_balance, avg_price, cost_basis
+
         except Exception as e:
             self.logger.error(f"❌ Error getting asset details for {asset}: {e}", exc_info=True)
             return Decimal('0'), Decimal('0'), Decimal('0')

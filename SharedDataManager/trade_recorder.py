@@ -115,10 +115,13 @@ class TradeRecorder:
 
             # Skip duplicate FALLBACK/FILL records if real one exists
             if ("-FALLBACK" in order_id or "-FILL-" in order_id) and source == "websocket":
+                base_id = order_id.split("-F")[0]
                 async with self.db_session_manager.async_session_factory() as session:
-                    exists = await session.get(TradeRecord, order_id.split("-F")[0])
-                    if exists and exists.size and exists.size > 0:
-                        self.logger.info(f"⏭️ Skipping duplicate {order_id} — real trade already recorded")
+                    primary_trade = await session.get(TradeRecord, base_id)
+                    if primary_trade:
+                        self.logger.info(
+                            f"⏭️ Skipping duplicate Fallback {order_id} — primary already recorded: {base_id}"
+                        )
                         return
 
             # -----------------------------
@@ -600,6 +603,39 @@ class TradeRecorder:
                 self.logger.error(f"❌ Error in fetch_trade_records_for_tp_sl for {symbol}: {e}", exc_info=True)
             return []
 
+    async def fetch_sells_by_date(self, date) -> list:
+        """
+        Fetches all SELL trades for a given date (UTC), including pnl_usd values.
 
+        Args:
+            date (datetime.date): The date to query (UTC).
+        Returns:
+            List of TradeRecord objects for SELLs on that date.
+        """
+        try:
+            async with self.db_session_manager.async_session_factory() as session:
+                async with session.begin():
+                    start_dt = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
+                    end_dt = datetime.combine(date, datetime.max.time(), tzinfo=timezone.utc)
+
+                    stmt = (
+                        select(TradeRecord)
+                        .where(
+                            and_(
+                                TradeRecord.side == "sell",
+                                TradeRecord.order_time >= start_dt,
+                                TradeRecord.order_time <= end_dt,
+                                TradeRecord.pnl_usd.isnot(None)
+                            )
+                        )
+                    )
+
+                    result = await session.execute(stmt)
+                    sells = result.scalars().all()
+                    return sells
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error fetching sells for {date}: {e}", exc_info=True)
+            return []
 
 

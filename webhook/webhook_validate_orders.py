@@ -2,7 +2,7 @@
 from dataclasses import asdict
 from dataclasses import dataclass
 from dataclasses import field
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from decimal import InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from typing import Optional, Union, Dict, Callable
@@ -54,6 +54,7 @@ class OrderData:
     take_profit_price: Optional[Decimal] = None
     avg_quote_volume:Optional[Decimal] = None
     volume_24h: Optional[Decimal] = None
+    parent_id: Optional[str] = None  # For tracking parent orders in OCO or complex orders
 
     def get_effective_amount(self) -> Decimal:
         """
@@ -166,7 +167,7 @@ class OrderData:
                 open_orders=data.get('open_orders', None),
                 status=status,
                 source=data.get('source', 'UNKNOWN'),
-                trigger=data.get("trigger"),
+                trigger=data.get("trigger") or {"tp_sl_flag": data.get("tp_sl_flag", False)},
                 base_avail_balance=get_decimal('base_avail_balance'),
                 total_balance_crypto=get_decimal('total_balance_crypto'),
                 available_to_trade_crypto=get_decimal('available_to_trade_crypto'),
@@ -179,13 +180,16 @@ class OrderData:
                 average_price=get_decimal('average_price') or get_decimal('avg_price'),
                 adjusted_price=get_decimal('adjusted_price'),
                 adjusted_size=get_decimal('adjusted_size'),
-                stop_loss_price=get_decimal('stop_loss_price'),
+                stop_loss_price=get_decimal('stop_loss_price') or get_decimal('stop_price'),
                 take_profit_price=get_decimal('take_profit_price'),
+
                 avg_quote_volume=get_decimal('avg_quote_volume'),
                 volume_24h=get_decimal('volume_24h'),
+                parent_id=data.get("parent_order_id"),
             )
 
         except Exception as e:
+
             print(f"‼️WARNING  Error creating OrderData from dict: {e}  ‼️")
             raise
 
