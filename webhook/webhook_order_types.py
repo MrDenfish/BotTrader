@@ -4,12 +4,8 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
-from inspect import stack
 from typing import Optional, Union
-
-import pandas as pd
 from cachetools import TTLCache
-
 from Config.config_manager import CentralConfig as Config
 from webhook.webhook_validate_orders import OrderData
 

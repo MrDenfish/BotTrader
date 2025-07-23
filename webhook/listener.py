@@ -20,7 +20,7 @@ from MarketDataManager.passive_order_manager import PassiveOrderManager
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.dates_and_times import DatesAndTimes
-from TestingDebugging.debugger import Debugging
+from TestDebugMaintenance.debugger import Debugging
 from Shared_Utils.enum import ValidationCode
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
@@ -181,9 +181,9 @@ class WebSocketManager:
                 self.logger.info("⚠️ WebSocket connection task was cancelled (shutdown or restart).")
                 return
             except websockets.exceptions.ConnectionClosed as e:
-                self.logger.warning(
-                    f"🔌 WebSocket closed unexpectedly: Code={e.code}, Reason={e.reason}. Reconnecting..."
-                )
+                f"🔌 WebSocket closed unexpectedly: Code={getattr(e, 'code', 'N/A')}, "
+                f"Reason={getattr(e, 'reason', 'No close frame received')}. Reconnecting..."
+
             except Exception as general_error:
                 self.logger.error(f"🔥 Unexpected WebSocket error: {general_error}", exc_info=True)
 
@@ -223,7 +223,7 @@ class WebSocketManager:
     async def post_reconnect_sync(self):
         """✅ Sync open orders and re-subscribe after reconnect."""
         try:
-            self.logger.info("🔄 Syncing open orders and subscriptions after reconnect...")
+            self.logger.debug("🔄 Syncing open orders and subscriptions after reconnect...")
             await self.coinbase_api.fetch_open_orders()
             await self.websocket_helper.resubscribe_all_channels()
         except Exception as e:
@@ -501,14 +501,14 @@ class WebhookListener:
                 new_market_data["fee_info"] = await self.coinbase_api.get_fee_rates()
 
                 await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
-                self.logger.info(f"⏱ update_market_data (shared_data_manager) took {time.monotonic() - start:.2f}s")
+                self.logger.debug(f"⏱ update_market_data (shared_data_manager) took {time.monotonic() - start:.2f}s")
 
                 print("⚠️ Market data and order management updated successfully. ⚠️")
                 # Monitor and update active orders
 
                 start = time.monotonic()
                 await self.asset_monitor.monitor_all_orders()
-                self.logger.info(f"⏱ monitor_and_update_active_orders took {time.monotonic() - start:.2f}s")
+                self.logger.debug(f"⏱ monitor_and_update_active_orders took {time.monotonic() - start:.2f}s")
                 pass
 
 
@@ -728,7 +728,7 @@ class WebhookListener:
                 )
 
             if webhook_uuid in self.processed_uuids:
-                self.logger.info(f"Duplicate webhook detected: {webhook_uuid}")
+                self.logger.debug(f"Duplicate webhook detected: {webhook_uuid}")
                 return web.json_response(
                     {"success": False, "message": "Duplicate 'uuid' detected"},
                     status=int(ValidationCode.DUPLICATE_UUID.value)
@@ -909,7 +909,7 @@ class WebhookListener:
 
             # Fetch open orders
             open_orders = await coinbase_api.fetch_open_orders(limit=limit)
-            logger.info(f"📥 Retrieved {len(open_orders)} open orders")
+            logger.debug(f"📥 Retrieved {len(open_orders)} open orders")
 
             tracker = shared_data_manager.order_management.setdefault("order_tracker", {})
 
@@ -921,7 +921,7 @@ class WebhookListener:
                 order_id = normalized.get("order_id")
                 if order_id not in tracker:
                     tracker[order_id] = normalized
-                    logger.info(f"📌 Added missing open order: {order_id}")
+                    logger.debug(f"📌 Added missing open order: {order_id}")
 
             # Fetch recent FILLED orders
             params = {
@@ -930,10 +930,10 @@ class WebhookListener:
             }
             filled_response = await coinbase_api.get_historical_orders_batch(params)
             orders = filled_response.get("orders", [])
-            logger.info(f"📘 Retrieved {len(orders)} filled orders")
+            logger.debug(f"📘 Retrieved {len(orders)} filled orders")
 
             for order in orders:
-                print(f"Processing order: {order.get('order_id')}")
+                #print(f"Processing order: {order.get('order_id')}") # debugging
                 order_id = order.get("order_id")
                 if not order_id or order.get("status") != "FILLED":
                     continue
@@ -982,12 +982,12 @@ class WebhookListener:
                     "total_fees": total_fees,
                 })
 
-                logger.info(f"🧾 Reconciled and recorded trade: {order_id}")
+                logger.debug(f"🧾 Reconciled and recorded trade: {order_id}")
 
             await shared_data_manager.set_order_management({"order_tracker": tracker})
             await shared_data_manager.save_data()
 
-            logger.info("✅ Reconciliation complete.")
+            logger.debug("✅ Reconciliation complete.")
         except Exception as e:
             logger.error(f"❌ reconcile_with_rest_api() failed: {e}", exc_info=True)
 
@@ -1006,7 +1006,7 @@ class WebhookListener:
 
         while True:
             try:
-                self.logger.info("🔄 Starting sync_open_orders cycle…")
+                self.logger.debug("🔄 Starting sync_open_orders cycle…")
 
                 # ------------------------------------------------------------------
                 # 1) Decide look-back window
@@ -1145,7 +1145,7 @@ class WebhookListener:
                 # 4) UPSERT
                 # ------------------------------------------------------------------
                 if not rows:
-                    self.logger.info("ℹ️ sync_open_orders → nothing to upsert.")
+                    self.logger.debug("ℹ️ sync_open_orders → nothing to upsert.")
                     await asyncio.sleep(interval)
                     continue
 
@@ -1189,7 +1189,7 @@ class WebhookListener:
                         updated_total += result.rowcount
                     await sess.commit()
 
-                self.logger.info(
+                self.logger.debug(
                     f"✅ sync_open_orders → upserted {updated_total} rows "
                     f"({len(open_orders)} open / {len(recent_orders)} recent)"
                 )
@@ -1216,7 +1216,7 @@ class WebhookListener:
 
             await self.shared_data_manager.set_order_management({"order_tracker": new_tracker})
             await self.shared_data_manager.save_data()
-            self.logger.info(f"✅ Loaded {len(new_tracker)} open orders from REST and saved to DB.")
+            self.logger.debug(f"✅ Loaded {len(new_tracker)} open orders from REST and saved to DB.")
         except Exception as e:
             self.logger.error("❌ Failed to sync order_tracker from REST", exc_info=True)
 

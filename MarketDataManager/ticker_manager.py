@@ -4,7 +4,6 @@ from typing import Optional
 import pandas as pd
 import decimal
 import random
-from aiohttp import ClientError
 from requests.exceptions import HTTPError
 from ccxt.base.errors import BadSymbol
 

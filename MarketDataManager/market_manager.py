@@ -252,7 +252,7 @@ class MarketManager:
                 )
                 await self.database.execute(delete_query)
 
-                print(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.")
+                #print(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.") #debugging
         except Exception as e:
             self.logger.error(f"❌ Error capping OHLCV data for {symbol}: {e}", exc_info=True)
 

@@ -9,6 +9,7 @@ import time
 import aiohttp
 from decimal import Decimal
 from aiohttp import web
+from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
 from AccumulationManager.accumulation_manager import AccumulationManager
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
@@ -21,7 +22,7 @@ from MarketDataManager.passive_order_manager import PassiveOrderManager
 from MarketDataManager.asset_monitor import AssetMonitor
 from SharedDataManager.shared_data_manager import SharedDataManager
 from Shared_Utils.alert_system import AlertSystem
-from TestingDebugging.debugger import Debugging
+from TestDebugMaintenance.debugger import Debugging
 from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
@@ -460,11 +461,16 @@ async def main():
         action='store_true',
         help="Run the bot in test mode (bypass balance validation, use dummy values)"
     )
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help="Enable detailed DEBUG logs to console"
+    )
     args = parser.parse_args()
 
     config = await load_config()
     config.test_mode = args.test  # ✅ Globally toggle test_mode            python main.py --run webhook --test
-    log_config = {"log_level": logging.INFO}
+    log_config = {"log_level": logging.DEBUG if args.verbose else logging.INFO}
     logger_manager = LoggerManager(log_config)
 
     webhook_logger = logger_manager.get_logger("webhook_logger")
@@ -544,7 +550,7 @@ async def main():
             )
 
             shared_utils_precision.set_trade_parameters()
-
+            await run_maintenance_if_needed(shared_data_manager, shared_data_manager.trade_recorder)
             try:
                 await shared_data_manager.trade_recorder.backfill_trade_metrics()
             except Exception as e:

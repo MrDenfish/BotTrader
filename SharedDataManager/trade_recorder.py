@@ -4,7 +4,7 @@ from TableModels.trade_record import TradeRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from asyncio import Queue
 from typing import Optional
-from sqlalchemy import select, func, and_, or_, not_
+from sqlalchemy import func, and_, or_, not_
 from sqlalchemy.future import select
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timezone, timedelta
@@ -206,7 +206,7 @@ class TradeRecorder:
                         await session.flush()
 
             if self.logger:
-                self.logger.info(
+                self.logger.debug(
                     f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | "
                     f"PnL: {pnl_usd} | Parents: {parent_ids}"
                 )
@@ -301,7 +301,6 @@ class TradeRecorder:
                 "update_instructions": []
             }
 
-    from sqlalchemy import select, func, and_, or_, not_
 
     async def find_unlinked_buys(self, symbol: str):
         """
@@ -389,7 +388,6 @@ class TradeRecorder:
                     if self.logger:
                         self.logger.error(f"❌ Failed to delete trade {order_id}: {e}", exc_info=True)
 
-    from sqlalchemy import text
 
     async def find_latest_unlinked_buy(self, symbol: str) -> Optional[str]:
         """

@@ -1,0 +1,61 @@
+2025-07-23 10:48:19,431 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 10:48:19,432 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 10:48:41,368 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 10:48:41,369 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 10:48:51,898 - shared_logger - INFO - 🧮 Starting backfill of cost basis and sale proceeds... (trade_recorder.py:499)
+2025-07-23 10:48:51,935 - shared_logger - INFO - 🔎 Found 735 sell trades to backfill. (trade_recorder.py:516)
+2025-07-23 10:48:51,936 - shared_logger - ERROR - fetch_precision: Error processing order for ZETACHAIN-USD: 'PrecisionUtils' object has no attribute '_usd_pairs' (precision.py:157)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 103, in fetch_precision
+    usd_pairs_df = usd_pairs_override if usd_pairs_override is not None else self.usd_pairs
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 45, in usd_pairs
+    return self._usd_pairs
+AttributeError: 'PrecisionUtils' object has no attribute '_usd_pairs'
+2025-07-23 10:48:51,950 - shared_logger - ERROR - ❌ Error during backfill: Symbol ZETACHAIN-USD not found in market_cache. (trade_recorder.py:569)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/SharedDataManager/trade_recorder.py", line 520, in backfill_trade_metrics
+    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 159, in fetch_precision
+    raise ValueError(f"Symbol {symbol} not found in market_cache.")
+ValueError: Symbol ZETACHAIN-USD not found in market_cache.
+2025-07-23 10:49:34,857 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 10:49:34,857 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 10:49:42,011 - shared_logger - INFO - 🧮 Starting backfill of cost basis and sale proceeds... (trade_recorder.py:499)
+2025-07-23 10:49:42,048 - shared_logger - INFO - 🔎 Found 735 sell trades to backfill. (trade_recorder.py:516)
+2025-07-23 10:49:51,665 - shared_logger - ERROR - fetch_precision: Error processing order for ZETACHAIN-USD: 'PrecisionUtils' object has no attribute '_usd_pairs' (precision.py:157)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 103, in fetch_precision
+    usd_pairs_df = usd_pairs_override if usd_pairs_override is not None else self.usd_pairs
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 45, in usd_pairs
+    return self._usd_pairs
+AttributeError: 'PrecisionUtils' object has no attribute '_usd_pairs'
+2025-07-23 10:50:29,568 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 10:50:29,569 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 10:50:34,763 - shared_logger - INFO - 🧮 Starting backfill of cost basis and sale proceeds... (trade_recorder.py:499)
+2025-07-23 10:50:34,802 - shared_logger - INFO - 🔎 Found 735 sell trades to backfill. (trade_recorder.py:516)
+2025-07-23 10:52:07,050 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 10:52:07,050 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 10:52:10,782 - shared_logger - INFO - 🧮 Starting backfill of cost basis and sale proceeds... (trade_recorder.py:499)
+2025-07-23 10:52:10,818 - shared_logger - INFO - 🔎 Found 735 sell trades to backfill. (trade_recorder.py:516)
+2025-07-23 10:53:01,564 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 10:53:01,564 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 10:53:05,138 - shared_logger - INFO - 🧮 Starting backfill of cost basis and sale proceeds... (trade_recorder.py:499)
+2025-07-23 10:53:05,173 - shared_logger - INFO - 🔎 Found 735 sell trades to backfill. (trade_recorder.py:516)
+2025-07-23 10:53:06,507 - shared_logger - ERROR - fetch_precision: Error processing order for ZETACHAIN-USD: 'PrecisionUtils' object has no attribute '_usd_pairs' (precision.py:157)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 103, in fetch_precision
+    usd_pairs_df = usd_pairs_override if usd_pairs_override is not None else self.usd_pairs
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 45, in usd_pairs
+    return self._usd_pairs
+AttributeError: 'PrecisionUtils' object has no attribute '_usd_pairs'
+2025-07-23 11:01:27,880 - shared_logger - INFO - 🔹 CoinBaseAPI  initialzed debug. (coinbase_api.py:34)
+2025-07-23 11:01:27,880 - shared_logger - INFO - 🔸Email alerts are DISABLED via EMAIL_ALERTS=False. (alert_system.py:35)
+2025-07-23 11:01:30,043 - shared_logger - INFO - 🧮 Starting backfill of cost basis and sale proceeds... (trade_recorder.py:499)
+2025-07-23 11:01:30,079 - shared_logger - INFO - 🔎 Found 735 sell trades to backfill. (trade_recorder.py:516)
+2025-07-23 11:01:31,249 - shared_logger - ERROR - fetch_precision: Error processing order for ZETACHAIN-USD: 'PrecisionUtils' object has no attribute '_usd_pairs' (precision.py:157)
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 103, in fetch_precision
+    usd_pairs_df = usd_pairs_override if usd_pairs_override is not None else self.usd_pairs
+  File "/Users/Manny/Python_Projects/BotTrader/Shared_Utils/precision.py", line 45, in usd_pairs
+    return self._usd_pairs
+AttributeError: 'PrecisionUtils' object has no attribute '_usd_pairs'

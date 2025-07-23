@@ -15,7 +15,7 @@ from ProfitDataManager.profit_data_manager import ProfitDataManager
 from Shared_Utils.alert_system import AlertSystem
 from Shared_Utils.database_checker import DatabaseIntegrity
 from Shared_Utils.dates_and_times import DatesAndTimes
-from TestingDebugging.debugger import Debugging
+from TestDebugMaintenance.debugger import Debugging
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.print_data import PrintData

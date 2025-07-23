@@ -316,7 +316,7 @@ class SharedDataManager:
             missing_keys = {"order_tracker", "non_zero_balances"} - set(self.order_management.keys())
             if missing_keys:
                 self.logger.warning(f"⚠️ order_management missing keys: {missing_keys}")
-            self.logger.info(f"✅ set_order_management updated with {len(self.order_management.get('order_tracker', {}))} open orders")
+            self.logger.debug(f"✅ set_order_management updated with {len(self.order_management.get('order_tracker', {}))} open orders")
 
     async def fetch_market_data(self):
         """Fetch market_data from the database via DatabaseSessionManager."""

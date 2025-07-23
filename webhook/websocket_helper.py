@@ -278,7 +278,7 @@ class WebSocketHelper:
                         )
                         inactivity_detected = True
                     else:
-                        self.logger.info(
+                        self.logger.debug(
                             f"✅ User channel '{channel}' active {int(now - last_seen)}s ago"
                         )
 
@@ -310,7 +310,7 @@ class WebSocketHelper:
                         )
                         inactivity_detected = True
                     else:
-                        self.logger.info(
+                        self.logger.debug(
                             f"✅ Market channel '{channel}' active {int(now - last_seen)}s ago"
                         )
 
@@ -350,13 +350,31 @@ class WebSocketHelper:
         """Process parsed market WebSocket message."""
         try:
             channel = data.get("channel")
-            print(f"💙 MARKET channel: {channel}")
 
+            # ✅ Maintain separate counters for channels
+            if not hasattr(self, "market_channel_counters"):
+                self.market_channel_counters = {}
+            if channel not in self.market_channel_counters:
+                self.market_channel_counters[channel] = 0
+
+            # Increment counter for the channel
+            self.market_channel_counters[channel] += 1
+
+            # ✅ Periodic status print (every 25 messages by default)
+            if self.market_channel_counters[channel] >= 25:
+                print(f"💙 MARKET channel active: {channel} | Count={self.market_channel_counters[channel]}")
+                self.market_channel_counters[channel] = 0
+
+            # --- Process specific channels ---
             if channel == "ticker_batch":
                 await self.market_ws_manager.process_ticker_batch_update(data)
+
             elif channel == "level2":
-                print(f"💙 MARKET level2: {data}") #debug
-                pass # debug
+                # Debug level2 occasionally if needed
+                if self.market_channel_counters[channel] == 0:
+                    print(f"💙 MARKET level2 active")
+                # process level2 here if implemented
+
             elif channel == "heartbeats":
                 self.last_heartbeat = time.time()
                 self.count += 1
@@ -364,8 +382,10 @@ class WebSocketHelper:
                     heartbeat_counter = data.get("events", [{}])[0].get("heartbeat_counter")
                     print(f"💙 MARKET heartbeat: Counter={heartbeat_counter}")
                     self.count = 0
+
             elif channel == "subscriptions":
                 self.logger.info(f"💙 Confirmed Market Subscriptions: {data}")
+
             else:
                 self.logger.warning(f"⚠️ Unhandled market WebSocket channel: {channel} | Message: {json.dumps(data)}")
 
@@ -466,7 +486,7 @@ class WebSocketHelper:
             # Check if WebSocket is open
 
             if self.user_client.websocket and self.user_client.websocket.open:
-                self.logger.info("Attempting to resubscribe after error.", exc_info=True)
+                self.logger.debug("Attempting to resubscribe after error.", exc_info=True)
 
                 await self.user_client.unsubscribe_all_async()
 

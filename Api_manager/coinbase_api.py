@@ -523,7 +523,7 @@ class CoinbaseAPI:
                     candles = result.get("candles", [])
 
                     if not candles:
-                        self.logger.info(f"🟡 No OHLCV data for {symbol}")
+                        self.logger.debug(f"🟡 No OHLCV data for {symbol}")
                         return {'symbol': symbol, 'data': pd.DataFrame()}
 
                     df = pd.DataFrame(candles)

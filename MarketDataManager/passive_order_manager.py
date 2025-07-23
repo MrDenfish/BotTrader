@@ -89,7 +89,7 @@ class PassiveOrderManager:
 
         # launch watchdog
         asyncio.create_task(self._watchdog())
-
+        asyncio.create_task(self.live_performance_tracker(interval=300, lookback_days=7))
     _fee_lock: asyncio.Lock = asyncio.Lock()
 
 
@@ -246,7 +246,7 @@ class PassiveOrderManager:
             refresh_interval=300
         )
         if trading_pair not in profitable_symbols:
-            self.logger.info(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
+            self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
             return
 
         try:
@@ -485,7 +485,7 @@ class PassiveOrderManager:
         if od.cost_basis < self._min_order_amount_fiat :
             return False
         if od.side == "buy":
-            fee_multiplier = Decimal(1) + self.fee["maker"]
+            fee_multiplier = Decimal(1) + maker_fee
             cost = od.cost_basis * fee_multiplier
             if od.usd_avail_balance < cost:
                 return False
@@ -674,5 +674,58 @@ class PassiveOrderManager:
             self.logger.warning(f"⚠️ Failed to fetch profitable symbols: {e}", exc_info=True)
             return set()
 
+    async def live_performance_tracker(self, interval: int = 300, lookback_days: int = 7):
+        """
+        Logs live PassiveMM performance every `interval` seconds.
 
+        Args:
+            interval (int): How often to refresh stats (seconds).
+            lookback_days (int): Trade history window to evaluate.
+        """
+        await asyncio.sleep(5)  # slight delay to allow startup
+        while True:
+            try:
+                cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+                trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades(days=lookback_days)
+
+                if not trades:
+                    self.logger.info("📉 No recent trades found for live tracker.")
+                    await asyncio.sleep(interval)
+                    continue
+
+                df = pd.DataFrame([t.__dict__ for t in trades])
+                df = df[pd.to_datetime(df['order_time']) >= cutoff_time]
+
+                # Filter PassiveMM-only trades
+                passive_df = df[df['source'] == "PassiveMM"].copy()
+                total_trades = len(passive_df)
+                profitable_trades = passive_df[passive_df['realized_profit'] > 0]
+                win_rate = (len(profitable_trades) / total_trades * 100) if total_trades else 0
+                total_pnl = passive_df['realized_profit'].sum()
+                avg_pnl = passive_df['realized_profit'].mean() if total_trades else 0
+
+                # Top 5 profitable symbols
+                top_symbols = (
+                    passive_df.groupby('symbol')['realized_profit']
+                    .sum()
+                    .sort_values(ascending=False)
+                    .head(5)
+                    .to_dict()
+                )
+
+                print(self.shared_utils_color.format(
+                    "\n[PassiveMM Live Performance Tracker]\n"
+                    "-------------------------------------\n"
+                    f"Total Trades (last {lookback_days}d): {total_trades}\n"
+                    f"Win Rate: {win_rate:.2f}%\n"
+                    f"Total PnL: {total_pnl:+.2f} USD\n"
+                    f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
+                    f"Top Symbols: {top_symbols}\n"
+                    "-------------------------------------"
+                , self.shared_utils_color.BRIGHT_GREEN))
+
+            except Exception as e:
+                self.logger.error(f"❌ Live performance tracker error: {e}", exc_info=True)
+
+            await asyncio.sleep(interval)
 

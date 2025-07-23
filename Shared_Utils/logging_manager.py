@@ -122,18 +122,22 @@ class LoggerManager:
 
         log_file = os.path.join(log_path, f"{logger_name}.log")
         logger = CustomLogger(logger_name)
-        logger.setLevel(self._log_level)
+        logger.setLevel(logging.DEBUG)  # File will always capture everything
 
         if logger.hasHandlers():
             logger.handlers.clear()
 
+        # ✅ Console Handler → Only shows INFO+ by default (DEBUG only if --verbose)
         console_handler = logging.StreamHandler()
+        console_handler.setLevel(self._log_level)  # INFO normally, DEBUG with --verbose
         console_handler.setFormatter(CustomFormatter())
         logger.addHandler(console_handler)
 
+        # ✅ File Handler → Always keep full DEBUG logs for postmortem analysis
         file_handler = TimedRotatingFileHandler(
             log_file, when="midnight", interval=1, backupCount=2
         )
+        file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
         )
