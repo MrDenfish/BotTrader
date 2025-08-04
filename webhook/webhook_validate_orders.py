@@ -276,9 +276,11 @@ class ValidateOrders:
         try:
             details = validation_result.get("details", {})
             side = details.get("side", "buy")
-            source = details.get("source", "unknown")
+            source = details.get("source", "reconciled")
 
-            maker_fee, taker_fee, base_deci, quote_deci, quote_increment = self.shared_utils_utility.prepare_order_fees_and_decimals(details, precision_data)
+            maker_fee, taker_fee, base_deci, quote_deci, quote_increment = (
+                self.shared_utils_utility.prepare_order_fees_and_decimals(details, precision_data)
+            )
             basics = self.shared_utils_utility.assign_basic_order_fields(details)
 
             fiat_amt = Decimal(details.get("order_amount_fiat", 0))

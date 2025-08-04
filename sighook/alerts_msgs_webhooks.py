@@ -158,7 +158,7 @@ class SenderWebhook:
         if code in {
             ValidationCode.INSUFFICIENT_QUOTE.value,
             ValidationCode.INSUFFICIENT_BASE.value,
-            "313",  # still raw unless you map this to an Enum later
+            "613",  # still raw unless you map this to an Enum later
         }:
             self.logger.warning(f"⚠️ Order blocked by balance or precision constraints ({status}): {parsed.get('message', response_text)}")
             return True
@@ -179,20 +179,24 @@ class SenderWebhook:
             )
             return True
 
-        if code == "412":
+        if code == "612":
             self.logger.warning(f"⚠️ Unable to adjust price for order ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if code == "415":
+        if code == "613":
             self.logger.warning(f"⚠️ Crypto balance > $1.00 — order rejected ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if code in {"416", "417"}:
+        if code in {"625", "618", "622"}:
             self.logger.warning(f"⚠️ Order may be incomplete ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if status == 314 and 'Insufficient balance to sell' in response_text:
+        if status == 614 and 'Insufficient balance to sell' in response_text:
             self.logger.info(f"💸 Insufficient balance for {webhook_payload['pair']} {uuid}.")
+            return True
+
+        if code == "623":
+            self.logger.warning(f"⚠️ Buy conditions not favorable ({status}): {parsed.get('message', response_text)}")
             return True
 
         if code in {"429", "500", "503"}:

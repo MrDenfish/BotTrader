@@ -37,7 +37,7 @@ class TradingStrategy:
 
         # ✅ Indicators & Signal Manager (with TP/SL support)
         self.indicators = Indicators(logger_manager)
-        self.signal_manager = SignalManager(logger_manager,
+        self.signal_manager = SignalManager(logger_manager,shared_data_manager,
                                             shared_utils_precision,
                                             trade_recorder)
 
@@ -111,6 +111,8 @@ class TradingStrategy:
                 buy_signal, sell_signal = self.signal_manager.evaluate_signals(asset, buy_sell_matrix)
                 buy_sell_matrix.at[asset, 'Buy Signal'] = buy_signal
                 buy_sell_matrix.at[asset, 'Sell Signal'] = sell_signal
+                if buy_signal[0] == 0 and "blocked" in buy_signal[3]:
+                    print(f"⚠️⚠️⚠️   Buy signal for {asset} blocked — {buy_signal[3]}    ⚠️⚠️⚠️")
             return strategy_results, buy_sell_matrix
 
         except Exception as e:

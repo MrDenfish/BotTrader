@@ -2,21 +2,26 @@
 
 import asyncio
 import logging
-import pandas as pd
+import random
 import aiohttp
+import pandas as pd
 import hmac, hashlib, base64, time
 
 from typing import Optional, List
 from coinbase import jwt_generator
-from datetime import datetime, timedelta, timezone
 from Shared_Utils.enum import ValidationCode
 from Shared_Utils.alert_system import AlertSystem
+from datetime import datetime, timedelta, timezone
 from Shared_Utils.logging_manager import LoggerManager
 from Config.config_manager import CentralConfig as Config
 
 
 class CoinbaseAPI:
-    """This class is for REST API code and should nt be confused with the websocket code used in WebsocketHelper"""
+    """This class is for REST API code and should not be confused with the websocket code used in WebsocketHelper."""
+
+    # ✅ Global OHLCV semaphore & counters (shared across all instances)
+    _ohlcv_semaphore = asyncio.Semaphore(5)  # limit concurrent OHLCV calls
+    _active_ohlcv_tasks = 0  # tracking active tasks
 
     def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision):
         self.config = Config()
@@ -31,9 +36,8 @@ class CoinbaseAPI:
         self.webhook_logger = LoggerManager(log_config)
         self.logger = logger_manager.loggers['shared_logger']
 
-        self.logger.info("🔹 CoinBaseAPI  initialzed debug.")
+        self.logger.info("🔹 CoinBaseAPI initialized debug.")
 
-        # default fees
         self.default_maker_fee = self.config.maker_fee
         self.default_taker_fee = self.config.taker_fee
 
@@ -45,7 +49,6 @@ class CoinbaseAPI:
 
         self.api_algo = self.config.load_websocket_api_key().get('algorithm')
 
-        # low volume coins that produce no candles get cached
         self.empty_ohlcv_cache = set()
         self.last_cache_clear_time = datetime.now(timezone.utc)
 
@@ -474,81 +477,110 @@ class CoinbaseAPI:
             self.logger.error(f"❗ Exception in get_all_usd_pairs: {e}", exc_info=True)
             return []
 
-    async def fetch_ohlcv(self, symbol: str, params: dict):
+    async def fetch_ohlcv(self, symbol: str, params: dict, max_retries: int = 5):
         """
         Fetch OHLCV candles from Coinbase Advanced Trade API (JWT-authenticated).
+        Includes global throttling and exponential backoff retries.
 
         Args:
             symbol (str): Market symbol like "BTC-USD"
-            params (dict): Dictionary with keys: start (int), end (int),
-                           granularity (str), limit (int)
+            params (dict): Dictionary with keys: start, end, granularity, limit
+            max_retries (int): Maximum number of retries for transient errors.
 
         Returns:
             dict: { 'symbol': str, 'data': pd.DataFrame }
         """
-        try:
-            product_id = symbol.replace("/", "-")
-            request_path = f"/api/v3/brokerage/products/{product_id}/candles"
+        async with self._ohlcv_semaphore:
+            type(self)._active_ohlcv_tasks += 1
+            try:
+                self.logger.debug(
+                    f"📊 OHLCV active={self._active_ohlcv_tasks} "
+                    f"(max={self._ohlcv_semaphore._value + self._active_ohlcv_tasks}) | Fetching: {symbol}"
+                )
 
-            # Extract and validate parameters
-            start = str(params.get("start"))
-            end = str(params.get("end"))
-            granularity = params.get("granularity", "ONE_MINUTE")
-            limit = str(params.get("limit", 300))
+                product_id = symbol.replace("/", "-")
+                request_path = f"/api/v3/brokerage/products/{product_id}/candles"
 
-            query_params = {
-                "start": start,
-                "end": end,
-                "granularity": granularity,
-                "limit": limit
-            }
+                query_params = {
+                    "start": str(params.get("start")),
+                    "end": str(params.get("end")),
+                    "granularity": params.get("granularity", "ONE_MINUTE"),
+                    "limit": str(params.get("limit", 300))
+                }
 
-            # Build JWT token
-            jwt_token = self.generate_rest_jwt("GET", request_path)
+                jwt_token = self.generate_rest_jwt("GET", request_path)
+                headers = {
+                    "Authorization": f"Bearer {jwt_token}",
+                    "Content-Type": "application/json"
+                }
+                url = f"https://api.coinbase.com{request_path}"
 
-            headers = {
-                "Authorization": f"Bearer {jwt_token}",
-                "Content-Type": "application/json"
-            }
+                retries = 0
+                delay = 1
 
-            url = f"https://api.coinbase.com{request_path}"
+                while retries <= max_retries:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(url, headers=headers, params=query_params) as response:
+                                if response.status == 200:
+                                    result = await response.json()
+                                    candles = result.get("candles", [])
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, params=query_params) as response:
-                    if response.status != 200:
-                        self.logger.warning(f"⚠️ Coinbase returned {response.status} for {symbol}")
-                        return {'symbol': symbol, 'data': pd.DataFrame()}
+                                    if not candles:
+                                        self.logger.debug(f"🟡 No OHLCV data for {symbol}")
+                                        return {"symbol": symbol, "data": pd.DataFrame()}
 
-                    result = await response.json()
-                    candles = result.get("candles", [])
+                                    df = pd.DataFrame(candles).rename(columns={
+                                        "start": "time",
+                                        "low": "low",
+                                        "high": "high",
+                                        "open": "open",
+                                        "close": "close",
+                                        "volume": "volume"
+                                    })
+                                    df["time"] = pd.to_datetime(df["time"].astype(int), unit="s", utc=True)
+                                    df[["open", "high", "low", "close", "volume"]] = df[
+                                        ["open", "high", "low", "close", "volume"]
+                                    ].astype(float)
+                                    df = df.sort_values("time")
+                                    return {"symbol": symbol, "data": df}
 
-                    if not candles:
-                        self.logger.debug(f"🟡 No OHLCV data for {symbol}")
-                        return {'symbol': symbol, 'data': pd.DataFrame()}
+                                elif response.status in (429, 500, 503):
+                                    # Retry on rate limits or server errors
+                                    self.logger.warning(
+                                        f"⚠️ OHLCV fetch {symbol} → HTTP {response.status}. "
+                                        f"Retrying in {delay}s (Attempt {retries + 1}/{max_retries})"
+                                    )
+                                else:
+                                    text = await response.text()
+                                    self.logger.error(
+                                        f"❌ OHLCV fetch {symbol} failed → HTTP {response.status}: {text}"
+                                    )
+                                    return {"symbol": symbol, "data": pd.DataFrame()}
 
-                    df = pd.DataFrame(candles)
-                    df = df.rename(columns={
-                        "start": "time",
-                        "low": "low",
-                        "high": "high",
-                        "open": "open",
-                        "close": "close",
-                        "volume": "volume"
-                    })
+                        # Exponential backoff before retry
+                        retries += 1
+                        await asyncio.sleep(delay + random.uniform(0, 0.5))
+                        delay = min(delay * 2, 30)
 
-                    df["time"] = pd.to_datetime(df["time"].astype(int), unit="s", utc=True)
+                    except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+                        retries += 1
+                        self.logger.warning(
+                            f"🌐 Network error on OHLCV fetch for {symbol}: {e}. "
+                            f"Retrying in {delay}s (Attempt {retries}/{max_retries})"
+                        )
+                        await asyncio.sleep(delay + random.uniform(0, 0.5))
+                        delay = min(delay * 2, 30)
 
-                    df[["open", "high", "low", "close", "volume"]] = df[
-                        ["open", "high", "low", "close", "volume"]
-                    ].astype(float)
+                self.logger.error(f"❌ Max retries exceeded for OHLCV {symbol}")
+                return {"symbol": symbol, "data": pd.DataFrame()}
 
-                    df = df.sort_values("time")
+            except Exception as e:
+                self.logger.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
+                return {"symbol": symbol, "data": pd.DataFrame()}
 
-                    return {"symbol": symbol, "data": df}
-
-        except Exception as e:
-            self.logger.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)
-            return {"symbol": symbol, "data": pd.DataFrame()}
+            finally:
+                type(self)._active_ohlcv_tasks -= 1
 
     async def fetch_open_orders(self, product_id: Optional[str] = None, limit: int = 100) -> List[dict]:
         """

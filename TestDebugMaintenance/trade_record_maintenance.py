@@ -1,45 +1,71 @@
-
+from TableModels.trade_record import TradeRecord
+from sqlalchemy import or_, and_, select, func
+from sqlalchemy import update
 
 async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     """
-    Runs the maintenance cleanup + backfill ONLY if incomplete trades are detected.
+    Runs the maintenance cleanup + backfill if incomplete trades are found OR if the table is empty.
+    fix or complete trade records that already exist:
+        - Sell trades missing PnL/parent references
+        - Buy trades missing remaining_size
+        - Rows with None fields due to WebSocket dropouts or recon reconciliation
     """
-    # Check for incomplete trades
+
+
+    print("🔎 Checking for trade maintenance requirements...")
+
     async with shared_data_manager.database_session_manager.async_session_factory() as session:
         async with session.begin():
-            from TableModels.trade_record import TradeRecord
-            from sqlalchemy import or_, select
+            # Check if any trades exist
+            total_count_result = await session.execute(select(func.count()).select_from(TradeRecord))
+            total_trades = total_count_result.scalar_one()
 
-            result = await session.execute(
-                select(TradeRecord)
-                .where(
-                    or_(
-                        TradeRecord.side == "sell",
-                        TradeRecord.side == "buy"
-                    )
+            if total_trades == 0:
+                print("⚠️ No trades found in database. Running maintenance anyway.")
+            else:
+                # Check for incomplete fields
+                result = await session.execute(
+                    select(TradeRecord).where(
+                        or_(
+                            TradeRecord.parent_id.is_(None),
+                            TradeRecord.parent_ids.is_(None),
+                            TradeRecord.remaining_size.is_(None),
+                            and_(
+                                TradeRecord.side == "sell",
+                                or_(
+                                    TradeRecord.pnl_usd.is_(None),
+                                    TradeRecord.cost_basis_usd.is_(None),
+                                    TradeRecord.sale_proceeds_usd.is_(None)
+                                )
+                            )
+                        )
+                    ).limit(1)
                 )
-                .where(
-                    or_(
-                        TradeRecord.parent_id.is_(None),
-                        TradeRecord.parent_ids.is_(None),
-                        TradeRecord.remaining_size.is_(None)
-                    )
-                )
-                .limit(1)
-            )
-            incomplete_trade = result.scalar_one_or_none()
+                incomplete_trade = result.scalar_one_or_none()
 
-    if not incomplete_trade:
-        print("✅ No maintenance needed — all trades are complete.")
-        return
+                if not incomplete_trade:
+                    print("⚠️ No incomplete trades found — checking if table is empty...")
 
-    print("⚠️ Incomplete trades detected — running maintenance now...")
+                    # NEW: check if table is empty
+                    async with shared_data_manager.database_session_manager.async_session_factory() as session:
+                        async with session.begin():
+                            result = await session.execute(select(func.count()).select_from(TradeRecord))
+                            count = result.scalar_one()
 
-    from sqlalchemy import update
+                    if count == 0:
+                        print("⚠️ trade_records is empty — seeding + running backfill.")
+                    else:
+                        print("✅ No maintenance needed — all trades are complete.")
+                        return
 
-    # --- BUY trades ---
+    # Run the SQL cleanup patches and backfill
+    print("⚙️ Incomplete or missing trades detected — applying fixes...")
+
+
+
     async with shared_data_manager.database_session_manager.async_session_factory() as session:
         async with session.begin():
+            # BUY Fixes
             buy_fix_stmt = (
                 update(TradeRecord)
                 .where(TradeRecord.side == "buy")
@@ -71,7 +97,7 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
             result = await session.execute(remaining_fix_stmt)
             print(f"    → Fixed remaining_size for {result.rowcount} BUY trades.")
 
-            # --- SELL trades ---
+            # SELL Reset for reprocessing
             sell_reset_stmt = (
                 update(TradeRecord)
                 .where(TradeRecord.side == "sell")
@@ -88,7 +114,10 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
             result = await session.execute(sell_reset_stmt)
             print(f"    → Reset {result.rowcount} SELL trades for backfill.")
 
-    print("✅ Running backfill now...")
+    # Run the backfill processes
+    print("🔁 Running backfill now...")
     await trade_recorder.backfill_trade_metrics()
+    await trade_recorder.fix_unlinked_sells()
     print("✅ Maintenance completed.")
+
 

@@ -146,7 +146,7 @@ class OrderTypeManager:
             if has_open_order:
                 return {
                     "error": "open_order",
-                    "code": 411,
+                    "code": 611,
                     "message": f"⚠️ Order Blocked - Existing Open Order for {trading_pair}"
                 }
 
@@ -186,13 +186,13 @@ class OrderTypeManager:
                 if adjusted_size <= 0:
                     return {
                         "error": "Zero_Size",
-                        "code": 400,
+                        "code": 700,
                         "message": f"⚠️ Order Blocked - Zero Size for {asset} BUY."
                     }
             elif order_data.side.upper() == "SELL" and adjusted_size > Decimal(order_data.available_to_trade_crypto):
                 return {
                     "error": "Insufficient_crypto",
-                    "code": 403,
+                    "code": 614,
                     "message": f"⚠️ Order Blocked - Insufficient Crypto to sell {asset}."
                 }
 

@@ -81,6 +81,8 @@ class PrecisionUtils:
 
     def safe_quantize(self, value: Decimal, precision: Decimal, rounding=ROUND_DOWN) -> Decimal:
         try:
+            if not isinstance(value, Decimal):
+                value = Decimal(str(value))
             return value.quantize(precision, rounding=rounding)
         except InvalidOperation:
             try:

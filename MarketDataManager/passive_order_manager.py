@@ -49,7 +49,7 @@ class PassiveOrderManager:
     INVENTORY_BIAS_FACTOR = Decimal("0.10")  # ≤ 25 % of current spread Lower inventory skew
 
     def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility, shared_utils_precision,
-                 trade_order_manager, order_manager, logger, min_spread_pct, fee_cache: Dict[str, Decimal], *, max_lifetime: int | None = None) -> None:
+                 trade_order_manager, order_manager, logger_manager, min_spread_pct, fee_cache: Dict[str, Decimal], *, max_lifetime: int | None = None) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
@@ -57,7 +57,9 @@ class PassiveOrderManager:
         self.shared_utils_utility = shared_utils_utility
         self.shared_utils_color = shared_utils_color
         self.shared_data_manager = shared_data_manager
-        self.logger = logger
+        self.logger_manager = logger_manager  # 🙂
+        if logger_manager:
+            self.logger = self.logger_manager.loggers['shared_logger']  # ✅ this is the actual logger being used
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
         self.min_spread_pct = min_spread_pct or self.DEFAULT_MIN_SPREAD_PCT
@@ -242,7 +244,7 @@ class PassiveOrderManager:
             min_pnl_usd=Decimal("1.0"),
             lookback_days=7,
             source_filter=None,
-            min_24h_volume=Decimal("1000000"),
+            min_24h_volume=Decimal("750000"),  # 7.5k USD min volume
             refresh_interval=300
         )
         if trading_pair not in profitable_symbols:
@@ -424,16 +426,16 @@ class PassiveOrderManager:
     async def _finalize_passive_order(self, quote_od: OrderData, trading_pair: str):
         # Set price/size/cost basis
         price = quote_od.adjusted_price
+        if not price:
+            price = quote_od.limit_price
         fiat = quote_od.order_amount_fiat
         base_deci = quote_od.base_decimal
         quote_deci = quote_od.quote_decimal
-
-        quote_od.adjusted_size_fiat = fiat
-        quote_od.adjusted_size = (fiat / price).quantize(
-            Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN
-        )
+        base_quantizer = Decimal("1").scaleb(-base_deci)
         quote_quantizer = Decimal("1").scaleb(-quote_deci)
 
+        quote_od.adjusted_size_fiat = fiat
+        quote_od.adjusted_size = self.shared_utils_precision.safe_quantize((fiat / price), base_quantizer)
         quote_od.cost_basis = self.shared_utils_precision.safe_quantize(price * quote_od.adjusted_size,quote_quantizer)
         spread = Decimal(quote_od.spread)
         quote_od.spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
@@ -603,7 +605,7 @@ class PassiveOrderManager:
             min_pnl_usd: Decimal = Decimal("0.0"),
             lookback_days: int = 7,
             source_filter: str | None = None,
-            min_24h_volume: Decimal = Decimal("1000000"),
+            min_24h_volume: Decimal = Decimal("750000"),  # 750k USD
             refresh_interval: int = 300  # 5 minutes
     ) -> set:
         """
@@ -676,17 +678,13 @@ class PassiveOrderManager:
 
     async def live_performance_tracker(self, interval: int = 300, lookback_days: int = 7):
         """
-        Logs live PassiveMM performance every `interval` seconds.
-
-        Args:
-            interval (int): How often to refresh stats (seconds).
-            lookback_days (int): Trade history window to evaluate.
+        Logs live PassiveMM performance every `interval` seconds by linking SELLs to PassiveMM BUYs.
         """
-        await asyncio.sleep(5)  # slight delay to allow startup
+        await asyncio.sleep(5)
         while True:
             try:
                 cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-                trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades(days=lookback_days)
+                trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades()  # fetch all recent
 
                 if not trades:
                     self.logger.info("📉 No recent trades found for live tracker.")
@@ -694,19 +692,30 @@ class PassiveOrderManager:
                     continue
 
                 df = pd.DataFrame([t.__dict__ for t in trades])
-                df = df[pd.to_datetime(df['order_time']) >= cutoff_time]
+                df['order_time'] = pd.to_datetime(df['order_time'])
+                df = df[df['order_time'] >= cutoff_time].copy()
 
-                # Filter PassiveMM-only trades
-                passive_df = df[df['source'] == "PassiveMM"].copy()
-                total_trades = len(passive_df)
-                profitable_trades = passive_df[passive_df['realized_profit'] > 0]
+                # ✅ Step 1: Get all PassiveMM BUY order IDs
+                passive_buy_ids = set(df[(df['side'] == 'buy') & (df['source'] == "PassiveMM")]['order_id'])
+
+                # ✅ Step 2: Filter SELLs whose parent_ids contain any PassiveMM BUY order_id
+                def is_passive_sell(row):
+                    parents = row.get('parent_ids') or []
+                    if isinstance(parents, str):
+                        parents = parents.strip('{}').split(',')
+                    return any(p.strip() in passive_buy_ids for p in parents)
+
+                passive_sells = df[(df['side'] == 'sell') & df.apply(is_passive_sell, axis=1)].copy()
+
+                # ✅ Step 3: Calculate stats using PnL (not realized_profit to avoid cumulative issues)
+                total_trades = len(passive_sells)
+                profitable_trades = passive_sells[passive_sells['pnl_usd'] > 0]
                 win_rate = (len(profitable_trades) / total_trades * 100) if total_trades else 0
-                total_pnl = passive_df['realized_profit'].sum()
-                avg_pnl = passive_df['realized_profit'].mean() if total_trades else 0
+                total_pnl = passive_sells['pnl_usd'].sum()
+                avg_pnl = passive_sells['pnl_usd'].mean() if total_trades else 0
 
-                # Top 5 profitable symbols
                 top_symbols = (
-                    passive_df.groupby('symbol')['realized_profit']
+                    passive_sells.groupby('symbol')['pnl_usd']
                     .sum()
                     .sort_values(ascending=False)
                     .head(5)

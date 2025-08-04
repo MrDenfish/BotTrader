@@ -251,19 +251,32 @@ class AssetMonitor:
         return symbol, asset, Decimal(current_price), qty, avg_entry, profit, profit_pct, precision
 
     async def _passes_holding_cooldown(self, symbol: str) -> bool:
-        try:
-            order_id = await self.trade_recorder.find_latest_unlinked_buy(symbol)
-            if not order_id:
-                return True
+        """
+        Checks whether the minimum holding cooldown has passed for the oldest unlinked BUY.
 
-            trade = await self.trade_recorder.fetch_trade_by_order_id(order_id)
-            if not trade or not trade.order_time:
+        Returns:
+            True  → Safe to place a new order
+            False → Still within the cooldown period
+        """
+        try:
+            # ✅ Fetch unlinked BUYs (FIFO order)
+            trades = await self.trade_recorder.find_unlinked_buys(symbol)
+            if not trades:
+                return True  # No active BUYs → always safe
+
+            # ✅ Oldest unlinked buy (FIFO logic)
+            oldest_trade = trades[0]
+
+            # Validate order_time
+            if not oldest_trade or not oldest_trade.order_time:
+                self.logger.warning(f"⚠️ No valid order_time for cooldown check: {symbol}")
                 return True
 
             now = datetime.now(timezone.utc)
-            trade_time = trade.order_time.astimezone(timezone.utc)
+            trade_time = oldest_trade.order_time.astimezone(timezone.utc)
             held_for = now - trade_time
 
+            # ✅ Sanity check: handle any weird clock drift
             if held_for.total_seconds() < 0:
                 self.logger.warning(
                     f"⚠️ Time anomaly detected for {symbol}: negative hold duration {held_for} "
@@ -271,10 +284,23 @@ class AssetMonitor:
                 )
                 return True
 
-            return held_for >= timedelta(minutes=self.min_cooldown)
+            # ✅ Check if minimum cooldown period passed
+            if held_for >= timedelta(minutes=self.min_cooldown):
+                self.logger.debug(
+                    f"⏩ Cooldown passed for {symbol}: held for {held_for.total_seconds() / 60:.1f} min "
+                    f"(required={self.min_cooldown} min)"
+                )
+                return True
+            else:
+                self.logger.debug(
+                    f"⏳ Cooldown active for {symbol}: held for {held_for.total_seconds() / 60:.1f} min "
+                    f"(required={self.min_cooldown} min)"
+                )
+                return False
+
         except Exception as e:
             self.logger.warning(f"⚠️ Could not evaluate cooldown for {symbol}: {e}", exc_info=True)
-            return True
+            return True  # Fail-safe: allow order if something goes wrong
 
     async def _handle_tp_sl_decision(self, symbol, asset, current_price, qty, avg_entry, profit, profit_pct, precision):
         try:

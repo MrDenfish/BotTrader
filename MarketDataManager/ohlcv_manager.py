@@ -5,6 +5,21 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
+class OHLCVDebugCounter:
+    active_requests = 0
+    max_seen = 0
+
+    @classmethod
+    async def track(cls, coro, symbol: str):
+        cls.active_requests += 1
+        cls.max_seen = max(cls.max_seen, cls.active_requests)
+        print(f"📊 OHLCV active={cls.active_requests} (max={cls.max_seen}) | Fetching: {symbol}")
+
+        try:
+            return await coro
+        finally:
+            cls.active_requests -= 1
+            print(f"✅ Done with {symbol}, active now={cls.active_requests}")
 
 class OHLCVManager:
     _instance = None
@@ -71,8 +86,11 @@ class OHLCVManager:
                 'granularity': timeframe,
                 'limit': limit
             }
-
-            ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol, params=params)
+            ohlcv_result = await OHLCVDebugCounter.track(
+                self.coinbase_api.fetch_ohlcv(symbol, params),
+                symbol
+            ) # debugging counter to track active requests
+            #ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol, params=params)
 
             if ohlcv_result and not ohlcv_result['data'].empty:
                 df = ohlcv_result['data']

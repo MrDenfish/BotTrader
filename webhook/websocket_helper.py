@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import random
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -422,9 +423,14 @@ class WebSocketHelper:
                     try:
                         await self.market_ws.send(json.dumps(subscription_message))
                         self.logger.debug(f"✅ Sent subscription for {channel} with: {self.product_ids}")
+                    except asyncio.CancelledError:
+                        self.logger.warning(f"⚠️ Subscription to {channel} cancelled (reconnect or shutdown).")
+                        raise
                     except Exception as e:
-                        self.logger.error(f"❌ Failed to subscribe to {channel}: {e}", exc_info=True)
-
+                        if "sent 1000 (OK)" in str(e):
+                            self.logger.warning(f"⚠️ Clean close during subscription to {channel} (normal reconnect).")
+                        else:
+                            self.logger.error(f"❌ Failed to subscribe to {channel}: {e}", exc_info=True)
                 #self.product_ids.update(product_ids)
                 self.subscribed_channels.update(self.market_channels)
 
@@ -477,31 +483,40 @@ class WebSocketHelper:
 
                 self.subscribed_channels.update(new_channels)
 
+
+        except asyncio.CancelledError:
+            self.logger.warning(f"⚠️ Subscription to {channel} cancelled (reconnect or shutdown).")
+            raise
         except Exception as e:
-            self.logger.error(f"❌ User subscription error: {e}", exc_info=True)
+            if "sent 1000 (OK)" in str(e):
+                self.logger.warning(f"⚠️ Clean close during subscription to {channel} (normal reconnect).")
+            else:
+                self.logger.error(f"❌ Failed to subscribe to {channel}: {e}", exc_info=True)
 
     async def _handle_subscription_error(self):
-        """Handles the WebSocket subscription error by resubscribing."""
+        """
+        Handles subscription errors by attempting resubscription first,
+        then falling back to full reconnect with backoff.
+        """
         try:
-            # Check if WebSocket is open
+            if self.user_client and self.user_client.websocket and self.user_client.websocket.open:
+                self.logger.warning("⚠️ Subscription error detected — trying to resubscribe.")
+                try:
+                    await self.user_client.unsubscribe_all_async()
+                    await self.user_client.subscribe_async(
+                        product_ids=self.product_ids,
+                        channels=['user', 'heartbeats']
+                    )
+                    self.logger.info("✅ Resubscribed successfully after error.")
+                    return
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Resubscription failed, will attempt full reconnect: {e}")
 
-            if self.user_client.websocket and self.user_client.websocket.open:
-                self.logger.debug("Attempting to resubscribe after error.", exc_info=True)
-
-                await self.user_client.unsubscribe_all_async()
-
-                # Re-subscribe_market to channels
-                await self.user_client.subscribe_async(
-                    product_ids=self.product_ids,
-                    channels=['user', 'heartbeats']
-                )
-                self.logger.info(f"Resubscribed to channels")
-            else:
-                self.logger.warning("WebSocket not open, attempting reconnection.", exc_info=True)
-                await self.websocket_manager.connect_websocket()  # Reconnect if not open
+            self.logger.warning("🔄 Falling back to full reconnect...")
+            await self.reconnect_with_backoff()
 
         except Exception as e:
-            self.logger.error(f"Error during re-subscription: {e}", exc_info=True)
+            self.logger.error(f"❌ Error during subscription error handling: {e}", exc_info=True)
 
     async def resubscribe_all_channels(self):
         """
@@ -523,6 +538,37 @@ class WebSocketHelper:
         if isinstance(passive, list):
             return {o["order_id"]: o for o in passive if isinstance(o, dict) and "order_id" in o}
         return dict(passive)
+
+    async def reconnect_with_backoff(self, max_attempts: int = 10):
+        """
+        Attempts to reconnect to the WebSocket with exponential backoff.
+        Resets subscription state before trying.
+        """
+        attempt = 0
+        while attempt < max_attempts and not self.listener.shutdown_event.is_set():
+            attempt += 1
+            wait_time = min(2 ** attempt + random.uniform(0, 1), 60)  # Cap at 60s
+            self.logger.warning(f"🔄 Reconnecting (attempt {attempt}) in {wait_time:.1f}s...")
+            await asyncio.sleep(wait_time)
+
+            try:
+                # Clear previous subscription state
+                self.subscribed_channels.clear()
+                self.market_channel_activity.clear()
+                self.user_channel_activity.clear()
+
+                # Perform reconnect
+                await self.websocket_manager.force_reconnect()
+                await self.resubscribe_all_channels()
+
+                self.logger.info("✅ Reconnected successfully.")
+                return True
+            except Exception as e:
+                self.logger.error(f"❌ Reconnect attempt {attempt} failed: {e}", exc_info=True)
+
+        self.logger.critical("🚨 Max reconnect attempts reached; giving up.")
+        return False
+
 
 
 

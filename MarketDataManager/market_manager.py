@@ -1,12 +1,11 @@
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Union
+from MarketDataManager.ohlcv_manager import OHLCVDebugCounter
 import pandas as pd
 from databases import Database
 from sqlalchemy import select, func, delete
 from sqlalchemy.dialects.postgresql import insert
-
 import TableModels.ohlcv_data
 from Config.config_manager import CentralConfig
 
@@ -112,8 +111,12 @@ class MarketManager:
                         "granularity": timeframe,
                         "limit": limit
                     }
+                    ohlcv_result = await OHLCVDebugCounter.track(
+                        self.coinbase_api.fetch_ohlcv(symbol, params),
+                        symbol
+                    )#debugging counter to track active requests
 
-                    ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol=symbol,params=params)
+                    # ohlcv_result = await self.coinbase_api.fetch_ohlcv(symbol=symbol,params=params)
                     if ohlcv_result and not ohlcv_result['data'].empty:
                         all_dfs.append(ohlcv_result['data'])
                     else:
@@ -270,46 +273,3 @@ class MarketManager:
         if last_time:
             return int(last_time['time'].timestamp() * 1000)
         return None
-
-# async def fetch_ohlcv(self, endpoint, symbol, timeframe, since, params):
-    #     """PART III:
-    #     Fetch OHLCV data for a given symbol with optional `since` timestamp and limit.
-    #     """
-    #     all_ohlcv = []
-    #     symbol = symbol.replace('-', '/')
-    #     pagination_calls = params.get('paginationCalls', 10)
-    #     try:
-    #         for _ in range(pagination_calls):
-    #             await asyncio.sleep(self.exchange.rateLimit / 1000 + 3)  # Respect API rate limit
-    #             # Correctly await `ccxt_api_call`
-    #             ohlcv_page = await self.rate_limited_request(
-    #                 self.ccxt_api.ccxt_api_call,
-    #                 self.exchange.fetch_ohlcv,
-    #                 endpoint,
-    #                 symbol,
-    #                 timeframe,
-    #                 since,
-    #                 params=params
-    #             )
-    #             if not ohlcv_page:
-    #                 break
-    #             all_ohlcv.extend(ohlcv_page)
-    #             since = ohlcv_page[-1][0] + 1  # Advance pagination
-    #
-    #         if all_ohlcv:
-    #             # Create DataFrame
-    #             df = pd.DataFrame(all_ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
-    #
-    #             # Ensure `time` column is converted to datetime format
-    #             if not pd.api.types.is_datetime64_any_dtype(df['time']):
-    #                 df['time'] = pd.to_datetime(df['time'], unit='ms')
-    #
-    #             # Ensure `time` is timezone-aware (UTC)
-    #             df['time'] = df['time'].dt.tz_localize(None).dt.tz_localize('UTC')
-    #             df = df.sort_values(by='time', ascending=True)
-    #             return {'symbol': symbol, 'data': df}
-    #
-    #     except Exception as e:
-    #         self.logger.error(f"❌ Error fetching OHLCV data for {symbol}: {e}", exc_info=True)
-    #
-    #     return None

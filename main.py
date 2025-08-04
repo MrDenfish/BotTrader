@@ -96,6 +96,7 @@ async def init_shared_data(logger_manager, shared_logger, coinbase_api):
     shared_data_manager.__init__(shared_logger, database_session_manager,
                                  shared_utils_utility, shared_utils_precision, coinbase_api=coinbase_api)
 
+    shared_data_manager.inject_maintenance_callback()
 
     # Set attributes on the shared data manager
     shared_data_manager.snapshot_manager = snapshot_manager
@@ -105,6 +106,7 @@ async def init_shared_data(logger_manager, shared_logger, coinbase_api):
     shared_data_manager.shared_utils_precision = shared_utils_precision
 
     await shared_data_manager.initialize()
+
     return shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility, shared_utils_precision
 
 async def build_websocket_components(config, listener, shared_data_manager):
@@ -127,7 +129,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
         shared_utils_precision=listener.shared_utils_precision,
         trade_order_manager=listener.trade_order_manager,
         order_manager=listener.order_manager,
-        logger=listener.logger,
+        logger_manager=listener.logger_manager,
         min_spread_pct=config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
         fee_cache=fee_rates,  # ← new
         # optional knobs ↓
@@ -202,6 +204,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
 
     websocket_manager = WebSocketManager(
         config=Config(),
+        listener=listener,
         coinbase_api=listener.coinbase_api,
         logger_manager=listener.logger,
         websocket_helper=websocket_helper
@@ -381,7 +384,6 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, marke
             logger=logger_manager.loggers["shared_logger"]
         )
     )
-    print(f"✅ Market Data Keys: {list(shared_data_manager.market_data.keys())}")
 
     if startup_event:
         startup_event.set()
@@ -465,6 +467,11 @@ async def main():
         '--verbose',
         action='store_true',
         help="Enable detailed DEBUG logs to console"
+    )
+    parser.add_argument(
+        '--fresh-start',
+        action='store_true',
+        help="Skip historical reconciliation and only track new live trades"
     )
     args = parser.parse_args()
 
@@ -550,11 +557,12 @@ async def main():
             )
 
             shared_utils_precision.set_trade_parameters()
+            # ✅ One-time FIFO Debugging
+            #await shared_data_manager.trade_recorder.test_performance_tracker()
+            #await shared_data_manager.trade_recorder.test_fifo_prod("SPK-USD")
+
             await run_maintenance_if_needed(shared_data_manager, shared_data_manager.trade_recorder)
-            try:
-                await shared_data_manager.trade_recorder.backfill_trade_metrics()
-            except Exception as e:
-                shared_logger.warning(f"⚠️ Skipping PnL backfill due to error: {e}", exc_info=True)
+
 
 
             if args.run == 'webhook':

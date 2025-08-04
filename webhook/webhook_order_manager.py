@@ -168,28 +168,18 @@ class TradeOrderManager:
         """
         Builds a fully prepared OrderData instance, including validation and test-mode overrides.
 
-        Args:
-            source (str): The source of the order (e.g., 'Webhook', 'PassiveMM').
-            trigger (str|dict): Triggering reason or trigger dict.
-            asset (str): Base asset symbol (e.g., 'ETH').
-            product_id (str): Full trading pair (e.g., 'ETH-USD').
-            stop_price (Decimal|None): Optional stop price for stop-limit or TP/SL orders.
-            order_type (str|None): Order type (e.g., 'limit', 'stop_limit').
-            side (str|None): Side ('buy' or 'sell'). Determined automatically if None.
-            test_mode (bool): If True, overrides balance and price validation for testing.
-
         Returns:
             Optional[OrderData]: Fully constructed OrderData or None if validation fails.
         """
+        self.build_failure_reason = None  # Clear previous reason
+
         try:
             # ✅ Market data validation
             if not test_mode and self.market_data_updater.get_empty_keys(self.market_data):
-                self.logger.warning(f"⚠️ Market data incomplete — skipping {asset}")
+                self.build_failure_reason = f"Market data incomplete — skipping {asset}"
                 return None
-            elif test_mode:
-                self.logger.warning(f"⚠️ [TEST MODE] Skipping market data completeness check for {asset}")
 
-            # ✅ Basic setup
+            # ✅ Setup basic vars
             trading_pair = product_id.replace("/", "-")
             spot = self.spot_position.get(asset, {})
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
@@ -199,8 +189,7 @@ class TradeOrderManager:
             usd_data = self.spot_position.get("USD", {})
             usd_balance = Decimal(usd_data.get("total_balance_fiat", 0))
             usd_avail = self.shared_utils_precision.safe_quantize(
-                Decimal(usd_data.get("available_to_trade_fiat", 0)),
-                quote_quantizer
+                Decimal(usd_data.get("available_to_trade_fiat", 0)), quote_quantizer
             )
             min_order_threshold = getattr(self, "min_order_threshold", Decimal("5.00"))
 
@@ -213,10 +202,9 @@ class TradeOrderManager:
             spread = Decimal(bid_ask.get("spread", 0))
             price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
 
-            # ✅ Determine order amounts before overrides
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
-            fiat_amt = min(usd_avail, self.order_size)  # Cap to order size
+            fiat_amt = min(usd_avail, self.order_size)
             crypto_amt = available_to_trade
             order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
                 side if side else "buy", fiat_amt, crypto_amt
@@ -235,61 +223,59 @@ class TradeOrderManager:
                     order_amount_crypto=order_amount_crypto
                 )
 
-            # ✅ Handle new assets (with test-mode skip)
+            # ✅ Handle new assets
             if not spot and not passive_order_data and not side:
                 if usd_avail >= min_order_threshold or test_mode:
                     self.logger.info(f"💡 {'[TEST MODE] ' if test_mode else ''}Proceeding with buy for new asset {asset}")
-                    spot = {}  # Allow downstream logic
+                    spot = {}
                 else:
-                    self.logger.warning(f"⚠️ Skipping {asset} — no wallet, no passive order, and USD < {min_order_threshold}")
+                    self.build_failure_reason = f"Skipping {asset} — no wallet, no passive order, and USD < {min_order_threshold}"
                     return None
 
-            # ✅ PassiveMM quoting allowed for new assets
-            if source == "PassiveMM":
-                if not passive_order_data:
-                    if usd_avail >= min_order_threshold or test_mode:
-                        self.logger.info(
-                            f"💡 {'[TEST MODE] ' if test_mode else ''}PassiveMM initializing first-time quote for {asset}"
-                        )
-                        passive_order_data = {}
-                    else:
-                        self.logger.warning(f"⚠️ PassiveMM skipping {asset} — no passive data and insufficient USD.")
-                        return None
+            if source == "PassiveMM" and not passive_order_data:
+                if usd_avail >= min_order_threshold or test_mode:
+                    self.logger.info(
+                        f"💡 {'[TEST MODE] ' if test_mode else ''}PassiveMM initializing first-time quote for {asset}"
+                    )
+                    passive_order_data = {}
+                else:
+                    self.build_failure_reason = f"PassiveMM skipping {asset} — no passive data and insufficient USD."
+                    return None
                 self.shared_utils_utility.get_passive_order_data(passive_order_data)
 
-            # ✅ Final price validation (after overrides)
+            # ✅ Price validation
             if price == 0:
-                self.logger.warning(f"⚠️ Price is zero for {trading_pair} — skipping order")
+                self.build_failure_reason = f"Price is zero for {trading_pair}"
                 return None
 
             # ✅ Side fallback logic
             if side is None:
                 side = "buy" if usd_avail >= self.order_size or test_mode else "sell"
 
-            # ✅ Skip 24h price change checks in test_mode
+            # ✅ Skip bad momentum for buys
             if side == "buy" and not test_mode:
                 try:
                     usd_pairs = self.usd_pairs.set_index("asset")
                     price_change_24h = usd_pairs.loc[asset, 'price_percentage_change_24h'] if asset in usd_pairs.index else None
                     if price_change_24h is None or Decimal(price_change_24h) <= 0:
-                        self.logger.info(f"📉 Skipping BUY for {asset} — 24h price change {price_change_24h}% not favorable")
+                        self.build_failure_reason = f"Skipping BUY for {asset} — 24h price change {price_change_24h}% not favorable"
                         return None
                 except Exception as e:
                     self.logger.warning(f"⚠️ Failed to check price change for {asset}: {e}")
+                    self.build_failure_reason = f"24h price change check failed for {asset}"
                     return None
 
-            # ✅ Fee setup
-            if not self.fee_info:
-                maker_fee, taker_fee = self.default_maker_fee, self.default_taker_fee
-            else:
-                maker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('maker') or self.default_maker_fee)
-                taker_fee = Decimal(self.fee_info.get('fee_rates', {}).get('taker') or self.default_taker_fee)
+            # ✅ Fees
+            maker_fee = Decimal(
+                self.fee_info.get('fee_rates', {}).get('maker') or self.default_maker_fee) if self.fee_info else self.default_maker_fee
+            taker_fee = Decimal(
+                self.fee_info.get('fee_rates', {}).get('taker') or self.default_taker_fee) if self.fee_info else self.default_taker_fee
 
-            # ✅ Trigger formatting
+            # ✅ Trigger
             trigger_note = f"triggered by {trigger}" if isinstance(trigger, str) else trigger.get("trigger_note", "")
             trigger_dict = trigger if isinstance(trigger, dict) else self.build_trigger(trigger, trigger_note)
 
-            # ✅ Return final OrderData
+            # ✅ Final OrderData
             return OrderData(
                 trading_pair=trading_pair,
                 time_order_placed=None,
@@ -303,9 +289,9 @@ class TradeOrderManager:
                 quote_currency="USD",
                 usd_avail_balance=usd_avail,
                 usd_balance=usd_balance,
-                base_avail_balance=Decimal(spot.get("available_to_trade_crypto", 0)),
-                total_balance_crypto=Decimal(spot.get("total_balance_crypto", 0)),
-                available_to_trade_crypto=Decimal(spot.get("available_to_trade_crypto", 0)),
+                base_avail_balance=available_to_trade,
+                total_balance_crypto=total_balance_crypto,
+                available_to_trade_crypto=available_to_trade,
                 base_decimal=base_deci,
                 quote_decimal=quote_deci,
                 quote_increment=quote_quantizer,
@@ -322,16 +308,17 @@ class TradeOrderManager:
                 cost_basis=Decimal("0"),
                 limit_price=price,
                 average_price=None,
-                avg_quote_volume=self.avg_quote_volume,
                 adjusted_price=None,
                 adjusted_size=None,
                 stop_loss_price=stop_price,
                 take_profit_price=None,
+                avg_quote_volume=self.avg_quote_volume,
                 volume_24h=None
             )
 
         except Exception as e:
             self.logger.error(f"❌ Error in build_order_data for {asset} {trigger}: {e}", exc_info=True)
+            self.build_failure_reason = f"Exception during order build: {e}"
             return None
 
     def apply_test_mode_overrides(

@@ -228,8 +228,9 @@ class WebSocketMarketManager:
                                 self.logger.warning(f"⚠️ No fills for {base_id}, promoting fallback → primary")
                                 trade_data = {
                                     "order_id": base_id,  # ✅ Save as primary
-                                    "parent_id": parent_id if side == "buy" else await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy(
-                                        symbol),
+                                    "parent_id": parent_id if side == "buy" else
+                                    await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol),
+
                                     "symbol": symbol,
                                     "side": side,
                                     "price": order.get("avg_price") or order.get("price"),
@@ -258,8 +259,8 @@ class WebSocketMarketManager:
 
                                 await self.shared_data_manager.trade_recorder.enqueue_trade({
                                     "order_id": unique_fill_id,
-                                    "parent_id": parent_id if side == "buy" else await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy(
-                                        symbol),
+                                    "parent_id": parent_id if side == "buy" else
+                                    await self.shared_data_manager.trade_recorder.find_unlinked_buy_id(symbol),
                                     "symbol": symbol,
                                     "side": side,
                                     "price": fill_price,
@@ -342,9 +343,8 @@ class WebSocketMarketManager:
                     source='websocket',
                     trigger=trigger,
                     asset=symbol,
-                    trading_pair=trading_pair,
-                    limit_price=None,
-                    stop_price=None
+                    product_id=trading_pair
+
                 )
 
                 if roc_order_data:

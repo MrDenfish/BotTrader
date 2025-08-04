@@ -129,6 +129,10 @@ class SharedDataManager:
         self.lock = asyncio.Lock()
         self._initialized_event = Event()
 
+    def inject_maintenance_callback(self):
+        from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
+        self.trade_recorder.run_maintenance_if_needed = lambda: run_maintenance_if_needed(self, self.trade_recorder)
+
     async def validate_startup_state(self, market_data_manager,ticker_manager):
         """Ensure required shared data exists, or initialize it if missing."""
         raw_market_data = await self.database_session_manager.fetch_market_data()

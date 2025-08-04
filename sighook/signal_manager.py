@@ -11,7 +11,7 @@ class SignalManager:
     and evaluates TP/SL conditions based on trade history.
     """
 
-    def __init__(self, logger, shared_utils_precision, trade_recorder):
+    def __init__(self, logger,shared_data_manager, shared_utils_precision, trade_recorder):
         from Config.config_manager import CentralConfig  # Ensure CentralConfig is used
         from sighook.indicators import Indicators
 
@@ -19,6 +19,7 @@ class SignalManager:
         self.logger = logger
         self.indicators = Indicators(logger)
         self.shared_utils_precision = shared_utils_precision
+        self.shared_data_manager = shared_data_manager
         self.trade_recorder = trade_recorder
 
         # ✅ TP/SL thresholds (ensure Decimal types)
@@ -40,6 +41,10 @@ class SignalManager:
             'Sell Ratio': 1.2, 'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5,
             'Sell ROC': 2.0, 'Sell MACD': 1.8, 'Sell Swing': 2.2
         }
+
+    @property
+    def usd_pairs(self):
+        return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     # =========================================================
     # ✅ Core Buy/Sell Scoring
@@ -182,20 +187,51 @@ class SignalManager:
         except Exception as e:
             self.logger.error(f"❌ Error updating buy_sell_matrix for {asset}: {e}", exc_info=True)
 
-    def evaluate_signals(self, asset: str, buy_sell_matrix: pd.DataFrame) -> Tuple[Tuple[int, float, float], Tuple[int, float, float]]:
+    def evaluate_signals(self, asset: str, buy_sell_matrix: pd.DataFrame) -> Tuple[Tuple[int, float, float, str], Tuple[int, float, float, str]]:
         try:
-            row = buy_sell_matrix.loc[asset]
-            buy_score = sum(row[ind][0] * self.strategy_weights.get(ind, 1.0)
-                            for ind in row.index if ind.startswith("Buy"))
-            sell_score = sum(row[ind][0] * self.strategy_weights.get(ind, 1.0)
-                             for ind in row.index if ind.startswith("Sell"))
+            usd_pairs = self.usd_pairs.set_index("asset")
+            price_change_24h = usd_pairs.loc[asset, 'price_percentage_change_24h'] if asset in usd_pairs.index else None
 
-            buy_signal = (1, round(buy_score, 3), self.buy_target) if buy_score >= self.buy_target else (0, round(buy_score, 3), self.buy_target)
-            sell_signal = (1, round(sell_score, 3), self.sell_target) if sell_score >= self.sell_target else (0, round(sell_score, 3), self.sell_target)
+            row = buy_sell_matrix.loc[asset]
+
+            buy_score = sum(
+                row[ind][0] * self.strategy_weights.get(ind, 1.0)
+                for ind in row.index if ind.startswith("Buy")
+            )
+            sell_score = sum(
+                row[ind][0] * self.strategy_weights.get(ind, 1.0)
+                for ind in row.index if ind.startswith("Sell")
+            )
+
+            buy_reason = "ok"
+            sell_reason = "ok"
+
+            if buy_score >= self.buy_target:
+                if price_change_24h is None:
+                    buy_signal = (0, round(buy_score, 3), self.buy_target, "blocked: no 24h price data")
+                elif price_change_24h < 0:
+                    buy_signal = (0, round(buy_score, 3), self.buy_target, f"blocked: 24h price down ({price_change_24h:.2f}%)")
+                else:
+                    buy_signal = (1, round(buy_score, 3), self.buy_target, buy_reason)
+            else:
+                buy_signal = (0, round(buy_score, 3), self.buy_target, "below threshold")
+
+            if sell_score >= self.sell_target:
+                sell_signal = (1, round(sell_score, 3), self.sell_target, sell_reason)
+            else:
+                sell_signal = (0, round(sell_score, 3), self.sell_target, "below threshold")
+
             return buy_signal, sell_signal
+
+        except Exception as e:
+            self.logger.error(f"❌ Error evaluating matrix signals for {asset}: {e}", exc_info=True)
+            return (0, 0.0, 0.0, "error"), (0, 0.0, 0.0, "error")
+
+
         except Exception as e:
             self.logger.error(f"❌ Error evaluating matrix signals for {asset}: {e}", exc_info=True)
             return (0, 0.0, 0.0), (0, 0.0, 0.0)
+
 
 
 

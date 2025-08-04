@@ -5,11 +5,13 @@ import random
 import time
 import uuid
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.sql import text
 from sqlalchemy import case, literal_column
 from datetime import datetime, timezone
 import datetime as dt
 from decimal import Decimal
 from typing import Optional, Any, Sequence
+import socket
 import websockets
 from aiohttp import web
 
@@ -44,8 +46,9 @@ SYNC_LOOKBACK = 24
 
 
 class WebSocketManager:
-    def __init__(self, config, coinbase_api, logger_manager, websocket_helper):
+    def __init__(self, config, listener,coinbase_api, logger_manager, websocket_helper):
         self.config = config
+        self.listener = listener
         self.coinbase_api = coinbase_api
         self.logger = logger_manager
         self.websocket_helper = websocket_helper
@@ -131,35 +134,49 @@ class WebSocketManager:
     async def connect_websocket(self, ws_url, is_user_ws=False):
         """
         Establish and manage a WebSocket connection.
-        Includes heartbeat, per-stream reconnects, and REST sync after reconnect.
+        Includes heartbeat, DNS refresh, auto-reset subscriptions, and alerting after repeated failures.
         """
-        # ✅ Phase 2: Heartbeat watchdog
         last_message_time = time.time()
+        stream_name = "USER" if is_user_ws else "MARKET"
+        MAX_ALERT_ATTEMPTS = 10  # 🔔 After 10 failed reconnects, send an alert
 
         while not self.shutdown_event.is_set():
             try:
+                # ✅ Phase 0: Force DNS refresh before each attempt
+                try:
+                    host = ws_url.replace("wss://", "").split("/")[0]
+                    await asyncio.get_running_loop().getaddrinfo(host, 443)
+                    self.logger.debug(f"🌐 Refreshed DNS for {stream_name} WebSocket → {host}")
+                except socket.gaierror as dns_error:
+                    self.logger.warning(f"⚠️ DNS refresh failed for {stream_name} WebSocket: {dns_error}")
+
                 async with websockets.connect(
-                    ws_url,
-                    ping_interval=30,
-                    ping_timeout=30,
-                    open_timeout=30,
-                    max_size=2**24,
+                        ws_url,
+                        ping_interval=30,
+                        ping_timeout=30,
+                        open_timeout=30,
+                        max_size=2 ** 24,
                 ) as ws:
                     # ✅ Reset reconnect attempts for the specific stream
                     if is_user_ws:
                         self.reconnect_attempts_user = 0
                         self.websocket_helper.user_ws = ws
+
+                        # ✅ A: Always clear & reset subscriptions after reconnect
                         self.websocket_helper.subscribed_channels.clear()
                         await self.websocket_helper.subscribe_user()
-                        self.logger.info(f"✅ Connected and subscribed to user WebSocket: {ws_url}")
+                        self.logger.info(f"✅ Connected & subscribed to USER WebSocket: {ws_url}")
                     else:
                         self.reconnect_attempts_market = 0
                         self.websocket_helper.market_ws = ws
+
+                        # ✅ A: Always clear & reset subscriptions after reconnect
+                        self.websocket_helper.subscribed_channels.clear()
                         await self.websocket_helper.subscribe_market()
-                        self.logger.info(f"✅ Connected to market WebSocket: {ws_url}")
+                        self.logger.info(f"✅ Connected to MARKET WebSocket: {ws_url}")
                         self.logger.info("📡 Market WebSocket subscription complete.")
 
-                    self.logger.info(f"🎧 Listening on: {ws_url}")
+                    self.logger.info(f"🎧 Listening on {stream_name} WebSocket: {ws_url}")
                     last_message_time = time.time()
 
                     async for message in ws:
@@ -170,29 +187,43 @@ class WebSocketManager:
                             else:
                                 await self.websocket_helper._on_market_message_wrapper(message)
                         except Exception as msg_error:
-                            self.logger.error(f"❌ Error processing message: {msg_error}", exc_info=True)
+                            self.logger.error(f"❌ Error processing {stream_name} message: {msg_error}", exc_info=True)
 
                         # ✅ Heartbeat: Force reconnect if no message in 90 seconds
                         if time.time() - last_message_time > 90:
-                            self.logger.warning("⚠️ No messages in 90s, forcing reconnect...")
+                            self.logger.warning(f"⚠️ No {stream_name} messages in 90s — forcing reconnect...")
                             break
 
             except asyncio.CancelledError:
-                self.logger.info("⚠️ WebSocket connection task was cancelled (shutdown or restart).")
+                self.logger.info(f"⚠️ {stream_name} WebSocket task cancelled (shutdown or restart).")
                 return
             except websockets.exceptions.ConnectionClosed as e:
-                f"🔌 WebSocket closed unexpectedly: Code={getattr(e, 'code', 'N/A')}, "
-                f"Reason={getattr(e, 'reason', 'No close frame received')}. Reconnecting..."
-
+                self.logger.warning(
+                    f"🔌 {stream_name} WebSocket closed unexpectedly: "
+                    f"Code={getattr(e, 'code', 'N/A')}, Reason={getattr(e, 'reason', 'No close frame received')}"
+                )
             except Exception as general_error:
-                self.logger.error(f"🔥 Unexpected WebSocket error: {general_error}", exc_info=True)
+                self.logger.error(f"🔥 Unexpected {stream_name} WebSocket error: {general_error}", exc_info=True)
 
             # ✅ Phase 1: Per-stream exponential backoff with jitter
-            attempts = (
-                self.reconnect_attempts_user if is_user_ws else self.reconnect_attempts_market
+            attempts = self.reconnect_attempts_user if is_user_ws else self.reconnect_attempts_market
+            delay = min(2 ** attempts, 60)
+            self.logger.warning(
+                f"🔁 Reconnecting {stream_name} WebSocket in {delay}s (Attempt {attempts + 1}, Total downtime ~{int(time.time() - last_message_time)}s)..."
             )
-            delay = min(2**attempts, 60)
-            self.logger.warning(f"🔁 Reconnecting to {ws_url} in {delay}s (Attempt {attempts+1})...")
+
+            # ✅ B: Alert after repeated failures
+            if attempts + 1 >= MAX_ALERT_ATTEMPTS:
+                if hasattr(self.listener, "alert") and self.listener.alert:
+                    self.listener.alert.callhome(
+                        f"{stream_name} WebSocket Down",
+                        f"{stream_name} WebSocket failed to reconnect after {attempts + 1} attempts (~{int(time.time() - last_message_time)}s downtime).",
+                        mode="email"
+                    )
+                self.logger.error(
+                    f"🚨 {stream_name} WebSocket has failed to reconnect after {attempts + 1} attempts — Alert sent!"
+                )
+
             await asyncio.sleep(delay + random.uniform(0, 5))
 
             if is_user_ws:
@@ -266,7 +297,8 @@ class WebhookListener:
         self.market_manager = market_manager
         self.market_data_updater = market_data_updater
         self.logger_manager = logger_manager  # 🙂
-        self.logger = logger_manager.loggers['webhook_logger']  # ✅ this is the actual logger you’ll use
+        if logger_manager:
+            self.logger = logger_manager.loggers['webhook_logger']  # ✅ this is the actual logger you’ll use
 
         self.webhook_manager = self.ticker_manager = self.utility = None  # Initialize webhook manager properly
         self.ohlcv_manager = None
@@ -330,13 +362,13 @@ class WebhookListener:
             shared_utils_precision=None,
             trade_order_manager=None,
             order_manager = None,
-            logger=None,
+            logger_manager=self.logger_manager,
             min_spread_pct=self.bot_config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
             fee_cache=self.fee_rates,
             # optional knobs ↓
             max_lifetime=90,  # cancel / refresh after 90 s
         )
-        self.websocket_manager = WebSocketManager(self.bot_config, self.ccxt_api, self.logger,
+        self.websocket_manager = WebSocketManager(self.bot_config, self, self.ccxt_api, self.logger,
                                                   self.websocket_helper)
 
         self.websocket_helper.websocket_manager = self.websocket_manager
@@ -484,17 +516,6 @@ class WebhookListener:
 
                 if not new_order_management:
                     self.logger.error("❌ ⚠️⚠️⚠️    new_order_management is empty! Skipping update. ⚠️⚠️⚠️⚠️ ❌")
-
-                # Refresh open orders and get the updated order_tracker
-               # deprecated order_tracker is now updated with the websocket
-                # start = time.monotonic()
-                # _, _, updated_order_tracker = await self.websocket_helper.refresh_open_orders()
-                # self.logger.info(f"⏱ refresh_open_orders took {time.monotonic() - start:.2f}s")
-
-                # Reflect the updated order_tracker in the shared state
-                # if updated_order_tracker:
-                #     new_order_management['order_tracker'] = updated_order_tracker
-                # Update shared state via SharedDataManager
 
                 start = time.monotonic()
                 new_market_data["last_updated"] = datetime.now(timezone.utc)
@@ -816,8 +837,9 @@ class WebhookListener:
                 source, trigger, asset, product_id, stop_price=None, test_mode=self.test_mode
             )
             if order_details is None:
+                msg = self.trade_order_manager.build_failure_reason or "Order build failed"
                 return web.json_response(
-                    {"success": False, "message": "Order build failed"},
+                    {"success": False, "message": msg},
                     status=int(ValidationCode.ORDER_BUILD_FAILED.value)
                 )
 
@@ -907,7 +929,7 @@ class WebhookListener:
         try:
             logger.info("🔁 Starting reconciliation via REST API...")
 
-            # Fetch open orders
+            # ✅ Fetch open orders
             open_orders = await coinbase_api.fetch_open_orders(limit=limit)
             logger.debug(f"📥 Retrieved {len(open_orders)} open orders")
 
@@ -923,7 +945,7 @@ class WebhookListener:
                     tracker[order_id] = normalized
                     logger.debug(f"📌 Added missing open order: {order_id}")
 
-            # Fetch recent FILLED orders
+            # ✅ Fetch recent FILLED orders
             params = {
                 "limit": limit,
                 "order_status": ["FILLED"],
@@ -933,19 +955,17 @@ class WebhookListener:
             logger.debug(f"📘 Retrieved {len(orders)} filled orders")
 
             for order in orders:
-                #print(f"Processing order: {order.get('order_id')}") # debugging
                 order_id = order.get("order_id")
                 if not order_id or order.get("status") != "FILLED":
                     continue
 
                 existing_trade = await shared_data_manager.trade_recorder.fetch_trade_by_order_id(order_id)
 
-                # Only skip if parent_id and parent_ids are already set
-                if existing_trade:
-                    if existing_trade.parent_id and existing_trade.parent_ids:
-                        continue
-                    else:
-                        logger.warning(f"⚠️ Trade {order_id} found in DB but incomplete — will reprocess.")
+                # ✅ Only skip fully complete trades
+                if existing_trade and existing_trade.parent_id and existing_trade.parent_ids:
+                    continue
+                elif existing_trade:
+                    logger.warning(f"⚠️ Trade {order_id} found in DB but incomplete — will reprocess.")
 
                 side = (order.get("side") or "").lower()
                 symbol = order.get("product_id")
@@ -953,19 +973,16 @@ class WebhookListener:
                 size = order.get("filled_size") or order.get("order_size") or "0"
                 order_time = order.get("created_time") or order.get("completed_time") or datetime.now(timezone.utc).isoformat()
                 order_time = order_time.rstrip("Z") if isinstance(order_time, str) else order_time
-
                 total_fees = order.get("total_fees")
 
                 parent_id = None
                 parent_ids = None
                 if side == "buy":
-                    parent_id = order_id  # use self-reference
+                    parent_id = order_id
                     parent_ids = [order_id]
                 elif side == "sell":
-                    parent_id = await shared_data_manager.trade_recorder.find_latest_unlinked_buy(symbol)
+                    parent_id = await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
                     parent_ids = [parent_id] if parent_id else None
-
-
 
                 await shared_data_manager.trade_recorder.enqueue_trade({
                     "order_id": order_id,
@@ -978,7 +995,7 @@ class WebhookListener:
                     "status": "filled",
                     "order_time": order_time,
                     "trigger": {"trigger": order.get("order_type", "market")},
-                    "source": "rest",
+                    "source": "reconciled",  # ✅ Explicitly mark reconciled trades
                     "total_fees": total_fees,
                 })
 
@@ -992,29 +1009,28 @@ class WebhookListener:
             logger.error(f"❌ reconcile_with_rest_api() failed: {e}", exc_info=True)
 
     async def sync_open_orders(self, interval: int = 60 * 60) -> None:
-        """
-        Periodically sync Coinbase open orders and recently-updated orders with the
-        trade_records table.  Runs forever: immediately once, then every *interval*
-        seconds (default = 60 min).
-
-        * First run looks back SYNC_LOOKBACK h to catch anything missed during
-          downtime; subsequent runs only look back 1 h.
-        * UPSERTs each order (ON CONFLICT … DO UPDATE) so we never attempt to pass
-          SQLAlchemy SQL-objects as bound parameters.
-        """
         first_run = True
 
         while True:
             try:
                 self.logger.debug("🔄 Starting sync_open_orders cycle…")
 
+                # 🧩 Check if the trade_records table is empty (only on first run)
+                table_empty = False
+                if first_run:
+                    async with self.database_session_manager.async_session_factory() as sess:
+                        result = await sess.execute(text("SELECT COUNT(*) FROM trade_records"))
+                        count = result.scalar_one()
+                        table_empty = count == 0
+                        self.logger.debug(f"📊 Trade record table is {'empty' if table_empty else 'populated'} (count={count})")
+
                 # ------------------------------------------------------------------
                 # 1) Decide look-back window
                 # ------------------------------------------------------------------
                 lookback_hours = SYNC_LOOKBACK if first_run else 1
                 since_iso = (
-                                    dt.datetime.now(timezone.utc) - dt.timedelta(hours=lookback_hours)
-                            ).isoformat(timespec="seconds") + "Z"
+                    dt.datetime.now(timezone.utc) - dt.timedelta(hours=lookback_hours)
+                ).isoformat(timespec="seconds") + "Z"
                 first_run = False
 
                 # ------------------------------------------------------------------
@@ -1023,18 +1039,23 @@ class WebhookListener:
                 open_resp = await self.coinbase_api.list_historical_orders(
                     limit=250, order_status="OPEN"
                 )
-                recent_resp = await self.coinbase_api.list_historical_orders(
-                    limit=250, start_time=since_iso
-                )
                 open_orders = open_resp.get("orders", []) or []
-                recent_orders = recent_resp.get("orders", []) or []
-                # Path("/recent_orders.json").write_text(json.dumps(recent_orders, indent=2)) # debugging
+
+                recent_orders = []
+                if not table_empty:
+                    recent_resp = await self.coinbase_api.list_historical_orders(
+                        limit=250, start_time=since_iso
+                    )
+                    recent_orders = recent_resp.get("orders", []) or []
+
                 print(
                     f"Fetched {len(open_orders)} open orders "
                     f"and {len(recent_orders)} recent orders (since {since_iso})."
                 )
 
-                # de-dup
+                # ------------------------------------------------------------------
+                # 3) De-duplicate and process orders
+                # ------------------------------------------------------------------
                 seen, orders_to_process = set(), []
                 for o in open_orders + recent_orders:
                     oid = o.get("order_id")
