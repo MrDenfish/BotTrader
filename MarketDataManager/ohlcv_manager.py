@@ -1,9 +1,12 @@
 
 import asyncio
-from datetime import datetime, timedelta, timezone
-
 import numpy as np
 import pandas as pd
+
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timedelta, timezone
+
 
 class OHLCVDebugCounter:
     active_requests = 0
@@ -23,30 +26,49 @@ class OHLCVDebugCounter:
 
 class OHLCVManager:
     _instance = None
-    _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
+    _lock = asyncio.Lock()
 
     @classmethod
-    async def get_instance(cls, exchange, coinbase_api,ccxt_api, logger_manager, shared_utiles_data_time, market_manager):
+    async def get_instance(cls, exchange, coinbase_api, ccxt_api, logger_manager,
+                           shared_utiles_data_time, market_manager,
+                           async_session_factory: sessionmaker):
         """Ensures only one instance of OHLCVManager is created."""
         if cls._instance is None:
             async with cls._lock:
-                if cls._instance is None:  # Double-check after acquiring the lock
-                    cls._instance = cls(exchange, coinbase_api,ccxt_api, logger_manager, shared_utiles_data_time, market_manager)
+                if cls._instance is None:
+                    cls._instance = cls(
+                        exchange=exchange,
+                        coinbase_api=coinbase_api,
+                        ccxt_api=ccxt_api,
+                        logger_manager=logger_manager,
+                        shared_utiles_data_time=shared_utiles_data_time,
+                        market_manager=market_manager,
+                        async_session_factory=async_session_factory
+                    )
         return cls._instance
 
-    def __init__(self, exchange, coinbase_api, ccxt_api, logger_manager, shared_utiles_data_time, market_manager):
+    def __init__(self, exchange, coinbase_api, ccxt_api, logger_manager,
+                 shared_utiles_data_time, market_manager,
+                 async_session_factory: sessionmaker[AsyncSession]):
+
         if OHLCVManager._instance is not None:
             raise Exception("OHLCVManager is a singleton and has already been initialized!")
 
         self.exchange = exchange
-        self.ccxt_api = ccxt_api
         self.coinbase_api = coinbase_api
-        self.logger_manager = logger_manager  # 🙂
-        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
+        self.ccxt_api = ccxt_api
+        self.logger_manager = logger_manager
+
+        # ✅ Assign shared SQLAlchemy session factory
+        self.async_session_factory: sessionmaker[AsyncSession] = async_session_factory
+
+        # ✅ Setup logging
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':
             self.logger = logger_manager.loggers['shared_logger']
+
         self.market_manager = market_manager
         self.shared_utiles_data_time = shared_utiles_data_time
-        self.ohlcv_cache = {}  # Temporary storage for OHLCV data
+        self.ohlcv_cache = {}  # In-memory cache
 
     async def fetch_last_5min_ohlcv(self, symbol, timeframe='ONE_MINUTE', limit=5):
         """

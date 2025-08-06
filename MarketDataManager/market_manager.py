@@ -1,30 +1,37 @@
 
 import asyncio
+import pandas as pd
+import TableModels.ohlcv_data
+
+from typing import Any, List
+from sqlalchemy.sql import Select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select, func, delete
+from Config.config_manager import CentralConfig
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from MarketDataManager.ohlcv_manager import OHLCVDebugCounter
-import pandas as pd
-from databases import Database
-from sqlalchemy import select, func, delete
-from sqlalchemy.dialects.postgresql import insert
-import TableModels.ohlcv_data
-from Config.config_manager import CentralConfig
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 class MarketManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api, ticker_manager,
-                     portfolio_manager, max_concurrent_tasks, database, db_tables, shared_data_manager):
+    def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api,
+                     ticker_manager, portfolio_manager, max_concurrent_tasks, async_session_factory: sessionmaker,
+                     db_tables, shared_data_manager):
         if cls._instance is None:
             cls._instance = cls(tradebot, exchange, order_manager, trading_strategy,
                                 logger_manager, coinbase_api, ccxt_api, ticker_manager,
-                                portfolio_manager, max_concurrent_tasks, database,
+                                portfolio_manager, max_concurrent_tasks, async_session_factory,
                                 db_tables, shared_data_manager)
         return cls._instance
 
-    def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api, ticker_manager,
-                 portfolio_manager, max_concurrent_tasks, database: Database, db_tables, shared_data_manager):
+    def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api,
+                 ticker_manager, portfolio_manager, max_concurrent_tasks, async_session_factory: sessionmaker,
+                 db_tables, shared_data_manager):
+
         self.app_config = CentralConfig()
         self.exchange = exchange
         self.ccxt_api = ccxt_api
@@ -37,12 +44,17 @@ class MarketManager:
         self.order_manager = order_manager
         self.ticker_manager = ticker_manager
         self.portfolio_manager = portfolio_manager
-        self.logger_manager = logger_manager  # 🙂
-        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
-            self.logger = logger_manager.loggers['shared_logger']
-        self.start_time = None
-        self.database = database  # Use `database` directly
+        self.logger_manager = logger_manager
         self.db_tables = db_tables
+
+        # ✅ New: SQLAlchemy session factory
+        self.async_session_factory: sessionmaker[AsyncSession] = async_session_factory
+
+        # ✅ Logging
+        if logger_manager.loggers['shared_logger'].name == 'shared_logger':
+            self.logger = logger_manager.loggers['shared_logger']
+
+        self.start_time = None
         self.request_semaphore = asyncio.Semaphore(2)
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
@@ -76,9 +88,20 @@ class MarketManager:
             await asyncio.sleep(self.exchange.rateLimit / 1000)  # Enforce rate limit
             return await func(*args, **kwargs)
 
+    async def fetch_scalar_column(self, session: AsyncSession, query: Select) -> List[Any]:
+        """
+        Executes a SQLAlchemy select query and returns a flat list of scalar values.
+
+        Example:
+            query = select(MyTable.id).where(MyTable.flag == True).limit(10)
+            ids = await fetch_scalar_column(session, query)
+        """
+        result = await session.execute(query)
+        return [row[0] for row in result.fetchall()]
 
     async def fetch_and_store_ohlcv_data(self, symbols, mode='update', timeframe='ONE_MINUTE', limit=300):
         """PART III:
+        Called from sender.py
         Fetch and store OHLCV data in parallel for all symbols, handling initialization or updates.
         """
 
@@ -167,109 +190,108 @@ class MarketManager:
             self.logger.error(f"❌ Error in fetch_and_store_ohlcv_data(): {e}", exc_info=True)
 
     async def store_ohlcv_data(self, ohlcv_data):
-        """PART III:
-        Store OHLCV data in the database, handling upserts for duplicate entries with optimizations,
-        and maintaining a maximum of 1,440 rows per symbol.
+        """
+        Store OHLCV data in the database using SQLAlchemy async engine.
+        Handles upserts for duplicate entries and caps each symbol at self.max_ohlcv_rows rows.
         """
         try:
             df = ohlcv_data['data']
             symbol = ohlcv_data['symbol']
 
-            # Prepare records for insertion
+            # ✅ Prepare batch of records to insert
             records = [
                 {
                     "symbol": symbol,
-                    "time": pd.Timestamp(record['time']).to_pydatetime(),
-                    "open": record['open'],
-                    "high": record['high'],
-                    "low": record['low'],
-                    "close": record['close'],
-                    "volume": record['volume'],
-                    "last_updated": datetime.now(),
+                    "time": pd.Timestamp(row['time']).to_pydatetime(),
+                    "open": row['open'],
+                    "high": row['high'],
+                    "low": row['low'],
+                    "close": row['close'],
+                    "volume": row['volume'],
+                    "last_updated": datetime.utcnow(),  # use UTC
                 }
-                for record in df.to_dict('records')
+                for row in df.to_dict('records')
             ]
 
-            # Define query with conflict handling
-            query = insert(TableModels.ohlcv_data.OHLCVData).on_conflict_do_update(
-                index_elements=['symbol', 'time'],
+            # ✅ PostgreSQL ON CONFLICT DO UPDATE
+            insert_stmt = pg_insert(TableModels.ohlcv_data.OHLCVData).on_conflict_do_update(
+                index_elements=["symbol", "time"],
                 set_={
-                    "open": insert(TableModels.ohlcv_data.OHLCVData).excluded.open,
-                    "high": insert(TableModels.ohlcv_data.OHLCVData).excluded.high,
-                    "low": insert(TableModels.ohlcv_data.OHLCVData).excluded.low,
-                    "close": insert(TableModels.ohlcv_data.OHLCVData).excluded.close,
-                    "volume": insert(TableModels.ohlcv_data.OHLCVData).excluded.volume,
-                    "last_updated": datetime.now(),
+                    "open": pg_insert(TableModels.ohlcv_data.OHLCVData).excluded.open,
+                    "high": pg_insert(TableModels.ohlcv_data.OHLCVData).excluded.high,
+                    "low": pg_insert(TableModels.ohlcv_data.OHLCVData).excluded.low,
+                    "close": pg_insert(TableModels.ohlcv_data.OHLCVData).excluded.close,
+                    "volume": pg_insert(TableModels.ohlcv_data.OHLCVData).excluded.volume,
+                    "last_updated": datetime.utcnow(),
                 }
             )
 
-            # Batch insertion to reduce strain
-            batch_size = 500
-            for i in range(0, len(records), batch_size):
-                batch = records[i:i + batch_size]
-                await self.database.execute_many(query=query, values=batch)
+            async with self.async_session_factory() as session:
+                async with session.begin():
+                    batch_size = 500
+                    for i in range(0, len(records), batch_size):
+                        batch = records[i:i + batch_size]
+                        await session.execute(insert_stmt, batch)
 
-            # Cap the table to 1,440 rows for the symbol
-
-            await self.cap_ohlcv_data(symbol, max_rows=self.max_ohlcv_rows)
+            # ✅ Cap rows per symbol after insert
+            await self.cap_ohlcv_data(symbol, max_rows=self._max_ohlcv_rows)
 
         except Exception as e:
             self.logger.error(f"❌ Error storing OHLCV data for {ohlcv_data['symbol']}: {e}", exc_info=True)
 
-    async def cap_ohlcv_data(self, symbol, max_rows):
-        """PART III
-        Ensure the OHLCV table for a symbol has no more than `max_rows` entries,
-        deleting the oldest rows if necessary.
+    async def cap_ohlcv_data(self, symbol: str, max_rows: int):
+        """
+        Ensure the OHLCV table for a symbol has no more than `max_rows` entries.
+        Deletes the oldest rows (by time) if over the limit.
         """
         try:
-            # Step 1: Fetch the count of rows for the symbol
-            query = (
-                select(func.count())
-                .where(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
-            )
-            row_count = await self.database.fetch_val(query)
+            async with self.async_session_factory() as session:
+                async with session.begin():
 
-            # Step 2: If the row count exceeds the maximum, delete the oldest rows
-            if row_count > max_rows:
-                excess_rows = row_count - max_rows
-
-                # Fetch the primary keys (or `time` values) of the oldest rows to delete
-                oldest_rows_query = (
-                    select(TableModels.ohlcv_data.OHLCVData.time)
-                    .where(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
-                    .order_by(TableModels.ohlcv_data.OHLCVData.time.asc())  # Oldest first
-                    .limit(excess_rows)
-                )
-                oldest_rows = await self.database.fetch_all(oldest_rows_query)
-
-                # Extract the time values to delete
-                times_to_delete = [row['time'] for row in oldest_rows]
-
-                # Perform the DELETE for the rows matching the fetched `time` values
-                delete_query = (
-                    delete(TableModels.ohlcv_data.OHLCVData)
-                    .where(
-                        TableModels.ohlcv_data.OHLCVData.symbol == symbol,
-                        TableModels.ohlcv_data.OHLCVData.time.in_(times_to_delete)
+                    # ✅ Step 1: Count rows for this symbol
+                    query = select(func.count()).where(
+                        TableModels.ohlcv_data.OHLCVData.symbol == symbol
                     )
-                )
-                await self.database.execute(delete_query)
+                    row_count = await session.scalar(query)
 
-                #print(f"Capped {symbol} OHLCV data to {max_rows} rows, deleted {excess_rows} excess rows.") #debugging
+                    if row_count > max_rows:
+                        excess = row_count - max_rows
+
+                        # ✅ Step 2: Get oldest timestamps
+                        oldest_rows_query = (
+                            select(TableModels.ohlcv_data.OHLCVData.time)
+                            .where(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
+                            .order_by(TableModels.ohlcv_data.OHLCVData.time.asc())
+                            .limit(excess)
+                        )
+                        times_to_delete = await self.fetch_scalar_column(session, oldest_rows_query)
+
+                        if times_to_delete:
+                            self.logger.info(f"🔄 Capping {symbol} to {max_rows} rows (removing {excess})")
+
+                            delete_query = (
+                                delete(TableModels.ohlcv_data.OHLCVData)
+                                .where(
+                                    TableModels.ohlcv_data.OHLCVData.symbol == symbol,
+                                    TableModels.ohlcv_data.OHLCVData.time.in_(times_to_delete)
+                                )
+                            )
+                            await session.execute(delete_query)
+
         except Exception as e:
             self.logger.error(f"❌ Error capping OHLCV data for {symbol}: {e}", exc_info=True)
 
-    async def get_last_timestamp(self, symbol):
-        """
-        Get the last timestamp for a symbol from the OHLCV table oldest.
-        """
-        query = (
-            select(TableModels.ohlcv_data.OHLCVData.time)
-            .filter(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
-            .order_by(TableModels.ohlcv_data.OHLCVData.time.desc())
-            .limit(1)
-        )
-        last_time = await self.database.fetch_one(query)
-        if last_time:
-            return int(last_time['time'].timestamp() * 1000)
-        return None
+    # async def get_last_timestamp(self, symbol):
+    #     """
+    #     Get the last timestamp for a symbol from the OHLCV table oldest.
+    #     """
+    #     query = (
+    #         select(TableModels.ohlcv_data.OHLCVData.time)
+    #         .filter(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
+    #         .order_by(TableModels.ohlcv_data.OHLCVData.time.desc())
+    #         .limit(1)
+    #     )
+    #     last_time = await self.database.fetch_one(query)
+    #     if last_time:
+    #         return int(last_time['time'].timestamp() * 1000)
+    #     return None

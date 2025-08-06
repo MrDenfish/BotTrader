@@ -184,9 +184,6 @@ class TradeBot:
             """PART I: Data Gathering"""
             self.start_time = time.time()
             print('🟩   Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
-            # Connection check
-            if not self.database_session_mngr.database.is_connected:
-                await self.database_session_mngr.connect()
 
             market_data_manager = await MarketDataUpdater.get_instance(
                 ticker_manager=self.ticker_manager,
@@ -237,7 +234,8 @@ class TradeBot:
         self.portfolio_manager = PortfolioManager.get_instance(
             self.logger, self.ccxt_api, self.exchange,
             self.max_concurrent_tasks, self.shared_utils_precision,
-            self.shared_utils_datas_and_times, self.shared_utils_utility, self.shared_data_manager
+            self.shared_utils_datas_and_times, self.shared_utils_utility,
+            self.shared_data_manager
         )
 
         self.ticker_manager = await TickerManager.get_instance(
@@ -258,9 +256,11 @@ class TradeBot:
                                                                  self.shared_utils_precision, self.shared_data_manager)
 
         self.database_ops = DatabaseOpsManager.get_instance(
-            self.exchange, self.ccxt_api, self.logger, self.profit_extras, self.portfolio_manager,
-            self.holdings_processor, self.database_session_mngr.database, self.db_tables, self.profit_data_manager,
-            self.snapshot_manager, self.shared_utils_precision, self.shared_data_manager
+            self.exchange, self.ccxt_api, self.logger, self.profit_extras,
+            self.portfolio_manager, self.holdings_processor,
+            self.database_session_mngr.async_session_factory,  self.db_tables,
+            self.profit_data_manager, self.snapshot_manager,
+            self.shared_utils_precision, self.shared_data_manager
         )
 
         self.database_session_mngr.database_ops = self.database_ops
@@ -287,8 +287,9 @@ class TradeBot:
         self.market_manager = MarketManager.get_instance(
             self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
             self.logger_manager, self.coinbase_api, self.ccxt_api, self.ticker_manager,
-            self.portfolio_manager, self.max_concurrent_tasks, self.database_session_mngr.database,
-            self.db_tables, self.shared_data_manager
+            self.portfolio_manager, self.max_concurrent_tasks,
+            self.database_session_mngr.async_session_factory, self.db_tables,
+            self.shared_data_manager
         )
 
         self.market_data_updater = await MarketDataUpdater.get_instance(

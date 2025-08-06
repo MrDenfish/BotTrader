@@ -1,14 +1,18 @@
 import asyncio
+import json
+import TableModels
 
-from databases import Database
+
+from sqlalchemy import text
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
-from Config.config_manager import CentralConfig
-from database_manager.database_ops import DatabaseOpsManager
 from TableModels.base import Base
-import TableModels
+from TableModels.shared_data import SharedData
+from Config.config_manager import CentralConfig
+from TableModels.passive_orders import PassiveOrder
 
 
 class DatabaseSessionManager:
@@ -18,12 +22,13 @@ class DatabaseSessionManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, profit_extras, logger_manager, shared_data_manager):
+    def get_instance(cls, profit_extras, logger_manager, shared_data_manager, custom_json_decoder):
         if cls._instance is None:
-            cls._instance = cls(profit_extras, logger_manager, shared_data_manager)
+            cls._instance = cls(profit_extras, logger_manager, shared_data_manager,
+                                custom_json_decoder)
         return cls._instance
 
-    def __init__(self, profit_extras, logger_manager, shared_data_manager):
+    def __init__(self, profit_extras, logger_manager, shared_data_manager, custom_json_decoder):
 
         if logger_manager.name == 'shared_logger':
             self.logger = logger_manager  # 🙂
@@ -32,6 +37,7 @@ class DatabaseSessionManager:
         self.config = CentralConfig()
         self.profit_extras = profit_extras
         self.shared_data_manager = shared_data_manager
+        self.custom_json_decoder = custom_json_decoder
 
         # Ensure that database_url is correctly set
         # print(f'❌ DatabaseSessionManager: database_url {self.config.database_url}')
@@ -39,8 +45,6 @@ class DatabaseSessionManager:
             self.logger.error("Database URL is not configured properly.")
             raise ValueError("Database URL is not configured. Please check your configuration.")
 
-        # Initialize the databases.Database instance
-        self.database = Database(self.config.database_url, min_size=5, max_size=15)
 
         # Initialize the SQLAlchemy async engine
         self.engine = create_async_engine(
@@ -54,7 +58,7 @@ class DatabaseSessionManager:
         )
 
         self.async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
-        self.database_ops = None  # Will be set later after components are initialized
+
 
     async def initialize_schema(self):
         try:
@@ -97,23 +101,15 @@ class DatabaseSessionManager:
     def bid_ask_spread(self):
         return self.shared_data_manager.market_data.get('bid_ask_spread')
 
-    async def connect(self, retries=3):
-        """Establish the database connection."""
-        for attempt in range(1, retries + 1):
-            try:
-                if not self.database.is_connected:
-                    await self.database.connect()
-                    self.logger.info("Database connected successfully.")
-                    return
-            except Exception as e:
-                self.logger.warning(f"❌ Database connection attempt {attempt} failed: {e}", exc_info=True)
-                await asyncio.sleep(2)  # Wait before retrying
-        raise ConnectionError("Failed to establish a database connection after retries.")
 
     async def initialize(self):
         try:
-            await self.connect()
-            self.logger.info("DatabaseSessionManager initialized and connected to the database.")
+            # 🟡 Optional: Run a lightweight SQLAlchemy connectivity check
+            async with self.async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            self.logger.info("✅ SQLAlchemy database connection verified.")
+
+            # Continue with schema/data setup
             await self.initialize_schema()
             await self.populate_initial_data()
         except Exception as e:
@@ -121,108 +117,128 @@ class DatabaseSessionManager:
             raise
 
     async def populate_initial_data(self):
-        """seed some default rows if needed"""
+        """Seed default rows if needed using SQLAlchemy ORM."""
         try:
-            query = "SELECT 1 FROM shared_data WHERE data_type = 'market_data'"
-            result = await self.database.fetch_one(query)
-            if result is None:
-                await self.database.execute("""
-                    INSERT INTO shared_data (data_type, data)
-                    VALUES ('market_data', '{}'::jsonb)
-                """)
-                self.logger.info("✅ Inserted initial market_data row.")
-        except Exception as e:
-            self.logger.error(f"❌ Failed to populate initial shared_data: {e}",exc_info=True)
+            async with self.async_session_factory() as session:
+                async with session.begin():
+                    # Check if a 'market_data' row already exists
+                    result = await session.execute(
+                        select(SharedData).where(SharedData.data_type == "market_data")
+                    )
+                    row = result.scalar_one_or_none()
 
+                    if row is None:
+                        # Insert empty JSON string for market_data
+                        new_entry = SharedData(
+                            data_type="market_data",
+                            data="{}"
+                        )
+                        session.add(new_entry)
+                        self.logger.info("✅ Inserted initial market_data row.")
+
+        except SQLAlchemyError as e:
+            self.logger.error(f"❌ Failed to populate initial shared_data: {e}", exc_info=True)
 
     async def disconnect(self):
-        """Close the database connection."""
+        """Close the SQLAlchemy database engine (optional for graceful shutdown)."""
         try:
-            if self.database.is_connected:
-                await self.database.disconnect()
-                self.logger.info("Database disconnected successfully.")
+            if self.engine:
+                await self.engine.dispose()
+                self.logger.info("✅ SQLAlchemy engine disposed successfully.")
         except Exception as e:
-            self.logger.error(f"❌ Error while disconnecting from the database: {e}", exc_info=True)
+            self.logger.error(f"❌ Error while disposing SQLAlchemy engine: {e}", exc_info=True)
 
-    def get_database_ops(self, *args, **kwargs):
-        if self.database_ops is None:
-            self.database_ops = DatabaseOpsManager.get_instance(
-                self.logger, self.profit_extras, self.config, self.database, *args, **kwargs
-            )
-        return self.database_ops
+    # def get_database_ops(self, *args, **kwargs):
+    #     if self.database_ops is None:
+    #         self.database_ops = DatabaseOpsManager.get_instance(
+    #             self.logger, self.profit_extras, self.config, self.database, *args, **kwargs
+    #         )
+    #     return self.database_ops
 
-    async def process_data(self):
-        """Delegates processing to DatabaseOpsManager within a transaction."""
-        try:
-            # Ensure database is connected
-            if not self.database.is_connected:
-                await self.connect()
-                self.logger.info("Database reconnected within process_data.")
-
-            # Execute within an explicit transaction
-            # async with self.database.transaction():
-            #     await self.database_ops.process_data()
-        except Exception as e:
-            self.logger.error(f"❌ Failed to process data in session manager: {e}")
-            raise
+    # async def process_data(self):
+    #     """Delegates processing to DatabaseOpsManager within a transaction."""
+    #     try:
+    #         # Ensure database is connected
+    #         if not self.database.is_connected:
+    #             await self.connect()
+    #             self.logger.info("Database reconnected within process_data.")
+    #
+    #         # Execute within an explicit transaction
+    #         # async with self.database.transaction():
+    #         #     await self.database_ops.process_data()
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Failed to process data in session manager: {e}")
+    #         raise
 
     async def check_ohlcv_initialized(self):
-        """PART III:
-        Check if OHLCV data is initialized in the database."""
-        query = select(TableModels.OHLCVData).limit(1)
-        result = await self.database.fetch_one(query)
-        print(f'{result}')
-        return result is not None
-
-    async def fetch_market_data(self):
-        """Fetch market_data from the database."""
+        """PART III: Check if OHLCV data is initialized in the database."""
         try:
-            if not self.database.is_connected:
-                await self.connect()
-            query = "SELECT data FROM shared_data WHERE data_type = 'market_data'"
-            result = await self.database.fetch_one(query)
-            if not result or "data" not in result:
-                self.logger.warning("No data found for market_data.")
-                return {}
+            async with self.async_session_factory() as session:
+                result = await session.execute(
+                    select(TableModels.OHLCVData).limit(1)
+                )
+                row = result.scalar_one_or_none()
+                print(f'{row}')
+                return row is not None
+        except Exception as e:
+            self.logger.error(f"❌ Error checking OHLCV initialization: {e}", exc_info=True)
+            return False
 
-            return dict(result)  # Convert Record to native dict
+    async def fetch_market_data(self) -> dict:
+        try:
+            async with self.async_session_factory() as session:
+                result = await session.execute(
+                    select(SharedData).where(SharedData.data_type == "market_data")
+                )
+                row = result.scalar_one_or_none()
+                if not row:
+                    self.logger.warning("No market_data found.")
+                    return {}
+
+                return json.loads(row.data, cls=self.custom_json_decoder)
+
         except Exception as e:
             self.logger.error(f"❌ Error fetching market data: {e}", exc_info=True)
             return {}
 
     async def fetch_order_management(self):
-        """Fetch order_management from the database."""
+        """Fetch order_management from the database using SQLAlchemy."""
         try:
-            if not self.database.is_connected:
-                await self.connect()
-            query = "SELECT data FROM shared_data WHERE data_type = 'order_management'"
-            result = await self.database.fetch_one(query)
-            if not result or "data" not in result:
-                self.logger.warning("No data found for order_management.")
-                return {}
+            async with self.async_session_factory() as session:
+                stmt = select(SharedData.data).where(SharedData.data_type == 'order_management')
+                result = await session.execute(stmt)
+                row = result.scalar_one_or_none()  # Will return the actual JSON string
 
-            return dict(result)  # Convert Record to native dict
+                if not row:
+                    self.logger.warning("No data found for order_management.")
+                    return {}
+
+                return {"data": row}  # Preserve structure expected by downstream code
+
         except Exception as e:
             self.logger.error(f"❌ Error fetching order_management: {e}", exc_info=True)
             return {}
 
     async def fetch_passive_orders(self) -> dict:
-        """Fetch passive_orders and return them keyed by symbol."""
+        """Fetch passive_orders and return them keyed by symbol using SQLAlchemy."""
         try:
-            if not self.database.is_connected:
-                await self.connect()
+            async with self.async_session_factory() as session:
+                result = await session.execute(select(PassiveOrder))
+                rows = result.scalars().all()  # get the list of PassiveOrder objects
 
-            query = "SELECT * FROM passive_orders"
-            rows = await self.database.fetch_all(query)
+                passive_orders = {}
+                for row in rows:
+                    row_dict = {
+                        "order_id": row.order_id,
+                        "symbol": row.symbol,
+                        "side": row.side,
+                        "timestamp": row.timestamp,
+                        "order_data": row.order_data,
+                    }
+                    if row.symbol:
+                        passive_orders[row.symbol] = row_dict
 
-            result = {}
-            for row in rows:
-                row_dict = dict(row)  # ✅ Convert Record to native dict
-                symbol = row_dict.get("symbol")
-                if symbol:
-                    result[symbol] = row_dict
-
-            return result
+                return passive_orders
 
         except Exception as e:
             self.logger.error(f"❌ Error fetching passive_orders: {e}", exc_info=True)

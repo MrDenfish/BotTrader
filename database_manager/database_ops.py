@@ -1,6 +1,6 @@
 import pandas as pd
-from databases import Database
-
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from Config.config_manager import CentralConfig
 
 
@@ -8,15 +8,19 @@ class DatabaseOpsManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager, database: Database, db_tables,
-                     profit_data_manager, snapshots_manager, shared_utils_precision, shared_data_manager):
+    def get_instance(cls, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager,
+                     async_session_factory: sessionmaker, db_tables,profit_data_manager, snapshots_manager, shared_utils_precision,
+                     shared_data_manager):
         if cls._instance is None:
-            cls._instance = cls(exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager, database, db_tables,
-                                profit_data_manager, snapshots_manager, shared_utils_precision, shared_data_manager)
+            cls._instance = cls(exchange, ccxt_api, logger_manager, profit_extras,
+                                portfolio_manager, holdings_manager, async_session_factory,
+                                db_tables,profit_data_manager, snapshots_manager,
+                                shared_utils_precision, shared_data_manager)
         return cls._instance
 
-    def __init__(self, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager, database: Database, db_tables,
-                 profit_data_manager, snapshots_manager, shared_utils_precision, shared_data_manager):
+    def __init__(self, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager,
+                 async_session_factory: sessionmaker, db_tables,profit_data_manager, snapshots_manager, shared_utils_precision,
+                 shared_data_manager):
 
         self.exchange = exchange
         self.ccxt_api = ccxt_api
@@ -30,7 +34,8 @@ class DatabaseOpsManager:
         self.holdings_manager = holdings_manager
         self.snapshot_manager = snapshots_manager
         self.profit_data_manager = profit_data_manager
-        self.database = database  # Use `database` directly
+        self.async_session_factory: sessionmaker[AsyncSession] = async_session_factory
+
         self.db_tables = db_tables
         self.df_market_cache_vol = pd.DataFrame()
         self.existing_transaction_types = {

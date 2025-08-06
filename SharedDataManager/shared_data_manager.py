@@ -1,22 +1,21 @@
 
+import time
 import copy
 import json
-import time
-from decimal import Decimal
-import datetime
-from datetime import datetime, date, timezone
-from inspect import stack  # debugging
-
-import pandas as pd
-from asyncio import Event
 import asyncio
+import datetime
+import pandas as pd
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from inspect import stack  # debugging
+from asyncio import Event
+from decimal import Decimal
 from sqlalchemy.sql import text
-from SharedDataManager.trade_recorder import TradeRecorder
-from webhook.webhook_validate_orders import OrderData
-from TableModels.passive_orders import PassiveOrder
 from sqlalchemy import select, delete
+from datetime import datetime, date, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
+from TableModels.passive_orders import PassiveOrder
+from SharedDataManager.trade_recorder import TradeRecorder
+
 
 class CustomJSONDecoder(json.JSONDecoder):
     def __init__(self, *args, **kwargs):
@@ -176,17 +175,20 @@ class SharedDataManager:
                     new_order_management=new_order_mgmt
                 )
                 await self.save_data()
-
                 self.logger.info("✅ Startup data initialized and saved.")
+                return new_market_data, new_order_mgmt
             else:
                 self.logger.info("✅ Startup snapshot loaded from database.")
                 return market_data, order_mgmt
+
         except asyncio.CancelledError:
             self.logger.warning("🔁 Market data update was cancelled.")
             raise
         except Exception as e:
             self.logger.error(f"❌ Error updating MarketDataManager: {e}", exc_info=True)
             return {}, {}
+
+
 
     # ✅ Check if startup snapshot is usable or stale
     def is_market_data_invalid(self, market_data: dict) -> bool:
@@ -238,10 +240,16 @@ class SharedDataManager:
             try:
                 func_name = stack()[1].function
                 print(f"Fetching market data from the database...Initiated by {func_name}")
-                self.market_data = await self.fetch_market_data()
+                if not self.market_data:
+                    self.market_data = await self.fetch_market_data()
+                else:
+                    print("✅ Skipping fetch_market_data(): market_data is already populated")
 
                 print("Fetching order management data from the database...")
-                self.order_management = await self.fetch_order_management()
+                if not self.order_management:
+                    self.market_data = await self.fetch_order_management()
+                else:
+                    print("✅ Skipping fetch_order_management(): order_management is already populated")
                 self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
                 print("✅ SharedDataManager:initialized successfully.")
                 return self.market_data, self.order_management
@@ -269,10 +277,10 @@ class SharedDataManager:
         async with (self.lock):
             try:
                 market_result = await self.database_session_manager.fetch_market_data()
-                self.market_data = json.loads(market_result["data"], cls=CustomJSONDecoder) if market_result else {}
+                self.market_data = market_result if market_result else {}
                 self.market_data = self.validate_market_data(self.market_data)
                 order_management_result = await self.database_session_manager.fetch_order_management()
-                self.order_management = json.loads(order_management_result["data"], cls=CustomJSONDecoder) if order_management_result else {}
+                self.order_management = order_management_result if order_management_result else {}
                 self.order_management = self.validate_order_management_data(self.order_management)
                 self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
 

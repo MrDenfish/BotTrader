@@ -18,6 +18,7 @@ class TradeRecorder:
 
     def __init__(self, database_session_manager, logger, shared_utils_precision, coinbase_api, maintenance_callback=None):
         self.db_session_manager = database_session_manager
+        self.async_session_factory = database_session_manager.async_session_factory
         self.logger = logger
         self.shared_utils_precision = shared_utils_precision
         self.coinbase_api = coinbase_api
@@ -289,7 +290,8 @@ class TradeRecorder:
                 .order_by(TradeRecord.order_time.asc())
             )
 
-            result = await self.active_session.execute(stmt)
+            async with self.async_session_factory() as session:
+                result = await session.execute(stmt)
             parent_trades = result.scalars().all()
             if symbol == 'ILV-USD': #debug
                 self.logger.info(f"[DEBUG] Found {len(parent_trades)} candidate buys for {symbol}")# debug
@@ -475,7 +477,8 @@ class TradeRecorder:
                         .order_by(TradeRecord.order_time.asc(), TradeRecord.order_id.asc())
                     )
 
-                    result = await session.execute(stmt)
+                    async with self.async_session_factory() as session:
+                        result = await session.execute(stmt)
                     buys = result.scalars().all()
 
             if not buys:
@@ -501,67 +504,70 @@ class TradeRecorder:
     async def fix_unlinked_sells(self):
 
         self.logger.info("🔧 Running fix_unlinked_sells()...")
-
-        async with self.db_session_manager.async_session_factory() as session:
-            async with session.begin():
-                result = await session.execute(
-                    select(TradeRecord).where(
-                        TradeRecord.side == "sell",
-                        TradeRecord.pnl_usd.is_(None),
-                        TradeRecord.source != "reconciled"
-                    )
-
-                )
-                sell_trades = result.scalars().all()
-
-                for trade in sell_trades:
-                    symbol = trade.symbol
-                    amount = Decimal(trade.size)
-                    price = Decimal(trade.price)
-                    total_fees = Decimal(trade.total_fees_usd or 0)
-
-                    base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
-                    base_q = Decimal("1").scaleb(-base_deci)
-                    quote_q = Decimal("1").scaleb(-quote_deci)
-
-                    # Run FIFO matching
-                    fifo_result = await self.compute_cost_basis_and_sale_proceeds(
-                        symbol=symbol,
-                        size=amount,
-                        sell_price=price,
-                        total_fees=total_fees,
-                        quote_q=quote_q,
-                        base_q=base_q,
-                        sell_time=trade.order_time
-                    )
-
-                    parent_ids = fifo_result["parent_ids"]
-                    if not parent_ids and amount > 0:
-                        self.logger.warning(
-                            f"❌ Unlinked SELL {trade.order_id}: {amount} {symbol} — "
-                            f"no BUY match found. Consider reviewing fill timing or data."
+        try:
+            async with self.db_session_manager.async_session_factory() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        select(TradeRecord).where(
+                            TradeRecord.side == "sell",
+                            TradeRecord.pnl_usd.is_(None),
+                            TradeRecord.source != "reconciled"
                         )
 
-                    trade.parent_id = parent_ids[0] if parent_ids else None
-                    trade.parent_ids = parent_ids or None
-                    trade.cost_basis_usd = float(fifo_result["cost_basis_usd"])
-                    trade.sale_proceeds_usd = float(fifo_result["sale_proceeds_usd"])
-                    trade.net_sale_proceeds_usd = float(fifo_result["net_sale_proceeds_usd"])
-                    trade.pnl_usd = float(fifo_result["pnl_usd"])
-                    if not trade.pnl_usd:
-                        pass
-                    trade.realized_profit = float(sum(
-                        Decimal(instr["realized_profit"]) for instr in fifo_result["update_instructions"]
-                    ))
+                    )
+                    sell_trades = result.scalars().all()
 
-                    # Update parents
-                    for instr in fifo_result["update_instructions"]:
-                        parent = await session.get(TradeRecord, instr["order_id"])
-                        if parent:
-                            parent.remaining_size = instr["remaining_size"]
-                            parent.realized_profit = instr["realized_profit"]
+                    for trade in sell_trades:
+                        symbol = trade.symbol
+                        amount = Decimal(trade.size)
+                        price = Decimal(trade.price)
+                        total_fees = Decimal(trade.total_fees_usd or 0)
 
-                self.logger.info(f"✅ Fixed {len(sell_trades)} unmatched SELL trades.")
+                        base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
+                        base_q = Decimal("1").scaleb(-base_deci)
+                        quote_q = Decimal("1").scaleb(-quote_deci)
+
+                        # Run FIFO matching
+                        fifo_result = await self.compute_cost_basis_and_sale_proceeds(
+                            symbol=symbol,
+                            size=amount,
+                            sell_price=price,
+                            total_fees=total_fees,
+                            quote_q=quote_q,
+                            base_q=base_q,
+                            sell_time=trade.order_time
+                        )
+
+                        parent_ids = fifo_result["parent_ids"]
+                        if not parent_ids and amount > 0:
+                            self.logger.warning(
+                                f"❌ Unlinked SELL {trade.order_id}: {amount} {symbol} — "
+                                f"no BUY match found. Consider reviewing fill timing or data."
+                            )
+
+                        trade.parent_id = parent_ids[0] if parent_ids else None
+                        trade.parent_ids = parent_ids or None
+                        trade.cost_basis_usd = float(fifo_result["cost_basis_usd"])
+                        trade.sale_proceeds_usd = float(fifo_result["sale_proceeds_usd"])
+                        trade.net_sale_proceeds_usd = float(fifo_result["net_sale_proceeds_usd"])
+                        trade.pnl_usd = float(fifo_result["pnl_usd"])
+                        if not trade.pnl_usd:
+                            pass
+                        trade.realized_profit = float(sum(
+                            Decimal(instr["realized_profit"]) for instr in fifo_result["update_instructions"]
+                        ))
+
+                        # Update parents
+                        for instr in fifo_result["update_instructions"]:
+                            parent = await session.get(TradeRecord, instr["order_id"])
+                            if parent:
+                                parent.remaining_size = instr["remaining_size"]
+                                parent.realized_profit = instr["realized_profit"]
+
+                    self.logger.info(f"✅ Fixed {len(sell_trades)} unmatched SELL trades.")
+        except Exception as e:
+            self.logger.error(f"❌ Error in fix_unlinked_sells: {e}", exc_info=True)
+
 
     async def find_latest_unlinked_buy_id(self, symbol: str) -> Optional[str]:
         """
@@ -832,7 +838,8 @@ class TradeRecorder:
                         )
                     )
 
-                    result = await session.execute(stmt)
+                    async with self.async_session_factory() as session:
+                        result = await session.execute(stmt)
                     sells = result.scalars().all()
                     return sells
         except Exception as e:
@@ -863,7 +870,8 @@ class TradeRecorder:
                         .order_by(TradeRecord.order_time.asc())
                         .limit(1)
                     )
-                    result = await session.execute(stmt)
+                    async with self.async_session_factory() as session:
+                        result = await session.execute(stmt)
                     sell_trade = result.scalar_one_or_none()
 
             if not sell_trade:
@@ -937,7 +945,8 @@ class TradeRecorder:
                         .order_by(TradeRecordDebug.order_time.asc())
                         .limit(1)
                     )
-                    result = await session.execute(stmt)
+                    async with self.async_session_factory() as session:
+                        result = await session.execute(stmt)
                     sell_trade = result.scalar_one_or_none()
 
             if not sell_trade:
@@ -1025,7 +1034,8 @@ class TradeRecorder:
                         .limit(10)
                     )
 
-                    result = await session.execute(stmt)
+                    async with self.async_session_factory() as session:
+                        result = await session.execute(stmt)
                     rows = result.all()
 
             total_trades = sum(row.total_trades for row in rows)

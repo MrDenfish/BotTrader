@@ -463,8 +463,10 @@ class WebhookListener:
 
     async def async_init(self):
         """Initialize async components after __init__."""
-        self.ohlcv_manager = await OHLCVManager.get_instance(self.exchange, self.coinbase_api, self.ccxt_api, self.logger_manager,
-                                                             self.shared_utils_date_time, self.market_manager)
+        self.ohlcv_manager = await OHLCVManager.get_instance(self.exchange, self.coinbase_api, self.ccxt_api,
+                                                             self.logger_manager,self.shared_utils_date_time,
+                                                             self.market_manager,
+                                                             self.database_session_manager.async_session_factory)
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
                                                                self.shared_utils_debugger,self.shared_utils_print,
                                                                self.shared_utils_color,self.logger_manager,

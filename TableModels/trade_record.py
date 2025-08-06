@@ -2,9 +2,6 @@
 from sqlalchemy import Column, String, Float, DateTime, Index
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-
-
-
 from TableModels.base import Base
 
 

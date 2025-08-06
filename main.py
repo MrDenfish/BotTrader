@@ -20,7 +20,7 @@ from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
 from MarketDataManager.asset_monitor import AssetMonitor
-from SharedDataManager.shared_data_manager import SharedDataManager
+from SharedDataManager.shared_data_manager import SharedDataManager, CustomJSONDecoder
 from Shared_Utils.alert_system import AlertSystem
 from TestDebugMaintenance.debugger import Debugging
 from Shared_Utils.exchange_manager import ExchangeManager
@@ -61,7 +61,7 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
         # ✅ Explicitly assign to shared_data_manager
         shared_data_manager.market_data = market_data or {}
         shared_data_manager.order_management = order_mgmt or {}
-        logger.info("✅ Market data preloaded successfully with data from the database.")
+        print(f"✅ Market data preloaded successfully with data from the database. preload:{list(shared_data_manager.market_data.keys())}")
         return market_data, order_mgmt
     except Exception as e:
         logger.error(f"❌ Failed to preload market/order data: {e}", exc_info=True)
@@ -76,10 +76,12 @@ async def graceful_shutdown(listener, runner):
 
 async def init_shared_data(logger_manager, shared_logger, coinbase_api):
     shared_data_manager = SharedDataManager.__new__(SharedDataManager)
+    custom_json_decoder = CustomJSONDecoder
     database_session_manager = DatabaseSessionManager(
         profit_extras=None,
         logger_manager=shared_logger,
-        shared_data_manager=shared_data_manager
+        shared_data_manager=shared_data_manager,
+        custom_json_decoder=custom_json_decoder,
     )
 
 
