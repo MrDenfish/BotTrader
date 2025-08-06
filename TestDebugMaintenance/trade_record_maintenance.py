@@ -5,13 +5,12 @@ from sqlalchemy import update
 async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     """
     Runs the maintenance cleanup + backfill if incomplete trades are found OR if the table is empty.
-    fix or complete trade records that already exist:
+
+    Fix or complete trade records that already exist:
         - Sell trades missing PnL/parent references
         - Buy trades missing remaining_size
         - Rows with None fields due to WebSocket dropouts or recon reconciliation
     """
-
-
     print("🔎 Checking for trade maintenance requirements...")
 
     async with shared_data_manager.database_session_manager.async_session_factory() as session:
@@ -35,7 +34,10 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                                 or_(
                                     TradeRecord.pnl_usd.is_(None),
                                     TradeRecord.cost_basis_usd.is_(None),
-                                    TradeRecord.sale_proceeds_usd.is_(None)
+                                    TradeRecord.sale_proceeds_usd.is_(None),
+                                    TradeRecord.realized_profit.is_(None),
+                                    TradeRecord.parent_id.is_(None),
+                                    TradeRecord.parent_ids.is_(None),
                                 )
                             )
                         )
@@ -44,24 +46,11 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                 incomplete_trade = result.scalar_one_or_none()
 
                 if not incomplete_trade:
-                    print("⚠️ No incomplete trades found — checking if table is empty...")
-
-                    # NEW: check if table is empty
-                    async with shared_data_manager.database_session_manager.async_session_factory() as session:
-                        async with session.begin():
-                            result = await session.execute(select(func.count()).select_from(TradeRecord))
-                            count = result.scalar_one()
-
-                    if count == 0:
-                        print("⚠️ trade_records is empty — seeding + running backfill.")
-                    else:
-                        print("✅ No maintenance needed — all trades are complete.")
-                        return
+                    print("✅ No maintenance needed — all trades are complete.")
+                    return
 
     # Run the SQL cleanup patches and backfill
     print("⚙️ Incomplete or missing trades detected — applying fixes...")
-
-
 
     async with shared_data_manager.database_session_manager.async_session_factory() as session:
         async with session.begin():
@@ -97,10 +86,21 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
             result = await session.execute(remaining_fix_stmt)
             print(f"    → Fixed remaining_size for {result.rowcount} BUY trades.")
 
-            # SELL Reset for reprocessing
+            # SELL Fixes — reset only if missing key fields
             sell_reset_stmt = (
                 update(TradeRecord)
-                .where(TradeRecord.side == "sell")
+                .where(
+                    TradeRecord.side == "sell",
+                    or_(
+                        TradeRecord.cost_basis_usd.is_(None),
+                        TradeRecord.sale_proceeds_usd.is_(None),
+                        TradeRecord.net_sale_proceeds_usd.is_(None),
+                        TradeRecord.pnl_usd.is_(None),
+                        TradeRecord.realized_profit.is_(None),
+                        TradeRecord.parent_ids.is_(None),
+                        TradeRecord.parent_id.is_(None)
+                    )
+                )
                 .values({
                     TradeRecord.cost_basis_usd: None,
                     TradeRecord.sale_proceeds_usd: None,
@@ -112,12 +112,13 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                 })
             )
             result = await session.execute(sell_reset_stmt)
-            print(f"    → Reset {result.rowcount} SELL trades for backfill.")
+            print(f"    → Reset {result.rowcount} incomplete SELL trades for backfill.")
 
     # Run the backfill processes
     print("🔁 Running backfill now...")
     await trade_recorder.backfill_trade_metrics()
     await trade_recorder.fix_unlinked_sells()
     print("✅ Maintenance completed.")
+
 
 

@@ -3,6 +3,7 @@ import json
 import math
 import time
 from datetime import datetime, timezone
+from typing import Optional
 from decimal import Decimal, getcontext
 from TableModels.trade_record import TradeRecord
 from Config.config_manager import CentralConfig as Config
@@ -107,14 +108,7 @@ class WebSocketMarketManager:
         self.websocket_manager = manager
 
     async def process_user_channel(self, data):
-        """
-        Handle Coinbase *user*-channel events with deduplication improvements.
-
-        ▸ Replaces order_tracker on snapshot
-        ▸ Deduplicates fallback/fill events if primary trade already recorded
-        ▸ Promotes fallback events to primary when primary is missing
-        ▸ Suppresses duplicate partial fills based on filled_size
-        """
+        """Handle Coinbase *user*-channel events with deduplication and fallback improvements."""
         try:
             events = data.get("events", [])
             if not isinstance(events, list):
@@ -122,11 +116,10 @@ class WebSocketMarketManager:
                 return
 
             mkt_snap, _ = await self.snapshot_manager.get_snapshots()
-            spot_pos = mkt_snap.get("spot_positions", {})
-            cur_prices = mkt_snap.get("bid_ask_spread", {})
-            usd_pairs = mkt_snap.get("usd_pairs_cache", {})
-
             order_tracker = await self.shared_data_manager.get_order_tracker()
+
+            queued_trades = []  # ✅ Collect trades here
+            queued_ids = set()  # ✅ Prevent duplicate order_ids
 
             for ev in events:
                 ev_type = ev.get("type", "").lower()
@@ -134,15 +127,13 @@ class WebSocketMarketManager:
                 if not isinstance(orders, list) or not orders:
                     continue
 
-                # ✅ Snapshot handling
+                # ✅ SNAPSHOT HANDLING
                 if ev_type == "snapshot":
                     new_tracker = {}
                     for order in orders:
-                        order_id = order.get("order_id")
                         symbol = order.get("product_id")
+                        order_id = order.get("order_id")
                         status = (order.get("status") or "").upper()
-                        if not order_id or not symbol:
-                            continue
 
                         normalized = self.shared_data_manager.normalize_raw_order(order)
                         if normalized and status in {"PENDING", "OPEN", "ACTIVE"}:
@@ -154,7 +145,7 @@ class WebSocketMarketManager:
                     self.logger.info(f"📸 Snapshot processed and persisted: {len(new_tracker)} open orders")
                     return
 
-                # ✅ Process updates/fills
+                # ✅ NON-SNAPSHOT ORDER EVENTS
                 for order in orders:
                     order_id = order.get("order_id")
                     parent_id = order.get("parent_order_id") or order.get("parent_id")
@@ -166,39 +157,29 @@ class WebSocketMarketManager:
                         continue
 
                     # -------------------------------
-                    # ✅ Cancel handling
+                    # ❌ CANCELLED ORDER HANDLING
                     # -------------------------------
                     if status in {"CANCELLED", "CANCEL_QUEUED"}:
                         try:
                             await self.shared_data_manager.trade_recorder.delete_trade(order_id)
-                            self.logger.info(f"❎ {order_id} {status} → deleted from DB")
+                            self.logger.info(f"❎ Deleted cancelled order: {order_id}")
                         except Exception:
                             self.logger.error("❌ delete_trade failed", exc_info=True)
                         order_tracker.pop(order_id, None)
                         continue
 
                     # -------------------------------
-                    # ✅ TP/SL child orders
+                    # ✅ ENQUEUE CHILD TP/SL ORDERS
                     # -------------------------------
                     if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
-                        try:
-                            trade = {
-                                "order_id": order_id,
-                                "parent_id": parent_id,
-                                "symbol": symbol,
-                                "side": "sell",
-                                "price": order.get("limit_price") or order.get("price"),
-                                "amount": order.get("size") or order.get("filled_size") or 0,
-                                "status": status.lower(),
-                                "order_time": order.get("event_time") or order.get("created_time") or datetime.now(timezone.utc).isoformat(),
-                                "trigger": {"trigger": "tp" if order.get("order_type") == "TAKE_PROFIT" else "sl"},
-                                "source": "websocket"
-                            }
-                            await self.shared_data_manager.trade_recorder.enqueue_trade(trade)
-                            self.logger.debug(f"TP/SL child stored → {order_id}")
-                        except Exception:
-                            self.logger.error("❌ record_trade failed", exc_info=True)
+                        trade = self._build_trade_dict(order, parent_id, side, source="websocket")
+                        queued_trades.append(trade)
+                        queued_ids.add(trade["order_id"])
+                        self.logger.debug(f"TP/SL child stored → {order_id}")
 
+                    # -------------------------------
+                    # 🔄 TRACKER UPDATE
+                    # -------------------------------
                     order["source"] = "websocket"
                     normalized = self.shared_data_manager.normalize_raw_order(order)
                     normalized["filled_size"] = float(order.get("filled_size") or 0.0)
@@ -209,75 +190,44 @@ class WebSocketMarketManager:
                             order_tracker.pop(order_id, None)
 
                     # -------------------------------
-                    # ✅ Filled order handling
+                    # ✅ PRIMARY FILLED ORDER HANDLING
                     # -------------------------------
                     if status == "FILLED":
-                        try:
-                            fills = order.get("fills", [])
-                            base_id = order_id  # Primary order_id without fallback
+                        fills = order.get("fills", [])
+                        base_id = order_id
 
-                            # ✅ Check DB for existing primary before processing fallback
-                            async with self.db_session_manager.async_session_factory() as session:
-                                primary_exists = await session.get(TradeRecord, base_id)
+                        async with self.db_session_manager.async_session_factory() as session:
+                            existing = await session.get(TradeRecord, base_id)
 
-                            if not fills and primary_exists:
-                                self.logger.debug(f"⏭️ Skipping fallback — primary exists for {base_id}")
+                        if not fills:
+                            if existing:
+                                self.logger.debug(f"⏭️ Skipping fallback — primary exists: {base_id}")
                                 continue
 
-                            if not fills and not primary_exists:
-                                self.logger.warning(f"⚠️ No fills for {base_id}, promoting fallback → primary")
-                                trade_data = {
-                                    "order_id": base_id,  # ✅ Save as primary
-                                    "parent_id": parent_id if side == "buy" else
-                                    await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol),
+                            self.logger.warning(f"⚠️ No fills, fallback promoted → primary: {base_id}")
+                            trade_data = self._build_trade_dict(order, parent_id, side, fallback=True)
+                            queued_trades.append(trade_data)
+                            queued_ids.add(base_id)
 
-                                    "symbol": symbol,
-                                    "side": side,
-                                    "price": order.get("avg_price") or order.get("price"),
-                                    "amount": order.get("filled_size") or order.get("cumulative_quantity") or 0,
-                                    "status": "filled",
-                                    "order_time": order.get("event_time") or order.get("created_time") or datetime.now(timezone.utc).isoformat(),
-                                    "trigger": {"trigger": order.get("order_type") or "market"},
-                                    "source": "websocket"
-                                }
-                                await self.shared_data_manager.trade_recorder.enqueue_trade(trade_data)
-                                self.logger.info(f"✅ Fallback promoted to primary: {base_id}")
+                        for i, fill in enumerate(fills):
+                            fill_size = float(fill.get("size", 0))
+                            prev_filled = order_tracker.get(base_id, {}).get("filled_size", 0)
+                            if fill_size <= prev_filled:
+                                self.logger.debug(f"⏭️ Duplicate partial fill ignored: {base_id}")
+                                continue
 
-                            # ✅ Incremental fills (deduplicate by filled_size)
-                            for i, fill in enumerate(fills):
-                                unique_fill_id = f"{base_id}-FILL-{i + 1}"
-                                prev_filled = order_tracker.get(base_id, {}).get("filled_size", 0)
-                                fill_size = float(fill.get("size", 0))
+                            fill_data = self._build_fill_dict(order, fill, base_id, i + 1, side)
+                            if fill_data["order_id"] not in queued_ids:
+                                queued_trades.append(fill_data)
+                                queued_ids.add(fill_data["order_id"])
+                                self.logger.info(f"🧾 Fill recorded: {fill_data['order_id']} | {symbol} {side.upper()} {fill_data['amount']}")
 
-                                if fill_size <= prev_filled:
-                                    self.logger.debug(f"⏭️ Ignoring duplicate partial fill for {base_id}")
-                                    continue
-
-                                fill_price = fill.get("price")
-                                fill_fee = fill.get("fee") or 0
-                                fill_time = fill.get("trade_time") or order.get("event_time")
-
-                                await self.shared_data_manager.trade_recorder.enqueue_trade({
-                                    "order_id": unique_fill_id,
-                                    "parent_id": parent_id if side == "buy" else
-                                    await self.shared_data_manager.trade_recorder.find_unlinked_buy_id(symbol),
-                                    "symbol": symbol,
-                                    "side": side,
-                                    "price": fill_price,
-                                    "amount": fill_size,
-                                    "status": "filled",
-                                    "order_time": fill_time or datetime.now(timezone.utc).isoformat(),
-                                    "trigger": {"trigger": order.get("order_type") or "market"},
-                                    "source": "websocket",
-                                    "total_fees": fill_fee
-                                })
-                                self.logger.info(f"🧾 Fill recorded: {unique_fill_id} | {symbol} {side.upper()} {fill_size}@{fill_price}")
-
-                            order_data = OrderData.from_dict(order)
-                            await self.listener.handle_order_fill(order_data)
-
-                        except Exception:
-                            self.logger.error("❌ Error processing filled order (deduplicated)", exc_info=True)
+            # -------------------------------
+            # ✅ FINALIZE: SORT AND ENQUEUE
+            # -------------------------------
+            queued_trades.sort(key=lambda x: self._parse_order_time(x["order_time"]))
+            for trade in queued_trades:
+                await self.shared_data_manager.trade_recorder.enqueue_trade(trade)
 
             await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})
             await self.shared_data_manager.save_data()
@@ -285,6 +235,73 @@ class WebSocketMarketManager:
 
         except Exception:
             self.logger.error("process_user_channel error", exc_info=True)
+
+    def _build_trade_dict(self, order: dict, parent_id: Optional[str], side: str, fallback: bool = False, source: str = "websocket") -> dict:
+        """Builds a normalized trade dictionary from order data."""
+        order_id = order.get("order_id")
+        symbol = order.get("product_id")
+        order_type = order.get("order_type", "market")
+
+        price = order.get("avg_price") or order.get("limit_price") or order.get("price")
+        amount = order.get("filled_size") or order.get("size") or order.get("cumulative_quantity") or 0
+
+        if fallback and side == "sell":
+            parent_id = asyncio.run(self.shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol))
+
+        return {
+            "order_id": order_id,
+            "parent_id": parent_id,
+            "symbol": symbol,
+            "side": side,
+            "price": price,
+            "amount": amount,
+            "status": "filled",
+            "order_time": self._normalize_order_time(order.get("event_time") or order.get("created_time")),
+            "trigger": {"trigger": order_type},
+            "source": source,
+            "total_fees": order.get("total_fees", 0),
+        }
+
+    def _build_fill_dict(self, order: dict, fill: dict, base_id: str, index: int, side: str) -> dict:
+        """Builds a fill trade dict from individual fill record."""
+        symbol = order.get("product_id")
+        fill_order_id = f"{base_id}-FILL-{index}"
+
+        fill_time = fill.get("trade_time") or order.get("event_time")
+        amount = float(fill.get("size", 0))
+        price = fill.get("price")
+        fee = fill.get("fee", 0)
+
+        if side == "sell":
+            parent_id = asyncio.run(self.shared_data_manager.trade_recorder.find_unlinked_buy_id(symbol))
+        else:
+            parent_id = base_id
+
+        return {
+            "order_id": fill_order_id,
+            "parent_id": parent_id,
+            "symbol": symbol,
+            "side": side,
+            "price": price,
+            "amount": amount,
+            "status": "filled",
+            "order_time": self._normalize_order_time(fill_time),
+            "trigger": {"trigger": order.get("order_type", "market")},
+            "source": "websocket",
+            "total_fees": fee,
+        }
+
+    def _normalize_order_time(self, raw_time) -> str:
+        """Converts time input into ISO-8601 string format in UTC."""
+        if isinstance(raw_time, datetime):
+            return raw_time.astimezone(timezone.utc).isoformat()
+        try:
+            dt = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+            return dt.astimezone(timezone.utc).isoformat()
+        except Exception:
+            self.logger.warning(f"⚠️ Failed to normalize order_time: {raw_time}")
+            return datetime.now(timezone.utc).isoformat()
+
 
     async def process_ticker_batch_update(self, data):
         try:

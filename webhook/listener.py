@@ -6,7 +6,7 @@ import time
 import uuid
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql import text
-from sqlalchemy import case, literal_column
+from sqlalchemy import case,  literal, literal_column
 from datetime import datetime, timezone
 import datetime as dt
 from decimal import Decimal
@@ -954,6 +954,8 @@ class WebhookListener:
             orders = filled_response.get("orders", [])
             logger.debug(f"📘 Retrieved {len(orders)} filled orders")
 
+            reconciled_trades = []
+
             for order in orders:
                 order_id = order.get("order_id")
                 if not order_id or order.get("status") != "FILLED":
@@ -971,6 +973,8 @@ class WebhookListener:
                 symbol = order.get("product_id")
                 price = order.get("average_filled_price") or order.get("price")
                 size = order.get("filled_size") or order.get("order_size") or "0"
+
+                # Parse and clean order_time
                 order_time = order.get("created_time") or order.get("completed_time") or datetime.now(timezone.utc).isoformat()
                 order_time = order_time.rstrip("Z") if isinstance(order_time, str) else order_time
                 total_fees = order.get("total_fees")
@@ -984,7 +988,7 @@ class WebhookListener:
                     parent_id = await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
                     parent_ids = [parent_id] if parent_id else None
 
-                await shared_data_manager.trade_recorder.enqueue_trade({
+                trade_data = {
                     "order_id": order_id,
                     "parent_id": parent_id,
                     "parent_ids": parent_ids,
@@ -995,11 +999,25 @@ class WebhookListener:
                     "status": "filled",
                     "order_time": order_time,
                     "trigger": {"trigger": order.get("order_type", "market")},
-                    "source": "reconciled",  # ✅ Explicitly mark reconciled trades
+                    "source": "reconciled",
                     "total_fees": total_fees,
-                })
+                }
 
-                logger.debug(f"🧾 Reconciled and recorded trade: {order_id}")
+                reconciled_trades.append(trade_data)
+
+            # 🔧 Helper: parse ISO timestamp to datetime for sorting
+            def parse_order_time(trade_dict):
+                ot = trade_dict["order_time"]
+                if isinstance(ot, str):
+                    return datetime.fromisoformat(ot.replace("Z", "+00:00"))
+                return ot
+
+            # ✅ Sort reconciled trades before enqueueing
+            reconciled_trades.sort(key=parse_order_time)
+
+            for trade in reconciled_trades:
+                await shared_data_manager.trade_recorder.enqueue_trade(trade)
+                logger.debug(f"🧾 Reconciled and recorded trade: {trade['order_id']}")
 
             await shared_data_manager.set_order_management({"order_tracker": tracker})
             await shared_data_manager.save_data()
@@ -1081,6 +1099,7 @@ class WebhookListener:
                         order_id = o.get("order_id")
                         client_order_id = o.get("client_order_id", "").lower()
                         trigger_status = o.get("trigger_status", "").lower()
+                        order_source = o.get("source", "").lower()
                         order_type = o.get("order_type", "").lower()
 
                         # Determine parent_id only for SELL orders
@@ -1095,14 +1114,13 @@ class WebhookListener:
                         )
 
                         # Infer source from client_order_id prefix
-                        if "passivemm" in client_order_id:
-                            source = "PassiveMM"
-                        elif "webhook" in client_order_id:
-                            source = "webhook"
-                        elif "websocket" in client_order_id:
-                            source = "websocket"
-                        else:
-                            source = "unknown"
+                        source = (
+                            "PassiveMM" if "passivemm" in client_order_id else
+                            "webhook" if "webhook" in client_order_id else
+                            "websocket" if "websocket" in client_order_id else
+                            order_source if "reconciled" in order_source else
+                            "unknown"
+                        )
 
                         # Determine timestamp (fallback sequence)
                         order_time = self.iso_to_dt(
@@ -1194,7 +1212,7 @@ class WebhookListener:
                             "side": insert_stmt.excluded.side,
                             "trigger": insert_stmt.excluded.trigger,
                             "order_type": insert_stmt.excluded.order_type,
-                            "source": insert_stmt.excluded.source,
+                            "source": case((insert_stmt.excluded.source != literal("unknown"), insert_stmt.excluded.source), else_=literal_column("trade_records.source")),
                             "total_fees_usd": insert_stmt.excluded.total_fees_usd,
                             "pnl_usd": insert_stmt.excluded.pnl_usd,
                             "remaining_size": insert_stmt.excluded.remaining_size,
@@ -1210,7 +1228,7 @@ class WebhookListener:
                         updated_total += result.rowcount
                     await sess.commit()
 
-                self.logger.debug(
+                self.logger.info(
                     f"✅ sync_open_orders → upserted {updated_total} rows "
                     f"({len(open_orders)} open / {len(recent_orders)} recent)"
                 )

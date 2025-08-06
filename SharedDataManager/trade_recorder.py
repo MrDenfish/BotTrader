@@ -118,6 +118,9 @@ class TradeRecorder:
             status = trade_data.get("status")
             trigger = trade_data.get("trigger")
             source = trade_data.get("source")
+            if source == "unknown":
+                pass
+
 
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
             base_q = Decimal("1").scaleb(-base_deci)
@@ -141,15 +144,19 @@ class TradeRecorder:
                     # ✅ SELL Logic (FIFO Matching)
                     # -----------------------------
                     if side == "sell":
+                        if order_id == '94e92fed-065b-4f26-a0a1-62b93769f5c5':
+                            pass # debug
                         self.logger.info(f"[RECORD_TRADE DEBUG] Starting SELL record for {symbol} {amount}@{price}")
-
+                        if symbol == 'ILV-USD':
+                            pass
                         fifo_result = await self.compute_cost_basis_and_sale_proceeds(
                             symbol=symbol,
                             size=amount,
                             sell_price=price,
                             total_fees=total_fees,
                             quote_q=quote_q,
-                            base_q=base_q
+                            base_q=base_q,
+                            sell_time=order_time
                         )
 
                         parent_ids = fifo_result["parent_ids"]
@@ -245,27 +252,33 @@ class TradeRecorder:
             sell_price: Decimal,
             total_fees: Decimal,
             quote_q: Decimal,
-            base_q: Decimal
+            base_q: Decimal,
+            sell_time: datetime,  # ✅ new
+            preferred_parent_id: Optional[str] = None
     ) -> dict:
+
         """
         Allocates cost basis and computes sale proceeds using strict FIFO logic.
-        Fully aligned with test_fifo_prod().
+        This version ensures exact parent matching and avoids double counting.
+        Assumes it is called inside an active session.
+        :param preferred_parent_id: If provided, restricts matching to this exact order_id only (used in reconciled trades)
 
-        ⚠️ Assumes it is called INSIDE an active session (no session param needed).
         """
-        TOLERANCE = base_q / 10
         parent_ids = []
         cost_basis = Decimal("0")
         filled_size = Decimal("0")
         update_instructions = []
+        TOLERANCE = base_q /10
 
         try:
-            # ✅ Fetch unlinked BUY trades (FIFO order)
+            self.logger.info(f"[DEBUG] Running FIFO with sell_time={sell_time} for {symbol} sell of size={size}")
+            # ✅ Fetch eligible BUY trades (FIFO order)
             stmt = (
                 select(TradeRecord)
                 .where(
                     TradeRecord.symbol == symbol,
                     TradeRecord.side == "buy",
+                    TradeRecord.order_time <= sell_time,  # ✅ this must be included
                     or_(
                         TradeRecord.remaining_size.is_(None),
                         TradeRecord.remaining_size > 0
@@ -275,26 +288,43 @@ class TradeRecorder:
                 )
                 .order_by(TradeRecord.order_time.asc())
             )
-            # Reuse current session
+
             result = await self.active_session.execute(stmt)
             parent_trades = result.scalars().all()
-            if symbol == "EDGE-USD":
-                print(
-                    f"[FIFO PROD] Starting PnL calc for {symbol}: Sell Size={size}, Sell Price={sell_price}"
-                )#debug
-                print(f"[FIFO PROD] Found {len(parent_trades)} candidate BUYs")#debug
+            if symbol == 'ILV-USD': #debug
+                self.logger.info(f"[DEBUG] Found {len(parent_trades)} candidate buys for {symbol}")# debug
+            for pt in parent_trades:
+                if pt.order_id == '94e92fed-065b-4f26-a0a1-62b93769f5c5': #debug
+                    self.logger.info(f"  └─ {pt.order_time} | {pt.order_id} | rem_size={pt.remaining_size} | price={pt.price}")
+
+
+            if preferred_parent_id:
+                # ✅ Restrict to just the specified parent
+                parent_trades = [pt for pt in parent_trades if pt.order_id == preferred_parent_id]
+                if not parent_trades:
+                    self.logger.warning(f"[PnL] Specified parent {preferred_parent_id} not found or has no size left")
+                    return self._empty_result()
+
+            if not parent_trades:
+                self.logger.warning(f"[FIFO] No eligible BUYs found for {symbol}")
+                return self._empty_result()
 
             for pt in parent_trades:
+
                 pt_size = Decimal(pt.remaining_size if pt.remaining_size is not None else pt.size)
                 pt_price = Decimal(pt.price)
-                usable = min(pt_size, size - filled_size)
 
+                remaining_needed = size - filled_size
+                if remaining_needed <= Decimal("0"):
+                    break  # ✅ Exact match achieved
+
+                usable = min(pt_size, remaining_needed)
                 if usable <= Decimal("0"):
                     continue
 
+                # Calculate cost and profit for this slice
                 cost_basis += usable * pt_price
                 filled_size += usable
-
                 if pt.order_id not in parent_ids:
                     parent_ids.append(pt.order_id)
 
@@ -313,36 +343,29 @@ class TradeRecorder:
                         )
                     )
                 })
-                if symbol == "EDGE-USD": #debugging
-                    print(
-                        f"[FIFO PROD] Parent {pt.order_id} | "
-                        f"Size={pt_size}, Usable={usable}, RemainingAfter={remaining_after} | "
-                        f"CostBasis+={usable * pt_price}, Realized+={realized_profit}"
-                    )#debug
 
+                # 🔍 Debug for ILV-USD
+                if symbol == "ILV-USD":
+                    print(
+                        f"[FIFO] Parent={pt.order_id} | Usable={usable} | "
+                        f"Price={pt_price} | RemainingAfter={remaining_after} | "
+                        f"Realized+={realized_profit}"
+                    )
+
+                # ✅ Done if fully filled
                 if filled_size >= size - TOLERANCE:
                     break
 
             if filled_size == Decimal("0"):
-                return {
-                    "cost_basis_usd": None,
-                    "sale_proceeds_usd": None,
-                    "net_sale_proceeds_usd": None,
-                    "pnl_usd": None,
-                    "parent_ids": [],
-                    "update_instructions": []
-                }
+                self.logger.warning(f"[FIFO] No fills possible for SELL {size} {symbol}")
+                return self._empty_result()
 
-            used_size = min(filled_size, size)
+            # Final calculations
+            used_size = filled_size
             cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_q)
             sale_proceeds = self.shared_utils_precision.safe_quantize(used_size * sell_price, quote_q)
             net_proceeds = self.shared_utils_precision.safe_quantize(sale_proceeds - total_fees, quote_q)
             pnl_usd = self.shared_utils_precision.safe_quantize(net_proceeds - cost_basis, quote_q)
-            if symbol == "SPK-USD":
-                print(
-                    f"[FIFO PROD RESULT] {symbol} | PnL={pnl_usd} | CostBasis={cost_basis} | "
-                    f"SaleProceeds={sale_proceeds} | Parents={parent_ids}"
-                )#debug
 
             return {
                 "cost_basis_usd": float(cost_basis),
@@ -355,14 +378,17 @@ class TradeRecorder:
 
         except Exception as e:
             self.logger.error(f"❌ Error in compute_cost_basis_and_sale_proceeds for {symbol}: {e}", exc_info=True)
-            return {
-                "cost_basis_usd": None,
-                "sale_proceeds_usd": None,
-                "net_sale_proceeds_usd": None,
-                "pnl_usd": None,
-                "parent_ids": [],
-                "update_instructions": []
-            }
+            return self._empty_result()
+
+    def _empty_result(self):
+        return {
+            "cost_basis_usd": None,
+            "sale_proceeds_usd": None,
+            "net_sale_proceeds_usd": None,
+            "pnl_usd": None,
+            "parent_ids": [],
+            "update_instructions": []
+        }
 
     async def fetch_all_trades(self):
         """
@@ -481,8 +507,10 @@ class TradeRecorder:
                 result = await session.execute(
                     select(TradeRecord).where(
                         TradeRecord.side == "sell",
-                        TradeRecord.pnl_usd.is_(None)
+                        TradeRecord.pnl_usd.is_(None),
+                        TradeRecord.source != "reconciled"
                     )
+
                 )
                 sell_trades = result.scalars().all()
 
@@ -503,16 +531,25 @@ class TradeRecorder:
                         sell_price=price,
                         total_fees=total_fees,
                         quote_q=quote_q,
-                        base_q=base_q
+                        base_q=base_q,
+                        sell_time=trade.order_time
                     )
 
                     parent_ids = fifo_result["parent_ids"]
+                    if not parent_ids and amount > 0:
+                        self.logger.warning(
+                            f"❌ Unlinked SELL {trade.order_id}: {amount} {symbol} — "
+                            f"no BUY match found. Consider reviewing fill timing or data."
+                        )
+
                     trade.parent_id = parent_ids[0] if parent_ids else None
                     trade.parent_ids = parent_ids or None
                     trade.cost_basis_usd = float(fifo_result["cost_basis_usd"])
                     trade.sale_proceeds_usd = float(fifo_result["sale_proceeds_usd"])
                     trade.net_sale_proceeds_usd = float(fifo_result["net_sale_proceeds_usd"])
                     trade.pnl_usd = float(fifo_result["pnl_usd"])
+                    if not trade.pnl_usd:
+                        pass
                     trade.realized_profit = float(sum(
                         Decimal(instr["realized_profit"]) for instr in fifo_result["update_instructions"]
                     ))
@@ -571,7 +608,7 @@ class TradeRecorder:
                         .where(TradeRecord.symbol == symbol)
                         .where(TradeRecord.side == side)
                         .where(TradeRecord.status.ilike('placed'))  # or 'filled' depending on your usage
-                        .order_by(TradeRecord.order_time.desc())
+                        .order_by(TradeRecord.order_time.asc())
                         .limit(1)
                     )
                     record = result.scalar_one_or_none()
@@ -591,12 +628,7 @@ class TradeRecorder:
                                 base_size = Decimal(order.get("filled_size", "0"))
                                 price = Decimal(order.get("average_filled_price", "0"))
                                 return base_size.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
-                                # return {
-                                #     "filled_size": base_size,
-                                #     "price": price,
-                                #     "order_id": order.get("order_id"),
-                                #     "source": "exchange"
-                                # }
+
                 except Exception as e:
                     self.logger.error(f"❌ Error in find_latest_filled_size for {symbol}: {e}", exc_info=True)
                 return None
@@ -615,7 +647,8 @@ class TradeRecorder:
                     # ✅ Fetch all SELL trades needing PnL updates
                     result = await session.execute(
                         select(TradeRecord).where(
-                            TradeRecord.side == "sell"
+                            TradeRecord.side == "sell",
+                            TradeRecord.source != "reconciled"
                         )
                     )
                     sell_trades = result.scalars().all()
@@ -651,6 +684,10 @@ class TradeRecorder:
         cost_basis_usd = Decimal("0")
         realized_pnl = Decimal("0")
         used_parent_ids = []
+
+        if sell_trade.source == "reconciled":
+            self.logger.info(f"🛡️ Skipping PnL calc for reconciled trade {sell_trade.order_id}")
+            return
 
         # ✅ Fetch candidate BUY trades (FIFO order)
         result = await session.execute(
@@ -857,7 +894,8 @@ class TradeRecorder:
                         sell_price=Decimal(sell_trade.price),
                         total_fees=Decimal(sell_trade.total_fees_usd or 0),
                         quote_q=quote_q,
-                        base_q=base_q
+                        base_q=base_q,
+                        sell_time=sell_trade.order_time
                     )
 
             # ✅ 4. Display Results
@@ -934,7 +972,8 @@ class TradeRecorder:
                         sell_price=Decimal(sell_trade.price),
                         total_fees=Decimal(sell_trade.total_fees_usd or 0),
                         quote_q=quote_q,
-                        base_q=base_q
+                        base_q=base_q,
+                        sell_time=sell_trade.order_time
                     )
 
             # -----------------------------
@@ -982,7 +1021,7 @@ class TradeRecorder:
                             TradeRecord.order_time >= datetime.now(timezone.utc) - timedelta(days=7),
                         )
                         .group_by(TradeRecord.symbol)
-                        .order_by(func.sum(TradeRecord.pnl_usd).desc())
+                        .order_by(func.sum(TradeRecord.pnl_usd).asc())
                         .limit(10)
                     )
 
