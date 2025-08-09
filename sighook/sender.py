@@ -258,7 +258,7 @@ class TradeBot:
         self.database_ops = DatabaseOpsManager.get_instance(
             self.exchange, self.ccxt_api, self.logger, self.profit_extras,
             self.portfolio_manager, self.holdings_processor,
-            self.database_session_mngr.async_session_factory,  self.db_tables,
+            self.database_session_mngr,  self.db_tables,
             self.profit_data_manager, self.snapshot_manager,
             self.shared_utils_precision, self.shared_data_manager
         )
@@ -288,7 +288,7 @@ class TradeBot:
             self.tradebot, self.exchange, self.order_manager, self.trading_strategy,
             self.logger_manager, self.coinbase_api, self.ccxt_api, self.ticker_manager,
             self.portfolio_manager, self.max_concurrent_tasks,
-            self.database_session_mngr.async_session_factory, self.db_tables,
+            self.database_session_mngr, self.db_tables,
             self.shared_data_manager
         )
 

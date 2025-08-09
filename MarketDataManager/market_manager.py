@@ -19,17 +19,17 @@ class MarketManager:
 
     @classmethod
     def get_instance(cls, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api,
-                     ticker_manager, portfolio_manager, max_concurrent_tasks, async_session_factory: sessionmaker,
+                     ticker_manager, portfolio_manager, max_concurrent_tasks, database_session_manager,
                      db_tables, shared_data_manager):
         if cls._instance is None:
             cls._instance = cls(tradebot, exchange, order_manager, trading_strategy,
                                 logger_manager, coinbase_api, ccxt_api, ticker_manager,
-                                portfolio_manager, max_concurrent_tasks, async_session_factory,
+                                portfolio_manager, max_concurrent_tasks, database_session_manager,
                                 db_tables, shared_data_manager)
         return cls._instance
 
     def __init__(self, tradebot, exchange, order_manager, trading_strategy, logger_manager, coinbase_api, ccxt_api,
-                 ticker_manager, portfolio_manager, max_concurrent_tasks, async_session_factory: sessionmaker,
+                 ticker_manager, portfolio_manager, max_concurrent_tasks, database_session_manager,
                  db_tables, shared_data_manager):
 
         self.app_config = CentralConfig()
@@ -47,8 +47,7 @@ class MarketManager:
         self.logger_manager = logger_manager
         self.db_tables = db_tables
 
-        # ✅ New: SQLAlchemy session factory
-        self.async_session_factory: sessionmaker[AsyncSession] = async_session_factory
+        self.db_session_manager = database_session_manager
 
         # ✅ Logging
         if logger_manager.loggers['shared_logger'].name == 'shared_logger':
@@ -226,7 +225,7 @@ class MarketManager:
                 }
             )
 
-            async with self.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     batch_size = 500
                     for i in range(0, len(records), batch_size):
@@ -235,6 +234,10 @@ class MarketManager:
 
             # ✅ Cap rows per symbol after insert
             await self.cap_ohlcv_data(symbol, max_rows=self._max_ohlcv_rows)
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 store_ohlcv_data was cancelled.", exc_info=True)
+            raise
 
         except Exception as e:
             self.logger.error(f"❌ Error storing OHLCV data for {ohlcv_data['symbol']}: {e}", exc_info=True)
@@ -245,7 +248,7 @@ class MarketManager:
         Deletes the oldest rows (by time) if over the limit.
         """
         try:
-            async with self.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
 
                     # ✅ Step 1: Count rows for this symbol
@@ -281,17 +284,4 @@ class MarketManager:
         except Exception as e:
             self.logger.error(f"❌ Error capping OHLCV data for {symbol}: {e}", exc_info=True)
 
-    # async def get_last_timestamp(self, symbol):
-    #     """
-    #     Get the last timestamp for a symbol from the OHLCV table oldest.
-    #     """
-    #     query = (
-    #         select(TableModels.ohlcv_data.OHLCVData.time)
-    #         .filter(TableModels.ohlcv_data.OHLCVData.symbol == symbol)
-    #         .order_by(TableModels.ohlcv_data.OHLCVData.time.desc())
-    #         .limit(1)
-    #     )
-    #     last_time = await self.database.fetch_one(query)
-    #     if last_time:
-    #         return int(last_time['time'].timestamp() * 1000)
-    #     return None
+

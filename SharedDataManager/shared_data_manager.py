@@ -111,6 +111,7 @@ class SharedDataManager:
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
+        self.db_semaphore = asyncio.Semaphore(10)
         self.logger = logger_manager  # 🙂
 
         self.shared_utils_utility = shared_utils_utility
@@ -124,6 +125,7 @@ class SharedDataManager:
 
         self._last_save_ts = 0
         self._save_throttle_seconds = 2  # configurable
+
 
         self.lock = asyncio.Lock()
         self._initialized_event = Event()
@@ -438,6 +440,10 @@ class SharedDataManager:
             duration = round(time.time() - start_time, 2)
             self.logger.debug(f"✅ save_data completed in {duration}s")
 
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 save_data was cancelled.")
+            raise
+
         except Exception as e:
             self.logger.error(f"❌ Error saving shared data: {e}", exc_info=True)
 
@@ -641,6 +647,9 @@ class SharedDataManager:
                     session.add(po)
 
             self.logger.info(f"✅ Saved passive order: {symbol} {side} {order_id}")
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 save_passive_order was cancelled.", exc_info=True)
+            raise
 
         except Exception as e:
             self.logger.error(f"❌ Failed to save passive order: {e}", exc_info=True)
@@ -650,6 +659,10 @@ class SharedDataManager:
             async with self.database_session_manager.async_session() as session:
                 async with session.begin():
                     await session.execute(delete(PassiveOrder).where(PassiveOrder.order_id == order_id))
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 remove_passive_order was cancelled.", exc_info=True)
+            raise
+
         except Exception as e:
             self.logger.error(f"❌ Failed to remove passive order: {e}", exc_info=True)
 
@@ -697,6 +710,9 @@ class SharedDataManager:
                     await session.execute(
                         delete(PassiveOrder).where(PassiveOrder.order_id.in_(stale_ids))
                     )
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 reconcile_passive_orders was cancelled.", exc_info=True)
+            raise
 
         except Exception as e:
             self.logger.error(f"❌ Failed to reconcile passive orders: {e}", exc_info=True)

@@ -9,17 +9,17 @@ class DatabaseOpsManager:
 
     @classmethod
     def get_instance(cls, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager,
-                     async_session_factory: sessionmaker, db_tables,profit_data_manager, snapshots_manager, shared_utils_precision,
+                     database_session_manager, db_tables,profit_data_manager, snapshots_manager, shared_utils_precision,
                      shared_data_manager):
         if cls._instance is None:
             cls._instance = cls(exchange, ccxt_api, logger_manager, profit_extras,
-                                portfolio_manager, holdings_manager, async_session_factory,
+                                portfolio_manager, holdings_manager, database_session_manager,
                                 db_tables,profit_data_manager, snapshots_manager,
                                 shared_utils_precision, shared_data_manager)
         return cls._instance
 
     def __init__(self, exchange, ccxt_api, logger_manager, profit_extras, portfolio_manager, holdings_manager,
-                 async_session_factory: sessionmaker, db_tables,profit_data_manager, snapshots_manager, shared_utils_precision,
+                 database_session_manager, db_tables,profit_data_manager, snapshots_manager, shared_utils_precision,
                  shared_data_manager):
 
         self.exchange = exchange
@@ -34,7 +34,7 @@ class DatabaseOpsManager:
         self.holdings_manager = holdings_manager
         self.snapshot_manager = snapshots_manager
         self.profit_data_manager = profit_data_manager
-        self.async_session_factory: sessionmaker[AsyncSession] = async_session_factory
+        self.db_session_manager = database_session_manager
 
         self.db_tables = db_tables
         self.df_market_cache_vol = pd.DataFrame()

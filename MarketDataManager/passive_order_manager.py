@@ -598,6 +598,8 @@ class PassiveOrderManager:
             self.logger.info(f"⏹️ Monitor cancelled for {symbol}")
         except Exception as e:
             self.logger.error(f"❌ Error in _monitor_active_symbol for {symbol}: {e}", exc_info=True)
+        finally:
+            entry["monitor_task"] = None
 
     async def get_profitable_symbols(
             self,
@@ -721,17 +723,17 @@ class PassiveOrderManager:
                     .head(5)
                     .to_dict()
                 )
-
-                print(self.shared_utils_color.format(
-                    "\n[PassiveMM Live Performance Tracker]\n"
-                    "-------------------------------------\n"
-                    f"Total Trades (last {lookback_days}d): {total_trades}\n"
-                    f"Win Rate: {win_rate:.2f}%\n"
-                    f"Total PnL: {total_pnl:+.2f} USD\n"
-                    f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
-                    f"Top Symbols: {top_symbols}\n"
-                    "-------------------------------------"
-                , self.shared_utils_color.BRIGHT_GREEN))
+                if total_trades >0:
+                    print(self.shared_utils_color.format(
+                        "\n[PassiveMM Live Performance Tracker]\n"
+                        "-------------------------------------\n"
+                        f"Total Trades (last {lookback_days}d): {total_trades}\n"
+                        f"Win Rate: {win_rate:.2f}%\n"
+                        f"Total PnL: {total_pnl:+.2f} USD\n"
+                        f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
+                        f"Top Symbols: {top_symbols}\n"
+                        "-------------------------------------"
+                    , self.shared_utils_color.BRIGHT_GREEN))
 
             except Exception as e:
                 self.logger.error(f"❌ Live performance tracker error: {e}", exc_info=True)

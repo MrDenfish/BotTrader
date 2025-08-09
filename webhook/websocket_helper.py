@@ -249,7 +249,7 @@ class WebSocketHelper:
             elif channel == "heartbeats":
                 self.last_heartbeat = time.time()
                 self.count += 1
-                if self.count >= 20:
+                if self.count >= 50:
                     heartbeat_counter = data.get("events", [{}])[0].get("heartbeat_counter")
                     print(f"💚 USER heartbeat: Counter={heartbeat_counter}")
                     self.count = 0

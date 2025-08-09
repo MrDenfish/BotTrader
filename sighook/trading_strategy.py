@@ -172,14 +172,26 @@ class TradingStrategy:
     # =========================================================
     async def fetch_valid_ohlcv_batches(self, filtered_ticker_cache: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """
-        Fetch OHLCV for all symbols in filtered ticker cache.
+        Fetch OHLCV for all symbols with controlled concurrency.
         """
+        semaphore = asyncio.Semaphore(10)  # Limit to 10 concurrent queries (tune as needed)
+
+        async def safe_fetch(symbol):
+            async with semaphore:
+                return await self.fetch_ohlcv_data_from_db(symbol)
+
         tasks = {
-            row['symbol']: self.fetch_ohlcv_data_from_db(row['symbol'])
+            row['symbol']: asyncio.create_task(safe_fetch(row['symbol']))
             for _, row in filtered_ticker_cache.iterrows()
         }
+
         raw_data = await asyncio.gather(*tasks.values(), return_exceptions=False)
-        return {symbol: df for symbol, df in zip(tasks.keys(), raw_data) if isinstance(df, pd.DataFrame) and not df.empty}
+
+        return {
+            symbol: df
+            for symbol, df in zip(tasks.keys(), raw_data)
+            if isinstance(df, pd.DataFrame) and not df.empty
+        }
 
     async def fetch_ohlcv_data_from_db(self, symbol: str) -> pd.DataFrame:
         """
@@ -208,6 +220,9 @@ class TradingStrategy:
                 return pd.DataFrame()
 
             return ohlcv_df
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fetch_ohlcv_data_from_db was cancelled.", exc_info=True)
+            raise
 
         except Exception as e:
             self.logger.error(f"❌ Error fetching OHLCV for {symbol}: {e}", exc_info=True)

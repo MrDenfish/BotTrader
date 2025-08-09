@@ -71,6 +71,10 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
 async def graceful_shutdown(listener, runner):
     if hasattr(listener, 'shutdown'):
         await listener.shutdown()
+    if hasattr(listener, 'market_data_manager'):
+        market_ws_manager = listener.market_data_manager
+        if hasattr(market_ws_manager, 'shutdown'):
+            await market_ws_manager.shutdown()
     await runner.cleanup()
     shutdown_event.set()
 
@@ -223,9 +227,10 @@ async def refresh_loop(shared_data_manager, interval=30):
     while True:
         try:
             await shared_data_manager.refresh_shared_data()
-        except Exception as e:
-            print(f"⚠️ Error in refresh_loop: {e}")
-        await asyncio.sleep(interval)
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            print("Refresh loop cancelled")
+
 
 
 async def run_sighook(config, shared_data_manager, market_data_updater, rest_client, portfolio_uuid, logger_manager, alert, order_book_manager,
@@ -457,6 +462,25 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, market
     await graceful_shutdown(listener, runner)
     return listener
 
+async def monitor_db_connections(shared_data_manager, interval=10, threshold=10):
+    logger = shared_data_manager.logger
+    db = shared_data_manager.database_session_manager
+
+    while True:
+        try:
+            count = int(await db.get_active_connection_count())
+            if count >= 0:
+                if count >= threshold:
+                    logger.warning(f"🚨 DB Connections High: {count} active (≥ {threshold})")
+                else:
+                    logger.info(f"🔎 DB Connections: {count}")
+            else:
+                logger.warning("⚠️ Unable to retrieve DB connection count.")
+            await asyncio.sleep(interval)
+        except Exception as e:
+            logger.error(f"💥 monitor_db_connections error: {e} 💥", exc_info=True)
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
     parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both')
@@ -640,6 +664,13 @@ async def main():
                     asyncio.create_task(websocket_manager.start_websockets()),
                     asyncio.create_task(accumulation_manager.start_daily_runner())
                 ]
+
+                monitor_interval = int(config.db_monitor_interval or 10)
+                threshold = int(config.db_connection_threshold or 10)
+                db_monitor_task = asyncio.create_task(monitor_db_connections(shared_data_manager,
+                                                                             interval=monitor_interval, threshold=threshold), name="DB Connection Monitor")
+                background_tasks.append(db_monitor_task)
+
 
                 # ✅ Step 4: Wait for shutdown signal
                 try:

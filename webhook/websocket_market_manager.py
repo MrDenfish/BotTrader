@@ -100,6 +100,9 @@ class WebSocketMarketManager:
         # Data managers
         self.ohlcv_manager = ohlcv_manager
 
+        self.passive_order_semaphore = asyncio.Semaphore(5)
+        self._background_tasks = set()
+
     @property
     def hodl(self):
         return self._hodl
@@ -196,7 +199,7 @@ class WebSocketMarketManager:
                         fills = order.get("fills", [])
                         base_id = order_id
 
-                        async with self.db_session_manager.async_session_factory() as session:
+                        async with self.db_session_manager.async_session() as session:
                             existing = await session.get(TradeRecord, base_id)
 
                         if not fills:
@@ -232,9 +235,25 @@ class WebSocketMarketManager:
             await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})
             await self.shared_data_manager.save_data()
             self.logger.debug(f"🪲 Final tracker updated → {len(order_tracker)} orders")
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 process_user_channel was cancelled.", exc_info=True)
+            raise
 
         except Exception:
             self.logger.error("process_user_channel error", exc_info=True)
+
+    def _parse_order_time(self, time_value):
+        """
+        Normalize order_time for sorting queued trades.
+        Accepts ISO string or datetime object, returns UTC datetime.
+        """
+        if isinstance(time_value, datetime):
+            return time_value.astimezone(timezone.utc)
+        try:
+            return datetime.fromisoformat(time_value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        except Exception:
+            self.logger.warning(f"⚠️ Unable to parse order_time: {time_value}")
+            return datetime.min.replace(tzinfo=timezone.utc)
 
     def _build_trade_dict(self, order: dict, parent_id: Optional[str], side: str, fallback: bool = False, source: str = "websocket") -> dict:
         """Builds a normalized trade dictionary from order data."""
@@ -326,12 +345,11 @@ class WebSocketMarketManager:
 
             # call manager at most once every 5 s per symbol
             if now - last > 30:
-                asyncio.create_task(  # don’t block the ticker loop
-                    self.passive_order_manager.place_passive_orders(
-                        asset=symbol,
-                        product_id=product_id,
-                    )
+                task = asyncio.create_task(
+                    self._safe_place_passive_order(symbol, product_id)
                 )
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
             # Fetch historical data
             oldest_close, latest_close, avg_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
             volatility, adaptive_threshold = await self.ohlcv_manager.fetch_volatility_5min(product_id)
@@ -378,6 +396,14 @@ class WebSocketMarketManager:
         except Exception as e:
             self.logger.error(f"Error in _process_single_ticker for {ticker.get('product_id')}: {e}", exc_info=True)
 
+    async def _safe_place_passive_order(self, symbol: str, product_id: str):
+        try:
+            async with self.passive_order_semaphore:
+                await self.passive_order_manager.place_passive_orders(asset=symbol, product_id=product_id)
+        except Exception as e:
+            self.logger.error(f"🚨 Error placing passive order for {product_id}: {e}", exc_info=True)
+
+
     async def _handle_received(self, message):
         # Received = order accepted by engine, not on book yet
         client_oid = message.get("client_oid")
@@ -415,3 +441,13 @@ class WebSocketMarketManager:
         order_id = message.get("order_id")
         stop_price = message.get("stop_price")
         self.logger.debug(f"Stop order activated: {order_id} at stop price {stop_price}")
+
+    async def shutdown(self):
+        """Cleanly cancel and await background passive order tasks."""
+        if hasattr(self, "_background_tasks"):
+            self.logger.info("🛑 Cancelling passive order tasks...")
+            for task in self._background_tasks:
+                task.cancel()
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            self.logger.info(f"✅ {len(self._background_tasks)} passive order tasks cleaned up.")
+            self._background_tasks.clear()

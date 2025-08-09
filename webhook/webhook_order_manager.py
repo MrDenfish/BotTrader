@@ -642,7 +642,7 @@ class TradeOrderManager:
                     'price': str(order_data.adjusted_price),
                     'amount': str(order_data.adjusted_size),
                     'attempts': attempt,
-                    'reason': error_resp.get('error', response.get('reason', 'unknown')),
+                    'reason': error_resp.get('error', response.get('reason', 'unKnown')),
                     'message': error_resp.get('message', response.get('message', '')),
                     'response': response,
                     'note': f"Failed after {attempt} attempt(s) — check funds, size, or post-only rules"

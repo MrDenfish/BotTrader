@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from TableModels.base import Base
+from contextlib import asynccontextmanager
 from TableModels.shared_data import SharedData
 from Config.config_manager import CentralConfig
 from TableModels.passive_orders import PassiveOrder
@@ -54,11 +55,33 @@ class DatabaseSessionManager:
             max_overflow=20,  # allow extra temporary connections
             pool_timeout=60,  # wait before raising TimeoutError
             pool_recycle=1800,  # recycle idle connections every 30 min
+            pool_pre_ping=True,  # Detect dead connections
             future=True
         )
 
-        self.async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
+        self._async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
 
+    @asynccontextmanager
+    async def async_session(self) -> AsyncSession:
+        async with self.shared_data_manager.db_semaphore:  # throttle concurrency
+            async with self._async_session_factory() as session:
+                yield session
+
+    @property
+    def async_session_factory(self):
+        raise RuntimeError("Do not access session factory directly. Use `async_session()` instead.")
+
+    async def get_active_connection_count(self) -> int:
+        """Returns number of active DB connections to the current database."""
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    text("SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database();")
+                )
+                return int(result.scalar_one())  # 👈 ensure int
+        except Exception as e:
+            self.logger.warning(f"⚠️ Failed to get active DB connections: {e}", exc_info=True)
+            return -1
 
     async def initialize_schema(self):
         try:
@@ -105,7 +128,7 @@ class DatabaseSessionManager:
     async def initialize(self):
         try:
             # 🟡 Optional: Run a lightweight SQLAlchemy connectivity check
-            async with self.async_session_factory() as session:
+            async with self.async_session() as session:
                 await session.execute(text("SELECT 1"))
             self.logger.info("✅ SQLAlchemy database connection verified.")
 
@@ -119,7 +142,7 @@ class DatabaseSessionManager:
     async def populate_initial_data(self):
         """Seed default rows if needed using SQLAlchemy ORM."""
         try:
-            async with self.async_session_factory() as session:
+            async with self.async_session() as session:
                 async with session.begin():
                     # Check if a 'market_data' row already exists
                     result = await session.execute(
@@ -135,6 +158,9 @@ class DatabaseSessionManager:
                         )
                         session.add(new_entry)
                         self.logger.info("✅ Inserted initial market_data row.")
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 populate_initial_data was cancelled.")
+            raise
 
         except SQLAlchemyError as e:
             self.logger.error(f"❌ Failed to populate initial shared_data: {e}", exc_info=True)
@@ -148,45 +174,27 @@ class DatabaseSessionManager:
         except Exception as e:
             self.logger.error(f"❌ Error while disposing SQLAlchemy engine: {e}", exc_info=True)
 
-    # def get_database_ops(self, *args, **kwargs):
-    #     if self.database_ops is None:
-    #         self.database_ops = DatabaseOpsManager.get_instance(
-    #             self.logger, self.profit_extras, self.config, self.database, *args, **kwargs
-    #         )
-    #     return self.database_ops
-
-    # async def process_data(self):
-    #     """Delegates processing to DatabaseOpsManager within a transaction."""
-    #     try:
-    #         # Ensure database is connected
-    #         if not self.database.is_connected:
-    #             await self.connect()
-    #             self.logger.info("Database reconnected within process_data.")
-    #
-    #         # Execute within an explicit transaction
-    #         # async with self.database.transaction():
-    #         #     await self.database_ops.process_data()
-    #     except Exception as e:
-    #         self.logger.error(f"❌ Failed to process data in session manager: {e}")
-    #         raise
-
     async def check_ohlcv_initialized(self):
         """PART III: Check if OHLCV data is initialized in the database."""
         try:
-            async with self.async_session_factory() as session:
+            async with self.async_session() as session:
                 result = await session.execute(
                     select(TableModels.OHLCVData).limit(1)
                 )
                 row = result.scalar_one_or_none()
                 print(f'{row}')
                 return row is not None
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 check_ohlcv_initialized was cancelled.")
+            raise
         except Exception as e:
             self.logger.error(f"❌ Error checking OHLCV initialization: {e}", exc_info=True)
             return False
 
     async def fetch_market_data(self) -> dict:
+        """Fetch market_data from the database using SQLAlchemy. Called from main.py.refresh_loop"""
         try:
-            async with self.async_session_factory() as session:
+            async with self.async_session() as session:
                 result = await session.execute(
                     select(SharedData).where(SharedData.data_type == "market_data")
                 )
@@ -197,24 +205,31 @@ class DatabaseSessionManager:
 
                 return json.loads(row.data, cls=self.custom_json_decoder)
 
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 save_data was cancelled.")
+            raise
         except Exception as e:
             self.logger.error(f"❌ Error fetching market data: {e}", exc_info=True)
             return {}
 
     async def fetch_order_management(self):
-        """Fetch order_management from the database using SQLAlchemy."""
+        """Fetch market_data from the database using SQLAlchemy. Called from main.py.refresh_loop"""
         try:
-            async with self.async_session_factory() as session:
-                stmt = select(SharedData.data).where(SharedData.data_type == 'order_management')
-                result = await session.execute(stmt)
+            async with self.async_session() as session:
+                result = await session.execute(
+                    select(SharedData).where(SharedData.data_type == "order_management")
+                )
                 row = result.scalar_one_or_none()  # Will return the actual JSON string
 
                 if not row:
                     self.logger.warning("No data found for order_management.")
                     return {}
 
-                return {"data": row}  # Preserve structure expected by downstream code
+                return json.loads(row.data, cls=self.custom_json_decoder)
 
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 save_data was cancelled.")
+            raise
         except Exception as e:
             self.logger.error(f"❌ Error fetching order_management: {e}", exc_info=True)
             return {}
@@ -222,7 +237,7 @@ class DatabaseSessionManager:
     async def fetch_passive_orders(self) -> dict:
         """Fetch passive_orders and return them keyed by symbol using SQLAlchemy."""
         try:
-            async with self.async_session_factory() as session:
+            async with self.async_session() as session:
                 result = await session.execute(select(PassiveOrder))
                 rows = result.scalars().all()  # get the list of PassiveOrder objects
 
@@ -239,11 +254,11 @@ class DatabaseSessionManager:
                         passive_orders[row.symbol] = row_dict
 
                 return passive_orders
-
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 save_data was cancelled.")
+            raise
         except Exception as e:
             self.logger.error(f"❌ Error fetching passive_orders: {e}", exc_info=True)
             return {}
 
-    def async_session(self) -> AsyncSession:
-        """Returns a new SQLAlchemy async session."""
-        return self.async_session_factory()
+

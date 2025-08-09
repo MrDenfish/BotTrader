@@ -13,7 +13,7 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     """
     print("🔎 Checking for trade maintenance requirements...")
 
-    async with shared_data_manager.database_session_manager.async_session_factory() as session:
+    async with shared_data_manager.database_session_manager.async_session() as session:
         async with session.begin():
             # Check if any trades exist
             total_count_result = await session.execute(select(func.count()).select_from(TradeRecord))
@@ -52,7 +52,7 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     # Run the SQL cleanup patches and backfill
     print("⚙️ Incomplete or missing trades detected — applying fixes...")
 
-    async with shared_data_manager.database_session_manager.async_session_factory() as session:
+    async with shared_data_manager.database_session_manager.async_session() as session:
         async with session.begin():
             # BUY Fixes
             buy_fix_stmt = (

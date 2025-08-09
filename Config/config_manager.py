@@ -84,6 +84,8 @@ class CentralConfig:
             "db_port": "DB_PORT",
             "db_name": "DB_NAME",
             # "db_user": "DB_USER",
+            "_db_monitor_interval": "DB_MONITOR_INTERVAL",
+            "_db_connection_threshold": "DB_CONNECTION_THRESHOLD",
             "docker_db_user": "DOCKER_DB_USER",
             "db_password": "DB_PASSWORD",
             "_email_alerts": "EMAIL_ALERTS",
@@ -356,6 +358,14 @@ class CentralConfig:
     @property
     def db_pool_size(self):
         return self._db_pool_size
+
+    @property
+    def db_monitor_interval(self):
+        return self._db_monitor_interval
+
+    @property
+    def db_connection_threshold(self):
+        return self._db_connection_threshold
 
     @property
     def db_max_overflow(self):

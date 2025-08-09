@@ -18,7 +18,6 @@ class TradeRecorder:
 
     def __init__(self, database_session_manager, logger, shared_utils_precision, coinbase_api, maintenance_callback=None):
         self.db_session_manager = database_session_manager
-        self.async_session_factory = database_session_manager.async_session_factory
         self.logger = logger
         self.shared_utils_precision = shared_utils_precision
         self.coinbase_api = coinbase_api
@@ -44,7 +43,8 @@ class TradeRecorder:
             try:
                 await self.worker_task
             except asyncio.CancelledError:
-                pass
+                self.logger.warning("🛑 stop_worker was cancelled.", exc_info=True)
+                raise
             self.worker_task = None
 
     async def enqueue_trade(self, trade_data: dict):
@@ -76,17 +76,86 @@ class TradeRecorder:
             finally:
                 self.trade_queue.task_done()
 
+    async def _fetch_order_fills(self, order_id: str) -> list[dict]:
+        """
+        Return fills for an order as a list of dicts:
+          [{ "qty": Decimal, "price": Decimal, "fee_usd": Decimal }, ...]
+        If your API returns fees in quote currency (USD) we map directly.
+        If it returns fee in base or as a rate, convert before returning.
+        """
+        try:
+            # Adapt this to your actual coinbase_api method name / shape.
+            # Examples of plausible methods you might already have:
+            # resp = await self.coinbase_api.get_order_fills(order_id)
+            # or: resp = await self.coinbase_api.list_fills(order_id=order_id)
+            resp = await self.coinbase_api.get_order_fills(order_id)  # <— adjust to your client
+
+            fills_raw = resp.get("fills") or resp.get("data") or []
+            out = []
+            for f in fills_raw:
+                # Try common field names; fallback safely
+                qty = f.get("size") or f.get("filled_size") or f.get("qty") or "0"
+                price = f.get("price") or f.get("executed_price") or "0"
+
+                # Fee: prefer explicit USD; else 0 (or convert if you have fields to do so)
+                fee_usd = (
+                        f.get("fee_usd")
+                        or f.get("fee")  # if your API guarantees quote=USD for USD pairs
+                        or "0"
+                )
+
+                out.append({
+                    "qty": Decimal(str(qty)),
+                    "price": Decimal(str(price)),
+                    "fee_usd": Decimal(str(fee_usd)),
+                })
+            return out
+        except Exception as e:
+            self.logger.warning(f"⚠️ _fetch_order_fills failed for {order_id}: {e}", exc_info=True)
+            return []
+
+
+    def _normalize_batch_order_to_fills(self, order: dict) -> tuple[list[dict], dict]:
+        """
+        Normalize a single order from get_historical_orders_batch(...) into:
+          - fills: list[{"qty": Decimal, "price": Decimal, "fee_usd": Decimal}]
+          - overrides: {"gross_override": Decimal|None, "fees_override": Decimal|None}
+
+        We *prefer* using filled_value and total_fees to avoid rounding drift,
+        but we also provide a synthetic fill so existing code paths still work.
+        """
+        filled_size = Decimal(str(order.get("filled_size") or "0"))
+        avg_price = Decimal(str(order.get("average_filled_price") or "0"))
+        total_fees = Decimal(str(order.get("total_fees") or "0"))
+        filled_value = order.get("filled_value")
+        gross = Decimal(str(filled_value)) if filled_value not in (None, "") else (filled_size * avg_price)
+
+        fills = [{
+            "qty": filled_size,
+            "price": avg_price,
+            "fee_usd": total_fees,
+        }]
+
+        overrides = {
+            "gross_override": gross,
+            "fees_override": total_fees,
+        }
+        return fills, overrides
+
+
     # =====================================================
     # ✅ Main Trade Recording Logic (Option 1 + Option 2)
     # =====================================================
 
     async def get_trade_record_count(self):
-        from TableModels.trade_record import TradeRecord
-        async with self.db_session_manager.async_session_factory() as session:
-            async with session.begin():
-                result = await session.execute(select(func.count()).select_from(TradeRecord))
-                return result.scalar()
-
+        try:
+            async with self.db_session_manager.async_session() as session:
+                async with session.begin():
+                    result = await session.execute(select(func.count()).select_from(TradeRecord))
+                    return result.scalar()
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 get_trade_record_count was cancelled.")
+            raise
 
     async def record_trade(self, trade_data: dict):
         """
@@ -97,8 +166,20 @@ class TradeRecorder:
             - Insert/Update SELL or BUY trade
             - Update parent BUYs' remaining_size & realized_profit (SELL only)
         """
-
         try:
+            fills_in = trade_data.get("fills")
+            gross_override_raw = trade_data.get("gross_override")
+            fees_override_raw = trade_data.get("fees_override")
+            gross_override = Decimal(gross_override_raw) if gross_override_raw not in (None, "") else None
+            fees_override = Decimal(fees_override_raw) if fees_override_raw not in (None, "") else None
+            symbol = trade_data["symbol"]
+            side = trade_data["side"].lower()
+            order_id = trade_data["order_id"]
+            preferred_parent_id = trade_data.get("preferred_parent_id")
+            status = trade_data.get("status")
+            trigger = trade_data.get("trigger")
+            source = trade_data.get("source")
+
             # -----------------------------
             # ✅ Normalize Basic Fields
             # -----------------------------
@@ -112,16 +193,6 @@ class TradeRecorder:
                 if parsed_time.tzinfo
                 else parsed_time.replace(tzinfo=timezone.utc)
             )
-
-            symbol = trade_data["symbol"]
-            side = trade_data["side"].lower()
-            order_id = trade_data["order_id"]
-            status = trade_data.get("status")
-            trigger = trade_data.get("trigger")
-            source = trade_data.get("source")
-            if source == "unknown":
-                pass
-
 
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
             base_q = Decimal("1").scaleb(-base_deci)
@@ -137,19 +208,15 @@ class TradeRecorder:
             parent_ids, pnl_usd, cost_basis_usd, sale_proceeds_usd, net_sale_proceeds_usd = [], None, None, None, None
             update_instructions = []
 
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
-                    self.active_session = session  # ✅ SINGLE active session for FIFO + updates
+                    self.active_session = session
 
-                    # -----------------------------
-                    # ✅ SELL Logic (FIFO Matching)
-                    # -----------------------------
                     if side == "sell":
-                        if order_id == '94e92fed-065b-4f26-a0a1-62b93769f5c5':
-                            pass # debug
-                        self.logger.info(f"[RECORD_TRADE DEBUG] Starting SELL record for {symbol} {amount}@{price}")
-                        if symbol == 'ILV-USD':
-                            pass
+                        # Prefer batch overrides for exact proceeds/fees
+                        if fees_override is not None:
+                            total_fees = fees_override
+
                         fifo_result = await self.compute_cost_basis_and_sale_proceeds(
                             symbol=symbol,
                             size=amount,
@@ -157,7 +224,12 @@ class TradeRecorder:
                             total_fees=total_fees,
                             quote_q=quote_q,
                             base_q=base_q,
-                            sell_time=order_time
+                            sell_time=order_time,
+                            sell_fills=None,
+                            cost_basis_usd=Decimal(0),
+                            gross_override=gross_override,
+                            sell_fee_total_override=fees_override,
+                            preferred_parent_id=preferred_parent_id,
                         )
 
                         parent_ids = fifo_result["parent_ids"]
@@ -166,7 +238,6 @@ class TradeRecorder:
                         net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
                         pnl_usd = fifo_result["pnl_usd"]
                         update_instructions = fifo_result["update_instructions"]
-
                         parent_id = parent_ids[0] if parent_ids else parent_id
 
                         self.logger.info(
@@ -174,25 +245,29 @@ class TradeRecorder:
                             f"UpdateInstructions={update_instructions}"
                         )
 
-                    # -----------------------------
-                    # ✅ BUY Logic (Initial Baseline)
-                    # -----------------------------
-                    else:
-                        parent_id = trade_data.get("parent_id") or trade_data.get("order_id")
-                        if not parent_id:
-                            self.logger.warning(f"⚠️ No parent_id provided for BUY trade: {symbol} {amount}@{price}")
-                        parent_ids = [parent_id] if parent_id else []
-                        self.logger.info(f"[RECORD_TRADE DEBUG] BUY recorded baseline: {symbol} {amount}@{price}")
 
-                    # Safely normalize parent_id
+                        # -----------------------------
+                        # ✅ BUY Logic (Initial Baseline)
+                        # -----------------------------
+                    else:
+                        parent_id = trade_data.get("parent_id") or order_id
+                        parent_ids = [parent_id] if parent_id else []
+
+                        # If no fees provided in trade_data, but we have fills, sum the actual USD fees
+                        if (total_fees is None or total_fees == 0) and fills_in:
+                            try:
+                                total_fees = sum((Decimal(f["fee_usd"]) for f in fills_in), Decimal("0"))
+                            except Exception as e:
+                                self.logger.warning(f"Failed to compute buy fees from fills: {e}")
+
+                    # -----------------------------
+                    # ✅ Normalize parent_id
+                    # -----------------------------
                     if isinstance(parent_id, list):
                         parent_id = parent_id[0] if parent_id else None
-                    elif not isinstance(parent_id, (str, type(None))):
+                    elif parent_id is not None and not isinstance(parent_id, str):
                         parent_id = str(parent_id)
 
-                    # -----------------------------
-                    # ✅ Insert/Update Trade Record
-                    # -----------------------------
                     trade_dict = {
                         "order_id": order_id,
                         "parent_id": parent_id,
@@ -212,9 +287,8 @@ class TradeRecorder:
                         "sale_proceeds_usd": float(sale_proceeds_usd) if sale_proceeds_usd is not None else None,
                         "net_sale_proceeds_usd": float(net_sale_proceeds_usd) if net_sale_proceeds_usd is not None else None,
                         "remaining_size": float(amount) if side == "buy" else None,
-                        "realized_profit": float(0.0 if side == "buy" else sum(
-                            [float(ui["realized_profit"]) for ui in update_instructions]
-                        ))
+                        # SELL row's realized_profit equals pnl_usd; BUY has None
+                        "realized_profit": float(pnl_usd) if side == "sell" and pnl_usd is not None else None,
                     }
 
                     insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
@@ -233,15 +307,18 @@ class TradeRecorder:
                             self.logger.warning(f"⚠️ Parent BUY not found for update: {instruction['order_id']}")
                             continue
                         parent_record.remaining_size = instruction["remaining_size"]
-                        parent_record.realized_profit = instruction["realized_profit"]
-
-                    self.active_session = None  # ✅ Clean up active session
+                        # parent_record.realized_profit = instruction["realized_profit"]  # ← skip if you don't want this on BUYs
 
                 self.logger.info(
                     f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | "
                     f"PnL: {pnl_usd} | Parents: {parent_ids}"
                 )
+            self.active_session = None
 
+        except asyncio.CancelledError:
+            self.active_session = None
+            self.logger.warning("🛑 record_trade was cancelled.", exc_info=True)
+            raise
         except Exception as e:
             self.active_session = None
             self.logger.error(f"❌ Error recording trade: {e}", exc_info=True)
@@ -254,32 +331,65 @@ class TradeRecorder:
             total_fees: Decimal,
             quote_q: Decimal,
             base_q: Decimal,
-            sell_time: datetime,  # ✅ new
-            preferred_parent_id: Optional[str] = None
+            sell_time: datetime,
+            cost_basis_usd: Optional[Decimal] = 0,
+            preferred_parent_id: Optional[str] = None,
+            *,
+            sell_fills: Optional[list[dict]] = None,
+            gross_override: Optional[Decimal] = None,
+            sell_fee_total_override: Optional[Decimal] = None
     ) -> dict:
-
         """
-        Allocates cost basis and computes sale proceeds using strict FIFO logic.
-        This version ensures exact parent matching and avoids double counting.
-        Assumes it is called inside an active session.
-        :param preferred_parent_id: If provided, restricts matching to this exact order_id only (used in reconciled trades)
+        Computes FIFO cost basis and sale proceeds for a SELL trade with fee-inclusive logic.
 
+        - Cost basis = SUM over parents ( (take / parent.original_size) * (parent.subtotal + parent.buy_fees) )
+          where parent.subtotal ≈ parent.price * parent.original_size
+        - Net proceeds = gross - sell_fees (from fills if provided; else price*size - total_fees)
+        - PnL = net - cost_basis
+
+        Returns:
+            {
+              "cost_basis_usd", "sale_proceeds_usd", "net_sale_proceeds_usd",
+              "pnl_usd", "parent_ids", "update_instructions"
+            }
         """
-        parent_ids = []
-        cost_basis = Decimal("0")
-        filled_size = Decimal("0")
-        update_instructions = []
-        TOLERANCE = base_q /10
+        parent_ids: list[str] = []
+        update_instructions: list[dict] = []
+
+        def q_usd(x: Decimal) -> Decimal:
+            return self.shared_utils_precision.safe_quantize(x, quote_q)
+
+        def q_base(x: Decimal) -> Decimal:
+            return self.shared_utils_precision.safe_quantize(x, base_q)
 
         try:
-            self.logger.info(f"[DEBUG] Running FIFO with sell_time={sell_time} for {symbol} sell of size={size}")
-            # ✅ Fetch eligible BUY trades (FIFO order)
+            session = self.active_session
+            if not session:
+                raise RuntimeError("No active DB session. Must be called from inside record_trade().")
+
+            # ---------- 1) Proceeds (prefer overrides) ----------
+            if gross_override is not None or sell_fee_total_override is not None:
+                gross = gross_override if gross_override is not None else (size * sell_price)
+                sell_fee_total = sell_fee_total_override if sell_fee_total_override is not None else (total_fees or Decimal("0"))
+            elif sell_fills:
+                gross = sum(Decimal(str(f["qty"])) * Decimal(str(f["price"])) for f in sell_fills)
+                sell_fee_total = sum(Decimal(str(f.get("fee_usd", "0"))) for f in sell_fills)
+            else:
+                gross = size * sell_price
+                sell_fee_total = total_fees or Decimal("0")
+
+            net = gross - sell_fee_total
+
+            # ---------- 2) Fetch candidate BUY parents (FIFO) ----------
+            tolerance = timedelta(seconds=1)
             stmt = (
                 select(TradeRecord)
                 .where(
                     TradeRecord.symbol == symbol,
                     TradeRecord.side == "buy",
-                    TradeRecord.order_time <= sell_time,  # ✅ this must be included
+                    TradeRecord.order_time <= sell_time + tolerance,
+
+                    TradeRecord.order_time <= sell_time,
                     or_(
                         TradeRecord.remaining_size.is_(None),
                         TradeRecord.remaining_size > 0
@@ -289,105 +399,106 @@ class TradeRecorder:
                 )
                 .order_by(TradeRecord.order_time.asc())
             )
-
-            async with self.async_session_factory() as session:
-                result = await session.execute(stmt)
+            result = await session.execute(stmt)
             parent_trades = result.scalars().all()
-            if symbol == 'ILV-USD': #debug
-                self.logger.info(f"[DEBUG] Found {len(parent_trades)} candidate buys for {symbol}")# debug
-            for pt in parent_trades:
-                if pt.order_id == '94e92fed-065b-4f26-a0a1-62b93769f5c5': #debug
-                    self.logger.info(f"  └─ {pt.order_time} | {pt.order_id} | rem_size={pt.remaining_size} | price={pt.price}")
-
 
             if preferred_parent_id:
-                # ✅ Restrict to just the specified parent
                 parent_trades = [pt for pt in parent_trades if pt.order_id == preferred_parent_id]
                 if not parent_trades:
-                    self.logger.warning(f"[PnL] Specified parent {preferred_parent_id} not found or has no size left")
+                    self.logger.warning(f"[FIFO] Specified parent {preferred_parent_id} not found or exhausted.")
                     return self._empty_result()
 
             if not parent_trades:
-                self.logger.warning(f"[FIFO] No eligible BUYs found for {symbol}")
+                self.logger.warning(f"[FIFO] No eligible BUY trades for {symbol} before {sell_time}")
                 return self._empty_result()
 
+            # ---------- 3) Allocate FIFO with fee-inclusive cost basis ----------
+            need = size
+            total_cost_basis = Decimal("0")
+
             for pt in parent_trades:
+                if need <= 0:
+                    break
 
-                pt_size = Decimal(pt.remaining_size if pt.remaining_size is not None else pt.size)
-                pt_price = Decimal(pt.price)
-
-                remaining_needed = size - filled_size
-                if remaining_needed <= Decimal("0"):
-                    break  # ✅ Exact match achieved
-
-                usable = min(pt_size, remaining_needed)
-                if usable <= Decimal("0"):
+                original_size = Decimal(str(pt.size or 0))  # original buy size
+                rem_size = Decimal(str(pt.remaining_size or pt.size or 0))
+                if rem_size <= 0 or original_size <= 0:
                     continue
 
-                # Calculate cost and profit for this slice
-                cost_basis += usable * pt_price
-                filled_size += usable
+                take = min(rem_size, need)
+                if take <= 0:
+                    continue
+
+                buy_price = Decimal(str(pt.price or 0))
+                buy_fees = Decimal(str(pt.total_fees_usd or 0))
+
+                # Fee-inclusive total buy cost for the parent
+                parent_gross_subtotal = buy_price * original_size
+                parent_total_cost = parent_gross_subtotal + buy_fees
+
+                # Pro-rate by original size (not remaining)
+                ratio = take / original_size
+                cost_alloc = parent_total_cost * ratio
+
+                total_cost_basis += cost_alloc
+
+                # Track
                 if pt.order_id not in parent_ids:
                     parent_ids.append(pt.order_id)
 
-                remaining_after = pt_size - usable
-                realized_profit = (usable * sell_price) - (usable * pt_price)
+                # Update parent remaining_size and (optionally) parent realized_profit increment
+                remaining_after = q_base(rem_size - take)
+
+                # Pro-rate sell fee to this allocation by quantity share of the SELL
+                sell_fee_alloc = (sell_fee_total * (take / size)) if size > 0 else Decimal("0")
+                # Pro-rate gross proceeds to this allocation
+                gross_alloc = (gross * (take / size)) if size > 0 else Decimal("0")
+                # Net alloc
+                net_alloc = gross_alloc - sell_fee_alloc
+
+                realized_profit_alloc = net_alloc - cost_alloc
 
                 update_instructions.append({
                     "order_id": pt.order_id,
-                    "remaining_size": float(
-                        self.shared_utils_precision.safe_quantize(remaining_after, base_q)
-                    ),
-                    "realized_profit": float(
-                        self.shared_utils_precision.safe_quantize(
-                            max(Decimal(pt.realized_profit or 0), Decimal("0")) + realized_profit,
-                            quote_q
-                        )
-                    )
+                    "remaining_size": float(remaining_after),
+                    # Optional: keep parents’ realized_profit as running total.
+                    # If you prefer to *not* track realized_profit on BUY rows, set this to float(pt.realized_profit or 0)
+                    "realized_profit": float(q_usd(Decimal(str(pt.realized_profit or 0)) + realized_profit_alloc)),
                 })
 
-                # 🔍 Debug for ILV-USD
-                if symbol == "ILV-USD":
-                    print(
-                        f"[FIFO] Parent={pt.order_id} | Usable={usable} | "
-                        f"Price={pt_price} | RemainingAfter={remaining_after} | "
-                        f"Realized+={realized_profit}"
-                    )
+                need = q_base(need - take)
 
-                # ✅ Done if fully filled
-                if filled_size >= size - TOLERANCE:
-                    break
-
-            if filled_size == Decimal("0"):
-                self.logger.warning(f"[FIFO] No fills possible for SELL {size} {symbol}")
+            if size <= 0:
                 return self._empty_result()
 
-            # Final calculations
-            used_size = filled_size
-            cost_basis = self.shared_utils_precision.safe_quantize(cost_basis, quote_q)
-            sale_proceeds = self.shared_utils_precision.safe_quantize(used_size * sell_price, quote_q)
-            net_proceeds = self.shared_utils_precision.safe_quantize(sale_proceeds - total_fees, quote_q)
-            pnl_usd = self.shared_utils_precision.safe_quantize(net_proceeds - cost_basis, quote_q)
+            # ---------- 4) Finalize numbers ----------
+            cost_basis_usd = q_usd(total_cost_basis)
+            sale_proceeds_usd = q_usd(gross)
+            net_sale_proceeds_usd = q_usd(net)
+            pnl_usd = q_usd(net - total_cost_basis)
 
             return {
-                "cost_basis_usd": float(cost_basis),
-                "sale_proceeds_usd": float(sale_proceeds),
-                "net_sale_proceeds_usd": float(net_proceeds),
+                "cost_basis_usd": float(cost_basis_usd),
+                "sale_proceeds_usd": float(sale_proceeds_usd),
+                "net_sale_proceeds_usd": float(net_sale_proceeds_usd),
                 "pnl_usd": float(pnl_usd),
                 "parent_ids": parent_ids,
                 "update_instructions": update_instructions
             }
 
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 compute_cost_basis_and_sale_proceeds was cancelled.")
+            raise
         except Exception as e:
             self.logger.error(f"❌ Error in compute_cost_basis_and_sale_proceeds for {symbol}: {e}", exc_info=True)
             return self._empty_result()
 
     def _empty_result(self):
         return {
-            "cost_basis_usd": None,
-            "sale_proceeds_usd": None,
-            "net_sale_proceeds_usd": None,
-            "pnl_usd": None,
+            "cost_basis_usd": 0,
+            "sale_proceeds_usd": 0,
+            "net_sale_proceeds_usd": 0,
+            "pnl_usd": 0,
             "parent_ids": [],
             "update_instructions": []
         }
@@ -397,7 +508,7 @@ class TradeRecorder:
         Fetch all recorded trades.
         """
         try:
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     result = await session.execute(select(TradeRecord))
                     trades = result.scalars().all()
@@ -411,7 +522,7 @@ class TradeRecorder:
         """Fetch trades from the last `days` days only (optimizing DB usage)."""
         try:
             cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     result = await session.execute(
                         select(TradeRecord).where(TradeRecord.order_time >= cutoff_time)
@@ -426,7 +537,7 @@ class TradeRecorder:
         """
         Deletes a trade from the database by its order_id.
         """
-        async with self.db_session_manager.async_session_factory() as session:
+        async with self.db_session_manager.async_session() as session:
             async with session.begin():
                 try:
                     result = await session.get(TradeRecord, order_id)
@@ -449,7 +560,7 @@ class TradeRecorder:
         Use this when full trade metadata (remaining size, entry price, etc.) is needed.
         """
         try:
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     # Subquery: all BUY order_ids already linked in SELL parent_ids
                     subquery = (
@@ -477,8 +588,7 @@ class TradeRecorder:
                         .order_by(TradeRecord.order_time.asc(), TradeRecord.order_id.asc())
                     )
 
-                    async with self.async_session_factory() as session:
-                        result = await session.execute(stmt)
+                    result = await session.execute(stmt)
                     buys = result.scalars().all()
 
             if not buys:
@@ -495,27 +605,34 @@ class TradeRecorder:
                 )
 
             return buys
-
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 find_unlinked_buys was cancelled.", exc_info=True)
+            raise
         except Exception as e:
             if self.logger:
                 self.logger.error(f"❌ Error in find_unlinked_buys for {symbol}: {e}", exc_info=True)
             return []
 
     async def fix_unlinked_sells(self):
+        """Recomputes PnL and parent linkage for unmatched SELL trades."""
 
         self.logger.info("🔧 Running fix_unlinked_sells()...")
         try:
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
-                    result = await session.execute(
-                        select(TradeRecord).where(
-                            TradeRecord.side == "sell",
-                            TradeRecord.pnl_usd.is_(None),
-                            TradeRecord.source != "reconciled"
-                        )
+                    self.active_session = session
 
+                    stmt = select(TradeRecord).where(
+                        TradeRecord.side == "sell",
+                        TradeRecord.pnl_usd.is_(None),
+                        TradeRecord.source != "reconciled"
                     )
+                    result = await session.execute(stmt)
                     sell_trades = result.scalars().all()
+
+                    if not sell_trades:
+                        self.logger.info("✅ No unmatched SELL trades found.")
+                        return
 
                     for trade in sell_trades:
                         symbol = trade.symbol
@@ -527,7 +644,7 @@ class TradeRecorder:
                         base_q = Decimal("1").scaleb(-base_deci)
                         quote_q = Decimal("1").scaleb(-quote_deci)
 
-                        # Run FIFO matching
+                        # 🧮 Run FIFO matching
                         fifo_result = await self.compute_cost_basis_and_sale_proceeds(
                             symbol=symbol,
                             size=amount,
@@ -541,8 +658,8 @@ class TradeRecorder:
                         parent_ids = fifo_result["parent_ids"]
                         if not parent_ids and amount > 0:
                             self.logger.warning(
-                                f"❌ Unlinked SELL {trade.order_id}: {amount} {symbol} — "
-                                f"no BUY match found. Consider reviewing fill timing or data."
+                                f"❌ Unlinked SELL {trade.order_id} {amount} {symbol} — "
+                                f"no BUY match found. Review fill timing or data integrity."
                             )
 
                         trade.parent_id = parent_ids[0] if parent_ids else None
@@ -551,13 +668,13 @@ class TradeRecorder:
                         trade.sale_proceeds_usd = float(fifo_result["sale_proceeds_usd"])
                         trade.net_sale_proceeds_usd = float(fifo_result["net_sale_proceeds_usd"])
                         trade.pnl_usd = float(fifo_result["pnl_usd"])
-                        if not trade.pnl_usd:
-                            pass
+
                         trade.realized_profit = float(sum(
-                            Decimal(instr["realized_profit"]) for instr in fifo_result["update_instructions"]
+                            Decimal(instr["realized_profit"])
+                            for instr in fifo_result["update_instructions"]
                         ))
 
-                        # Update parents
+                        # 🔁 Update parent BUYs
                         for instr in fifo_result["update_instructions"]:
                             parent = await session.get(TradeRecord, instr["order_id"])
                             if parent:
@@ -565,9 +682,16 @@ class TradeRecorder:
                                 parent.realized_profit = instr["realized_profit"]
 
                     self.logger.info(f"✅ Fixed {len(sell_trades)} unmatched SELL trades.")
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fix_unlinked_sells was cancelled.")
+            raise
+
         except Exception as e:
             self.logger.error(f"❌ Error in fix_unlinked_sells: {e}", exc_info=True)
 
+        finally:
+            self.active_session = None  # ✅ Clean up even if exception occurs
 
     async def find_latest_unlinked_buy_id(self, symbol: str) -> Optional[str]:
         """
@@ -588,32 +712,38 @@ class TradeRecorder:
         """
         Fetches a single trade record by its order_id.
         """
-        async with self.db_session_manager.async_session_factory() as session:
-            async with session.begin():
-                try:
-                    result = await session.execute(
-                        select(TradeRecord).where(TradeRecord.order_id == order_id)
-                    )
-                    return result.scalar_one_or_none()
-                except Exception as e:
-                    if self.logger:
-                        self.logger.error(f"❌ Error in fetch_trade_by_order_id for {order_id}: {e}", exc_info=True)
-                    return None
+        try:
+            async with self.db_session_manager.async_session() as session:
+                async with session.begin():
+                    try:
+                        result = await session.execute(
+                            select(TradeRecord).where(TradeRecord.order_id == order_id)
+                        )
+                        return result.scalar_one_or_none()
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.error(f"❌ Error in fetch_trade_by_order_id for {order_id}: {e}", exc_info=True)
+                        return None
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fetch_trade_by_order_id was cancelled.", exc_info=True)
+            raise
 
 
     async def find_latest_filled_size(self, symbol: str, side: str = 'buy') -> Optional[Decimal]:
         """
         Returns the size of the most recent filled trade for a given symbol and side (buy/sell).
         """
-        async with self.db_session_manager.async_session_factory() as session:
+        async with self.db_session_manager.async_session() as session:
             async with session.begin():
                 try:
                     base_deci, _, _, _ = self.shared_utils_precision.fetch_precision(symbol)
                     result = await session.execute(
                         select(TradeRecord)
-                        .where(TradeRecord.symbol == symbol)
-                        .where(TradeRecord.side == side)
-                        .where(TradeRecord.status.ilike('placed'))  # or 'filled' depending on your usage
+                        .where(
+                            TradeRecord.symbol == symbol,
+                                        TradeRecord.side == side,
+                                        TradeRecord.status.ilike('placed')
+                        )  # or 'filled' depending on your usage
                         .order_by(TradeRecord.order_time.asc())
                         .limit(1)
                     )
@@ -678,97 +808,52 @@ class TradeRecorder:
             logger.error(f"❌ Error during backfill: {e}", exc_info=True)
 
     async def _calculate_fifo_pnl(self, sell_trade: TradeRecord, session):
-        """
-        FIFO-based PnL calculation for a SELL trade.
-        Updates the sell_trade and adjusts corresponding BUY trades.
-        """
+        try:
+            if sell_trade.source == "reconciled":
+                self.logger.info(f"🛡️ Skipping PnL calc for reconciled trade {sell_trade.order_id}")
+                return
 
-        sell_size = Decimal(str(sell_trade.size or 0))
-        sell_price = Decimal(str(sell_trade.price or 0))
-        remaining_to_sell = sell_size
-
-        cost_basis_usd = Decimal("0")
-        realized_pnl = Decimal("0")
-        used_parent_ids = []
-
-        if sell_trade.source == "reconciled":
-            self.logger.info(f"🛡️ Skipping PnL calc for reconciled trade {sell_trade.order_id}")
-            return
-
-        # ✅ Fetch candidate BUY trades (FIFO order)
-        result = await session.execute(
-            select(TradeRecord)
-            .where(
-                TradeRecord.symbol == sell_trade.symbol,
-                TradeRecord.side == "buy",
-                TradeRecord.remaining_size > 0
-            )
-            .order_by(TradeRecord.order_time.asc())
-        )
-        buy_candidates = result.scalars().all()
-
-        if not buy_candidates:
-            self.logger.warning(f"[FIFO PROD] No candidate BUYs for {sell_trade.symbol} | Sell Trade {sell_trade.order_id}")
-            return
-
-        self.logger.debug(
-            f"[FIFO PROD] Starting PnL calc for {sell_trade.symbol}: "
-            f"Sell Size={sell_size}, Sell Price={sell_price}"
-        )
-        self.logger.debug(f"[FIFO PROD] Found {len(buy_candidates)} candidate BUYs")
-
-        for buy in buy_candidates:
-            if remaining_to_sell <= 0:
-                break
-
-            buy.remaining_size = Decimal(str(buy.remaining_size or 0))
-            buy_price = Decimal(str(buy.price or 0))
-            buy.realized_profit = Decimal(str(buy.realized_profit or 0))
+            size = Decimal(str(sell_trade.size or 0))
+            price = Decimal(str(sell_trade.price or 0))
+            total_fees = Decimal(str(sell_trade.total_fees_usd or 0))
 
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(sell_trade.symbol)
             base_q = Decimal("1").scaleb(-base_deci)
             quote_q = Decimal("1").scaleb(-quote_deci)
 
-            usable_size = min(remaining_to_sell, buy.remaining_size)
-            cost_basis_part = usable_size * buy_price
-            pnl_part = (sell_price - buy_price) * usable_size
+            self.active_session = session  # ensure compute_* sees a session
 
-            # ✅ Update BUY trade
-            buy.remaining_size = self.shared_utils_precision.safe_quantize(buy.remaining_size - usable_size, base_q)
-            buy.realized_profit = self.shared_utils_precision.safe_quantize(buy.realized_profit + pnl_part, base_q)
-
-            await session.flush()
-
-            # ✅ Track SELL trade PnL
-            cost_basis_usd += cost_basis_part
-            realized_pnl += pnl_part
-            used_parent_ids.append(buy.order_id)
-
-            remaining_to_sell -= usable_size
-
-            self.logger.debug(
-                f"[FIFO PROD] Parent {buy.order_id} | "
-                f"Size={buy.size}, Usable={usable_size}, RemainingAfter={buy.remaining_size} | "
-                f"CostBasis+={cost_basis_part}, Realized+={pnl_part}"
+            fifo_result = await self.compute_cost_basis_and_sale_proceeds(
+                symbol=sell_trade.symbol,
+                size=size,
+                sell_price=price,
+                total_fees=total_fees,
+                quote_q=quote_q,
+                base_q=base_q,
+                sell_time=sell_trade.order_time,
+                sell_fills=None  # or fetch here if you add a fills fetcher
             )
 
-        sale_proceeds_usd = sell_size * sell_price
+            sell_trade.parent_ids = fifo_result["parent_ids"] or None
+            sell_trade.parent_id = fifo_result["parent_ids"][0] if fifo_result["parent_ids"] else None
+            sell_trade.cost_basis_usd = fifo_result["cost_basis_usd"]
+            sell_trade.sale_proceeds_usd = fifo_result["sale_proceeds_usd"]
+            sell_trade.net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
+            sell_trade.pnl_usd = fifo_result["pnl_usd"]
+            sell_trade.realized_profit = fifo_result["pnl_usd"]
 
-        # ✅ Update SELL trade
-        sell_trade.cost_basis_usd = float(cost_basis_usd)
-        sell_trade.sale_proceeds_usd = float(sale_proceeds_usd)
-        sell_trade.net_sale_proceeds_usd = float(sale_proceeds_usd)  # adjust if you subtract fees
-        sell_trade.pnl_usd = float(realized_pnl)
-        sell_trade.parent_ids = used_parent_ids
-        sell_trade.parent_id = used_parent_ids[0] if used_parent_ids else None
+            # 🔁 Update parents
+            for instr in fifo_result["update_instructions"]:
+                parent = await session.get(TradeRecord, instr["order_id"])
+                if parent:
+                    parent.remaining_size = instr["remaining_size"]
+                    parent.realized_profit = instr["realized_profit"]
 
-        await session.flush()
-
-        self.logger.debug(
-            f"[FIFO PROD RESULT] {sell_trade.symbol} | "
-            f"PnL={realized_pnl} | CostBasis={cost_basis_usd} | "
-            f"SaleProceeds={sale_proceeds_usd} | Parents={used_parent_ids}"
-        )
+        except asyncio.CancelledError:
+            self.logger.warning(f"🛑 FIFO PnL task cancelled for sell trade {sell_trade.order_id}")
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ FIFO PnL error for {sell_trade.symbol}: {e}", exc_info=True)
 
     async def fetch_trade_records_for_tp_sl(self, symbol: str) -> list:
         """
@@ -821,7 +906,7 @@ class TradeRecorder:
             List of TradeRecord objects for SELLs on that date.
         """
         try:
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     start_dt = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
                     end_dt = datetime.combine(date, datetime.max.time(), tzinfo=timezone.utc)
@@ -838,10 +923,13 @@ class TradeRecorder:
                         )
                     )
 
-                    async with self.async_session_factory() as session:
-                        result = await session.execute(stmt)
+                    result = await session.execute(stmt)
                     sells = result.scalars().all()
                     return sells
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fetch_sells_by_date was cancelled.", exc_info=True)
+            raise
+
         except Exception as e:
             if self.logger:
                 self.logger.error(f"❌ Error fetching sells for {date}: {e}", exc_info=True)
@@ -859,7 +947,7 @@ class TradeRecorder:
         """
         try:
             # ✅ 1. Fetch first SELL trade from production table
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     stmt = (
                         select(TradeRecord)
@@ -870,7 +958,7 @@ class TradeRecorder:
                         .order_by(TradeRecord.order_time.asc())
                         .limit(1)
                     )
-                    async with self.async_session_factory() as session:
+                    async with self.db_session_manager.async_session() as session:
                         result = await session.execute(stmt)
                     sell_trade = result.scalar_one_or_none()
 
@@ -893,7 +981,7 @@ class TradeRecorder:
             )
 
             # ✅ 3. Run production FIFO method
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     result = await self.compute_cost_basis_and_sale_proceeds(
                         session=session,
@@ -934,7 +1022,7 @@ class TradeRecorder:
             # -----------------------------
             # ✅ Step 1: Fetch first SELL trade from debug table
             # -----------------------------
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     stmt = (
                         select(TradeRecordDebug)
@@ -945,7 +1033,7 @@ class TradeRecorder:
                         .order_by(TradeRecordDebug.order_time.asc())
                         .limit(1)
                     )
-                    async with self.async_session_factory() as session:
+                    async with self.db_session_manager.async_session() as session:
                         result = await session.execute(stmt)
                     sell_trade = result.scalar_one_or_none()
 
@@ -972,7 +1060,7 @@ class TradeRecorder:
             # -----------------------------
             # ✅ Step 3: Run the FIFO Debug
             # -----------------------------
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     result = await self.compute_cost_basis_and_sale_proceeds_debug(
                         session=session,
@@ -1010,7 +1098,7 @@ class TradeRecorder:
         try:
             self.logger.info("[TEST PERFORMANCE TRACKER] Running SQL-aligned performance stats...")
 
-            async with self.db_session_manager.async_session_factory() as session:
+            async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     stmt = (
                         select(
@@ -1034,7 +1122,7 @@ class TradeRecorder:
                         .limit(10)
                     )
 
-                    async with self.async_session_factory() as session:
+                    async with self.db_session_manager.async_session() as session:
                         result = await session.execute(stmt)
                     rows = result.all()
 

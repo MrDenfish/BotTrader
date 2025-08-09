@@ -1,43 +1,47 @@
 
-import asyncio
+
 import json
-import random
 import time
 import uuid
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.sql import text
-from sqlalchemy import case,  literal, literal_column
-from datetime import datetime, timezone
-import datetime as dt
-from decimal import Decimal
-from typing import Optional, Any, Sequence
+import random
 import socket
+import asyncio
 import websockets
-from aiohttp import web
+import datetime as dt
 
-from Api_manager.api_manager import ApiManager
-from MarketDataManager.ohlcv_manager import OHLCVManager
-from MarketDataManager.ticker_manager import TickerManager
-from MarketDataManager.passive_order_manager import PassiveOrderManager
-from ProfitDataManager.profit_data_manager import ProfitDataManager
-from Shared_Utils.alert_system import AlertSystem
-from Shared_Utils.dates_and_times import DatesAndTimes
-from TestDebugMaintenance.debugger import Debugging
+from aiohttp import web
+from decimal import Decimal
+from sqlalchemy.sql import text
+from sqlalchemy import case, or_
+from datetime import datetime, timezone
+from typing import Optional, Any, Sequence
+
 from Shared_Utils.enum import ValidationCode
-from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.print_data import ColorCodes
-from Shared_Utils.snapshots_manager import SnapshotsManager
+from Api_manager.api_manager import ApiManager
 from Shared_Utils.utility import SharedUtility
-from webhook.webhook_manager import WebHookManager
-from webhook.webhook_order_manager import TradeOrderManager
-from webhook.webhook_order_types import OrderTypeManager
 from webhook.webhook_utils import TradeBotUtils
-from webhook.webhook_validate_orders import OrderData
-from webhook.webhook_validate_orders import ValidateOrders
-from webhook.websocket_helper import WebSocketHelper
-from webhook.websocket_market_manager import WebSocketMarketManager
+from sqlalchemy import  literal, literal_column
 from TableModels.trade_record import TradeRecord
+from Shared_Utils.precision import PrecisionUtils
+from Shared_Utils.alert_system import AlertSystem
+from webhook.webhook_manager import WebHookManager
+from TestDebugMaintenance.debugger import Debugging
+from webhook.websocket_helper import WebSocketHelper
+from webhook.webhook_validate_orders import OrderData
+from Shared_Utils.dates_and_times import DatesAndTimes
+from webhook.webhook_order_types import OrderTypeManager
+from MarketDataManager.ohlcv_manager import OHLCVManager
+from MarketDataManager.ticker_manager import TickerManager
+from webhook.webhook_validate_orders import ValidateOrders
+from webhook.webhook_order_manager import TradeOrderManager
+from Shared_Utils.snapshots_manager import SnapshotsManager
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from ProfitDataManager.profit_data_manager import ProfitDataManager
+from webhook.websocket_market_manager import WebSocketMarketManager
+from MarketDataManager.passive_order_manager import PassiveOrderManager
+
 
 
 SYNC_INTERVAL = 60  # seconds
@@ -276,8 +280,8 @@ class WebhookListener:
 
     _exchange_instance_count = 0
 
-    def __init__(self, bot_config, shared_data_manager, shutdown_event: asyncio.Event, shared_utils_color, market_data_updater, database_session_manager, logger_manager,
-                 coinbase_api, session, market_manager, exchange, alert, order_book_manager):
+    def __init__(self, bot_config, shared_data_manager, shutdown_event: asyncio.Event, shared_utils_color, market_data_updater,
+                 database_session_manager, logger_manager,coinbase_api, session, market_manager, exchange, alert, order_book_manager):
 
         self.bot_config = bot_config
         self.test_mode = self.bot_config.test_mode
@@ -466,7 +470,7 @@ class WebhookListener:
         self.ohlcv_manager = await OHLCVManager.get_instance(self.exchange, self.coinbase_api, self.ccxt_api,
                                                              self.logger_manager,self.shared_utils_date_time,
                                                              self.market_manager,
-                                                             self.database_session_manager.async_session_factory)
+                                                             self.database_session_manager)
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
                                                                self.shared_utils_debugger,self.shared_utils_print,
                                                                self.shared_utils_color,self.logger_manager,
@@ -905,28 +909,33 @@ class WebhookListener:
         )
 
     async def periodic_save(self, interval: int = 60):
-        """Periodically save shared data every `interval` seconds."""
-        while True:
-            try:
-                # Synchronize the latest market_data and order_management
-                market_data_snapshot, order_management_snapshot = await self.shared_data_manager.get_snapshots()
+        try:
+            while True:
+                try:
+                    market_data_snapshot, order_management_snapshot = await self.shared_data_manager.get_snapshots()
+                    await self.shared_data_manager.update_shared_data(
+                        new_market_data=market_data_snapshot,
+                        new_order_management=order_management_snapshot
+                    )
+                    await self.shared_data_manager.save_data()
+                    self.logger.debug("✅ Periodic save completed.")
+                except Exception as e:
+                    self.logger.error(f"Error during periodic save: {e}", exc_info=True)
 
-                # Update shared data with the latest snapshots
-                await self.shared_data_manager.update_shared_data(
-                    new_market_data=market_data_snapshot,
-                    new_order_management=order_management_snapshot
-                )
-                # Save the updated data
-                await self.shared_data_manager.save_data()
-                self.logger.debug("Periodic save completed successfully.")
-            except Exception as e:
-                self.logger.error(f"Error during periodic save: {e}", exc_info=True)
-            await asyncio.sleep(interval)
+                await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            self.logger.info("🛑 periodic_save cancelled cleanly.")
 
     async def reconcile_with_rest_api(self, limit: int = 100):
         logger = self.logger
         coinbase_api = self.coinbase_api
         shared_data_manager = self.shared_data_manager
+
+        def _gross_and_fees_from_batch(order: dict) -> tuple[str, str]:
+            # Keep as strings (JSON-safe); record_trade will Decimal() them.
+            gross = str(order.get("filled_value") or "")
+            fees = str(order.get("total_fees") or "")
+            return gross, fees
 
         try:
             logger.info("🔁 Starting reconciliation via REST API...")
@@ -960,11 +969,10 @@ class WebhookListener:
 
             for order in orders:
                 order_id = order.get("order_id")
-                if not order_id or order.get("status") != "FILLED":
+                if not order_id or (order.get("status") or "").upper() != "FILLED":
                     continue
 
                 existing_trade = await shared_data_manager.trade_recorder.fetch_trade_by_order_id(order_id)
-
                 # ✅ Only skip fully complete trades
                 if existing_trade and existing_trade.parent_id and existing_trade.parent_ids:
                     continue
@@ -976,24 +984,35 @@ class WebhookListener:
                 price = order.get("average_filled_price") or order.get("price")
                 size = order.get("filled_size") or order.get("order_size") or "0"
 
-                # Parse and clean order_time
-                order_time = order.get("created_time") or order.get("completed_time") or datetime.now(timezone.utc).isoformat()
-                order_time = order_time.rstrip("Z") if isinstance(order_time, str) else order_time
+                # Parse/clean order_time
+                order_time = (
+                        order.get("last_fill_time")
+                        or order.get("completed_time")
+                        or order.get("created_time")
+                        or datetime.now(timezone.utc).isoformat()
+                )
                 total_fees = order.get("total_fees")
 
+                # Parent suggestions (just hints; record_trade will FIFO anyway)
                 parent_id = None
                 parent_ids = None
+                preferred_parent_id =  None
                 if side == "buy":
                     parent_id = order_id
                     parent_ids = [order_id]
                 elif side == "sell":
                     parent_id = await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
                     parent_ids = [parent_id] if parent_id else None
+                    preferred_parent_id = order.get("originating_order_id") or None
+
+                # 👇 Step 5: use batch values instead of per-fill calls
+                gross_override, fees_override = _gross_and_fees_from_batch(order)
 
                 trade_data = {
                     "order_id": order_id,
                     "parent_id": parent_id,
                     "parent_ids": parent_ids,
+                    "preferred_parent_id": preferred_parent_id,  # new optional hint
                     "symbol": symbol,
                     "side": side,
                     "price": price,
@@ -1003,241 +1022,327 @@ class WebhookListener:
                     "trigger": {"trigger": order.get("order_type", "market")},
                     "source": "reconciled",
                     "total_fees": total_fees,
+                    # No 'fills' key in step 5
+                    "gross_override": gross_override,  # order['filled_value']
+                    "fees_override": fees_override,  # order['total_fees']
                 }
 
                 reconciled_trades.append(trade_data)
 
-            # 🔧 Helper: parse ISO timestamp to datetime for sorting
-            def parse_order_time(trade_dict):
-                ot = trade_dict["order_time"]
-                if isinstance(ot, str):
-                    return datetime.fromisoformat(ot.replace("Z", "+00:00"))
-                return ot
+                # 🔧 Helper for sorting
+                def parse_order_time(trade_dict):
+                    ot = trade_dict["order_time"]
+                    if isinstance(ot, str):
+                        return datetime.fromisoformat(ot.replace("Z", "+00:00"))
+                    return ot
 
-            # ✅ Sort reconciled trades before enqueueing
-            reconciled_trades.sort(key=parse_order_time)
+                reconciled_trades.sort(key=parse_order_time)
 
-            for trade in reconciled_trades:
-                await shared_data_manager.trade_recorder.enqueue_trade(trade)
-                logger.debug(f"🧾 Reconciled and recorded trade: {trade['order_id']}")
+                for trade in reconciled_trades:
+                    await shared_data_manager.trade_recorder.enqueue_trade(trade)
+                    logger.debug(f"🧾 Reconciled and recorded trade: {trade['order_id']}")
 
-            await shared_data_manager.set_order_management({"order_tracker": tracker})
-            await shared_data_manager.save_data()
+                await shared_data_manager.set_order_management({"order_tracker": tracker})
+                await shared_data_manager.save_data()
 
-            logger.debug("✅ Reconciliation complete.")
+                logger.debug("✅ Reconciliation complete.")
         except Exception as e:
             logger.error(f"❌ reconcile_with_rest_api() failed: {e}", exc_info=True)
 
     async def sync_open_orders(self, interval: int = 60 * 60) -> None:
-        first_run = True
+        """
+        Periodically fetch recent + open orders and upsert raw-exchange facts into trade_records
+        WITHOUT touching derived/linkage fields (pnl_usd, remaining_size, realized_profit, parent_id(s)).
 
-        while True:
+        Policy:
+          - Insert new rows if missing.
+          - Update only raw fields conservatively:
+              * price/size only if > 0
+              * order_time only if DB is NULL or incoming is EARLIER
+              * source only if not 'unknown'
+              * total_fees_usd only if incoming is non-null AND >= existing
+          - Never update: pnl_usd, remaining_size, realized_profit, parent_id, parent_ids
+          - Optional WHERE to avoid touching rows that are already finalized (pnl_usd IS NOT NULL).
+        """
+        CHUNK = 200
+        LOOKBACK_FIRST_RUN_HOURS = SYNC_LOOKBACK  # keep your existing constant
+        LOOKBACK_SUBSEQUENT_HOURS = 1
+
+        def _pick(d: dict, *paths, default=None):
+            """Walks nested dicts by keys/indices; returns first value found."""
+            for p in paths:
+                try:
+                    if isinstance(p, tuple):
+                        cur = d
+                        ok = True
+                        for step in p:
+                            if isinstance(step, int):
+                                cur = cur[step]
+                            else:
+                                cur = cur.get(step)
+                            if cur is None:
+                                ok = False
+                                break
+                        if ok and cur is not None:
+                            return cur
+                    else:
+                        v = d.get(p)
+                        if v is not None:
+                            return v
+                except Exception:
+                    continue
+            return default
+
+        def _iso_to_dt(s: str | None):
+            if not s:
+                return None
             try:
-                self.logger.debug("🔄 Starting sync_open_orders cycle…")
+                # Coinbase usually gives Z or offset; let fromisoformat handle offsets
+                # Replace 'Z' to be safe for Python versions that don't accept it
+                s = s.replace("Z", "+00:00") if s.endswith("Z") else s
+                return dt.datetime.fromisoformat(s)
+            except Exception:
+                return None
 
-                # 🧩 Check if the trade_records table is empty (only on first run)
-                table_empty = False
-                if first_run:
-                    async with self.database_session_manager.async_session_factory() as sess:
-                        result = await sess.execute(text("SELECT COUNT(*) FROM trade_records"))
-                        count = result.scalar_one()
-                        table_empty = count == 0
-                        self.logger.debug(f"📊 Trade record table is {'empty' if table_empty else 'populated'} (count={count})")
+        def _infer_source(client_order_id: str, order_source: str) -> str:
+            coid = (client_order_id or "").lower()
+            src = (order_source or "").lower()
+            if "passivemm" in coid:
+                return "PassiveMM"
+            if "webhook" in coid:
+                return "webhook"
+            if "websocket" in coid:
+                return "websocket"
+            # preserve reconciled if present; else unknown
+            return "reconciled" if "reconciled" in src else "unknown"
 
-                # ------------------------------------------------------------------
-                # 1) Decide look-back window
-                # ------------------------------------------------------------------
-                lookback_hours = SYNC_LOOKBACK if first_run else 1
-                since_iso = (
-                    dt.datetime.now(timezone.utc) - dt.timedelta(hours=lookback_hours)
-                ).isoformat(timespec="seconds") + "Z"
-                first_run = False
+        def _derive_trigger(trigger_status: str, order_type: str) -> str | None:
+            ts = (trigger_status or "").lower()
+            ot = (order_type or "").lower()
+            if not ts and not ot:
+                return None
+            return ts if ts and ts != "invalid_order_type" else (ot or None)
 
-                # ------------------------------------------------------------------
-                # 2) Collect orders from Coinbase
-                # ------------------------------------------------------------------
-                open_resp = await self.coinbase_api.list_historical_orders(
-                    limit=250, order_status="OPEN"
-                )
-                open_orders = open_resp.get("orders", []) or []
+        first_run = True
+        table_empty_known: bool | None = None
 
-                recent_orders = []
-                if not table_empty:
-                    recent_resp = await self.coinbase_api.list_historical_orders(
-                        limit=250, start_time=since_iso
+        try:
+            while True:
+                try:
+                    self.logger.debug("🔄 Starting sync_open_orders cycle…")
+
+                    # Only check emptiness once on first run
+                    if first_run:
+                        async with self.database_session_manager.async_session() as sess:
+                            result = await sess.execute(text("SELECT COUNT(*) FROM trade_records"))
+                            count = result.scalar_one()
+                            table_empty_known = (count == 0)
+                            self.logger.debug(
+                                "📊 trade_records is %s (count=%s)",
+                                "empty" if table_empty_known else "populated",
+                                count,
+                            )
+
+                    lookback_hours = LOOKBACK_FIRST_RUN_HOURS if first_run else LOOKBACK_SUBSEQUENT_HOURS
+                    since_iso = (
+                            dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=lookback_hours)
+                    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+                    first_run = False
+
+                    # 1) Fetch orders
+                    open_resp = await self.coinbase_api.list_historical_orders(
+                        limit=250, order_status="OPEN"
                     )
-                    recent_orders = recent_resp.get("orders", []) or []
+                    open_orders = (open_resp or {}).get("orders", []) or []
 
-                print(
-                    f"Fetched {len(open_orders)} open orders "
-                    f"and {len(recent_orders)} recent orders (since {since_iso})."
-                )
-
-                # ------------------------------------------------------------------
-                # 3) De-duplicate and process orders
-                # ------------------------------------------------------------------
-                seen, orders_to_process = set(), []
-                for o in open_orders + recent_orders:
-                    oid = o.get("order_id")
-                    if oid and oid not in seen:
-                        orders_to_process.append(o)
-                        seen.add(oid)
-                # ------------------------------------------------------------------
-                # 3) Transform into TradeRecord-shaped dicts
-                # ------------------------------------------------------------------
-                rows: list[dict] = []
-                sample = orders_to_process[:25]  # 👈 Adjust sample size as needed
-                # Path("/recent_orders.json").write_text(
-                #     json.dumps(sample, indent=2)
-                # )
-
-                for o in orders_to_process:
-                    try:
-                        if o.get("status", "").lower() != "filled":
-                            continue  # skip all non-filled orders
-                        symbol = o.get("product_id", "")
-                        side = o.get("side", "").lower()
-                        status = o.get("status", "").lower()
-                        order_id = o.get("order_id")
-                        client_order_id = o.get("client_order_id", "").lower()
-                        trigger_status = o.get("trigger_status", "").lower()
-                        order_source = o.get("source", "").lower()
-                        order_type = o.get("order_type", "").lower()
-
-                        # Determine parent_id only for SELL orders
-                        parent_id = None
-                        if side == "sell":
-                            parent_id = o.get("originating_order_id")
-
-                        # Derive trigger more intelligently
-                        trigger = (
-                            trigger_status if trigger_status != "invalid_order_type"
-                            else order_type
+                    recent_orders = []
+                    if table_empty_known is False:
+                        recent_resp = await self.coinbase_api.list_historical_orders(
+                            limit=250, start_time=since_iso
                         )
+                        recent_orders = (recent_resp or {}).get("orders", []) or []
 
-                        # Infer source from client_order_id prefix
-                        source = (
-                            "PassiveMM" if "passivemm" in client_order_id else
-                            "webhook" if "webhook" in client_order_id else
-                            "websocket" if "websocket" in client_order_id else
-                            order_source if "reconciled" in order_source else
-                            "unknown"
-                        )
+                    self.logger.debug(
+                        "Fetched %d OPEN and %d RECENT (since %s)",
+                        len(open_orders), len(recent_orders), since_iso
+                    )
 
-                        # Determine timestamp (fallback sequence)
-                        order_time = self.iso_to_dt(
-                            self.pick(
+                    # 2) Deduplicate by order_id
+                    seen, orders_to_process = set(), []
+                    for o in open_orders + recent_orders:
+                        oid = o.get("order_id")
+                        if oid and oid not in seen:
+                            orders_to_process.append(o)
+                            seen.add(oid)
+
+                    # 3) Transform into rows (raw facts only)
+                    rows: list[dict] = []
+                    for o in orders_to_process:
+                        try:
+                            if (o.get("status") or "").lower() != "filled":
+                                continue
+
+                            symbol = o.get("product_id") or ""
+                            side = (o.get("side") or "").lower() or None
+                            status = (o.get("status") or "").lower() or None
+                            order_id = o.get("order_id")
+                            if not order_id:
+                                continue
+
+                            order_type = (o.get("order_type") or "").lower() or None
+                            trigger = _derive_trigger(o.get("trigger_status"), order_type)
+                            source = _infer_source(o.get("client_order_id", ""), o.get("source", ""))
+
+                            # Prefer earliest credible time
+                            order_time = _iso_to_dt(_pick(
                                 o,
                                 "created_time",
                                 ("order_configuration", "created_time"),
                                 ("edit_history", 0, "created_time"),
-                                "last_fill_time"
-                            )
-                        )
+                                "last_fill_time",
+                            ))
 
-                        # Price fallback preference
-                        price = Decimal(
-                            self.pick(
+                            # Price/size with positive guards
+                            price = Decimal(str(_pick(
                                 o,
-                                "average_filled_price",  # best filled price
+                                "average_filled_price",
                                 ("order_configuration", "limit_limit_gtc", "limit_price"),
-                                "price"
-                            ) or "0"
-                        )
-
-                        # Size fallback preference
-                        size = Decimal(
-                            self.pick(
+                                "price",
+                            ) or "0"))
+                            size = Decimal(str(_pick(
                                 o,
                                 "filled_size",
                                 "size",
                                 ("order_configuration", "limit_limit_gtc", "base_size"),
-                                "order_size"
-                            ) or "0"
-                        )
+                                "order_size",
+                            ) or "0"))
+                            fee = Decimal(str(o.get("total_fees") or "0"))
 
-                        # Fee (optional field)
-                        fee = Decimal(o.get("total_fees", "0") or 0)
+                            row = {
+                                "order_id": order_id,
+                                "symbol": symbol or None,
+                                "side": side,
+                                "order_type": order_type,
+                                "order_time": order_time,
+                                "price": float(price) if price > 0 else None,
+                                "size": float(size) if size > 0 else None,
+                                "total_fees_usd": float(fee) if fee is not None else None,
+                                "trigger": trigger,
+                                "status": status,
+                                "source": source,
+                            }
+                            # DO NOT include: parent_id, parent_ids, pnl_usd, remaining_size, realized_profit
+                            rows.append(row)
 
-                        # Build the TradeRecord-shaped dict
-                        rows.append({
-                            "order_id": order_id,
-                            "parent_id": parent_id,
-                            "symbol": symbol,
-                            "side": side,
-                            "order_type": order_type,
-                            "order_time": order_time,
-                            "price": float(price),
-                            "size": float(size),
-                            "pnl_usd": None,
-                            "total_fees_usd": float(fee),
-                            "trigger": trigger,
-                            "status": status,
-                            # Optional extras (you can remove if not in your schema):
-                            "source": source,
-                            "remaining_size": float(size) if side == 'buy' else None,
-                            "realized_profit": 0.0 if side == 'buy' else None,
-                        })
+                        except Exception as e:
+                            self.logger.warning(
+                                "⚠️ Skipping order_id=%s due to transform error: %s",
+                                o.get("order_id"), e, exc_info=True
+                            )
 
-                    except Exception as e:
-                        self.logger.warning(f"⚠️ Failed to process order_id {o.get('order_id')} — {e}", exc_info=True)
+                    # 4) Upsert in chunks — non-destructive policy
+                    if not rows:
+                        self.logger.debug("ℹ️ sync_open_orders → nothing to upsert.")
+                        await asyncio.sleep(interval)
+                        continue
 
-                # ------------------------------------------------------------------
-                # 4) UPSERT
-                # ------------------------------------------------------------------
-                if not rows:
-                    self.logger.debug("ℹ️ sync_open_orders → nothing to upsert.")
-                    await asyncio.sleep(interval)
-                    continue
+                    updated_total = 0
+                    async with self.database_session_manager.async_session() as sess:
+                        for i in range(0, len(rows), CHUNK):
+                            batch = rows[i:i + CHUNK]
+                            insert_stmt = pg_insert(TradeRecord).values(batch)
 
-                CHUNK = 200
-                inserted_total = updated_total = 0
-                async with self.database_session_manager.async_session_factory() as sess:
-                    for i in range(0, len(rows), CHUNK):
-                        batch = rows[i: i + CHUNK]
-                        insert_stmt = pg_insert(TradeRecord).values(batch)
+                            update_cols = {
+                                # NEVER touch derived/linkage fields here
+                                "pnl_usd": literal_column("trade_records.pnl_usd"),
+                                "remaining_size": literal_column("trade_records.remaining_size"),
+                                "realized_profit": literal_column("trade_records.realized_profit"),
+                                "parent_id": literal_column("trade_records.parent_id"),
+                                "parent_ids": literal_column("trade_records.parent_ids"),
 
-                        update_cols = {
-                            "parent_id": case(
-                        (insert_stmt.excluded.parent_id != None, insert_stmt.excluded.parent_id),
-                                else_=literal_column("trade_records.parent_id")
-                            ),
+                                # Raw exchange fields (safe refresh)
+                                "status": insert_stmt.excluded.status,
 
-                            "parent_ids": case(
-                                (insert_stmt.excluded.parent_ids != None, insert_stmt.excluded.parent_ids),
-                                else_=literal_column("trade_records.parent_ids")
-                            ),
-                            "status": insert_stmt.excluded.status,
-                            "price": insert_stmt.excluded.price,
-                            "size": insert_stmt.excluded.size,
-                            "order_time": insert_stmt.excluded.order_time,
-                            "side": insert_stmt.excluded.side,
-                            "trigger": insert_stmt.excluded.trigger,
-                            "order_type": insert_stmt.excluded.order_type,
-                            "source": case((insert_stmt.excluded.source != literal("unknown"), insert_stmt.excluded.source), else_=literal_column("trade_records.source")),
-                            "total_fees_usd": insert_stmt.excluded.total_fees_usd,
-                            "pnl_usd": insert_stmt.excluded.pnl_usd,
-                            "remaining_size": insert_stmt.excluded.remaining_size,
-                            "realized_profit": insert_stmt.excluded.realized_profit,
-                        }
+                                "price": case(
+                                    (insert_stmt.excluded.price.isnot(None),
+                                     case(
+                                         (insert_stmt.excluded.price > 0, insert_stmt.excluded.price),
+                                         else_=literal_column("trade_records.price"),
+                                     )),
+                                    else_=literal_column("trade_records.price"),
+                                ),
+                                "size": case(
+                                    (insert_stmt.excluded.size.isnot(None),
+                                     case(
+                                         (insert_stmt.excluded.size > 0, insert_stmt.excluded.size),
+                                         else_=literal_column("trade_records.size"),
+                                     )),
+                                    else_=literal_column("trade_records.size"),
+                                ),
+                                "order_time": case(
+                                    (literal_column("trade_records.order_time").is_(None), insert_stmt.excluded.order_time),
+                                    (insert_stmt.excluded.order_time.isnot(None),
+                                     case(
+                                         (insert_stmt.excluded.order_time < literal_column("trade_records.order_time"),
+                                          insert_stmt.excluded.order_time),
+                                         else_=literal_column("trade_records.order_time"),
+                                     )),
+                                    else_=literal_column("trade_records.order_time"),
+                                ),
+                                "side": case(
+                                    (literal_column("trade_records.side").is_(None), insert_stmt.excluded.side),
+                                    else_=literal_column("trade_records.side"),
+                                ),
+                                "order_type": case(
+                                    (insert_stmt.excluded.order_type.isnot(None), insert_stmt.excluded.order_type),
+                                    else_=literal_column("trade_records.order_type"),
+                                ),
+                                "trigger": case(
+                                    (insert_stmt.excluded.trigger.isnot(None), insert_stmt.excluded.trigger),
+                                    else_=literal_column("trade_records.trigger"),
+                                ),
+                                "source": case(
+                                    (insert_stmt.excluded.source != literal("unknown"), insert_stmt.excluded.source),
+                                    else_=literal_column("trade_records.source"),
+                                ),
+                                "total_fees_usd": case(
+                                    (insert_stmt.excluded.total_fees_usd.isnot(None),
+                                     case(
+                                         (insert_stmt.excluded.total_fees_usd >= literal_column("trade_records.total_fees_usd"),
+                                          insert_stmt.excluded.total_fees_usd),
+                                         else_=literal_column("trade_records.total_fees_usd"),
+                                     )),
+                                    else_=literal_column("trade_records.total_fees_usd"),
+                                ),
+                            }
 
-                        stmt = insert_stmt.on_conflict_do_update(
-                            index_elements=["order_id"],
-                            set_=update_cols,
-                        )
+                            stmt = insert_stmt.on_conflict_do_update(
+                                index_elements=["order_id"],
+                                set_=update_cols,
+                                # Optional safety: skip rows that look "finalized"
+                                where=or_(
+                                    literal_column("trade_records.pnl_usd").is_(None),
+                                    literal_column("trade_records.source") == literal("unknown"),
+                                ),
+                            )
+                            result = await sess.execute(stmt)
+                            updated_total += result.rowcount
 
-                        result = await sess.execute(stmt)
-                        updated_total += result.rowcount
-                    await sess.commit()
+                        await sess.commit()
 
-                self.logger.info(
-                    f"✅ sync_open_orders → upserted {updated_total} rows "
-                    f"({len(open_orders)} open / {len(recent_orders)} recent)"
-                )
-            except Exception as exc:
-                self.logger.error("❌ sync_open_orders failed: %s", exc, exc_info=True)
+                    self.logger.info(
+                        "✅ sync_open_orders → upserted %d rows (open=%d, recent=%d)",
+                        updated_total, len(open_orders), len(recent_orders)
+                    )
 
-            await asyncio.sleep(interval)
+                except Exception as exc:
+                    self.logger.error("❌ sync_open_orders failed: %s", exc, exc_info=True)
+
+                # Always sleep, even after failures, unless cancelled
+                await asyncio.sleep(interval)
+
+        except asyncio.CancelledError:
+            self.logger.info("🛑 sync_open_orders cancelled cleanly.")
 
     async def sync_order_tracker_from_exchange(self):
         """Fetch open orders from Coinbase and inject them into order_tracker + persist to DB."""
