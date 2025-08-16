@@ -13,6 +13,7 @@ from aiohttp import web
 from decimal import Decimal
 from sqlalchemy.sql import text
 from sqlalchemy import case, or_
+from sqlalchemy.exc import DBAPIError
 from datetime import datetime, timezone
 from typing import Optional, Any, Sequence
 
@@ -1049,6 +1050,20 @@ class WebhookListener:
         except Exception as e:
             logger.error(f"❌ reconcile_with_rest_api() failed: {e}", exc_info=True)
 
+    # helper method used in sync_open_orders()
+    async def _exec_with_deadlock_retry(self, sess, stmt, max_retries=3):
+        delay = 0.1
+        for attempt in range(1, max_retries + 1):
+            try:
+                return await sess.execute(stmt)
+            except DBAPIError as e:
+                # asyncpg raises asyncpg.exceptions.DeadlockDetectedError under the hood
+                if "deadlock detected" in str(e).lower() and attempt < max_retries:
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                raise
+
     async def sync_open_orders(self, interval: int = 60 * 60) -> None:
         """
         Periodically fetch recent + open orders and upsert raw-exchange facts into trade_records
@@ -1067,6 +1082,7 @@ class WebhookListener:
         CHUNK = 200
         LOOKBACK_FIRST_RUN_HOURS = SYNC_LOOKBACK  # keep your existing constant
         LOOKBACK_SUBSEQUENT_HOURS = 1
+        GLOBAL_LOCK_KEY = 0x54524144 # same as what is used in trade_record_maintenance.py
 
         def _pick(d: dict, *paths, default=None):
             """Walks nested dicts by keys/indices; returns first value found."""
@@ -1177,6 +1193,8 @@ class WebhookListener:
 
                     # 3) Transform into rows (raw facts only)
                     rows: list[dict] = []
+                    rows.sort(key=lambda r: (r["order_id"] or ""))
+                    CHUNK = 50  # smaller batches reduce lock hold time
                     for o in orders_to_process:
                         try:
                             if (o.get("status") or "").lower() != "filled":
@@ -1248,87 +1266,106 @@ class WebhookListener:
 
                     updated_total = 0
                     async with self.database_session_manager.async_session() as sess:
-                        for i in range(0, len(rows), CHUNK):
-                            batch = rows[i:i + CHUNK]
-                            insert_stmt = pg_insert(TradeRecord).values(batch)
+                        # 🧪 Try to grab the global lock; if not available, maintenance is running
+                        got = (await sess.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": GLOBAL_LOCK_KEY})).scalar()
+                        if not got:
+                            self.logger.info("⏳ sync_open_orders skipped (maintenance running).")
+                            await asyncio.sleep(interval)
+                            continue
+                        try:
+                            for i in range(0, len(rows), CHUNK):
+                                batch = rows[i:i + CHUNK]
+                                # 🔐 Take xact-scoped advisory locks for each order_id in this batch.
+                                # Use SQL's hashtext(order_id) to get a stable key across processes.
+                                for r in batch:
+                                    oid = r["order_id"]
+                                    if not oid:
+                                        continue
+                                    await sess.execute(
+                                        text("SELECT pg_advisory_xact_lock(hashtext(:oid))"),
+                                        {"oid": oid}
+                                    )
+                                insert_stmt = pg_insert(TradeRecord).values(batch)
 
-                            update_cols = {
-                                # NEVER touch derived/linkage fields here
-                                "pnl_usd": literal_column("trade_records.pnl_usd"),
-                                "remaining_size": literal_column("trade_records.remaining_size"),
-                                "realized_profit": literal_column("trade_records.realized_profit"),
-                                "parent_id": literal_column("trade_records.parent_id"),
-                                "parent_ids": literal_column("trade_records.parent_ids"),
+                                update_cols = {
+                                    # NEVER touch derived/linkage fields here
+                                    "pnl_usd": literal_column("trade_records.pnl_usd"),
+                                    "remaining_size": literal_column("trade_records.remaining_size"),
+                                    "realized_profit": literal_column("trade_records.realized_profit"),
+                                    "parent_id": literal_column("trade_records.parent_id"),
+                                    "parent_ids": literal_column("trade_records.parent_ids"),
 
-                                # Raw exchange fields (safe refresh)
-                                "status": insert_stmt.excluded.status,
+                                    # Raw exchange fields (safe refresh)
+                                    "status": insert_stmt.excluded.status,
 
-                                "price": case(
-                                    (insert_stmt.excluded.price.isnot(None),
-                                     case(
-                                         (insert_stmt.excluded.price > 0, insert_stmt.excluded.price),
-                                         else_=literal_column("trade_records.price"),
-                                     )),
-                                    else_=literal_column("trade_records.price"),
-                                ),
-                                "size": case(
-                                    (insert_stmt.excluded.size.isnot(None),
-                                     case(
-                                         (insert_stmt.excluded.size > 0, insert_stmt.excluded.size),
-                                         else_=literal_column("trade_records.size"),
-                                     )),
-                                    else_=literal_column("trade_records.size"),
-                                ),
-                                "order_time": case(
-                                    (literal_column("trade_records.order_time").is_(None), insert_stmt.excluded.order_time),
-                                    (insert_stmt.excluded.order_time.isnot(None),
-                                     case(
-                                         (insert_stmt.excluded.order_time < literal_column("trade_records.order_time"),
-                                          insert_stmt.excluded.order_time),
-                                         else_=literal_column("trade_records.order_time"),
-                                     )),
-                                    else_=literal_column("trade_records.order_time"),
-                                ),
-                                "side": case(
-                                    (literal_column("trade_records.side").is_(None), insert_stmt.excluded.side),
-                                    else_=literal_column("trade_records.side"),
-                                ),
-                                "order_type": case(
-                                    (insert_stmt.excluded.order_type.isnot(None), insert_stmt.excluded.order_type),
-                                    else_=literal_column("trade_records.order_type"),
-                                ),
-                                "trigger": case(
-                                    (insert_stmt.excluded.trigger.isnot(None), insert_stmt.excluded.trigger),
-                                    else_=literal_column("trade_records.trigger"),
-                                ),
-                                "source": case(
-                                    (insert_stmt.excluded.source != literal("unknown"), insert_stmt.excluded.source),
-                                    else_=literal_column("trade_records.source"),
-                                ),
-                                "total_fees_usd": case(
-                                    (insert_stmt.excluded.total_fees_usd.isnot(None),
-                                     case(
-                                         (insert_stmt.excluded.total_fees_usd >= literal_column("trade_records.total_fees_usd"),
-                                          insert_stmt.excluded.total_fees_usd),
-                                         else_=literal_column("trade_records.total_fees_usd"),
-                                     )),
-                                    else_=literal_column("trade_records.total_fees_usd"),
-                                ),
-                            }
+                                    "price": case(
+                                        (insert_stmt.excluded.price.isnot(None),
+                                         case(
+                                             (insert_stmt.excluded.price > 0, insert_stmt.excluded.price),
+                                             else_=literal_column("trade_records.price"),
+                                         )),
+                                        else_=literal_column("trade_records.price"),
+                                    ),
+                                    "size": case(
+                                        (insert_stmt.excluded.size.isnot(None),
+                                         case(
+                                             (insert_stmt.excluded.size > 0, insert_stmt.excluded.size),
+                                             else_=literal_column("trade_records.size"),
+                                         )),
+                                        else_=literal_column("trade_records.size"),
+                                    ),
+                                    "order_time": case(
+                                        (literal_column("trade_records.order_time").is_(None), insert_stmt.excluded.order_time),
+                                        (insert_stmt.excluded.order_time.isnot(None),
+                                         case(
+                                             (insert_stmt.excluded.order_time < literal_column("trade_records.order_time"),
+                                              insert_stmt.excluded.order_time),
+                                             else_=literal_column("trade_records.order_time"),
+                                         )),
+                                        else_=literal_column("trade_records.order_time"),
+                                    ),
+                                    "side": case(
+                                        (literal_column("trade_records.side").is_(None), insert_stmt.excluded.side),
+                                        else_=literal_column("trade_records.side"),
+                                    ),
+                                    "order_type": case(
+                                        (insert_stmt.excluded.order_type.isnot(None), insert_stmt.excluded.order_type),
+                                        else_=literal_column("trade_records.order_type"),
+                                    ),
+                                    "trigger": case(
+                                        (insert_stmt.excluded.trigger.isnot(None), insert_stmt.excluded.trigger),
+                                        else_=literal_column("trade_records.trigger"),
+                                    ),
+                                    "source": case(
+                                        (insert_stmt.excluded.source != literal("unknown"), insert_stmt.excluded.source),
+                                        else_=literal_column("trade_records.source"),
+                                    ),
+                                    "total_fees_usd": case(
+                                        (insert_stmt.excluded.total_fees_usd.isnot(None),
+                                         case(
+                                             (insert_stmt.excluded.total_fees_usd >= literal_column("trade_records.total_fees_usd"),
+                                              insert_stmt.excluded.total_fees_usd),
+                                             else_=literal_column("trade_records.total_fees_usd"),
+                                         )),
+                                        else_=literal_column("trade_records.total_fees_usd"),
+                                    ),
+                                }
 
-                            stmt = insert_stmt.on_conflict_do_update(
-                                index_elements=["order_id"],
-                                set_=update_cols,
-                                # Optional safety: skip rows that look "finalized"
-                                where=or_(
-                                    literal_column("trade_records.pnl_usd").is_(None),
-                                    literal_column("trade_records.source") == literal("unknown"),
-                                ),
-                            )
-                            result = await sess.execute(stmt)
-                            updated_total += result.rowcount
+                                stmt = insert_stmt.on_conflict_do_update(
+                                    index_elements=["order_id"],
+                                    set_=update_cols,
+                                    # Optional safety: skip rows that look "finalized"
+                                    where=or_(
+                                        literal_column("trade_records.pnl_usd").is_(None),
+                                        literal_column("trade_records.source") == literal("unknown"),
+                                    ),
+                                )
+                                result = await self._exec_with_deadlock_retry(sess, stmt)
+                                updated_total += result.rowcount
 
-                        await sess.commit()
+                            await sess.commit()
+                        finally:
+                            await sess.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": GLOBAL_LOCK_KEY})
 
                     self.logger.info(
                         "✅ sync_open_orders → upserted %d rows (open=%d, recent=%d)",

@@ -619,9 +619,11 @@ class OrderManager:
                 quote_avail_balance=quote_amount
             )
 
-            if webhook_payload.get("verified") != "valid":
-                self.logger.warning(f"⚠️ Sell payload for {symbol} not verified: {webhook_payload}")
+            if webhook_payload.get("verified") != "valid" and webhook_payload.get("base_avail_to_trade", 0)> 0 :
+                self.logger.info(f"⚠️ Sell payload for {symbol} is not a valid order: {webhook_payload}")
                 return None
+            if webhook_payload.get("verified") != "valid":
+                self.logger.warning(f"⚠️ ⚠️ Sell payload for {symbol} not valid: {webhook_payload} ⚠️ ⚠️")
 
             await self.throttled_send(webhook_payload)
 

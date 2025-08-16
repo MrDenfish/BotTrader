@@ -1,6 +1,6 @@
 from TableModels.trade_record import TradeRecord
 from sqlalchemy import or_, and_, select, func
-from sqlalchemy import update
+from sqlalchemy import update, text
 
 async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     """
@@ -51,68 +51,74 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
 
     # Run the SQL cleanup patches and backfill
     print("⚙️ Incomplete or missing trades detected — applying fixes...")
-
+    GLOBAL_LOCK_KEY = 0x54524144
     async with shared_data_manager.database_session_manager.async_session() as session:
         async with session.begin():
-            # BUY Fixes
-            buy_fix_stmt = (
-                update(TradeRecord)
-                .where(TradeRecord.side == "buy")
-                .where(
-                    or_(
-                        TradeRecord.parent_id.is_(None),
-                        TradeRecord.parent_ids.is_(None)
+            # ⛔ Block until we hold the global maintenance lock
+            await session.execute(text("SELECT pg_advisory_lock(:k)"), {"k": GLOBAL_LOCK_KEY})
+            try:
+                # BUY Fixes
+                buy_fix_stmt = (
+                    update(TradeRecord)
+                    .where(TradeRecord.side == "buy")
+                    .where(
+                        or_(
+                            TradeRecord.parent_id.is_(None),
+                            TradeRecord.parent_ids.is_(None)
+                        )
                     )
+                    .values({
+                        TradeRecord.parent_id: TradeRecord.order_id,
+                        TradeRecord.parent_ids: None
+                    })
                 )
-                .values({
-                    TradeRecord.parent_id: TradeRecord.order_id,
-                    TradeRecord.parent_ids: None
-                })
-            )
-            result = await session.execute(buy_fix_stmt)
-            print(f"    → Fixed parent fields for {result.rowcount} BUY trades.")
+                result = await session.execute(buy_fix_stmt)
+                print(f"    → Fixed parent fields for {result.rowcount} BUY trades.")
 
-            remaining_fix_stmt = (
-                update(TradeRecord)
-                .where(TradeRecord.side == "buy")
-                .where(
-                    or_(
-                        TradeRecord.remaining_size.is_(None),
-                        TradeRecord.remaining_size == 0
+                remaining_fix_stmt = (
+                    update(TradeRecord)
+                    .where(TradeRecord.side == "buy")
+                    .where(
+                        or_(
+                            TradeRecord.remaining_size.is_(None),
+                            TradeRecord.remaining_size == 0
+                        )
                     )
+                    .values({TradeRecord.remaining_size: TradeRecord.size})
                 )
-                .values({TradeRecord.remaining_size: TradeRecord.size})
-            )
-            result = await session.execute(remaining_fix_stmt)
-            print(f"    → Fixed remaining_size for {result.rowcount} BUY trades.")
+                result = await session.execute(remaining_fix_stmt)
+                print(f"    → Fixed remaining_size for {result.rowcount} BUY trades.")
 
-            # SELL Fixes — reset only if missing key fields
-            sell_reset_stmt = (
-                update(TradeRecord)
-                .where(
-                    TradeRecord.side == "sell",
-                    or_(
-                        TradeRecord.cost_basis_usd.is_(None),
-                        TradeRecord.sale_proceeds_usd.is_(None),
-                        TradeRecord.net_sale_proceeds_usd.is_(None),
-                        TradeRecord.pnl_usd.is_(None),
-                        TradeRecord.realized_profit.is_(None),
-                        TradeRecord.parent_ids.is_(None),
-                        TradeRecord.parent_id.is_(None)
+                # SELL Fixes — reset only if missing key fields
+                sell_reset_stmt = (
+                    update(TradeRecord)
+                    .where(
+                        TradeRecord.side == "sell",
+                        or_(
+                            TradeRecord.cost_basis_usd.is_(None),
+                            TradeRecord.sale_proceeds_usd.is_(None),
+                            TradeRecord.net_sale_proceeds_usd.is_(None),
+                            TradeRecord.pnl_usd.is_(None),
+                            TradeRecord.realized_profit.is_(None),
+                            TradeRecord.parent_ids.is_(None),
+                            TradeRecord.parent_id.is_(None)
+                        )
                     )
+                    .values({
+                        TradeRecord.cost_basis_usd: None,
+                        TradeRecord.sale_proceeds_usd: None,
+                        TradeRecord.net_sale_proceeds_usd: None,
+                        TradeRecord.pnl_usd: None,
+                        TradeRecord.realized_profit: None,
+                        TradeRecord.parent_ids: None,
+                        TradeRecord.parent_id: None
+                    })
                 )
-                .values({
-                    TradeRecord.cost_basis_usd: None,
-                    TradeRecord.sale_proceeds_usd: None,
-                    TradeRecord.net_sale_proceeds_usd: None,
-                    TradeRecord.pnl_usd: None,
-                    TradeRecord.realized_profit: None,
-                    TradeRecord.parent_ids: None,
-                    TradeRecord.parent_id: None
-                })
-            )
-            result = await session.execute(sell_reset_stmt)
-            print(f"    → Reset {result.rowcount} incomplete SELL trades for backfill.")
+                result = await session.execute(sell_reset_stmt)
+                print(f"    → Reset {result.rowcount} incomplete SELL trades for backfill.")
+            finally:
+                # ✅ Always release explicitly at txn end
+                await session.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": GLOBAL_LOCK_KEY})
 
     # Run the backfill processes
     print("🔁 Running backfill now...")

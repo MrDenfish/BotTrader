@@ -175,7 +175,7 @@ class WebSocketMarketManager:
                     # ✅ ENQUEUE CHILD TP/SL ORDERS
                     # -------------------------------
                     if parent_id and side == "sell" and ev_type in {"order_created", "order_activated", "order_filled"}:
-                        trade = self._build_trade_dict(order, parent_id, side, source="websocket")
+                        trade = await self._build_trade_dict(order, parent_id, side, source="websocket")
                         queued_trades.append(trade)
                         queued_ids.add(trade["order_id"])
                         self.logger.debug(f"TP/SL child stored → {order_id}")
@@ -208,7 +208,7 @@ class WebSocketMarketManager:
                                 continue
 
                             self.logger.warning(f"⚠️ No fills, fallback promoted → primary: {base_id}")
-                            trade_data = self._build_trade_dict(order, parent_id, side, fallback=True)
+                            trade_data = await self._build_trade_dict(order, parent_id, side, fallback=True)
                             queued_trades.append(trade_data)
                             queued_ids.add(base_id)
 
@@ -219,7 +219,7 @@ class WebSocketMarketManager:
                                 self.logger.debug(f"⏭️ Duplicate partial fill ignored: {base_id}")
                                 continue
 
-                            fill_data = self._build_fill_dict(order, fill, base_id, i + 1, side)
+                            fill_data = await self._build_fill_dict(order, fill, base_id, i + 1, side)
                             if fill_data["order_id"] not in queued_ids:
                                 queued_trades.append(fill_data)
                                 queued_ids.add(fill_data["order_id"])
@@ -255,17 +255,35 @@ class WebSocketMarketManager:
             self.logger.warning(f"⚠️ Unable to parse order_time: {time_value}")
             return datetime.min.replace(tzinfo=timezone.utc)
 
-    def _build_trade_dict(self, order: dict, parent_id: Optional[str], side: str, fallback: bool = False, source: str = "websocket") -> dict:
+    async def _build_trade_dict(
+            self,
+            order: dict,
+            parent_id: Optional[str],
+            side: str,
+            fallback: bool = False,
+            source: str = "websocket",
+    ) -> dict:
         """Builds a normalized trade dictionary from order data."""
         order_id = order.get("order_id")
         symbol = order.get("product_id")
-        order_type = order.get("order_type", "market")
+        order_type = order.get("order_type") or "market"
 
+        # Prefer avg/limit/price in that order, same as before
         price = order.get("avg_price") or order.get("limit_price") or order.get("price")
-        amount = order.get("filled_size") or order.get("size") or order.get("cumulative_quantity") or 0
+        amount = (
+                order.get("filled_size")
+                or order.get("size")
+                or order.get("cumulative_quantity")
+                or 0
+        )
 
-        if fallback and side == "sell":
-            parent_id = asyncio.run(self.shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol))
+        # 🔄 Only fetch a parent if we need to (fallback SELL with no parent)
+        if fallback and side == "sell" and not parent_id:
+            try:
+                parent_id = await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
+            except Exception as e:
+                self.logger.exception("find_latest_unlinked_buy_id failed for %s: %s", symbol, e)
+                parent_id = None
 
         return {
             "order_id": order_id,
@@ -275,24 +293,37 @@ class WebSocketMarketManager:
             "price": price,
             "amount": amount,
             "status": "filled",
-            "order_time": self._normalize_order_time(order.get("event_time") or order.get("created_time")),
+            "order_time": self._normalize_order_time(
+                order.get("event_time") or order.get("created_time")
+            ),
             "trigger": {"trigger": order_type},
             "source": source,
             "total_fees": order.get("total_fees", 0),
         }
 
-    def _build_fill_dict(self, order: dict, fill: dict, base_id: str, index: int, side: str) -> dict:
+    async def _build_fill_dict(
+            self,
+            order: dict,
+            fill: dict,
+            base_id: str,
+            index: int,
+            side: str,
+    ) -> dict:
         """Builds a fill trade dict from individual fill record."""
         symbol = order.get("product_id")
         fill_order_id = f"{base_id}-FILL-{index}"
 
         fill_time = fill.get("trade_time") or order.get("event_time")
-        amount = float(fill.get("size", 0))
+        amount = float(fill.get("size") or 0)
         price = fill.get("price")
         fee = fill.get("fee", 0)
 
         if side == "sell":
-            parent_id = asyncio.run(self.shared_data_manager.trade_recorder.find_unlinked_buy_id(symbol))
+            try:
+                parent_id = await self.shared_data_manager.trade_recorder.find_unlinked_buy_id(symbol)
+            except Exception as e:
+                self.logger.exception("find_unlinked_buy_id failed for %s: %s", symbol, e)
+                parent_id = None
         else:
             parent_id = base_id
 
@@ -307,7 +338,7 @@ class WebSocketMarketManager:
             "order_time": self._normalize_order_time(fill_time),
             "trigger": {"trigger": order.get("order_type", "market")},
             "source": "websocket",
-            "total_fees": fee,
+            "total_fees": fee,  # (optional) consider aligning with `total_fees_usd`
         }
 
     def _normalize_order_time(self, raw_time) -> str:

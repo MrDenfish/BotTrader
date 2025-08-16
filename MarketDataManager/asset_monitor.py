@@ -164,6 +164,12 @@ class AssetMonitor:
         if profit_data_list:
             df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
             print(f"Profit Data Open Orders:\n{df.to_string(index=True)}")
+            print(self.shared_utils_color.format(
+                "\n[Profit Data Open Orders:]\n"
+                "-------------------------------------\n"
+                f"Total Trades (last {df.to_string(index=True)}\n"
+                "-------------------------------------"
+                , self.shared_utils_color.BRIGHT_GREEN))
 
     async def monitor_untracked_assets(self):
         self.logger.info("📱 Starting monitor_untracked_assets")

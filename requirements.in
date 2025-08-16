@@ -1,39 +1,23 @@
-aiodns                  #ccxt
-aiohttp                 #ccxt
-aiosignal               #aiohttp
-aiosqlite
-async-timeout           #aiohttp
-asyncpg==0.29.0         #databases
-attrs                   #aiohttp
-Bottleneck
-ccxt
-certifi                 #requests
-cffi                    #cryptography, pycares
-charset-normalizer      #ccxt
-coinbase-advanced-py    #requests>=2.31.0, cryptography>=42.0.4, PyJWT>=2.8.0, websockets>=12.0,<14.0, backoff>=2.2.1
-coinbase                #equests>=2.5, six>=1.9, pycryptodome>=3.4.11
-cryptography            #ccxt
-databases               #aiosqlite, asyncpg, databases
-dnspython               #requests
-frozen-inference
-frozenlist              #aiohttp, aiosignal
-greenlet                #sqlalchemy
-idna                    #requests, yarl
-multidict               #aiohttp, yarl
-numexpr
-numpy                   #bottleneck, numexpr, pandas
-pandas
-pycares                 #aiodns
-pycparser               #cffi
-python-dateutil         #pandas
-python-dotenv
-pytz                    #pandas
-requests                #ccxt
-six                     #python-dateutil
-SQLAlchemy
-tabulate
-typing_extensions       #aiosqlite, ccxt, sqlalchemy
-tzdata                  #pandas
-urllib3                 #requests
-websockets              #ccxt
-yarl                    #aiohttp, ccxt
+aiofiles==24.1.0
+aiosqlite==0.21.0
+asyncpg==0.30.0
+bottleneck==1.4.2
+brotli==1.0.9
+brotlicffi==1.0.9.2
+cachetools==5.3.2
+ccxt==4.4.75
+coinbase==2.1.0
+coinbase-advanced-py==1.8.2
+databases==0.9.0
+importlib-metadata==8.0.0
+importlib-resources==6.4.0
+jaraco.text==3.12.1
+numexpr==2.10.2
+ordered-set==4.1.0
+pandas==2.2.3
+pip-chill==1.0.3
+pip-tools==7.5.0
+platformdirs==4.2.2
+pysocks==1.7.1
+python-dotenv==1.0.1
+tabulate==0.9.0

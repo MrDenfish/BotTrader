@@ -187,7 +187,7 @@ class SenderWebhook:
             self.logger.warning(f"⚠️ Crypto balance > $1.00 — order rejected ({status}): {parsed.get('message', response_text)}")
             return True
 
-        if code in {"625", "618", "622"}:
+        if code in {"618", "622"}:
             self.logger.warning(f"⚠️ Order may be incomplete ({status}): {parsed.get('message', response_text)}")
             return True
 
@@ -198,7 +198,9 @@ class SenderWebhook:
         if code == "623":
             self.logger.warning(f"⚠️ Buy conditions not favorable ({status}): {parsed.get('message', response_text)}")
             return True
-
+        if code in {"625"}:
+            self.logger.warning(f"⚠️ Skipping order, conditions are not favorable: ({status}): {parsed.get('message', response_text)}")
+            return True
         if code in {"429", "500", "503"}:
             short_summary = parsed.get('message') or response_text[:300]
             self.logger.warning(f"⚠️ Recoverable server error ({status}): {short_summary} (Retrying...)")

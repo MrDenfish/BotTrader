@@ -244,7 +244,7 @@ class CentralConfig:
 
 
         # Combine all whitelist information into a single list, excluding empty values
-        whitelist = tv_whitelist_list + coin_whitelist_list + docker_staticip_list
+        whitelist = coin_whitelist_list
         return [item for item in whitelist if item]  # Exclude empty strings or None values
 
     def initialize_rest_client(self):
