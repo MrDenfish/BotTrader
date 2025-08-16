@@ -211,7 +211,7 @@ class CentralConfig:
     def _generate_database_url(self):
         """Generate the database URL."""
         try:
-            # override self.db_host if in Docker
+            # override self.db_host if in docker
             db_host = os.getenv("DOCKER_DB_HOST", "bottrader_postgres") if self.is_docker else self.db_host
             db_user = os.getenv("DOCKER_DB_USER", self.machine_type) if self.is_docker else self.machine_type
             print(f"is_docker: {self.is_docker}, db_host: {db_host}, db_user: {db_user}")

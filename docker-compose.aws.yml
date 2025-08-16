@@ -1,0 +1,48 @@
+version: "3.9"
+services:
+  bottrader:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.bot
+    image: bottrader:latest
+    container_name: bottrader
+    restart: unless-stopped
+    environment:
+      TZ: "UTC"
+      AWS_REGION: "us-west-2"
+      AWS_DEFAULT_REGION: "us-west-2"
+      SSM_PREFIX: "/bottrader/prod/db"
+      LOG_LEVEL: "INFO"
+      # optional app knobs (non-secret) can go here
+    command: ["bash", "-lc", "ssm-env && python -m main --run both"]
+    ports:
+      - "5000:5000"   # webhook
+    healthcheck:
+      test: ["CMD", "python", "-m", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "local"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  report-once:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.report
+    image: bottrader-report:latest
+    container_name: bottrader-report
+    environment:
+      TZ: "UTC"
+      AWS_REGION: "us-west-2"
+      AWS_DEFAULT_REGION: "us-west-2"
+      SSM_PREFIX: "/bottrader/prod/db"
+    command: ["bash", "-lc", "ssm-env && python /opt/bot/daily_report.py"]
+    logging:
+      driver: "local"
+      options:
+        max-size: "5m"
+        max-file: "3"

@@ -2,7 +2,7 @@ services:
   bottrader:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker-compose.aws.yml
     container_name: tradebot
     restart: unless-stopped
     env_file:

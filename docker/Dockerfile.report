@@ -1,0 +1,36 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      awscli ca-certificates curl tini tzdata \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN useradd -m -u 10001 appuser
+WORKDIR /app
+
+# Only the report deps (pinned)
+COPY requirements-report.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
+
+# App code (we’ll run the script from the repo path)
+COPY . /app
+
+# RDS TLS bundle for pg8000
+RUN mkdir -p /etc/ssl/certs && \
+    curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
+      -o /etc/ssl/certs/rds-global-bundle.pem
+
+# SSM helper
+COPY docker/ssm-env.sh /usr/local/bin/ssm-env
+RUN chmod +x /usr/local/bin/ssm-env
+
+USER appuser
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# If you prefer the installed server copy at /opt/bot/daily_report.py,
+# change the path below. Here we point to the repo version:
+CMD ["bash", "-lc", "ssm-env && python BotTrader/database_manager/aws_daily_report.py"]

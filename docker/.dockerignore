@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pytest_cache/
+*.egg-info/
+
+# Venvs
+.venv*/
+env*/
+venv*/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Git
+.git
+.gitignore
+
+# Local data & logs
+logs/
+*.log
+.tmp/
+.cache/
+
+# Not needed in images
+docker-compose*.yml
