@@ -1,48 +1,80 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Require AWS_REGION (fail fast if not set)
+# Require region; mirror into AWS_DEFAULT_REGION for good measure
 : "${AWS_REGION:?AWS_REGION must be set (e.g. us-west-2)}"
+export AWS_DEFAULT_REGION="$AWS_REGION"
 
-# Where your DB params live (already created in SSM)
+# Disable AWS CLI pager
+export AWS_PAGER=""
+export AWS_CLI_PAGER=""
+
+# Prefix for DB params
 : "${SSM_PREFIX:=/bottrader/prod/db}"
 
-# --- Fetch DB params ---
-readarray -t DB_PARAMS < <(aws ssm get-parameters-by-path \
+sanitize_key() {
+  printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9_]/_/g'
+}
+
+# Try by-path first; if it fails or is empty, fall back to individual gets
+DB_LINES=""
+set +e
+DB_LINES="$(aws ssm get-parameters-by-path \
   --with-decryption \
   --path "$SSM_PREFIX" \
   --region "$AWS_REGION" \
-  --query 'Parameters[].{Name:Name,Value:Value}' \
-  --output text)
+  --query 'Parameters[*].[Name,Value]' \
+  --output text 2>/dev/null)"
+rc=$?
+set -e
 
-for line in "${DB_PARAMS[@]}"; do
-  # output format: <Value>\t<Name>
-  VAL=$(awk '{print $1}' <<< "$line")
-  NAME=$(awk '{print $2}' <<< "$line")
-  KEY=$(basename "$NAME" | tr '[:lower:]' '[:upper:]')  # host -> HOST
-  export "DB_${KEY}=${VAL}"
-done
-
-# Derived convenience DSN
-export DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:5432/${DB_NAME}"
-
-# --- Optional email/report params ---
-if aws ssm get-parameters-by-path --path "/bottrader/prod/email" \
+if [ $rc -eq 0 ] && [ -n "$DB_LINES" ]; then
+  # Export each Name/Value pair as DB_<KEY>
+  while IFS=$'\t' read -r NAME VAL; do
+    [ -z "${NAME:-}" ] && continue
+    KEY="$(sanitize_key "$(basename "$NAME")")"
+    export "DB_${KEY}=${VAL}"
+  done <<< "$DB_LINES"
+else
+  # Fallback: resolve specific keys one by one
+  for k in host name user password port; do
+    set +e
+    VAL="$(aws ssm get-parameter \
+      --name "${SSM_PREFIX}/${k}" \
       --with-decryption \
       --region "$AWS_REGION" \
-      --query 'Parameters' \
-      --output text >/dev/null 2>&1; then
-  readarray -t EMAIL_PARAMS < <(aws ssm get-parameters-by-path \
-    --with-decryption \
-    --region "$AWS_REGION" \
-    --path "/bottrader/prod/email" \
-    --query 'Parameters[].{Name:Name,Value:Value}' \
-    --output text)
-  for line in "${EMAIL_PARAMS[@]}"; do
-    VAL=$(awk '{print $1}' <<< "$line")
-    NAME=$(awk '{print $2}' <<< "$line")
-    KEY=$(basename "$NAME" | tr '[:lower:]' '[:upper:]')
-    export "EMAIL_${KEY}=${VAL}"
+      --query 'Parameter.Value' \
+      --output text 2>/dev/null)"
+    rc2=$?
+    set -e
+    if [ $rc2 -eq 0 ] && [ -n "$VAL" ] && [ "$VAL" != "None" ]; then
+      KEY="$(sanitize_key "$k")"
+      export "DB_${KEY}=${VAL}"
+    fi
   done
 fi
+
+# Default port if not present
+: "${DB_PORT:=5432}"
+
+# Build DATABASE_URL for SQLAlchemy/asyncpg
+export DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+# Optional: email/report params under /bottrader/prod/email
+set +e
+EMAIL_LINES="$(aws ssm get-parameters-by-path \
+  --with-decryption \
+  --path "/bottrader/prod/email" \
+  --region "$AWS_REGION" \
+  --query 'Parameters[*].[Name,Value]' \
+  --output text 2>/dev/null)"
+set -e
+if [ -n "$EMAIL_LINES" ]; then
+  while IFS=$'\t' read -r NAME VAL; do
+    [ -z "${NAME:-}" ] && continue
+    KEY="$(sanitize_key "$(basename "$NAME")")"
+    export "EMAIL_${KEY}=${VAL}"
+  done <<< "$EMAIL_LINES"
+fi
+
 

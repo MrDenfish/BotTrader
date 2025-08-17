@@ -14,7 +14,7 @@ services:
       SSM_PREFIX: "/bottrader/prod/db"
       LOG_LEVEL: "INFO"
       # optional app knobs (non-secret) can go here
-    command: ["bash", "-lc", "ssm-env && python -m main --run both"]
+    command: ["bash", "-lc", ". /usr/local/bin/ssm-env && python -m main --run both"]
     ports:
       - "5000:5000"   # webhook
     healthcheck:
@@ -40,7 +40,7 @@ services:
       AWS_REGION: "us-west-2"
       AWS_DEFAULT_REGION: "us-west-2"
       SSM_PREFIX: "/bottrader/prod/db"
-    command: ["bash", "-lc", "ssm-env && python /opt/bot/daily_report.py"]
+    command: ["bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py"]
     logging:
       driver: "local"
       options:
