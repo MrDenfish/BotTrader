@@ -2,7 +2,7 @@
 import asyncio
 
 from TableModels.trade_record import TradeRecord
-from TableModels.trade_record_debug import TradeRecordDebug
+# from TableModels.trade_record_debug import TradeRecordDebug
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from asyncio import Queue
 from typing import Optional
@@ -937,214 +937,214 @@ class TradeRecorder:
 
 
 # <><><><><><><><><><><><><><><><><><>><><><><<>
-    async def test_fifo_prod(self, symbol: str):
-        """
-        Quick production test harness to validate FIFO logic directly
-        against the live trade_records table.
+#     async def test_fifo_prod(self, symbol: str):
+#         """
+#         Quick production test harness to validate FIFO logic directly
+#         against the live trade_records table.
+#
+#         Args:
+#             symbol (str): Trading pair to test (e.g., "EDGE-USD").
+#         """
+#         try:
+#             # ✅ 1. Fetch first SELL trade from production table
+#             async with self.db_session_manager.async_session() as session:
+#                 async with session.begin():
+#                     stmt = (
+#                         select(TradeRecord)
+#                         .where(
+#                             TradeRecord.symbol == symbol,
+#                             TradeRecord.side == "sell"
+#                         )
+#                         .order_by(TradeRecord.order_time.asc())
+#                         .limit(1)
+#                     )
+#                     async with self.db_session_manager.async_session() as session:
+#                         result = await session.execute(stmt)
+#                     sell_trade = result.scalar_one_or_none()
+#
+#             if not sell_trade:
+#                 self.logger.warning(f"[TEST HARNESS PROD] No SELL trades found for {symbol}")
+#                 return
+#
+#             # ✅ 2. Prepare precision
+#             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
+#             base_q = Decimal("1").scaleb(-base_deci)
+#             quote_q = Decimal("1").scaleb(-quote_deci)
+#
+#             self.logger.info(
+#                 f"\n========== [TEST HARNESS: FIFO PROD START] ==========\n"
+#                 f"Symbol: {symbol}\n"
+#                 f"Sell Order ID: {sell_trade.order_id}\n"
+#                 f"Sell Size: {sell_trade.size}\n"
+#                 f"Sell Price: {sell_trade.price}\n"
+#                 f"====================================================="
+#             )
+#
+#             # ✅ 3. Run production FIFO method
+#             async with self.db_session_manager.async_session() as session:
+#                 async with session.begin():
+#                     result = await self.compute_cost_basis_and_sale_proceeds(
+#                         session=session,
+#                         symbol=symbol,
+#                         size=Decimal(sell_trade.size),
+#                         sell_price=Decimal(sell_trade.price),
+#                         total_fees=Decimal(sell_trade.total_fees_usd or 0),
+#                         quote_q=quote_q,
+#                         base_q=base_q,
+#                         sell_time=sell_trade.order_time
+#                     )
+#
+#             # ✅ 4. Display Results
+#             self.logger.info(
+#                 f"\n========== [TEST HARNESS: FIFO PROD RESULT] ==========\n"
+#                 f"Cost Basis USD: {result['cost_basis_usd']}\n"
+#                 f"Sale Proceeds USD: {result['sale_proceeds_usd']}\n"
+#                 f"Net Sale Proceeds USD: {result['net_sale_proceeds_usd']}\n"
+#                 f"PnL USD: {result['pnl_usd']}\n"
+#                 f"Parent IDs: {result['parent_ids']}\n"
+#                 f"Update Instructions: {result['update_instructions']}\n"
+#                 f"======================================================"
+#             )
+#
+#         except Exception as e:
+#             self.logger.error(f"❌ [TEST HARNESS PROD ERROR] {e}", exc_info=True)
 
-        Args:
-            symbol (str): Trading pair to test (e.g., "EDGE-USD").
-        """
-        try:
-            # ✅ 1. Fetch first SELL trade from production table
-            async with self.db_session_manager.async_session() as session:
-                async with session.begin():
-                    stmt = (
-                        select(TradeRecord)
-                        .where(
-                            TradeRecord.symbol == symbol,
-                            TradeRecord.side == "sell"
-                        )
-                        .order_by(TradeRecord.order_time.asc())
-                        .limit(1)
-                    )
-                    async with self.db_session_manager.async_session() as session:
-                        result = await session.execute(stmt)
-                    sell_trade = result.scalar_one_or_none()
+    # async def test_fifo_debug(self, symbol: str):
+    #     """
+    #     Quick test harness to run FIFO debug on the first SELL trade of a given symbol.
+    #     Uses trade_records_debug table for safety.
+    #
+    #     Args:
+    #         trade_recorder: Instance of TradeRecorder (with compute_cost_basis_and_sale_proceeds_debug method).
+    #         symbol (str): The trading pair to test (e.g., "SPK-USD").
+    #     """
+    #     try:
+    #         # -----------------------------
+    #         # ✅ Step 1: Fetch first SELL trade from debug table
+    #         # -----------------------------
+    #         async with self.db_session_manager.async_session() as session:
+    #             async with session.begin():
+    #                 stmt = (
+    #                     select(TradeRecordDebug)
+    #                     .where(
+    #                         TradeRecordDebug.symbol == symbol,
+    #                         TradeRecordDebug.side == "sell"
+    #                     )
+    #                     .order_by(TradeRecordDebug.order_time.asc())
+    #                     .limit(1)
+    #                 )
+    #                 async with self.db_session_manager.async_session() as session:
+    #                     result = await session.execute(stmt)
+    #                 sell_trade = result.scalar_one_or_none()
+    #
+    #         if not sell_trade:
+    #             self.logger.warning(f"[TEST HARNESS] No SELL trades found for {symbol}")
+    #             return
+    #
+    #         # -----------------------------
+    #         # ✅ Step 2: Prepare precision & debug call
+    #         # -----------------------------
+    #         base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
+    #         base_q = Decimal("1").scaleb(-base_deci)
+    #         quote_q = Decimal("1").scaleb(-quote_deci)
+    #
+    #         self.logger.info(
+    #             f"\n========== [TEST HARNESS: FIFO DEBUG START] ==========\n"
+    #             f"Symbol: {symbol}\n"
+    #             f"Sell Order ID: {sell_trade.order_id}\n"
+    #             f"Sell Size: {sell_trade.size}\n"
+    #             f"Sell Price: {sell_trade.price}\n"
+    #             f"====================================================="
+    #         )
+    #
+    #         # -----------------------------
+    #         # ✅ Step 3: Run the FIFO Debug
+    #         # -----------------------------
+    #         async with self.db_session_manager.async_session() as session:
+    #             async with session.begin():
+    #                 result = await self.compute_cost_basis_and_sale_proceeds_debug(
+    #                     session=session,
+    #                     symbol=symbol,
+    #                     size=Decimal(sell_trade.size),
+    #                     sell_price=Decimal(sell_trade.price),
+    #                     total_fees=Decimal(sell_trade.total_fees_usd or 0),
+    #                     quote_q=quote_q,
+    #                     base_q=base_q,
+    #                     sell_time=sell_trade.order_time
+    #                 )
+    #
+    #         # -----------------------------
+    #         # ✅ Step 4: Display Results
+    #         # -----------------------------
+    #         self.logger.info(
+    #             f"\n========== [TEST HARNESS: FIFO DEBUG RESULT] ==========\n"
+    #             f"Cost Basis USD: {result['cost_basis_usd']}\n"
+    #             f"Sale Proceeds USD: {result['sale_proceeds_usd']}\n"
+    #             f"Net Sale Proceeds USD: {result['net_sale_proceeds_usd']}\n"
+    #             f"PnL USD: {result['pnl_usd']}\n"
+    #             f"Parent IDs: {result['parent_ids']}\n"
+    #             f"Update Instructions: {result['update_instructions']}\n"
+    #             f"======================================================"
+    #         )
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ [TEST HARNESS ERROR] {e}", exc_info=True)
 
-            if not sell_trade:
-                self.logger.warning(f"[TEST HARNESS PROD] No SELL trades found for {symbol}")
-                return
-
-            # ✅ 2. Prepare precision
-            base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
-            base_q = Decimal("1").scaleb(-base_deci)
-            quote_q = Decimal("1").scaleb(-quote_deci)
-
-            self.logger.info(
-                f"\n========== [TEST HARNESS: FIFO PROD START] ==========\n"
-                f"Symbol: {symbol}\n"
-                f"Sell Order ID: {sell_trade.order_id}\n"
-                f"Sell Size: {sell_trade.size}\n"
-                f"Sell Price: {sell_trade.price}\n"
-                f"====================================================="
-            )
-
-            # ✅ 3. Run production FIFO method
-            async with self.db_session_manager.async_session() as session:
-                async with session.begin():
-                    result = await self.compute_cost_basis_and_sale_proceeds(
-                        session=session,
-                        symbol=symbol,
-                        size=Decimal(sell_trade.size),
-                        sell_price=Decimal(sell_trade.price),
-                        total_fees=Decimal(sell_trade.total_fees_usd or 0),
-                        quote_q=quote_q,
-                        base_q=base_q,
-                        sell_time=sell_trade.order_time
-                    )
-
-            # ✅ 4. Display Results
-            self.logger.info(
-                f"\n========== [TEST HARNESS: FIFO PROD RESULT] ==========\n"
-                f"Cost Basis USD: {result['cost_basis_usd']}\n"
-                f"Sale Proceeds USD: {result['sale_proceeds_usd']}\n"
-                f"Net Sale Proceeds USD: {result['net_sale_proceeds_usd']}\n"
-                f"PnL USD: {result['pnl_usd']}\n"
-                f"Parent IDs: {result['parent_ids']}\n"
-                f"Update Instructions: {result['update_instructions']}\n"
-                f"======================================================"
-            )
-
-        except Exception as e:
-            self.logger.error(f"❌ [TEST HARNESS PROD ERROR] {e}", exc_info=True)
-
-    async def test_fifo_debug(self, symbol: str):
-        """
-        Quick test harness to run FIFO debug on the first SELL trade of a given symbol.
-        Uses trade_records_debug table for safety.
-
-        Args:
-            trade_recorder: Instance of TradeRecorder (with compute_cost_basis_and_sale_proceeds_debug method).
-            symbol (str): The trading pair to test (e.g., "SPK-USD").
-        """
-        try:
-            # -----------------------------
-            # ✅ Step 1: Fetch first SELL trade from debug table
-            # -----------------------------
-            async with self.db_session_manager.async_session() as session:
-                async with session.begin():
-                    stmt = (
-                        select(TradeRecordDebug)
-                        .where(
-                            TradeRecordDebug.symbol == symbol,
-                            TradeRecordDebug.side == "sell"
-                        )
-                        .order_by(TradeRecordDebug.order_time.asc())
-                        .limit(1)
-                    )
-                    async with self.db_session_manager.async_session() as session:
-                        result = await session.execute(stmt)
-                    sell_trade = result.scalar_one_or_none()
-
-            if not sell_trade:
-                self.logger.warning(f"[TEST HARNESS] No SELL trades found for {symbol}")
-                return
-
-            # -----------------------------
-            # ✅ Step 2: Prepare precision & debug call
-            # -----------------------------
-            base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
-            base_q = Decimal("1").scaleb(-base_deci)
-            quote_q = Decimal("1").scaleb(-quote_deci)
-
-            self.logger.info(
-                f"\n========== [TEST HARNESS: FIFO DEBUG START] ==========\n"
-                f"Symbol: {symbol}\n"
-                f"Sell Order ID: {sell_trade.order_id}\n"
-                f"Sell Size: {sell_trade.size}\n"
-                f"Sell Price: {sell_trade.price}\n"
-                f"====================================================="
-            )
-
-            # -----------------------------
-            # ✅ Step 3: Run the FIFO Debug
-            # -----------------------------
-            async with self.db_session_manager.async_session() as session:
-                async with session.begin():
-                    result = await self.compute_cost_basis_and_sale_proceeds_debug(
-                        session=session,
-                        symbol=symbol,
-                        size=Decimal(sell_trade.size),
-                        sell_price=Decimal(sell_trade.price),
-                        total_fees=Decimal(sell_trade.total_fees_usd or 0),
-                        quote_q=quote_q,
-                        base_q=base_q,
-                        sell_time=sell_trade.order_time
-                    )
-
-            # -----------------------------
-            # ✅ Step 4: Display Results
-            # -----------------------------
-            self.logger.info(
-                f"\n========== [TEST HARNESS: FIFO DEBUG RESULT] ==========\n"
-                f"Cost Basis USD: {result['cost_basis_usd']}\n"
-                f"Sale Proceeds USD: {result['sale_proceeds_usd']}\n"
-                f"Net Sale Proceeds USD: {result['net_sale_proceeds_usd']}\n"
-                f"PnL USD: {result['pnl_usd']}\n"
-                f"Parent IDs: {result['parent_ids']}\n"
-                f"Update Instructions: {result['update_instructions']}\n"
-                f"======================================================"
-            )
-
-        except Exception as e:
-            self.logger.error(f"❌ [TEST HARNESS ERROR] {e}", exc_info=True)
-
-    async def test_performance_tracker(self):
-        """
-        Test harness to verify PassiveMM performance tracker alignment with SQL logic.
-        Prints the same output as the SQL query.
-        """
-        try:
-            self.logger.info("[TEST PERFORMANCE TRACKER] Running SQL-aligned performance stats...")
-
-            async with self.db_session_manager.async_session() as session:
-                async with session.begin():
-                    stmt = (
-                        select(
-                            TradeRecord.symbol,
-                            func.count().label("total_trades"),
-                            (
-                                    func.sum(
-                                        case((TradeRecord.pnl_usd > 0, 1), else_=0)
-                                    ).cast(Float) / func.count() * 100
-                            ).label("win_rate"),
-                            func.sum(TradeRecord.pnl_usd).label("total_pnl"),
-                            func.avg(TradeRecord.pnl_usd).label("avg_pnl"),
-                        )
-                        .where(
-                            TradeRecord.side == "sell",
-                            TradeRecord.pnl_usd.isnot(None),
-                            TradeRecord.order_time >= datetime.now(timezone.utc) - timedelta(days=7),
-                        )
-                        .group_by(TradeRecord.symbol)
-                        .order_by(func.sum(TradeRecord.pnl_usd).asc())
-                        .limit(10)
-                    )
-
-                    async with self.db_session_manager.async_session() as session:
-                        result = await session.execute(stmt)
-                    rows = result.all()
-
-            total_trades = sum(row.total_trades for row in rows)
-            win_rate = (
-                (sum(1 for row in rows if row.total_pnl > 0) / len(rows)) * 100
-                if rows else 0.0
-            )
-            total_pnl = sum(row.total_pnl for row in rows)
-            avg_pnl = total_pnl / total_trades if total_trades else 0.0
-            top_symbols = {row.symbol: row.total_pnl for row in rows}
-
-            # ✅ Log in the same style as the old tracker
-            self.logger.info(
-                "\n========== [TEST HARNESS: PERFORMANCE TRACKER RESULT] ==========\n"
-                f"Total Trades (last 7d): {total_trades}\n"
-                f"Win Rate: {win_rate:.2f}%\n"
-                f"Total PnL: {total_pnl:+.2f} USD\n"
-                f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
-                f"Top Symbols: {top_symbols}\n"
-                "==============================================================="
-            )
-
-        except Exception as e:
-            self.logger.error(f"❌ [TEST PERFORMANCE TRACKER ERROR] {e}", exc_info=True)
+    # async def test_performance_tracker(self):
+    #     """
+    #     Test harness to verify PassiveMM performance tracker alignment with SQL logic.
+    #     Prints the same output as the SQL query.
+    #     """
+    #     try:
+    #         self.logger.info("[TEST PERFORMANCE TRACKER] Running SQL-aligned performance stats...")
+    #
+    #         async with self.db_session_manager.async_session() as session:
+    #             async with session.begin():
+    #                 stmt = (
+    #                     select(
+    #                         TradeRecord.symbol,
+    #                         func.count().label("total_trades"),
+    #                         (
+    #                                 func.sum(
+    #                                     case((TradeRecord.pnl_usd > 0, 1), else_=0)
+    #                                 ).cast(Float) / func.count() * 100
+    #                         ).label("win_rate"),
+    #                         func.sum(TradeRecord.pnl_usd).label("total_pnl"),
+    #                         func.avg(TradeRecord.pnl_usd).label("avg_pnl"),
+    #                     )
+    #                     .where(
+    #                         TradeRecord.side == "sell",
+    #                         TradeRecord.pnl_usd.isnot(None),
+    #                         TradeRecord.order_time >= datetime.now(timezone.utc) - timedelta(days=7),
+    #                     )
+    #                     .group_by(TradeRecord.symbol)
+    #                     .order_by(func.sum(TradeRecord.pnl_usd).asc())
+    #                     .limit(10)
+    #                 )
+    #
+    #                 async with self.db_session_manager.async_session() as session:
+    #                     result = await session.execute(stmt)
+    #                 rows = result.all()
+    #
+    #         total_trades = sum(row.total_trades for row in rows)
+    #         win_rate = (
+    #             (sum(1 for row in rows if row.total_pnl > 0) / len(rows)) * 100
+    #             if rows else 0.0
+    #         )
+    #         total_pnl = sum(row.total_pnl for row in rows)
+    #         avg_pnl = total_pnl / total_trades if total_trades else 0.0
+    #         top_symbols = {row.symbol: row.total_pnl for row in rows}
+    #
+    #         # ✅ Log in the same style as the old tracker
+    #         self.logger.info(
+    #             "\n========== [TEST HARNESS: PERFORMANCE TRACKER RESULT] ==========\n"
+    #             f"Total Trades (last 7d): {total_trades}\n"
+    #             f"Win Rate: {win_rate:.2f}%\n"
+    #             f"Total PnL: {total_pnl:+.2f} USD\n"
+    #             f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
+    #             f"Top Symbols: {top_symbols}\n"
+    #             "==============================================================="
+    #         )
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ [TEST PERFORMANCE TRACKER ERROR] {e}", exc_info=True)

@@ -2,7 +2,7 @@ import json
 import os
 from decimal import Decimal
 from typing import Any, Optional
-from coinbase.rest import RESTClient
+from coinbase import rest as coinbase
 from dotenv import load_dotenv
 
 
@@ -258,7 +258,7 @@ class CentralConfig:
             if not api_key or not api_secret or not portfolio_uuid:
                 raise ValueError("API key, secret, and UUID are required to initialize the REST client.")
 
-            self.rest_client = RESTClient(api_key=api_key, api_secret=api_secret)
+            self.rest_client = coinbase.RESTClient(api_key=api_key, api_secret=api_secret)
             self.portfolio_uuid = portfolio_uuid
             print("REST client successfully initialized.")
         except Exception as e:
