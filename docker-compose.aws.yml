@@ -2,7 +2,7 @@ version: "3.9"
 services:
   bottrader:
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile.bot
     image: bottrader:latest
     container_name: bottrader
@@ -11,19 +11,13 @@ services:
       TZ: "UTC"
       AWS_REGION: "us-west-2"
       AWS_DEFAULT_REGION: "us-west-2"
+      AWS_PAGER: ""
+      AWS_CLI_PAGER: ""
       SSM_PREFIX: "/bottrader/prod/db"
       LOG_LEVEL: "INFO"
-      # optional app knobs (non-secret) can go here
-    # network_mode: "host"   # uncomment if there are IMDS issues
     command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python -m main --run both" ]
     ports:
-      - "5000:5000"   # webhook
-    healthcheck:
-      test: ["CMD", "python", "-m", "healthcheck"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      - "5000:5000"
     logging:
       driver: "local"
       options:
@@ -32,7 +26,7 @@ services:
 
   report-once:
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile.report
     image: bottrader-report:latest
     container_name: bottrader-report
@@ -40,8 +34,9 @@ services:
       TZ: "UTC"
       AWS_REGION: "us-west-2"
       AWS_DEFAULT_REGION: "us-west-2"
+      AWS_PAGER: ""
+      AWS_CLI_PAGER: ""
       SSM_PREFIX: "/bottrader/prod/db"
-    # network_mode: "host"
     command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py" ]
     logging:
       driver: "local"

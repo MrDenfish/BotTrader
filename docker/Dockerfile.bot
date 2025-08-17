@@ -1,32 +1,27 @@
 # syntax=docker/dockerfile:1.7
 FROM python:3.11-slim
 
-# OS deps: awscli for SSM, tini as PID1, toolchain for any wheels that compile
 RUN apt-get update && apt-get install -y --no-install-recommends \
       awscli ca-certificates curl tini tzdata gcc build-essential \
   && rm -rf /var/lib/apt/lists/*
 
-# Safety & speed
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
-# Non-root
+# Create non-root user early so we can chown during COPY
 RUN useradd -m -u 10001 appuser
 WORKDIR /app
 
-# ---- Python dependencies (pinned) ----
-# Copy only the lock file first for better layer caching
-COPY requirements.txt /app/requirements.txt
+# Python deps (pinned)
+COPY --chown=appuser:appuser requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 
-# ---- App code ----
-# (Assumes this Dockerfile lives at BotTrader/docker/Dockerfile.bot
-#  and build context is the repo root: BotTrader/)
-COPY . /app
+# App code (owned by appuser so it can write /app/logs)
+COPY --chown=appuser:appuser . /app
 
-# RDS global trust bundle for TLS to Postgres
+# RDS trust bundle
 RUN mkdir -p /etc/ssl/certs && \
     curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
       -o /etc/ssl/certs/rds-global-bundle.pem
@@ -35,13 +30,7 @@ RUN mkdir -p /etc/ssl/certs && \
 COPY docker/ssm-env.sh /usr/local/bin/ssm-env
 RUN chmod +x /usr/local/bin/ssm-env
 
-# Default env (non-secret knobs can live here)
 ENV TZ=UTC
-
-# Drop privileges & use tini as PID 1
 USER appuser
 ENTRYPOINT ["/usr/bin/tini", "--"]
-
-# Your program supports CLI flags like `--run both`
-# If your entrypoint differs, change this line
-CMD ["bash", "-lc", "ssm-env && python -m main --run both"]
+CMD ["bash", "-lc", ". /usr/local/bin/ssm-env && python -m main --run both"]

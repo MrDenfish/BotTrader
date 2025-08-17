@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Require region; mirror into AWS_DEFAULT_REGION for good measure
+# Require region; mirror for SDKs/CLI
 : "${AWS_REGION:?AWS_REGION must be set (e.g. us-west-2)}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 
@@ -16,8 +16,7 @@ sanitize_key() {
   printf '%s' "$1" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9_]/_/g'
 }
 
-# Try by-path first; if it fails or is empty, fall back to individual gets
-DB_LINES=""
+# Try by-path first; fallback to individual keys if needed
 set +e
 DB_LINES="$(aws ssm get-parameters-by-path \
   --with-decryption \
@@ -29,14 +28,12 @@ rc=$?
 set -e
 
 if [ $rc -eq 0 ] && [ -n "$DB_LINES" ]; then
-  # Export each Name/Value pair as DB_<KEY>
   while IFS=$'\t' read -r NAME VAL; do
     [ -z "${NAME:-}" ] && continue
     KEY="$(sanitize_key "$(basename "$NAME")")"
     export "DB_${KEY}=${VAL}"
   done <<< "$DB_LINES"
 else
-  # Fallback: resolve specific keys one by one
   for k in host name user password port; do
     set +e
     VAL="$(aws ssm get-parameter \
@@ -54,13 +51,10 @@ else
   done
 fi
 
-# Default port if not present
 : "${DB_PORT:=5432}"
-
-# Build DATABASE_URL for SQLAlchemy/asyncpg
 export DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 
-# Optional: email/report params under /bottrader/prod/email
+# Optional: email/report params
 set +e
 EMAIL_LINES="$(aws ssm get-parameters-by-path \
   --with-decryption \
