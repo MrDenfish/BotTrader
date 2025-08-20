@@ -15,9 +15,13 @@ services:
       AWS_CLI_PAGER: ""
       SSM_PREFIX: "/bottrader/prod/db"
       LOG_LEVEL: "INFO"
+      IS_DOCKER: "true"
+      IN_DOCKER: "1"
     command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python -m main --run both" ]
     ports:
-      - "5000:5000"
+      - "5003:5003"
+    volumes:
+      - ./logs:/app/logs
     logging:
       driver: "local"
       options:
@@ -37,6 +41,8 @@ services:
       AWS_PAGER: ""
       AWS_CLI_PAGER: ""
       SSM_PREFIX: "/bottrader/prod/db"
+      IS_DOCKER: "true"
+      IN_DOCKER: "1"
     command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py" ]
     logging:
       driver: "local"

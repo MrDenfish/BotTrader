@@ -7,7 +7,12 @@ from typing import Optional
 
 """ This class handles the sending of alert messages, such as SMS or emails."""
 #
-
+def _get(*names):
+    for n in names:
+        v = os.getenv(n)
+        if v:
+            return v
+    return None
 
 class AlertSystem:
     _instance = None
@@ -22,7 +27,7 @@ class AlertSystem:
         return cls._instance
     def __init__(self, logger_manager):
         self.logger = logger_manager.loggers['shared_logger']
-        self.phone = os.getenv('PHONE')
+        self.phone = _get('PHONE', 'ACCOUNT_PHONE', 'ALERT_PHONE')
         self.email = os.getenv('EMAIL')
         self.email_pass = os.getenv('E_MAILPASS')
         self.my_email = os.getenv('MY_EMAIL')
