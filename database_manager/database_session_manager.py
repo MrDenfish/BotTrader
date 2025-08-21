@@ -25,19 +25,19 @@ class DatabaseSessionManager:
     _instance = None
 
     @classmethod
-    def get_instance(cls, profit_extras, logger_manager, shared_data_manager, custom_json_decoder):
+    def get_instance(cls,config, profit_extras, logger_manager, shared_data_manager, custom_json_decoder):
         if cls._instance is None:
-            cls._instance = cls(profit_extras, logger_manager, shared_data_manager,
+            cls._instance = cls(config, profit_extras, logger_manager, shared_data_manager,
                                 custom_json_decoder)
         return cls._instance
 
-    def __init__(self, profit_extras, logger_manager, shared_data_manager, custom_json_decoder):
+    def __init__(self, config, profit_extras, logger_manager, shared_data_manager, custom_json_decoder):
 
         if logger_manager.name == 'shared_logger':
             self.logger = logger_manager  # 🙂
         else:
             pass
-        self.config = CentralConfig()
+        self.config = config  # Load the configuration once
         self.profit_extras = profit_extras
         self.shared_data_manager = shared_data_manager
         self.custom_json_decoder = custom_json_decoder
@@ -53,9 +53,7 @@ class DatabaseSessionManager:
         ssl_ctx = None
         try:
             # If host contains 'rds.amazonaws.com', assume RDS and enable TLS
-            from Config.config_manager import CentralConfig  # if not already imported here
-            cfg = self.config  # you already constructed CentralConfig() earlier
-            host = getattr(cfg, "db_host", None) or ""
+            host = getattr(self.config, "db_host", None) or ""
             if isinstance(host, str) and "rds.amazonaws.com" in host:
                 # Use the CA bundle we bake into the image
                 cafile = "/etc/ssl/certs/rds-global-bundle.pem"

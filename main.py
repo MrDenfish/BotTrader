@@ -78,10 +78,11 @@ async def graceful_shutdown(listener, runner):
     await runner.cleanup()
     shutdown_event.set()
 
-async def init_shared_data(logger_manager, shared_logger, coinbase_api):
+async def init_shared_data(config, logger_manager, shared_logger, coinbase_api):
     shared_data_manager = SharedDataManager.__new__(SharedDataManager)
     custom_json_decoder = CustomJSONDecoder
     database_session_manager = DatabaseSessionManager(
+        config=config,
         profit_extras=None,
         logger_manager=shared_logger,
         shared_data_manager=shared_data_manager,
@@ -521,7 +522,7 @@ async def main():
             shared_utils_utility = SharedUtility.get_instance(logger_manager)
             coinbase_api = CoinbaseAPI(session, shared_utils_utility, logger_manager, None)
             (shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility,
-             shared_utils_precision) = await init_shared_data(logger_manager, shared_logger, coinbase_api)
+             shared_utils_precision) = await init_shared_data(config, logger_manager, shared_logger, coinbase_api)
 
             coinbase_api.shared_utils_precision = shared_utils_precision
 
