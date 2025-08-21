@@ -1,10 +1,12 @@
-import asyncio
+import os
+import ssl
 import json
+import asyncio
 import TableModels
-
 
 from sqlalchemy import text
 from sqlalchemy import select
+from urllib.parse import urlparse
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -48,18 +50,76 @@ class DatabaseSessionManager:
 
 
         # Initialize the SQLAlchemy async engine
+        connect_args = self._connect_args_for_ssl(self.config.database_url)
+
         self.engine = create_async_engine(
             self.config.database_url,
             echo=False,
-            pool_size=10,  # same as databases.Database min_size
-            max_overflow=20,  # allow extra temporary connections
-            pool_timeout=60,  # wait before raising TimeoutError
-            pool_recycle=1800,  # recycle idle connections every 30 min
-            pool_pre_ping=True,  # Detect dead connections
-            future=True
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=60,
+            pool_recycle=1800,
+            pool_pre_ping=True,
+            future=True,
+            connect_args=connect_args,
         )
 
         self._async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
+
+    def _connect_args_for_ssl(self, database_url: str) -> dict:
+        """
+        Decide if we should enable TLS to Postgres and build asyncpg connect_args.
+
+        Defaults:
+          - If host ends with 'rds.amazonaws.com' -> enable TLS (verify with RDS CA if present)
+          - Otherwise -> no TLS unless env says so
+
+        Env overrides:
+          DB_SSL / DB_SSLMODE:
+            'require', 'verify-ca', 'verify-full', 'true', '1' -> enable TLS
+            'disable', 'false', '0' -> disable TLS
+          DB_CA_FILE:
+            path to CA bundle (default: /etc/ssl/certs/rds-global-bundle.pem)
+          DB_SSL_VERIFY:
+            'true' (default) -> verify cert
+            'false'          -> TLS but skip verification
+        """
+        # Strip '+asyncpg' so urlparse sees a normal scheme
+        parsed = urlparse(database_url.replace('+asyncpg', ''))
+        host = (parsed.hostname or '').lower()
+
+        # Decide if we want TLS
+        want_ssl = False
+        mode = (os.getenv('DB_SSL') or os.getenv('DB_SSLMODE') or '').strip().lower()
+
+        if mode in ('require', 'verify-ca', 'verify-full', 'true', '1'):
+            want_ssl = True
+        elif mode in ('disable', 'false', '0'):
+            want_ssl = False
+        elif host.endswith('rds.amazonaws.com'): # not localhost
+            # Sensible default on AWS RDS
+            want_ssl = True
+
+        if not want_ssl:
+            return {}
+
+        cafile = os.getenv('DB_CA_FILE', '/etc/ssl/certs/rds-global-bundle.pem')
+        verify = (os.getenv('DB_SSL_VERIFY', 'true').lower() in ('1', 'true', 'yes'))
+
+        # Build SSL context
+        if verify:
+            if os.path.exists(cafile):
+                ctx = ssl.create_default_context(cafile=cafile)
+            else:
+                # Fall back to system CAs if the RDS bundle isn't present
+                ctx = ssl.create_default_context()
+        else:
+            # Require TLS, but skip verification (not recommended for prod)
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+        return {'ssl': ctx}
 
     @asynccontextmanager
     async def async_session(self) -> AsyncSession:
