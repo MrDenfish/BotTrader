@@ -52,17 +52,15 @@ class DatabaseSessionManager:
         # Initialize the SQLAlchemy async engine
         ssl_ctx = None
         try:
-            # If host contains 'rds.amazonaws.com', assume RDS and enable TLS
-            host = getattr(self.config, "db_host", None) or ""
-            if isinstance(host, str) and "rds.amazonaws.com" in host:
-                # Use the CA bundle we bake into the image
+            host = getattr(self.config, "db_host", "") or ""
+            if "rds.amazonaws.com" in host:
                 cafile = "/etc/ssl/certs/rds-global-bundle.pem"
                 ssl_ctx = ssl.create_default_context()
                 if os.path.exists(cafile):
                     ssl_ctx.load_verify_locations(cafile)
-        except Exception:
-            # Don't crash if anything above fails; we'll just try without SSL (then RDS will error clearly)
-            pass
+                print("🔒 Using TLS for Postgres (RDS).")
+        except Exception as e:
+            print("⚠️ Could not prepare SSL context for Postgres:", e)
 
         self.engine = create_async_engine(
             self.config.database_url,
