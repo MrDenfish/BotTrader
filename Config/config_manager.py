@@ -86,7 +86,7 @@ class CentralConfig:
             "db_host": "DB_HOST",
             "db_port": "DB_PORT",
             "db_name": "DB_NAME",
-            # "db_user": "DB_USER",
+            "db_user": "DB_USER",
             "_db_monitor_interval": "DB_MONITOR_INTERVAL",
             "_db_connection_threshold": "DB_CONNECTION_THRESHOLD",
             "docker_db_user": "DOCKER_DB_USER",
@@ -212,18 +212,38 @@ class CentralConfig:
                 self._json_config[key] = value
 
     def _generate_database_url(self):
-        """Generate the database URL."""
+        """Generate the database URL from env/SSM with sensible precedence."""
         try:
-            # override self.db_host if in docker
-            db_host = os.getenv("DOCKER_DB_HOST", "bottrader_postgres") if self.is_docker else self.db_host
-            db_user = os.getenv("DOCKER_DB_USER", self.machine_type) if self.is_docker else self.machine_type
-            print(f"is_docker: {self.is_docker}, db_host: {db_host}, db_user: {db_user}")
-            self.db_url = f"postgresql+asyncpg://{db_user}:{self.db_password}@{db_host}:{self.db_port}/{self.db_name}"
+            def pick(*vals):
+                for v in vals:
+                    if v not in (None, "", "None"):
+                        return v
+                return None
 
-            print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{self.db_port}/{self.db_name}")
+            if self.is_docker:
+                # prefer docker-specific vars, then fall back to canonical DB_* ones
+                db_host = pick(os.getenv("DOCKER_DB_HOST"), self.db_host, os.getenv("DB_HOST"))
+                db_user = pick(os.getenv("DOCKER_DB_USER"), self.db_user, os.getenv("DB_USER"))
+            else:
+                db_host = pick(self.db_host, os.getenv("DB_HOST"))
+                db_user = pick(self.db_user, os.getenv("DB_USER"))
+
+            db_pass = pick(self.db_password, os.getenv("DB_PASSWORD"))
+            db_name = pick(self.db_name, os.getenv("DB_NAME"))
+            db_port = pick(self.db_port, os.getenv("DB_PORT"), "5432")
+
+            missing = [k for k, v in dict(DB_HOST=db_host, DB_USER=db_user,
+                                          DB_PASSWORD=db_pass, DB_NAME=db_name).items() if not v]
+            if missing:
+                raise ValueError(f"Missing DB settings: {', '.join(missing)}")
+
+            self.db_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+            print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{db_port}/{db_name}")
             print(f" ❇️  web_url: {self.web_url}  ❇️ ")
+
         except Exception as e:
             print(f"Error configuring database URL: {e}")
+            raise
 
     def load_sighook_api_key(self):
         """Load the Sighook API key from a JSON file."""

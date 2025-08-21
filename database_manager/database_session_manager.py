@@ -50,7 +50,13 @@ class DatabaseSessionManager:
 
 
         # Initialize the SQLAlchemy async engine
-        connect_args = self._connect_args_for_ssl(self.config.database_url)
+        ssl_ctx = None
+
+        try:
+            if isinstance(self.config.db_host, str) and "rds.amazonaws.com" in self.config.db_host:
+                ssl_ctx = ssl.create_default_context(cafile="/etc/ssl/certs/rds-global-bundle.pem")
+        except Exception:
+            pass
 
         self.engine = create_async_engine(
             self.config.database_url,
@@ -61,8 +67,9 @@ class DatabaseSessionManager:
             pool_recycle=1800,
             pool_pre_ping=True,
             future=True,
-            connect_args=connect_args,
+            connect_args={"ssl": ssl_ctx} if ssl_ctx else {}
         )
+
 
         self._async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
 
