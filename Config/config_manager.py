@@ -641,9 +641,11 @@ class CentralConfig:
     def web_url(self):
         if self.machine_type == 'Manny' or self.machine_type == 'jack':
             print(f'desktop: {self.machine_type}')
+            print(f'❇️ desktop: {self._pc_url} ❇️')
             return self._pc_url
         else:
             print(f'docker: {self.machine_type}')
+            print(f'❇️ docker: {self._docker_url} ❇️')
             return self._docker_url
 
     @property
