@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   bottrader:
     build:
@@ -13,7 +12,6 @@ services:
       AWS_DEFAULT_REGION: "us-west-2"
       AWS_PAGER: ""
       AWS_CLI_PAGER: ""
-      SSM_PREFIX: "/bottrader/prod/db"
       LOG_LEVEL: "INFO"
       IS_DOCKER: "true"
       IN_DOCKER: "1"
@@ -40,7 +38,6 @@ services:
       AWS_DEFAULT_REGION: "us-west-2"
       AWS_PAGER: ""
       AWS_CLI_PAGER: ""
-      SSM_PREFIX: "/bottrader/prod/db"
       IS_DOCKER: "true"
       IN_DOCKER: "1"
     command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py" ]
