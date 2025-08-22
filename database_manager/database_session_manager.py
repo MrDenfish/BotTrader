@@ -50,17 +50,30 @@ class DatabaseSessionManager:
 
 
         # Initialize the SQLAlchemy async engine
-        ssl_ctx = None
-        try:
-            host = getattr(self.config, "db_host", "") or ""
-            if "rds.amazonaws.com" in host:
+        def _should_use_ssl(db_url: str) -> bool:
+            """Use SSL for RDS by default; allow env overrides."""
+            # explicit on/off
+            if os.getenv("DB_REQUIRE_SSL", "").lower() in ("1","true","yes","on"):
+                return True
+            if os.getenv("DB_DISABLE_SSL", "").lower() in ("1","true","yes","on"):
+                return False
+            # heuristic by host
+            host = urlparse(db_url.replace("+asyncpg", "")).hostname or ""
+            return host.endswith(".rds.amazonaws.com") or "amazonaws.com" in host
+
+        connect_args = {}
+        if _should_use_ssl(self.config.database_url):
+            try:
                 cafile = "/etc/ssl/certs/rds-global-bundle.pem"
-                ssl_ctx = ssl.create_default_context()
                 if os.path.exists(cafile):
-                    ssl_ctx.load_verify_locations(cafile)
-                print("🔒 Using TLS for Postgres (RDS).")
-        except Exception as e:
-            print("⚠️ Could not prepare SSL context for Postgres:", e)
+                    ssl_ctx = ssl.create_default_context(cafile=cafile)
+                    connect_args["ssl"] = ssl_ctx
+                else:
+                    # still request SSL even without CA file (works locally if server supports SSL)
+                    connect_args["ssl"] = True
+            except Exception:
+                connect_args["ssl"] = True
+        # else: no SSL param for localhost/dev
 
         self.engine = create_async_engine(
             self.config.database_url,
@@ -71,7 +84,7 @@ class DatabaseSessionManager:
             pool_recycle=1800,
             pool_pre_ping=True,
             future=True,
-            connect_args={"ssl": ssl_ctx} if ssl_ctx else {}
+            connect_args=connect_args,   # <— now conditional
         )
 
 
