@@ -61,22 +61,14 @@ export_ssm_path () {
               --region "$AWS_REGION" "${page[@]}")"
 
     # Export variables
-    echo "$json" | jq -r --arg root "$root/" '
-      .Parameters[] | "\(.Name)|\(.Value)" ' | \
     while IFS='|' read -r name value; do
-      leaf="${name##*/}"                # e.g. HOST
+      leaf="${name##*/}"
       case "$name" in
-        */db/*)
-          export "DB_${leaf^^}"="$value"
-          ;;
-        */docker/db/*)
-          export "DOCKER_DB_${leaf^^}"="$value"
-          ;;
-        */app/*|*/alert/*)
-          export "${leaf^^}"="$value"
-          ;;
+        */db/*)            export "DB_${leaf^^}"="$value" ;;
+        */docker/db/*)     export "DOCKER_DB_${leaf^^}"="$value" ;;
+        */app/*|*/alert/*) export "${leaf^^}"="$value" ;;
       esac
-    done
+    done < <(printf '%s' "$json" | jq -r --arg root "$root/" '.Parameters[] | "\(.Name)|\(.Value)"')
 
     next="$(echo "$json" | jq -r '.NextToken // empty')"
     [[ -z "$next" ]] && break
