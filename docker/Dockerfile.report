@@ -1,3 +1,27 @@
+# ------------------------------------------------------------------------------
+# Dockerfile.report
+# ------------------------------------------------------------------------------
+#
+# Purpose:
+#   Build the runtime container for the daily reporting task (PnL, trades, etc).
+#
+# What it does:
+#   - Uses python:3.11-slim as base
+#   - Installs AWS CLI, tini, and SSL certificates
+#   - Creates a non-root user (appuser)
+#   - Installs Python dependencies from requirements-report.txt
+#   - Copies the entire application codebase into /app
+#   - Downloads the AWS RDS global trust bundle for SSL
+#   - Installs the SSM bootstrap helper (/usr/local/bin/ssm-env)
+#   - At startup, tini runs bash which sources ssm-env to load env vars,
+#     then executes the reporting script: BotTrader/database_manager/aws_daily_report.py
+#
+# Notes:
+#   - Requires AWS_REGION and SSM_ROOT environment variables at runtime.
+#   - Shares the same SSM parameter hierarchy as the bot container.
+#
+# ------------------------------------------------------------------------------
+
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,13 +41,18 @@ RUN pip install -r /app/requirements.txt
 
 COPY --chown=appuser:appuser . /app
 
+# RDS TLS bundle
 RUN mkdir -p /etc/ssl/certs && \
     curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
       -o /etc/ssl/certs/rds-global-bundle.pem
 
-COPY docker/ssm-env.sh /usr/local/bin/ssm-env
+# Copy SSM bootstrap helper (new location)
+COPY docker/bootstrap/ssm-env.sh /usr/local/bin/ssm-env
 RUN chmod +x /usr/local/bin/ssm-env
 
 USER appuser
+
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py"]
+
+

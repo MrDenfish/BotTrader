@@ -1,3 +1,31 @@
+# ------------------------------------------------------------------------------
+# Dockerfile.bot
+# ------------------------------------------------------------------------------
+#
+# Purpose:
+#   Build the runtime container for the trading bot itself.
+#
+# What it does:
+#   - Uses python:3.11-slim as base
+#   - Installs AWS CLI, build tools, tini, and SSL certificates
+#   - Creates a non-root user (appuser)
+#   - Installs Python dependencies from requirements.txt
+#   - Copies the entire application codebase into /app
+#   - Removes any stray .env files to avoid leaking dev configs
+#   - Downloads the AWS RDS global trust bundle for SSL
+#   - Installs two helper scripts:
+#       * /usr/local/bin/ssm-env        → loads env vars from AWS SSM Parameter Store
+#       * /usr/local/bin/entrypoint-bot → container entrypoint for the bot
+#   - Runs as non-root user
+#   - Starts via tini with entrypoint-bot, which bootstraps SSM and launches the bot
+#
+# Notes:
+#   - Requires AWS_REGION and SSM_ROOT environment variables at runtime.
+#   - Expects SSM parameters to be under /bottrader/prod or /bottrader/dev.
+#   - Ensures DB connections use SSL by default (RDS requires it).
+#
+# ------------------------------------------------------------------------------
+
 # syntax=docker/dockerfile:1.7
 FROM python:3.11-slim
 
@@ -17,7 +45,6 @@ RUN pip install -r /app/requirements.txt
 
 # App code
 COPY --chown=appuser:appuser . /app
-# Belt & suspenders: force ownership even if cache did weird things
 RUN chown -R appuser:appuser /app
 
 # Remove stray local envs if any slipped in
@@ -29,11 +56,13 @@ RUN mkdir -p /etc/ssl/certs && \
       -o /etc/ssl/certs/rds-global-bundle.pem
 
 # SSM helper + entrypoint
-COPY docker/ssm-env.sh /usr/local/bin/ssm-env
+COPY docker/bootstrap/ssm-env.sh /usr/local/bin/ssm-env
 RUN chmod +x /usr/local/bin/ssm-env
-COPY docker/entrypoint.bot.sh /usr/local/bin/entrypoint-bot
+
+COPY docker/entrypoint/entrypoint.bot.sh /usr/local/bin/entrypoint-bot
 RUN chmod +x /usr/local/bin/entrypoint-bot
 
 ENV TZ=UTC
 USER appuser
 ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint-bot"]
+
