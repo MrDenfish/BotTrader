@@ -25,7 +25,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      awscli ca-certificates curl tini tzdata \
+      awscli ca-certificates curl tini tzdata bash jq \
   && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
