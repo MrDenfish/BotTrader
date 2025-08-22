@@ -335,11 +335,14 @@ class CentralConfig:
     def determine_machine_type(self) -> tuple:
         cwd_parts = os.getcwd().split('/')
         if 'app' in cwd_parts:
+            print(f"🍀 Machine type: docker 🍀")
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         elif len(cwd_parts) > 2:
+            print(f"🍀 Machine type: Laptop 🍀")
             if cwd_parts[2] == 'jack':
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
             else:
+                print(f"🍀 Machine type: Desktop 🍀")
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
         else:
             raise ValueError(f"Invalid path {os.getcwd()}, unable to determine machine type.")
