@@ -45,6 +45,9 @@ RUN pip install -r /app/requirements.txt
 
 # App code
 COPY --chown=appuser:appuser . /app
+# Remove stray local envs if any slipped in
+RUN rm -f /app/.env /app/.env_* /app/.env* /app/.env_tradebot /app/.env_tradebot_sensitive || true
+
 RUN chown -R appuser:appuser /app
 
 # Remove stray local envs if any slipped in
