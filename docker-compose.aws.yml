@@ -15,7 +15,7 @@ services:
       LOG_LEVEL: "INFO"
       IS_DOCKER: "true"
       IN_DOCKER: "1"
-    command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python -m main --run both" ]
+      SSM_ROOT: "/bottrader/prod"     # <-- REQUIRED
     ports:
       - "5003:5003"
     volumes:
@@ -40,9 +40,10 @@ services:
       AWS_CLI_PAGER: ""
       IS_DOCKER: "true"
       IN_DOCKER: "1"
-    command: [ "bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py" ]
+      SSM_ROOT: "/bottrader/prod"     # <-- REQUIRED
     logging:
       driver: "local"
       options:
         max-size: "5m"
         max-file: "3"
+
