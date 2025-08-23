@@ -16,6 +16,7 @@ services:
       IS_DOCKER: "true"
       IN_DOCKER: "1"
       SSM_ROOT: "/bottrader/prod"     # <-- REQUIRED
+      ROC_5min: "3"
     ports:
       - "5003:5003"
     volumes:
@@ -41,6 +42,7 @@ services:
       IS_DOCKER: "true"
       IN_DOCKER: "1"
       SSM_ROOT: "/bottrader/prod"     # <-- REQUIRED
+
     logging:
       driver: "local"
       options:

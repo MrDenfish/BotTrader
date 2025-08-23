@@ -115,7 +115,7 @@ class CentralConfig:
             "_roc_buy_24h": "ROC_BUY_24H",
             "_roc_sell_24h": "ROC_SELL_24H",
             "_roc_window": "ROC_WINDOW",
-            "_roc_5min":"ROC_5min",
+            "_roc_5min":"ROC_5MIN",
             "_min_spread_pct":"MIN_SPREAD_PCT",
             "_docker_staticip": "DOCKER_STATICIP",
             "_tv_whitelist": "TV_WHITELIST",
