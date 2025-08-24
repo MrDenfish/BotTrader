@@ -1,1 +1,43 @@
-/Config/sighook_api_key.json/Config/webhook_api_key.json/Config/webhook_tb_api_key.json/Config/websocket_api_info.json/.env_tradebot/.env_tradebot_sensitive# macOS.DS_Store# Python__pycache__/*.py[cod]# PyCharm.idea/# Logslogs/*.loglogs/**/*.log# Prevent .DS_Store Foreverecho ".DS_Store" >> ~/.gitignore_globalgit config --global core.excludesfile ~/.gitignore_global/TestDebugMaintenance/logs/.DS_Store/TableModels/trade_record_debug.py.env_tradebot
+# === BotTrader .gitignore (union) ===
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.env
+.env.*
+.envrc
+
+# OS / Editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Tests / Build
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Docker
+docker-data/
+**/.dockerignore.tmp
+
+# Logs (IMPORTANT)
+logs/
+logs/**
+shared_logger.log
+sighook_logger.log
+webhook_logger.log
+
+# Local overrides (optional)
+docker-compose.override.yml
+# === end ===
