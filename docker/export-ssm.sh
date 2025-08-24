@@ -22,23 +22,13 @@ while :; do
   echo "$JSON" | jq -r --arg root "$SSM_ROOT/" '
     .Parameters[] | "\(.Name)|\(.Value)" ' | \
   while IFS='|' read -r name value; do
-    key="${name#$SSM_ROOT/}"     # remove prefix
-    key="${key^^}"               # upper-case, if you prefer
-    key="${key##*/}"             # keep the leaf (e.g., db/HOST -> HOST)
+    leaf="${name##*/}"
+    rel="${name#${root}/}"               # e.g., app/coinbase/api_key
+    rel_uc="$(echo "${rel#*/}" | tr '/[:lower:]' '_[:upper:]')"  # drop leading "app/" or "alert/"
     case "$name" in
-      */db/*)
-        export "DB_${key}"="$value"
-        ;;
-      */docker/db/*)
-        export "DOCKER_DB_${key}"="$value"
-        ;;
-      */app/*)
-        # app keys: export as their leaf name
-        export "$key"="$value"
-        ;;
-      */alert/*)
-        export "$key"="$value"
-        ;;
+      */db/*)            export "DB_${leaf^^}"="$value" ;;
+      */docker/db/*)     export "DOCKER_DB_${leaf^^}"="$value" ;;
+      */app/*|*/alert/*) export "${rel_uc}"="$value" ;;
     esac
   done
 

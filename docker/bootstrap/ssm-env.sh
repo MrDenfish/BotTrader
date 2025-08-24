@@ -63,12 +63,14 @@ export_ssm_path () {
     # Export variables
     while IFS='|' read -r name value; do
       leaf="${name##*/}"
+      rel="${name#${root}/}"               # e.g., app/coinbase/api_key
+      rel_uc="$(echo "${rel#*/}" | tr '/[:lower:]' '_[:upper:]')"  # drop leading "app/" or "alert/"
       case "$name" in
         */db/*)            export "DB_${leaf^^}"="$value" ;;
         */docker/db/*)     export "DOCKER_DB_${leaf^^}"="$value" ;;
-        */app/*|*/alert/*) export "${leaf^^}"="$value" ;;
+        */app/*|*/alert/*) export "${rel_uc}"="$value" ;;
       esac
-    done < <(printf '%s' "$json" | jq -r --arg root "$root/" '.Parameters[] | "\(.Name)|\(.Value)"')
+    done
 
     next="$(echo "$json" | jq -r '.NextToken // empty')"
     [[ -z "$next" ]] && break

@@ -40,6 +40,22 @@ Notes:
 # Load SSM params into env
 . /usr/local/bin/ssm-env
 
+# sanitize "number with inline comments" and trim whitespace for known numeric keys
+sanitize_num() {
+  local k="$1" v="${!1:-}"
+  # strip comments and spaces
+  v="$(printf '%s' "$v" | sed 's/#.*$//' | tr -d '[:space:]')"
+  # optional: enforce decimal format
+  if [[ -n "$v" && ! "$v" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+    echo "[entrypoint] WARN: $k has non-numeric value '$v' after sanitization";
+  fi
+  export "$k=$v"
+}
+# add your known numeric keys here (examples)
+for k in ROC_5MIN ROC_15MIN MAX_SLIPPAGE_PCT SOME_THRESHOLD; do
+  sanitize_num "$k"
+done
+
 # Never load local .env files in container
 export ALLOW_LOCAL_DOTENV=false
 
@@ -52,6 +68,12 @@ if [[ -n "${DB_PASSWORD:-}" ]]; then echo "  DB_PASSWORD=***"; fi
 
 # Optionally fail fast if critical vars are missing
 : "${DB_HOST:?missing}"; : "${DB_USER:?missing}"; : "${DB_NAME:?missing}"
+
+# ensure time looks sane
+date -u || true
+
+# fail fast on Coinbase creds if your app expects these (adjust names as stored in SSM):
+: "${COINBASE_API_KEY:?missing}"; : "${COINBASE_API_SECRET:?missing}"; : "${COINBASE_API_PASSPHRASE:?missing}"
 
 # Start the app
 exec python -m main --run both
