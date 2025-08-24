@@ -22,9 +22,9 @@ services:
     volumes:
       - ./logs:/app/logs
     logging:
-      driver: "local"
+      driver: "json-file"
       options:
-        max-size: "10m"
+        max-size: "50m"
         max-file: "5"
 
   report-once:
