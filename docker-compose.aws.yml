@@ -8,15 +8,22 @@ services:
     restart: unless-stopped
     environment:
       TZ: "UTC"
+
+      # AWS bootstrap (minimal, all secrets come from SSM)
+      ENV: "prod"
       AWS_REGION: "us-west-2"
       AWS_DEFAULT_REGION: "us-west-2"
       AWS_PAGER: ""
       AWS_CLI_PAGER: ""
+      SSM_ROOT: "/bottrader/prod"   # <-- REQUIRED
+
+      # runtime flags
       LOG_LEVEL: "INFO"
       IS_DOCKER: "true"
       IN_DOCKER: "1"
-      SSM_ROOT: "/bottrader/prod"     # <-- REQUIRED
-      ROC_5min: "3"
+
+      # ⚠️ config values like ROC_5MIN should NOT be hard-coded here
+      # ROC_5MIN: "3"   # REMOVE – belongs in SSM so server matches desktop/dev
     ports:
       - "5003:5003"
     volumes:
@@ -35,17 +42,21 @@ services:
     container_name: bottrader-report
     environment:
       TZ: "UTC"
+
+      ENV: "prod"
       AWS_REGION: "us-west-2"
       AWS_DEFAULT_REGION: "us-west-2"
       AWS_PAGER: ""
       AWS_CLI_PAGER: ""
+      SSM_ROOT: "/bottrader/prod"
+
       IS_DOCKER: "true"
       IN_DOCKER: "1"
-      SSM_ROOT: "/bottrader/prod"     # <-- REQUIRED
 
     logging:
       driver: "local"
       options:
         max-size: "5m"
         max-file: "3"
+
 
