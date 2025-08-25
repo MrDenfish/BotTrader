@@ -8,6 +8,8 @@ STAGE="${3:-prod}"
 SSH_HOST="${4:-ubuntu@54.187.252.72}"   # ubuntu@<EC2_PUBLIC_IP>
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMPORT="${REPO_ROOT}/docker/import-env-to-ssm.sh"
+AWS_PROFILE="${AWS_PROFILE:-bottrader-admin}"
+export AWS_PROFILE
 
 # --- sanity ---
 [ -f "$ENVFILE" ] || { echo "❌ env file not found: $ENVFILE"; exit 1; }
