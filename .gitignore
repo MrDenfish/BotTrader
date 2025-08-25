@@ -41,3 +41,10 @@ webhook_logger.log
 # Local overrides (optional)
 docker-compose.override.yml
 # === end ===
+
+# env & local artifacts
+.env_tradebot
+env_*
+*.pkg
+recent_orders.json
+Trade records for review /
