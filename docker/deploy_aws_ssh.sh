@@ -6,15 +6,23 @@ ENVFILE="${1:-../.env_tradebot}"   # path to your desktop .env
 REGION="${2:-us-west-2}"
 STAGE="${3:-prod}"
 SSH_HOST="${4:-ubuntu@54.187.252.72}"   # ubuntu@<EC2_PUBLIC_IP>
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/bottrader-key.pem}"     # ✅ added (path to your .pem)
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMPORT="${REPO_ROOT}/docker/import-env-to-ssm.sh"
-AWS_PROFILE="${AWS_PROFILE:-bottrader-admin}"
+
+# Use existing AWS_PROFILE if set; else fall back to the SSO profile you actually have
+AWS_PROFILE="${AWS_PROFILE:-BotTrader-SSM-Admin-942165495776}"
 export AWS_PROFILE
 
 # --- sanity ---
 [ -f "$ENVFILE" ] || { echo "❌ env file not found: $ENVFILE"; exit 1; }
 command -v aws >/dev/null || { echo "❌ aws cli required"; exit 1; }
 [ -x "$IMPORT" ] || chmod +x "$IMPORT"
+
+# ✅ AWS preflight (nice UX if you forgot to `aws sso login`)
+aws sts get-caller-identity >/dev/null 2>&1 || {
+  echo "❌ AWS CLI not authenticated. Run: aws sso login --profile $AWS_PROFILE"; exit 1;
+}
 
 echo "🧹 Clean local junk..."
 find "$REPO_ROOT" -name '.DS_Store' -delete
@@ -28,7 +36,11 @@ git -C "$REPO_ROOT" push origin main
 echo "🔁 Sync config to SSM: /bottrader/$STAGE ..."
 "$IMPORT" "$ENVFILE" "$REGION" "$STAGE" --force
 
+# ✅ quick SSH preflight with the key you intend to use
+echo "🔐 Testing SSH connectivity..."
+ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_HOST" "echo ok" >/dev/null
+
 echo "🚀 Remote update via SSH on $SSH_HOST ..."
-ssh -o StrictHostKeyChecking=no "$SSH_HOST" 'cd /opt/bot && ./update.sh'
+ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" "$SSH_HOST" 'cd /opt/bot && ./update.sh'
 
 echo "✅ Done."
