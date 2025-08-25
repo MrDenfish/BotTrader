@@ -1,0 +1,76 @@
+# ===== Required app contact (non-secret) =====
+MY_EMAIL=dennfish@gmail.com
+
+# ===== Database (RDS) =====
+DB_TYPE=postgresql
+DB_NAME=bot_trader_db
+DB_USER=bot
+DB_PASSWORD=yourpassword
+DB_HOST=bottrader-db.c1w28kkikj07.us-west-2.rds.amazonaws.com                             # e.g. bottrader-db.xxxxx.us-west-2.rds.amazonaws.com
+DB_PORT=5432
+DB_ECHO_SQL=False
+DB_MAX_OVERFLOW=10
+DB_CONNECTION_THRESHOLD=25
+DB_MONITOR_INTERVAL=10
+
+# Single consolidated URL if your code supports it
+DATABASE_URL=postgresql+asyncpg://bot:yourpassword@<bottrader-db.c1w28kkikj07.us-west-2.rds.amazonaws.com :5432/bot_trader_db
+
+# ===== Email (SES) =====
+# Option A: via SMTP (works everywhere)
+SES_SMTP_HOST=email-smtp.us-west-2.amazonaws.com
+SES_SMTP_PORT=587
+SES_SMTP_USER=<SES SMTP username>
+SES_SMTP_PASS=<SES SMTP password>                  # Create in SES console (SMTP credentials)
+REPORT_FROM=<verified-from@yourdomain.com>         # Must be verified in SES
+REPORT_TO=<you@yourmail.com>
+AWS_REGION=us-west-2
+
+# ===== Whitelist (IP addresses) =====
+COIN_WHITELIST=45.144.80.19,146.190.143.12,127.0.0.1,127.0.1.1,146.190.128.1,24.237.43.193,149.102.243.79,172.64.152.241
+
+# ===== App runtime =====
+TZ=America/Los_Angeles
+LOG_LEVEL=INFO
+SLEEP=300
+MIN_COOLDOWN=5
+
+# ===== Trading thresholds (unchanged / adjust as you wish) =====
+TAKER_FEE=0.0040
+MAKER_FEE=0.0025
+MIN_ORDER_AMOUNT_FIAT=5
+MIN_BUY_VALUE=1.01
+MIN_SELL_VALUE=1.01
+MAX_VALUE_TO_BUY=10.01
+MAX_OHLCV_ROWS=1440
+MIN_VALUE_TO_MONITOR=1.01
+BUY_RATIO=1.05
+SELL_RATIO=0.95
+BB_WINDOW=10
+BB_STD=2
+BB_LOWER_BAND=1.0
+BB_UPPER_BAND=1.1
+MACD_FAST=12
+MACD_SLOW=26
+MACD_SIGNAL=9
+RSI_WINDOW=14
+ATR_WINDOW=14
+ROC_WINDOW=4
+RSI_OVERBOUGHT=65
+RSI_OVERSOLD=35
+SMA_FAST=50
+SMA_SLOW=200
+SMA=30
+SMA_VOLATILITY=30
+SWING_WINDOW=30
+ROC_BUY_24H=5
+ROC_SELL_24H=2
+MIN_SPREAD_PCT=0.30
+ROC_5min=3
+TRAILING_PERCENTAGE=0.02
+TRAILING_STOP=0.02
+TRAILING_LIMIT=0.02
+STOP_LOSS=-0.0075
+TAKE_PROFIT=0.025
+ORDER_SIZE_FIAT=50
+VERSION=3.13.0
