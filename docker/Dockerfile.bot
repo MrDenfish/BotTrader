@@ -61,7 +61,6 @@ RUN chmod +x /usr/local/bin/ssm-env.sh /usr/local/bin/entrypoint.bot.sh
 ENV TZ=UTC
 USER appuser
 ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint.bot.sh"]
-DOCKERFILE
 
 # 2) Rebuild WITHOUT CACHE so we definitely get the new files
 docker compose -f docker-compose.aws.yml build --no-cache --pull
