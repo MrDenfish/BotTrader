@@ -55,12 +55,12 @@ RUN mkdir -p /etc/ssl/certs && \
 
 # ⬇️ Standardize filenames INSIDE the image
 COPY docker/bootstrap/ssm-env.sh              /usr/local/bin/ssm-env.sh
-COPY docker/entrypoint/entrypoint.bot.sh      /usr/local/bin/entrypoint-bot.sh
-RUN chmod +x /usr/local/bin/ssm-env.sh /usr/local/bin/entrypoint-bot.sh
+COPY docker/entrypoint/entrypoint.bot.sh      /usr/local/bin/entrypoint.bot.sh
+RUN chmod +x /usr/local/bin/ssm-env.sh /usr/local/bin/entrypoint.bot.sh
 
 ENV TZ=UTC
 USER appuser
-ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint-bot.sh"]
+ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint.bot.sh"]
 DOCKERFILE
 
 # 2) Rebuild WITHOUT CACHE so we definitely get the new files
@@ -70,7 +70,7 @@ docker compose -f docker-compose.aws.yml build --no-cache --pull
 docker compose -f docker-compose.aws.yml up -d
 
 # 4) Verify the loader exists and runs
-docker exec bottrader sh -lc 'ls -l /usr/local/bin/ssm-env.sh /usr/local/bin/entrypoint-bot.sh'
+docker exec bottrader sh -lc 'ls -l /usr/local/bin/ssm-env.sh /usr/local/bin/entrypoint.bot.sh'
 docker exec bottrader sh -lc 'AWS_PAGER= env | egrep "AWS_REGION|SSM_ROOT"; /usr/local/bin/ssm-env.sh >/dev/null && echo "ssm-env OK" || echo "ssm-env failed"'
 
 # 5) Check DB envs and logs
