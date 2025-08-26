@@ -67,5 +67,5 @@ RUN chmod +x /usr/local/bin/entrypoint-bot.sh
 
 ENV TZ=UTC
 USER appuser
-ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint-bot"]
+ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint-bot.sh"]
 
