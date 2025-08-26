@@ -59,11 +59,11 @@ RUN mkdir -p /etc/ssl/certs && \
       -o /etc/ssl/certs/rds-global-bundle.pem
 
 # SSM helper + entrypoint
-COPY docker/bootstrap/ssm-env.sh /usr/local/bin/ssm-env
-RUN chmod +x /usr/local/bin/ssm-env
+COPY docker/bootstrap/ssm-env.sh /usr/local/bin/ssm-env.sh
+RUN chmod +x /usr/local/bin/ssm-env.sh
 
-COPY docker/entrypoint/entrypoint.bot.sh /usr/local/bin/entrypoint-bot
-RUN chmod +x /usr/local/bin/entrypoint-bot
+COPY docker/entrypoint/entrypoint.bot.sh /usr/local/bin/entrypoint-bot.sh
+RUN chmod +x /usr/local/bin/entrypoint-bot.sh
 
 ENV TZ=UTC
 USER appuser
