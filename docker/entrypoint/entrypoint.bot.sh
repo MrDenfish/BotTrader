@@ -61,7 +61,7 @@ export ALLOW_LOCAL_DOTENV=false
 
 # One-time, sanitized config print for debugging
 echo "[entrypoint] Effective DB env:"
-for k in HOST DB_PORT DB_USER DB_NAME DB_SSLMODE; do
+for k in DB_HOST DB_PORT DB_USER DB_NAME DB_SSLMODE; do
   printf "  %s=%s\n" "$k" "${!k:-<unset>}"
 done
 if [[ -n "${DB_PASSWORD:-}" ]]; then echo "  DB_PASSWORD=***"; fi
