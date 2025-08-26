@@ -39,13 +39,12 @@ Notes:
 # Load SSM → env. Handle either style:
 #  - script that exports vars when sourced
 #  - script that prints VAR=VAL lines (for eval)
+# Load SSM → env (source or eval, whichever works)
 if [[ -x /usr/local/bin/ssm-env.sh ]]; then
-  # try sourcing first
   . /usr/local/bin/ssm-env.sh || true
-  # if nothing appeared, try eval of its output
-  if [[ -z "${DB_HOST:-}" && -s /usr/local/bin/ssm-env.sh ]]; then
+  if [[ -z "${DB_HOST:-}" ]]; then
     out="$("/usr/local/bin/ssm-env.sh" 2>/dev/null || true)"
-    if [[ -n "$out" ]]; then eval "$out"; fi
+    [[ -n "$out" ]] && eval "$out"
   fi
 else
   echo "[entrypoint] WARNING: ssm-env.sh not found; running with existing env"
@@ -73,8 +72,8 @@ if [[ -n "${DB_PASSWORD:-}" ]]; then echo "  DB_PASSWORD=***"; fi
 
 date -u || true
 
-: "${COINBASE_API_KEY:?missing}"
-: "${COINBASE_API_SECRET:?missing}"
-: "${COINBASE_API_PASSPHRASE:?missing}"
+#: "${COINBASE_API_KEY:?missing}"
+#: "${COINBASE_API_SECRET:?missing}"
+#: "${COINBASE_API_PASSPHRASE:?missing}"
 
 exec python -m main --run both
