@@ -38,7 +38,7 @@ Notes:
 : "${SSM_ROOT:?SSM_ROOT is required}"
 
 # Load SSM params into env
-. /usr/local/bin/ssm-env
+. /usr/local/bin/ssm-env.sh
 
 # sanitize "number with inline comments" and trim whitespace for known numeric keys
 sanitize_num() {
