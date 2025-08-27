@@ -32,54 +32,60 @@ Notes:
 
 ------------------------------------------------------------------------------
 "
-
 : "${AWS_REGION:?AWS_REGION is required}"
 : "${SSM_ROOT:?SSM_ROOT is required}"
 
-# --- 1) Try helper script (both eval(stdout) and source) ---
+# Try helper (eval stdout then source)
 if [[ -x /usr/local/bin/ssm-env.sh ]]; then
   out="$(/usr/local/bin/ssm-env.sh 2>/dev/null || true)"
   [[ -n "${out}" ]] && eval "${out}" || true
   [[ -z "${DB_HOST:-}" ]] && . /usr/local/bin/ssm-env.sh || true
 fi
 
-# --- 2) Hard fallback: read SSM directly and export DB_*, ROC_5MIN, etc. ---
-if [[ -z "${DB_HOST:-}" ]]; then
+# Fallback: pull from SSM and export
+if [[ -z "${DB_HOST:-}" || -z "${EMAIL:-}" || -z "${PHONE:-}" ]]; then
   echo "[entrypoint] Fallback: pulling env from SSM ${SSM_ROOT}"
   json="$(AWS_PAGER= aws ssm get-parameters-by-path \
             --region "${AWS_REGION}" \
             --path "${SSM_ROOT}" \
             --recursive --with-decryption --output json 2>/dev/null || true)"
+
   if [[ -n "${json}" ]]; then
     while IFS='=' read -r k v; do
       [[ -n "${k}" ]] && export "${k}=${v}"
     done < <(
       echo "${json}" | jq -r '
-        .Parameters[] | {n:.Name, v:.Value} |
-        # normalize to env names
-        if (.n|test("/app/DB_HOST$"))       then "DB_HOST=\(.v)"
-        elif (.n|test("/app/DB_PORT$"))      then "DB_PORT=\(.v)"
-        elif (.n|test("/app/DB_NAME$"))      then "DB_NAME=\(.v)"
-        elif (.n|test("/app/DB_USER$"))      then "DB_USER=\(.v)"
-        elif (.n|test("/app/DB_PASSWORD$"))  then "DB_PASSWORD=\(.v)"
-        elif (.n|test("/app/DB_SSLMODE$"))   then "DB_SSLMODE=\(.v)"
-        # also accept hierarchical /db/* in case those are set
-        elif (.n|test("/db/HOST$"))          then "DB_HOST=\(.v)"
-        elif (.n|test("/db/PORT$"))          then "DB_PORT=\(.v)"
-        elif (.n|test("/db/NAME$"))          then "DB_NAME=\(.v)"
-        elif (.n|test("/db/USER$"))          then "DB_USER=\(.v)"
-        elif (.n|test("/db/PASSWORD$"))      then "DB_PASSWORD=\(.v)"
-        elif (.n|test("/db/SSLMODE$"))       then "DB_SSLMODE=\(.v)"
-        # a couple of known app keys with case pitfalls
-        elif (.n|test("/app/ROC_5MIN$"))     then "ROC_5MIN=\(.v)"
-        elif (.n|test("/app/ROC_5min$"))     then "ROC_5MIN=\(.v)"
-        else empty end
+        .Parameters[] | {n:.Name, v:.Value}
+        | .k = (
+            # explicit DB_* mappings from /app/* and /db/*
+            if (.n|test("/app/DB_HOST$"))       then "DB_HOST"
+            elif (.n|test("/app/DB_PORT$"))     then "DB_PORT"
+            elif (.n|test("/app/DB_NAME$"))     then "DB_NAME"
+            elif (.n|test("/app/DB_USER$"))     then "DB_USER"
+            elif (.n|test("/app/DB_PASSWORD$")) then "DB_PASSWORD"
+            elif (.n|test("/app/DB_SSLMODE$"))  then "DB_SSLMODE"
+            elif (.n|test("/db/HOST$"))         then "DB_HOST"
+            elif (.n|test("/db/PORT$"))         then "DB_PORT"
+            elif (.n|test("/db/NAME$"))         then "DB_NAME"
+            elif (.n|test("/db/USER$"))         then "DB_USER"
+            elif (.n|test("/db/PASSWORD$"))     then "DB_PASSWORD"
+            elif (.n|test("/db/SSLMODE$"))      then "DB_SSLMODE"
+            # known case pitfall
+            elif (.n|test("/app/ROC_5MIN$"))    then "ROC_5MIN"
+            elif (.n|test("/app/ROC_5min$"))    then "ROC_5MIN"
+            # ✅ generic pass-through for *any* /app/<NAME> and /alert/<NAME>
+            elif (.n|test("/app/[^/]+$"))       then (.n|capture("/app/(?<x>[^/]+)$").x)
+            elif (.n|test("/alert/[^/]+$"))     then (.n|capture("/alert/(?<x>[^/]+)$").x)
+            else null end
+          )
+        | select(.k != null)
+        | "\(.k)=\(.v)"
       '
     )
   fi
 fi
 
-# sanitize a few numeric keys (optional)
+# Sanitize a few numeric keys
 sanitize_num() {
   local k="$1" v="${!1:-}"
   v="$(printf '%s' "$v" | sed 's/#.*$//' | tr -d '[:space:]')"
@@ -95,14 +101,13 @@ for k in DB_HOST DB_PORT DB_USER DB_NAME DB_SSLMODE; do
 done
 [[ -n "${DB_PASSWORD:-}" ]] && echo "  DB_PASSWORD=***"
 
-# Fail fast only on the DB for now (comment API checks while debugging)
 : "${DB_HOST:?missing}"
 : "${DB_USER:?missing}"
 : "${DB_NAME:?missing}"
 
 date -u || true
 
-# Re-enable these later after DB is up
+# Temporarily keep Coinbase checks disabled until alerts work
 # : "${COINBASE_API_KEY:?missing}"
 # : "${COINBASE_API_SECRET:?missing}"
 # : "${COINBASE_API_PASSPHRASE:?missing}"
