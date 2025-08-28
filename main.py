@@ -13,9 +13,10 @@ from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_nee
 from AccumulationManager.accumulation_manager import AccumulationManager
 from Shared_Utils.scheduler import periodic_runner
 from Config.config_manager import CentralConfig as Config
-from Api_manager.coinbase_api import CoinbaseAPI
-from MarketDataManager.ticker_manager import TickerManager
-from MarketDataManager.webhook_order_book import OrderBookManager
+# loaded in main() to avoid circular import
+#from Api_manager.coinbase_api import CoinbaseAPI
+#from MarketDataManager.ticker_manager import TickerManager
+#from MarketDataManager.webhook_order_book import OrderBookManager
 from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
@@ -506,7 +507,9 @@ async def main():
     config.test_mode = args.test  # ✅ Globally toggle test_mode            python main.py --run webhook --test
     log_config = {"log_level": logging.DEBUG if args.verbose else logging.INFO}
     logger_manager = LoggerManager(log_config)
-
+    from Api_manager.coinbase_api import CoinbaseAPI
+    from MarketDataManager.ticker_manager import TickerManager
+    from MarketDataManager.webhook_order_book import OrderBookManager
     webhook_logger = logger_manager.get_logger("webhook_logger")
     sighook_logger = logger_manager.get_logger("sighook_logger")
     shared_logger = logger_manager.get_logger("shared_logger")

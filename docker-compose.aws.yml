@@ -27,15 +27,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - ./.env_runtime
     environment:
       TZ: ${TZ}
       DATABASE_URL: ${DATABASE_URL}
     volumes:
       - /opt/bot/.env_runtime:/app/.env_tradebot:ro
       - ./logs:/app/logs
-    command: ["/app/docker/entrypoint/entrypoint.bot.sh"]
+    entrypoint: ["/app/docker/entrypoint/entrypoint.bot.sh"]
     user: "1000:1000"
 
   # One-shot report runner (invoke on-demand or via cron)
@@ -47,8 +45,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - ./.env_runtime
     environment:
       TZ: ${TZ}
       DATABASE_URL: ${DATABASE_URL}
