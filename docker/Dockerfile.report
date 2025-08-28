@@ -11,9 +11,6 @@
 #   - Creates a non-root user (appuser)
 #   - Installs Python dependencies from requirements-report.txt
 #   - Copies the entire application codebase into /app
-#   - Downloads the AWS RDS global trust bundle for SSL
-#   - Installs the SSM bootstrap helper (/usr/local/bin/ssm-env)
-#   - At startup, tini runs bash which sources ssm-env to load env vars,
 #     then executes the reporting script: BotTrader/database_manager/aws_daily_report.py
 #
 # Notes:
@@ -24,35 +21,27 @@
 
 FROM python:3.11-slim
 
+# system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      awscli ca-certificates curl tini tzdata bash jq \
-  && rm -rf /var/lib/apt/lists/*
+    build-essential curl ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/*
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
-
-RUN useradd -m -u 10001 appuser
+# app user
+RUN useradd -ms /bin/bash appuser
 WORKDIR /app
+COPY . /app
 
-COPY --chown=appuser:appuser requirements-report.txt /app/requirements.txt
-RUN pip install -r /app/requirements.txt
+# install only what's needed for reporting
+# If you have a separate requirements-report.txt use that; otherwise use your main requirements.txt
+ARG REQS=requirements.txt
+RUN pip install --no-cache-dir -r ${REQS}
 
-COPY --chown=appuser:appuser . /app
+# good signals handling
+ENTRYPOINT ["/usr/bin/tini","--"]
 
-# RDS TLS bundle
-RUN mkdir -p /etc/ssl/certs && \
-    curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
-      -o /etc/ssl/certs/rds-global-bundle.pem
+# Default: run the daily report script (adjust path/module if yours differs)
+# Example path based on your past naming:
+CMD ["python","-m","BotTrader.database_manager.aws_daily_report"]
 
-# Copy SSM bootstrap helper (new location)
-COPY docker/bootstrap/ssm-env.sh /usr/local/bin/ssm-env
-RUN chmod +x /usr/local/bin/ssm-env
-
-USER appuser
-
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["bash", "-lc", ". /usr/local/bin/ssm-env && python BotTrader/database_manager/aws_daily_report.py"]
 
 

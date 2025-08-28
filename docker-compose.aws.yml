@@ -1,62 +1,59 @@
+name: bottrader-aws
+
 services:
+  db:
+    image: postgres:16
+    container_name: db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME} -h 127.0.0.1 -p ${DB_PORT:-5432}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   bottrader:
     build:
       context: .
-      dockerfile: docker/Dockerfile.bot
-    image: bottrader:latest
+      dockerfile: ./docker/Dockerfile.bot
     container_name: bottrader
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env_runtime
     environment:
-      TZ: "UTC"
-
-      # AWS bootstrap (minimal, all secrets come from SSM)
-      ENV: "prod"
-      AWS_REGION: "us-west-2"
-      AWS_DEFAULT_REGION: "us-west-2"
-      AWS_PAGER: ""
-      AWS_CLI_PAGER: ""
-      SSM_ROOT: "/bottrader/prod"   # <-- REQUIRED
-
-      # runtime flags
-      LOG_LEVEL: "INFO"
-      IS_DOCKER: "true"
-      IN_DOCKER: "1"
-
-      # ⚠️ config values like ROC_5MIN should NOT be hard-coded here
-      # ROC_5MIN: "3"   # REMOVE – belongs in SSM so server matches desktop/dev
-    ports:
-      - "5003:5003"
+      TZ: ${TZ}
+      DATABASE_URL: ${DATABASE_URL}
     volumes:
       - ./logs:/app/logs
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+    command: ["/app/docker/entrypoint/entrypoint.bot.sh"]
 
-  report-once:
+  # One-shot report runner (invoke on-demand or via cron)
+  report-job:
     build:
       context: .
-      dockerfile: docker/Dockerfile.report
-    image: bottrader-report:latest
+      dockerfile: ./docker/Dockerfile.report
     container_name: bottrader-report
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env_runtime
     environment:
-      TZ: "UTC"
+      TZ: ${TZ}
+      DATABASE_URL: ${DATABASE_URL}
+    restart: "no"
 
-      ENV: "prod"
-      AWS_REGION: "us-west-2"
-      AWS_DEFAULT_REGION: "us-west-2"
-      AWS_PAGER: ""
-      AWS_CLI_PAGER: ""
-      SSM_ROOT: "/bottrader/prod"
+volumes:
+  pg_data:
 
-      IS_DOCKER: "true"
-      IN_DOCKER: "1"
-
-    logging:
-      driver: "local"
-      options:
-        max-size: "5m"
-        max-file: "3"
 
 

@@ -26,43 +26,28 @@
 #
 # ------------------------------------------------------------------------------
 
-# syntax=docker/dockerfile:1.7
+
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      awscli ca-certificates curl tini tzdata gcc build-essential bash jq \
-  && rm -rf /var/lib/apt/lists/*
+    build-essential curl ca-certificates tini \
+ && rm -rf /var/lib/apt/lists/*
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
-
-# Non-root user
-RUN useradd -m -u 10001 appuser
+# non-root user
+RUN useradd -ms /bin/bash appuser
 WORKDIR /app
 
-# Python deps
-COPY --chown=appuser:appuser requirements.txt /app/requirements.txt
-RUN pip install -r /app/requirements.txt
+# copy source
+COPY . /app
 
-# App code
-COPY --chown=appuser:appuser . /app
-RUN rm -f /app/.env /app/.env_* /app/.env* /app/.env_tradebot /app/.env_tradebot_sensitive || true
-RUN chown -R appuser:appuser /app
-
-# RDS TLS bundle
-RUN mkdir -p /etc/ssl/certs \
- && curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem \
-      -o /etc/ssl/certs/rds-global-bundle.pem
-
-# SSM loader + entrypoint (standardized names)
-COPY docker/bootstrap/ssm-env.sh         /usr/local/bin/ssm-env.sh
-COPY docker/entrypoint/entrypoint.bot.sh /usr/local/bin/entrypoint.bot.sh
-RUN chmod +x /usr/local/bin/ssm-env.sh /usr/local/bin/entrypoint.bot.sh
+# install deps
+ARG REQS=requirements.txt
+RUN pip install --no-cache-dir -r ${REQS}
 
 ENV TZ=UTC
 USER appuser
-ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint.bot.sh"]
+
+ENTRYPOINT ["/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.bot.sh"]
+
 
 
