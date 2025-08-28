@@ -35,6 +35,7 @@ services:
     volumes:
       - ./logs:/app/logs
     command: ["/app/docker/entrypoint/entrypoint.bot.sh"]
+    user: "1000:1000"
 
   # One-shot report runner (invoke on-demand or via cron)
   report-job:
