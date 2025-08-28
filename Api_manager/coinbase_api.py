@@ -25,12 +25,13 @@ class CoinbaseAPI:
 
     def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision):
         self.config = Config()
-        self.api_key = self.config.load_websocket_api_key().get('name')
-        self.api_secret = self.config.load_websocket_api_key().get('signing_key')
-        self.user_url = self.config.load_websocket_api_key().get('user_api_url')
-        self.market_url = self.config.load_websocket_api_key().get('market_api_url')
-        self.base_url = self.config.load_websocket_api_key().get('base_url')
-        self.rest_url = self.config.load_websocket_api_key().get('rest_api_url')
+        # self.api_key = self.config.load_websocket_api_key().get('name')
+        # self.api_secret = self.config.load_websocket_api_key().get('signing_key')
+        # self.user_url = self.config.load_websocket_api_key().get('user_api_url')
+        # self.market_url = self.config.load_websocket_api_key().get('market_api_url')
+        # self.base_url = self.config.load_websocket_api_key().get('base_url')
+        # self.rest_url = self.config.load_websocket_api_key().get('rest_api_url')
+        self._reload_credentials_from_config()
 
         log_config = {"log_level": logging.INFO}
         self.webhook_logger = LoggerManager(log_config)
@@ -55,6 +56,27 @@ class CoinbaseAPI:
         self.jwt_token = None
         self.jwt_expiry = None
 
+    def _reload_credentials_from_config(self):
+        """Refresh API creds and base URLs from Config (idempotent)."""
+        w = self.config.load_websocket_api_key() or {}
+        self.api_key = w.get('name') or None
+        self.api_secret = w.get('signing_key') or None
+        self.user_url = w.get('user_api_url') or None
+        self.market_url = w.get('market_api_url') or None
+        self.base_url = w.get('base_url') or None
+        self.rest_url = w.get('rest_api_url') or None
+        try:
+            klen = len(self.api_key or "")
+            self.logger.debug(f"🔐 Coinbase creds refreshed (key_len={klen}, rest_url={self.rest_url})")
+        except Exception:
+            pass
+
+    def _ensure_creds(self):
+        """Make sure creds/urls exist before signing; reload once if missing."""
+        if not self.api_key or not self.api_secret or not self.rest_url:
+            self.logger.warning("⚠️ Missing Coinbase creds/urls at call time — reloading.")
+            self._reload_credentials_from_config()
+
     def _get_auth_headers(self, method: str, request_path: str, body: str = "") -> dict:
         timestamp = str(time.time())
         message = f'{timestamp}{method}{request_path}{body}'
@@ -77,9 +99,11 @@ class CoinbaseAPI:
             self.last_cache_clear_time = now
             self.logger.debug("🧹 Cleared empty OHLCV cache after 1 hour.")
 
-
     def generate_rest_jwt(self, method='GET', request_path='/api/v3/brokerage/orders'):
         try:
+            # NEW guard to avoid early-empty creds
+            self._ensure_creds()
+
             jwt_uri = jwt_generator.format_jwt_uri(method, request_path)
             jwt_token = jwt_generator.build_rest_jwt(jwt_uri, self.api_key, self.api_secret)
 
@@ -88,7 +112,6 @@ class CoinbaseAPI:
 
             self.jwt_token = jwt_token
             self.jwt_expiry = datetime.now(timezone.utc) + timedelta(minutes=5)
-
             return jwt_token
         except Exception as e:
             self.logger.error(f"JWT Generation Failed: {e}", exc_info=True)
@@ -192,43 +215,60 @@ class CoinbaseAPI:
         """
         Retrieves maker and taker fee rates from Coinbase.
         Returns:
-            dict: Dictionary containing maker and taker fee rates, or error details.
+            dict: {'maker': float, 'taker': float, 'pricing_tier': str, 'usd_volume': ...} or {'error':..., 'details':...}
         """
         try:
             request_path = '/api/v3/brokerage/transaction_summary'
             jwt_token = self.generate_rest_jwt('GET', request_path)
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {jwt_token}',
-            }
-
-            url = f'https://api.coinbase.com{request_path}'
+            headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
+            url = f'{self.rest_url}{request_path}'
 
             if self.session.closed:
                 self.session = aiohttp.ClientSession()
 
             async with self.session.get(url, headers=headers) as response:
-                response_text = await response.text()
+                text = await response.text()
                 if response.status == 200:
                     js = await response.json()
                     tier = js.get("fee_tier", {})
                     usd_volume = js.get("advanced_trade_only_volume") or js.get("total_volume")
                     if usd_volume is None:
                         self.logger.warning("⚠️ USD volume data not found in fee summary response.")
-
                     return {
-                        "maker": self.shared_utils_precision.safe_convert(tier.get("maker_fee_rate", self.default_maker_fee ), 4),
-                        "taker": self.shared_utils_precision.safe_convert(tier.get("taker_fee_rate", self.default_taker_fee ), 4),
+                        "maker": self.shared_utils_precision.safe_convert(tier.get("maker_fee_rate", self.default_maker_fee), 4),
+                        "taker": self.shared_utils_precision.safe_convert(tier.get("taker_fee_rate", self.default_taker_fee), 4),
                         "pricing_tier": tier.get("pricing_tier"),
                         "usd_volume": usd_volume
                     }
-                else:
-                    self.logger.error(f"❌ Error fetching fee rates: HTTP {response.status} → {response_text}")
-                    return {"error": f"HTTP {response.status}", "details": response_text}
+
+                if response.status == 401:
+                    self.logger.warning(f"401 on get_fee_rates — reloading creds and retrying once. Body: {text}")
+                    self._reload_credentials_from_config()
+                    jwt_token = self.generate_rest_jwt('GET', request_path)
+                    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
+                    async with self.session.get(url, headers=headers) as r2:
+                        text2 = await r2.text()
+                        if r2.status == 200:
+                            js = await r2.json()
+                            tier = js.get("fee_tier", {})
+                            usd_volume = js.get("advanced_trade_only_volume") or js.get("total_volume")
+                            if usd_volume is None:
+                                self.logger.warning("⚠️ USD volume data not found in fee summary response (retry).")
+                            return {
+                                "maker": self.shared_utils_precision.convert(tier.get("maker_fee_rate", self.default_maker_fee), 4),
+                                "taker": self.shared_utils_precision.convert(tier.get("taker_fee_rate", self.default_taker_fee), 4),
+                                "pricing_tier": tier.get("pricing_tier"),
+                                "usd_volume": usd_volume
+                            }
+                        self.logger.error(f"❌ Error fetching fee rates after retry: HTTP {r2.status} → {text2}")
+                        return {"error": f"HTTP {r2.status}", "details": text2}
+
+                self.logger.error(f"❌ Error fetching fee rates: HTTP {response.status} → {text}")
+                return {"error": f"HTTP {response.status}", "details": text}
 
         except Exception as e:
-            self.logger.error(f"❌ Exception in get_fee_rates(): {e}", exc_info=True)
-            return {"error": "Exception", "details": str(e)}
+            self.logger.error(f"❌ Exception in get_fee_rates: {e}", exc_info=True)
+            return {"error": "exception", "details": str(e)}
 
     async def update_order(self, payload, max_retries=3):
         request_path = '/api/v3/brokerage/orders/edit'
@@ -360,7 +400,8 @@ class CoinbaseAPI:
 
             query = ("?" + "&".join(qs)) if qs else ""
 
-            url = f"https://api.coinbase.com{request_path}{query}"
+            # NEW:
+            url = f'{self.rest_url}{request_path}{query}'
 
             # --- do request ---------------------------------------------
             if self.session.closed:
@@ -449,28 +490,36 @@ class CoinbaseAPI:
         try:
             request_path = '/api/v3/brokerage/products'
             jwt_token = self.generate_rest_jwt('GET', request_path)
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {jwt_token}'
-            }
+            headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
+            url = f"{self.rest_url}{request_path}"
 
             if self.session.closed:
                 self.session = aiohttp.ClientSession()
 
-            async with self.session.get(f"{self.rest_url}{request_path}", headers=headers) as response:
+            async with self.session.get(url, headers=headers) as response:
                 text = await response.text()
-                status = response.status
-
-                if status == 200:
+                if response.status == 200:
                     data = await response.json()
-                    usd_pairs = [
-                        product['product_id']
-                        for product in data.get('products', [])
-                        if product.get('quote_currency_id') == 'USD'
-                    ]
+                    products = data.get('products', [])
+                    usd_pairs = [p['product_id'] for p in products if p.get('quote_currency') == 'USD']
                     return usd_pairs
 
-                self.logger.error(f"❌ Failed to fetch product list: {status} {text}")
+                if response.status == 401:
+                    self.logger.warning(f"401 in get_all_usd_pairs — reloading creds and retrying once. Body: {text}")
+                    self._reload_credentials_from_config()
+                    jwt_token = self.generate_rest_jwt('GET', request_path)
+                    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
+                    async with self.session.get(url, headers=headers) as r2:
+                        text2 = await r2.text()
+                        if r2.status == 200:
+                            data = await r2.json()
+                            products = data.get('products', [])
+                            usd_pairs = [p['product_id'] for p in products if p.get('quote_currency') == 'USD']
+                            return usd_pairs
+                        self.logger.error(f"❌ Failed to fetch products after retry: {r2.status} {text2}")
+                        return []
+
+                self.logger.error(f"❌ Failed to fetch products: {response.status} {text}")
                 return []
 
         except Exception as e:
@@ -513,7 +562,7 @@ class CoinbaseAPI:
                     "Authorization": f"Bearer {jwt_token}",
                     "Content-Type": "application/json"
                 }
-                url = f"https://api.coinbase.com{request_path}"
+                url = f'{self.rest_url}{request_path}'
 
                 retries = 0
                 delay = 1

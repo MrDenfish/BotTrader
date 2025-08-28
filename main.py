@@ -555,6 +555,23 @@ async def main():
                 logger_manager.get_logger("shared_logger"),
                 ccxt_api=None  # Pass your existing ccxt_api if available
             )
+            shared_logger.info(
+                "🔎 Coinbase at T0: base=%s prefix=%s sandbox=%s key_len=%s sec_len=%s pp_len=%s",
+                os.getenv("COINBASE_API_BASE_URL"),
+                os.getenv("COINBASE_API_PREFIX"),
+                os.getenv("COINBASE_USE_SANDBOX"),
+                len(os.getenv("COINBASE_API_KEY", "")),
+                len(os.getenv("COINBASE_API_SECRET", "")),
+                len(os.getenv("COINBASE_API_PASSPHRASE", "")),
+            )
+
+            # One cheap authenticated preflight to load JWT and catch any startup race
+            try:
+                fee_summary = await coinbase_api.get_fee_rates()
+                if "error" in (fee_summary or {}):
+                    shared_logger.warning("Fee preflight returned an error (will continue): %s", fee_summary)
+            except Exception as e:
+                shared_logger.warning("Fee preflight exception (will retry later): %s", e)
 
             ticker_manager = TickerManager(
                 config=config,

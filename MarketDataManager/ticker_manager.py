@@ -456,10 +456,10 @@ class TickerManager:
 
     async def parallel_fetch_and_update(self, usd_pairs, df, update_type='current_price'):
         """PART I: Data Gathering and Database Loading
-            PART VI: Profitability Analysis and Order Generation """
+           PART VI: Profitability Analysis and Order Generation """
         bid_ask_spread = {}
         try:
-            #tickers = await self.fetch_bids_asks()
+            # tickers = await self.fetch_bids_asks()
             product_ids = await self.coinbase_api.get_all_usd_pairs()
             tickers = await self.coinbase_api.get_best_bid_ask(product_ids)
             if not tickers:
@@ -467,52 +467,92 @@ class TickerManager:
                 return df, bid_ask_spread
 
             formatted_tickers = {}
+
             for entry in tickers.get("pricebooks", []):
                 product_id = entry.get("product_id")
+                if not product_id:
+                    self.logger.debug("Skipping pricebook with no product_id")
+                    continue
 
-                asset = product_id.split("-")[0]
-                base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(asset,usd_pairs_override=usd_pairs)
+                # OLD (unsafe: can IndexError if list empty)
+                # bid = float(entry.get("bids", [{}])[0].get("price"))
+                # ask = float(entry.get("asks", [{}])[0].get("price"))
+
+                # NEW: guard against empty/malformed bids/asks
+                bids = entry.get("bids") or []
+                asks = entry.get("asks") or []
+                if not bids or not asks:
+                    # Quietly skip totally empty books (e.g., WELL-PERP-INTX showed this)
+                    self.logger.debug(f"Skipping {product_id}: empty orderbook (bids={len(bids)}, asks={len(asks)})")
+                    continue
 
                 try:
-                    bid = float(entry.get("bids", [{}])[0].get("price"))
-                    ask = float(entry.get("asks", [{}])[0].get("price"))
-                    if bid and ask:
-                        bid_ask =  {'bid':bid, 'ask':ask}
-                        #bid_ask = self.order_book_manager.calculate_bid_ask(bid
-                        bid_ask_spread[product_id] = bid_ask
-                        bid,ask,spread = self.order_book_manager.analyze_spread(quote_deci, bid_ask)
-                        formatted_tickers[product_id] = {"bid": bid, "ask": ask, "spread":spread}
-                except (IndexError, TypeError, ValueError):
-                    self.logger.warning(f"⚠️ Malformed pricebook for {product_id}")
+                    top_bid = bids[0].get("price")
+                    top_ask = asks[0].get("price")
+                    bid = float(top_bid) if top_bid is not None else None
+                    ask = float(top_ask) if top_ask is not None else None
+                except (TypeError, ValueError):
+                    self.logger.warning(
+                        f"⚠️ Malformed pricebook for {product_id}: non-numeric top of book "
+                        f"(bid0={bids[:1]}, ask0={asks[:1]})"
+                    )
+                    continue
+
+                if bid is None or ask is None:
+                    self.logger.debug(f"Skipping {product_id}: missing top-of-book price")
+                    continue
+
+                # Precision lookup (keep as-is)
+                try:
+                    asset = product_id.split("-")[0]
+                    base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(
+                        asset, usd_pairs_override=usd_pairs
+                    )
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Precision lookup failed for {product_id}: {e}")
+                    continue
+
+                # Compute spread using existing helper; skip if it returns None
+                try:
+                    bid_ask = {'bid': bid, 'ask': ask}
+                    bid_adj, ask_adj, spread = self.order_book_manager.analyze_spread(quote_deci, bid_ask)
+                    if bid_adj is None or ask_adj is None:
+                        self.logger.debug(f"Skipping {product_id}: analyze_spread returned None")
+                        continue
+
+                    formatted_tickers[product_id] = {"bid": bid_adj, "ask": ask_adj, "spread": spread}
+                    bid_ask_spread[product_id] = {"bid": float(bid_adj), "ask": float(ask_adj), "spread": float(spread)}
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Could not analyze spread for {product_id}: {e}", exc_info=True)
+                    continue
 
             if not callable(self.logger.info):
                 self.logger.error("log_manager.info is not callable, check for possible overwriting.")
-            #for symbol in df['symbol'].tolist():
+
+            # Update df only for symbols we care about
+            # OLD:
+            # for symbol in df['symbol'].tolist():
             for symbol in usd_pairs['symbol'].tolist():
                 try:
                     ticker = formatted_tickers.get(symbol)
-                    if ticker:
-                        bid = ticker.get('bid')
-                        ask = ticker.get('ask')
-                        if bid is None or ask is None:
-                            self.logger.debug(f"Missing data for symbol {symbol}, skipping")
-                            continue
-
-                        if symbol in df['symbol'].values:
-                            if update_type == 'bid_ask':
-                                df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
-                            elif update_type == 'current_price':
-                                df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
-                        bid_ask_spread[symbol] = {
-                            "ask": float(ask),
-                            "bid": float(bid),
-                            "spread": float(ticker.get('spread'))
-                        }
-
-                    elif symbol in ['USD/USD', 'USD']:
+                    if not ticker:
+                        if symbol not in ['USD/USD', 'USD']:
+                            self.logger.info(f"No ticker data for symbol: {symbol}")
                         continue
-                    else:
-                        self.logger.info(f"No ticker data for symbol: {symbol}")
+
+                    bid = ticker.get('bid')
+                    ask = ticker.get('ask')
+                    if bid is None or ask is None:
+                        self.logger.debug(f"Missing data for symbol {symbol}, skipping")
+                        continue
+
+                    if symbol in df['symbol'].values:
+                        if update_type == 'bid_ask':
+                            df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
+                        elif update_type == 'current_price':
+                            df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
+
+                    # Already added to bid_ask_spread above when we built formatted_tickers
 
                 except BadSymbol as bs:
                     self.logger.error(f"❌ Bad symbol: {bs}")
@@ -520,7 +560,9 @@ class TickerManager:
                 except Exception as e:
                     self.logger.error(f"❌ Error processing symbol {symbol}: {e}", exc_info=True)
                     continue
+
             return df, bid_ask_spread
+
         except Exception as e:
             self.logger.error(f'❌ Error in parallel_fetch_and_update: {e}', exc_info=True)
             return df, bid_ask_spread
