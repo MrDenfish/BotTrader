@@ -33,6 +33,7 @@ services:
       TZ: ${TZ}
       DATABASE_URL: ${DATABASE_URL}
     volumes:
+      - /opt/bot/.env_runtime:/app/.env_tradebot:ro
       - ./logs:/app/logs
     command: ["/app/docker/entrypoint/entrypoint.bot.sh"]
     user: "1000:1000"
