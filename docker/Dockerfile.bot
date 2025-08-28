@@ -26,11 +26,12 @@
 #
 # ------------------------------------------------------------------------------
 
-
+# docker/Dockerfile.bot
 FROM python:3.11-slim
 
+# add bash (entrypoint uses bash), tini for signal handling
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl ca-certificates tini \
+    bash ca-certificates curl tini build-essential \
  && rm -rf /var/lib/apt/lists/*
 
 # non-root user
@@ -40,6 +41,11 @@ WORKDIR /app
 # copy source
 COPY . /app
 
+# ensure entrypoint has LF endings and is executable
+# (sed removes CR if file was committed with CRLF)
+RUN sed -i 's/\r$//' /app/docker/entrypoint/entrypoint.bot.sh \
+ && chmod +x /app/docker/entrypoint/entrypoint.bot.sh
+
 # install deps
 ARG REQS=requirements.txt
 RUN pip install --no-cache-dir -r ${REQS}
@@ -48,6 +54,7 @@ ENV TZ=UTC
 USER appuser
 
 ENTRYPOINT ["/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.bot.sh"]
+
 
 
 
