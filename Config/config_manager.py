@@ -334,6 +334,7 @@ class CentralConfig:
 
     def determine_machine_type(self) -> tuple:
         cwd_parts = os.getcwd().split('/')
+        print(f"🍀🍀🍀 {cwd_parts} 🍀🍀🍀")
         if 'app' in cwd_parts:
             print(f"🍀 Machine type: docker 🍀")
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
