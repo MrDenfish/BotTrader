@@ -5,21 +5,19 @@ log()  { echo "$(date '+%F %T') [entrypoint] $*"; }
 warn() { echo "$(date '+%F %T') [entrypoint][WARN] $*" >&2; }
 err()  { echo "$(date '+%F %T') [entrypoint][ERROR] $*" >&2; }
 
-normalize_env_file() {
+export_env_file_ro() {
+  # Read a read-only env file safely (no in-place edits)
   local f="$1"
   if [[ -f "$f" ]]; then
-    # strip CRLF if present
-    sed -i 's/\r$//' "$f" || true
-  fi
-}
-
-export_env_file() {
-  local f="$1"
-  if [[ -f "$f" ]]; then
+    local tmp
+    tmp="$(mktemp)"
+    # Strip CRLF into a temp file we own
+    sed 's/\r$//' "$f" > "$tmp"
     set -a
     # shellcheck disable=SC1090
-    . "$f"
+    . "$tmp"
     set +a
+    rm -f "$tmp"
     log "Loaded env from $f (exported to process)."
   else
     warn "Env file $f not found; continuing with existing env only."
@@ -27,8 +25,7 @@ export_env_file() {
 }
 
 infer_static_ip() {
-  # Only set if not already provided
-  if [[ -z "${DOCKER_STATICIP:-}" ]]; then
+  if [[ -z "${DOCKER_STATICIP-}" || -z "${DOCKER_STATICIP}" ]]; then
     local ip=""
     ip="$(curl -fsS http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
     [[ -z "$ip" ]] && ip="$(curl -fsS https://checkip.amazonaws.com || true)"
@@ -50,7 +47,6 @@ wait_for_postgres() {
   local start now
   start=$(date +%s)
   while true; do
-    # bash /dev/tcp check
     if (echo >/dev/tcp/"$host"/"$port") >/dev/null 2>&1; then
       log "Postgres is reachable."
       break
@@ -65,12 +61,17 @@ wait_for_postgres() {
 }
 
 sanity_print() {
+  # Use safe fallbacks for length when vars might be unset
+  local _key="${COINBASE_API_KEY-}"
+  local _sec="${COINBASE_API_SECRET-}"
+  local _pp="${COINBASE_API_PASSPHRASE-}"
+  local keylen="${#_key}"
+  local seclen="${#_sec}"
+  local pplen="${#_pp}"
+
   local base="${COINBASE_API_BASE_URL:-unset}"
   local prefix="${COINBASE_API_PREFIX:-unset}"
   local sandbox="${COINBASE_USE_SANDBOX:-unset}"
-  local keylen="${#COINBASE_API_KEY:-0}"
-  local seclen="${#COINBASE_API_SECRET:-0}"
-  local pplen="${#COINBASE_API_PASSPHRASE:-0}"
   log "Coinbase cfg base=${base} prefix=${prefix} sandbox=${sandbox} key_len=${keylen} secret_len=${seclen} pp_len=${pplen}"
   log "DB cfg host=${POSTGRES_HOST:-db} port=${POSTGRES_PORT:-5432} db=${POSTGRES_DB:-bot_trader_db} user=${POSTGRES_USER:-bottrader}"
 }
@@ -84,7 +85,9 @@ check_required() {
   )
   local missing=()
   for k in "${required[@]}"; do
-    if [[ -z "${!k:-}" ]]; then missing+=("$k"); fi
+    if [[ -z "${!k-}" || -z "${!k}" ]]; then
+      missing+=("$k")
+    fi
   done
   if ((${#missing[@]})); then
     if [[ "${REQUIRED_ENV_STRICT:-0}" == "1" ]]; then
@@ -107,18 +110,17 @@ start_app() {
   fi
 }
 
-### ---- main ----
+# -------------------- main --------------------
 
 log "BotTrader starting (Option A)..."
 
-# 1) Ensure the app dotenv is exported *before* Python starts
-normalize_env_file "/app/.env_tradebot"
-export_env_file    "/app/.env_tradebot"
+# 1) Export env from the bind-mounted file (read-only safe)
+export_env_file_ro "/app/.env_tradebot"
 
-# 2) Try to populate DOCKER_STATICIP (useful for IP allow-lists)
+# 2) Try to populate DOCKER_STATICIP (useful if your API key is IP-allowlisted)
 infer_static_ip
 
-# 3) Wait for Postgres to be reachable
+# 3) Wait for Postgres
 wait_for_postgres
 
 # 4) Print a sanitized snapshot for visibility at T=0
@@ -127,7 +129,8 @@ sanity_print
 # 5) Optionally fail fast if required keys are missing
 check_required
 
-# 6) Go!
+# 6) Launch
 start_app
+
 
 
