@@ -516,7 +516,7 @@ class TickerManager:
                 try:
                     bid_ask = {'bid': bid, 'ask': ask}
                     bid_adj, ask_adj, spread = self.order_book_manager.analyze_spread(quote_deci, bid_ask)
-                    if bid_adj is None or ask_adj is None:
+                    if bid_adj is None or ask_adj is None or spread is None:
                         self.logger.debug(f"Skipping {product_id}: analyze_spread returned None")
                         continue
 

@@ -80,8 +80,6 @@ check_required() {
   # Toggle strict mode with REQUIRED_ENV_STRICT=1
   local required=(
     POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD
-    COINBASE_API_KEY COINBASE_API_SECRET COINBASE_API_PASSPHRASE
-    COINBASE_API_BASE_URL COINBASE_API_PREFIX
   )
   local missing=()
   for k in "${required[@]}"; do

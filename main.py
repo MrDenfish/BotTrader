@@ -504,6 +504,8 @@ async def main():
     args = parser.parse_args()
 
     config = await load_config()
+    w = config.load_websocket_api_key() or {}
+
     config.test_mode = args.test  # ✅ Globally toggle test_mode            python main.py --run webhook --test
     log_config = {"log_level": logging.DEBUG if args.verbose else logging.INFO}
     logger_manager = LoggerManager(log_config)
@@ -513,7 +515,13 @@ async def main():
     webhook_logger = logger_manager.get_logger("webhook_logger")
     sighook_logger = logger_manager.get_logger("sighook_logger")
     shared_logger = logger_manager.get_logger("shared_logger")
-
+    shared_logger.info(
+        "🔎 Coinbase at T0 (Config): rest_url=%s base_url=%s profile=%s key_len=%s",
+        w.get("rest_api_url"),
+        w.get("base_url"),
+        w.get("profile_name") or w.get("profile_id"),
+        len((w.get("name") or "")),
+    )
     alert = AlertSystem(logger_manager) if args.run != 'webhook' else None
 
     config.exchange = ExchangeManager.get_instance(config.load_webhook_api_key()).get_exchange()

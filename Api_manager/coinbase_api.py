@@ -25,12 +25,6 @@ class CoinbaseAPI:
 
     def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision):
         self.config = Config()
-        # self.api_key = self.config.load_websocket_api_key().get('name')
-        # self.api_secret = self.config.load_websocket_api_key().get('signing_key')
-        # self.user_url = self.config.load_websocket_api_key().get('user_api_url')
-        # self.market_url = self.config.load_websocket_api_key().get('market_api_url')
-        # self.base_url = self.config.load_websocket_api_key().get('base_url')
-        # self.rest_url = self.config.load_websocket_api_key().get('rest_api_url')
         self._reload_credentials_from_config()
 
         log_config = {"log_level": logging.INFO}
@@ -103,7 +97,6 @@ class CoinbaseAPI:
         try:
             # NEW guard to avoid early-empty creds
             self._ensure_creds()
-
             jwt_uri = jwt_generator.format_jwt_uri(method, request_path)
             jwt_token = jwt_generator.build_rest_jwt(jwt_uri, self.api_key, self.api_secret)
 
