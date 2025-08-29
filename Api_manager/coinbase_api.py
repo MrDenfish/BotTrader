@@ -235,7 +235,7 @@ class CoinbaseAPI:
                     }
 
                 if response.status == 401:
-                    self.logger.warning(f"401 on get_fee_rates — reloading creds and retrying once. Body: {text}")
+                    self.logger.warning(f"401 on get_fee_rates — reloading creds and retrying once. Body: {response}: {text}")
                     self._reload_credentials_from_config()
                     jwt_token = self.generate_rest_jwt('GET', request_path)
                     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {jwt_token}'}
