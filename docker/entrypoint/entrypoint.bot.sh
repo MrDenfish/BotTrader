@@ -121,14 +121,12 @@ export_env_file_ro "/app/.env_tradebot"
 : "${DB_USER:=bottrader}"
 : "${DB_PASSWORD:=changeme}"
 
-# Only set POSTGRES_* if they aren't already present
 : "${POSTGRES_HOST:=$DB_HOST}"
 : "${POSTGRES_PORT:=$DB_PORT}"
 : "${POSTGRES_DB:=$DB_NAME}"
 : "${POSTGRES_USER:=$DB_USER}"
 : "${POSTGRES_PASSWORD:=$DB_PASSWORD}"
 
-# If DATABASE_URL is empty, synthesize one the app can use
 if [[ -z "${DATABASE_URL-}" || -z "$DATABASE_URL" ]]; then
   export DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
 fi
