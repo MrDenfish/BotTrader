@@ -30,6 +30,7 @@ services:
     environment:
       TZ: ${TZ}
       DATABASE_URL: ${DATABASE_URL}
+      REQUIRED_ENV_STRICT: "0"
     volumes:
       - /opt/bot/.env_runtime:/app/.env_tradebot:ro
       - ./logs:/app/logs
