@@ -114,6 +114,27 @@ log "BotTrader starting (Option A)..."
 
 # 1) Export env from the bind-mounted file (read-only safe)
 export_env_file_ro "/app/.env_tradebot"
+# --- compat shim: map DB_* -> POSTGRES_* if POSTGRES_* not set ---
+: "${DB_HOST:=db}"
+: "${DB_PORT:=5432}"
+: "${DB_NAME:=bot_trader_db}"
+: "${DB_USER:=bottrader}"
+: "${DB_PASSWORD:=changeme}"
+
+# Only set POSTGRES_* if they aren't already present
+: "${POSTGRES_HOST:=$DB_HOST}"
+: "${POSTGRES_PORT:=$DB_PORT}"
+: "${POSTGRES_DB:=$DB_NAME}"
+: "${POSTGRES_USER:=$DB_USER}"
+: "${POSTGRES_PASSWORD:=$DB_PASSWORD}"
+
+# If DATABASE_URL is empty, synthesize one the app can use
+if [[ -z "${DATABASE_URL-}" || -z "$DATABASE_URL" ]]; then
+  export DATABASE_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
+fi
+export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL
+# --- end compat shim ---
+
 
 # 2) Try to populate DOCKER_STATICIP (useful if your API key is IP-allowlisted)
 infer_static_ip

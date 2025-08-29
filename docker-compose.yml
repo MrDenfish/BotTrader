@@ -5,8 +5,8 @@ services:
       dockerfile: docker-compose.aws.yml
     container_name: tradebot
     restart: unless-stopped
-    env_file:
-      - .env_tradebot
+    #env_file:
+    #  - .env_tradebot
     environment:
       - DOCKER_ENV=true
     volumes:
