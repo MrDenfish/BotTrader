@@ -339,8 +339,9 @@ class CentralConfig:
             print(f"🍀 Machine type: docker 🍀")
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         elif len(cwd_parts) > 2:
-            print(f"🍀 Machine type: Laptop 🍀")
+
             if cwd_parts[2] == 'jack':
+                print(f"🍀 Machine type: Laptop 🍀")
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
             else:
                 print(f"🍀 Machine type: Desktop 🍀")

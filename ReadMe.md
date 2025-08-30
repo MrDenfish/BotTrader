@@ -1,0 +1,1 @@
+To run tne program run file main.py. 'both" is the default for running both webhook and sighook.'

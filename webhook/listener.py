@@ -1451,7 +1451,18 @@ class WebhookListener:
         """Basic health check endpoint."""
         return web.json_response({"status": "ok"})
 
+    async def start(self, host: str = "127.0.0.1", port: int = 5003):
+        """Start aiohttp server without blocking the event loop."""
+        app = await self.create_app()
+        self._runner = web.AppRunner(app)
+        await self._runner.setup()
+        self._site = web.TCPSite(self._runner, host, port)
+        await self._site.start()
 
+    async def stop(self):
+        runner = getattr(self, "_runner", None)
+        if runner:
+            await runner.cleanup()
 
 
 def handle_global_exception(loop, context):
