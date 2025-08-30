@@ -1,1 +1,1 @@
-To run tne program run file main.py. 'both" is the default for running both webhook and sighook.'
+To run tne program run file main.py. 'both" is the defaul**t for running both** webhook and sighook.'

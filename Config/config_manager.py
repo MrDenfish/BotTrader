@@ -1,5 +1,6 @@
 import json
 import os
+from urllib.parse import urljoin
 from decimal import Decimal
 from typing import Any, Optional
 from coinbase import rest as coinbase
@@ -643,15 +644,57 @@ class CentralConfig:
         return self._is_loaded
 
     @property
-    def web_url(self):
-        if self.machine_type == 'Manny' or self.machine_type == 'jack':
-            print(f'desktop: {self.machine_type}')
-            print(f'❇️ desktop: {self._pc_url} ❇️')
-            return self._pc_url
-        else:
-            print(f'docker: {self.machine_type}')
-            print(f'❇️ docker: {self._docker_url} ❇️')
-            return self._docker_url
+    def web_url(self) -> str:
+        """
+        Final webhook endpoint used by sighook to signal.
+        Priority:
+        1) WEBHOOK_URL (full URL) if provided
+        2) WEBHOOK_BASE_URL + WEBHOOK_PATH (defaults to sensible values)
+        """
+        # 1) Full override (handy for quick tests)
+        full = os.getenv("WEBHOOK_URL")
+        if full:
+            self._log_url("override", full)
+            return full
+
+        # 2) Base + path
+        base = os.getenv("WEBHOOK_BASE_URL") or self._default_base_url()
+        path = os.getenv("WEBHOOK_PATH", "/webhook")
+        # urljoin handles missing/extra slashes
+        final = urljoin(base.rstrip("/") + "/", path.lstrip("/"))
+        self._log_url("computed", final, base=base, path=path)
+        return final
+
+    def _default_base_url(self) -> str:
+        """
+        Fallback if WEBHOOK_BASE_URL is not set.
+        - Desktop/dev (your named machines): use ngrok/PC_URL if present
+        - Docker single-container: http://127.0.0.1:5003
+        - Docker split containers: http://webhook:5003
+        """
+        # Use your existing machine_type detector
+        mt = getattr(self, "machine_type", "docker")
+
+        # If user provided legacy PC_URL/DOCKER_URL, respect them as fallback
+        pc_url = getattr(self, "_pc_url", None) or os.getenv("PC_URL")
+        docker_url = getattr(self, "_docker_url", None) or os.getenv("DOCKER_URL")
+
+        if mt in {"Manny", "jack"} and pc_url:
+            return pc_url.rsplit("/", 1)[0]  # strip /webhook if included
+
+        # Prefer split-container default if RUN_MODE indicates sighook only
+        run_mode = os.getenv("RUN_MODE", "both").lower()
+        if run_mode == "sighook":
+            return "http://webhook:5003"
+
+        # Otherwise, assume single-container docker
+        if docker_url:
+            return docker_url.rsplit("/", 1)[0]
+        return "http://127.0.0.1:5003"
+
+    def _log_url(self, source: str, url: str, **kw):
+        # keep your style; adjust logger as needed
+        print(f"❇️ web_url ({source}): {url}  {(' ' + str(kw)) if kw else ''}")
 
     @property
     def sleep_time(self):

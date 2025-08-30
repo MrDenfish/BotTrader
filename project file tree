@@ -1,11 +1,15 @@
-BotTraderv3.0/
+BotTrader/
+├── Accumulationmanager                               
+│    ├── __init__.py
+│    ├── __pycache__
+│    ├── accumulation_manager.py
 ├── Api_manager                               
 │    ├── __init__.py
 │    ├── __pycache__
 │    ├── api_exceptions.py
 │    ├── coinbase_api.py
 │    ├── api_manager.py
-│         └── api_manager.py
+│         
 ├── Config
 │    ├── __int__.py
 │    ├── __pycache__
@@ -16,20 +20,32 @@ BotTraderv3.0/
 │    ├── webhook_api_key.json
 │    ├── webhook_config.json
 │    ├── webhook_tb_api_key.json
-│           └── websocket_api_info.json
-├── Discription
+│    └── websocket_api_info.json
 ├── database_manager
+│    ├── __int__.py
+│    ├── aws_daily_report.py
 │    ├── database_ops.py
 │    ├── database_session_manager.py
 │    ├── database_table_models.py
+├── docker
+│    ├── .dockerignore
+│    ├── deploy_aws_ssh.sh
+│    ├── Dockerfile.bot
+│    ├── Dockerfile.report
+|    ├── entrypoint
+|         ├── entrypoint.sh
+│    ├── sync-env-to-ssm.sh
+│    └── update.sh
 ├── MarketDataManager
 │    ├── ___int___.py
 │    ├── __pycache__
+│    ├── asset_manager.py
 │    ├── market_data_manager.py
 │    ├── market_manager.py
 │    ├── ohlcv_manager.py
 │    ├── passive_order_manager.py
-│    └── ticker_manager.py
+│    ├── ticker_manager.py
+│    └── webhook_order_book.py
 ├── ProfitDataManager
 │    ├── __int__.py
 │    ├── __pycache__
@@ -46,11 +62,12 @@ BotTraderv3.0/
 │    ├── alert_system.py
 │    ├── database_checker.py
 │    ├── dates_and_times.py
-│    ├── debugger.py
+│    ├── enum.py
 │    ├── exchange_manager.py
 │    ├── logging_manager.py
 │    ├── precision.py
 │    ├── print_data.py
+│    ├── scheduler.py
 │    ├── snapshots_manager.py
 │    └── utility.py
 ├── project file tree
@@ -65,12 +82,10 @@ BotTraderv3.0/
 │    ├── listener_logs
 │    ├── logs
 │    └── signal_logs
-├── main.py                                         # ✅ New entry point for the project
 ├── profile_output.prof
 ├── requirements.in
 ├── requirements.txt
 ├── sighook
-│    ├── Dockerfile
 │    ├── __init__.py
 │    ├── __pycache__
 │    ├── alerts_msgs_webhooks.py
@@ -80,17 +95,18 @@ BotTraderv3.0/
 │    ├── order_manager.py
 │    ├── portfolio_manager.py
 │    ├── profit_manager.py
-│    ├── requirements.txt
 │    ├── sender.py
-│    ├── test_trading_strategy.py
+│    ├── signal_manager.py
 │    └── trading_strategy.py
 ├── TableModels
 │    ├── base.py
 │    ├── __init__.py
+│    ├── base.py
 │    ├── database_table_model.py
 │    ├── market_snapshot.py
 │    ├── ohlcv_data.py
 │    ├── order_management.py
+│    ├── passive_orders.py
 │    ├── shared_data.py
 │    ├── trade_record.py
 └── webhook
@@ -99,13 +115,25 @@ BotTraderv3.0/
     ├── __pycache__
     ├── listener.py
     ├── requirements.txt
-    ├── trailing_stop_manager.py
     ├── webhook_manager.py
     ├── webhook_order_book.py
-    ├── webhook_order_manager.py
     ├── webhook_order_types.py
     ├── webhook_utils.py
     ├── webhook_validate_orders.py
     ├── websocket_helper.py
-    ├── websocket_market_manager.py
-    └── websocket_test.py
+    └── websocket_market_manager.py
+├── main.py                                         # ✅ entry point for the project
+├── Discription
+├── bot_sync.sh
+├── deploy_to_droplet.sh
+├── discription.py
+├── docker-compose.aws.yml
+├── docker-compose.yml
+├── env_AWS
+├── environment.yml
+├── requirements-report.in
+├── requirements-report.txt
+├── requirements.in
+├── requirements.txt
+├── sync_cleanup_and_push.sh
+├── sync_pull_and_deploy.sh

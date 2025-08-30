@@ -1444,7 +1444,7 @@ class WebhookListener:
         self.shared_utils_utility.log_event_loop("Webhook Server (create_app)")
         app = web.Application()
         app.router.add_post('/webhook', self.handle_webhook)
-        app.router.add_get('/health', self.health)   # 👈 add this line
+        app.router.add_get('/health', self.health)
         return app
 
     async def health(self, request: web.Request) -> web.Response:
