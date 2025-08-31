@@ -163,9 +163,8 @@ class AssetMonitor:
 
         if profit_data_list:
             df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
-            print(f"Profit Data Open Orders:\n{df.to_string(index=True)}")
             print(self.shared_utils_color.format(
-                "\n[Profit Data Open Orders:]\n"
+                "\nProfit Data Open Orders:\n"
                 "-------------------------------------\n"
                 f"Total Trades (last {df.to_string(index=True)}\n"
                 "-------------------------------------"
