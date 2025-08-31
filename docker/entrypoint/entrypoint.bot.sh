@@ -99,12 +99,15 @@ check_required() {
 
 start_app() {
   export PYTHONUNBUFFERED=1
+  local mode="${RUN_MODE:-both}"   # default keeps desktop behavior
+
   if [[ "${DEBUGPY:-0}" == "1" ]]; then
     local port="${DEBUGPY_PORT:-5678}"
-    log "Starting under debugpy on 0.0.0.0:${port} (waiting for IDE attach)..."
-    exec python -X dev -m debugpy --listen 0.0.0.0:"${port}" --wait-for-client -m main
+    log "Starting under debugpy (mode=${mode})..."
+    exec python -X dev -m debugpy --listen 0.0.0.0:"${port}" --wait-for-client -m main --run "${mode}"
   else
-    exec python -m main
+    log "Starting main (mode=${mode})..."
+    exec python -m main --run "${mode}"
   fi
 }
 

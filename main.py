@@ -2,28 +2,34 @@
 import argparse
 import asyncio
 import logging
-import os
+import os, pathlib
 import signal
 import time
 
 import aiohttp
 from decimal import Decimal
 from aiohttp import web
-from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
-from AccumulationManager.accumulation_manager import AccumulationManager
 from Shared_Utils.scheduler import periodic_runner
+from Shared_Utils.runtime_env import running_in_docker as running_in_docker
+
+from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
+from TestDebugMaintenance.debugger import Debugging
+
+from AccumulationManager.accumulation_manager import AccumulationManager
+
 from Config.config_manager import CentralConfig as Config
 # loaded in main() to avoid circular import
 #from Api_manager.coinbase_api import CoinbaseAPI
 #from MarketDataManager.ticker_manager import TickerManager
 #from MarketDataManager.webhook_order_book import OrderBookManager
+
 from MarketDataManager.market_data_manager import market_data_watchdog
 from MarketDataManager.market_data_manager import MarketDataUpdater
 from MarketDataManager.passive_order_manager import PassiveOrderManager
 from MarketDataManager.asset_monitor import AssetMonitor
-from SharedDataManager.shared_data_manager import SharedDataManager, CustomJSONDecoder
+
 from Shared_Utils.alert_system import AlertSystem
-from TestDebugMaintenance.debugger import Debugging
+
 from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
 from Shared_Utils.print_data import PrintData
@@ -31,26 +37,30 @@ from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.precision import PrecisionUtils
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
-from database_manager.database_session_manager import DatabaseSessionManager
+
 from sighook.sender import TradeBot
 from webhook.listener import WebSocketManager, WebhookListener
 from webhook.websocket_helper import WebSocketHelper
 from webhook.websocket_market_manager import WebSocketMarketManager
+from database_manager.database_session_manager import DatabaseSessionManager
+from SharedDataManager.shared_data_manager import SharedDataManager, CustomJSONDecoder
 
 shutdown_event = asyncio.Event()
 
 
-def is_docker_env():
-    return os.getenv("DOCKER_ENV", "false").lower() == "true"
-
+def default_run_mode() -> str:
+    # Desktop default = both (single process). Docker default = sighook (split).
+    return "both" if not running_in_docker() else os.getenv("RUN_MODE", "sighook")
+# Force singleton initialization across all environments
 
 # Force singleton initialization across all environments
-_ = Config(is_docker=is_docker_env())
+_ = Config(is_docker=running_in_docker())
 print("✅ CentralConfig preloaded:")
 print(f"   DB: {_.machine_type}@{_.db_host}/{_.db_name}")
 
 async def load_config():
-    return Config(is_docker=is_docker_env())
+    return Config(is_docker=running_in_docker())
+
 
 async def preload_market_data(logger_manager, shared_data_manager, market_data_updater, ticker_manager ):
     logger = logger_manager.get_logger("shared_logger")
@@ -485,7 +495,7 @@ async def monitor_db_connections(shared_data_manager, interval=10, threshold=10)
 
 async def main():
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
-    parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default='both')
+    parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default=default_run_mode())
     parser.add_argument(
         '--test',
         action='store_true',

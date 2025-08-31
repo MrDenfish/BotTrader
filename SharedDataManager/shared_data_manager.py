@@ -254,7 +254,12 @@ class SharedDataManager:
                     print("✅ Skipping fetch_order_management(): order_management is already populated")
                 self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
                 print("✅ SharedDataManager:initialized successfully.")
+
+                if not self._initialized_event.is_set():
+                    self._initialized_event.set()
+
                 return self.market_data, self.order_management
+
             except Exception as e:
                 if self.logger:
                     self.logger.error(f"❌ Failed to initialize shared data: {e}", exc_info=True)

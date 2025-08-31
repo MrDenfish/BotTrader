@@ -1,5 +1,3 @@
-#sudo mkdir -p /opt/bot
-sudo tee /opt/bot/daily_report.py >/dev/null <<'PY'
 #!/usr/bin/env python3
 import os, io, csv, datetime, ssl, re
 import boto3
@@ -368,5 +366,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-PY
-sudo chmod +x /opt/bot/daily_report.py
