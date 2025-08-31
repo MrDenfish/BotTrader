@@ -43,6 +43,7 @@ docker-compose.override.yml
 # === end ===
 
 # env & local artifacts
+project file tree
 .env_tradebot
 env_*
 *.pkg
