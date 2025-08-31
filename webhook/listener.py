@@ -16,6 +16,7 @@ from sqlalchemy import case, or_
 from sqlalchemy.exc import DBAPIError
 from datetime import datetime, timezone
 from typing import Optional, Any, Sequence
+from ipaddress import ip_address, ip_network
 
 from Shared_Utils.enum import ValidationCode
 from Shared_Utils.print_data import PrintData
@@ -739,8 +740,26 @@ class WebhookListener:
         asyncio.get_event_loop().call_later(300, remove_uuid_later, check_uuid)
 
     # helper methods used in process_webhook()
-    def is_ip_whitelisted(self, ip_address: str) -> bool:
-        return ip_address in self.bot_config.get_whitelist()
+    def is_ip_whitelisted(self, ip: str) -> bool:
+        wl = self.bot_config.get_whitelist()
+        if not wl:
+            return False
+        ip_obj = ip_address(ip)
+        for entry in wl:
+            e = (entry or "").strip()
+            if not e:
+                continue
+            try:
+                if "/" in e:
+                    if ip_obj in ip_network(e, strict=False):
+                        return True
+                else:
+                    if ip == e:
+                        return True
+            except ValueError:
+                # ignore malformed entries
+                pass
+        return False
 
     @staticmethod
     def is_valid_origin(origin: Optional[str]) -> bool:
