@@ -44,7 +44,7 @@ services:
     build:
       context: .
       dockerfile: ./docker/Dockerfile.bot
-    container_name: bottrader
+    container_name: sighook
     environment:
       TZ: ${TZ}
       RUN_MODE: sighook
@@ -58,25 +58,9 @@ services:
     volumes:
       - /opt/bot/.env_runtime:/app/.env_tradebot:ro
       - ./logs:/app/logs
-    restart: unless-stopped
-  bottrader:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.bot
-    container_name: bottrader
-    restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      TZ: ${TZ}
-      DATABASE_URL: ${DATABASE_URL}
-      REQUIRED_ENV_STRICT: "0"
-    volumes:
-      - /opt/bot/.env_runtime:/app/.env_tradebot:ro
-      - ./logs:/app/logs
-    entrypoint: ["/app/docker/entrypoint/entrypoint.bot.sh"]
+    entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
     user: "1000:1000"
+    restart: unless-stopped
 
   # One-shot report runner (invoke on-demand or via cron)
   report-job:
