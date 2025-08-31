@@ -1,7 +1,7 @@
-import asyncio
+import os
 import json
 import random
-
+import asyncio
 import aiohttp
 
 from Shared_Utils.enum import ValidationCode
@@ -99,10 +99,23 @@ class SenderWebhook:
         for attempt in range(1, retries + 1):
             try:
                 self.logger.debug(f"➡️ Attempting webhook ({attempt}/{retries}): {webhook_payload}")
+                token = (os.getenv("WEBHOOK_TOKEN") or "").strip()
+                auth_header_name = os.getenv("WEBHOOK_AUTH_HEADER", "Authorization").strip()  # e.g. "Authorization" or "X-Auth-Token"
+                auth_scheme = os.getenv("WEBHOOK_AUTH_SCHEME", "Bearer").strip()  # e.g. "Bearer" or ""
+
+                headers = {"Content-Type": "application/json"}
+                if not token:
+                    self.logger.error("WEBHOOK_TOKEN is missing; server will reject the webhook")
+                else:
+                    if auth_header_name.lower() == "authorization":
+                        headers["Authorization"] = f"{auth_scheme} {token}".strip()
+                    else:
+                        headers[auth_header_name] = token
+
                 response = await http_session.post(
                     self.web_url,
-                    data=json.dumps(webhook_payload, default=self.shared_utils_utility.string_default),
-                    headers={'Content-Type': 'application/json'},
+                    json=webhook_payload,  # <— let aiohttp encode JSON
+                    headers=headers,
                     timeout=45
                 )
 
