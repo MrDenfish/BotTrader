@@ -505,55 +505,64 @@ class WebhookListener:
     def filtered_balances(self):
         return self.shared_data_manager.order_management.get('non_zero_balances', {})
 
-
     async def refresh_market_data(self):
-        """Refresh market_data and manage orders periodically."""
+        """Refresh market_data and manage orders once (caller schedules periodically)."""
         try:
+            # Fetch new market data
+            t0 = time.monotonic()
+            result = await self.market_data_updater.update_market_data(time.time())
+            if result is None:
+                self.logger.error("❌ update_market_data returned None; skipping this cycle.")
+                return False
+            new_market_data, new_order_management = result
 
+            # Guard against None / wrong types before indexing
+            if not isinstance(new_market_data, dict):
+                self.logger.error("❌ new_market_data is not a dict; got %s", type(new_market_data).__name__)
+                return False
+            if not isinstance(new_order_management, dict):
+                self.logger.error("❌ new_order_management is not a dict; got %s", type(new_order_management).__name__)
+                new_order_management = {}
+
+            # Merge passive orders
             try:
-                # Fetch new market data
-                start = time.monotonic()
-                new_market_data, new_order_management = await self.market_data_updater.update_market_data(time.time())
                 new_order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
-                print(f"⚠️⚠️⚠️  update_market_data took {time.monotonic() - start:.2f}s    ⚠️⚠️⚠️")
+            except Exception:
+                self.logger.error("❌ Failed to fetch passive_orders", exc_info=True)
 
-                # Ensure fetched data is valid before proceeding
-                if not new_market_data:
-                    self.logger.error("❌ ⚠️⚠️⚠️      new_market_data is empty! Skipping update.     ⚠️⚠️⚠️⚠️ ❌")
+            self.logger.debug("⏱ update_market_data took %.2fs", time.monotonic() - t0)
 
-                if not new_order_management:
-                    self.logger.error("❌ ⚠️⚠️⚠️    new_order_management is empty! Skipping update. ⚠️⚠️⚠️⚠️ ❌")
+            # Minimal validation
+            if not new_market_data:
+                self.logger.error("❌ new_market_data is empty; skipping save/monitor.")
+                return False
 
-                start = time.monotonic()
-                new_market_data["last_updated"] = datetime.now(timezone.utc)
+            # Enrich + publish to shared state
+            new_market_data["last_updated"] = datetime.now(timezone.utc)
+            try:
                 new_market_data["fee_info"] = await self.coinbase_api.get_fee_rates()
+            except Exception:
+                self.logger.warning("⚠️ fee_rates fetch failed; continuing", exc_info=True)
 
-                await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
-                self.logger.debug(f"⏱ update_market_data (shared_data_manager) took {time.monotonic() - start:.2f}s")
+            t1 = time.monotonic()
+            await self.shared_data_manager.update_shared_data(new_market_data, new_order_management)
+            self.logger.debug("⏱ update_shared_data took %.2fs", time.monotonic() - t1)
 
-                print("⚠️ Market data and order management updated successfully. ⚠️")
-                # Monitor and update active orders
+            # Monitor/update orders
+            t2 = time.monotonic()
+            await self.asset_monitor.monitor_all_orders()
+            self.logger.debug("⏱ monitor_all_orders took %.2fs", time.monotonic() - t2)
 
-                start = time.monotonic()
-                await self.asset_monitor.monitor_all_orders()
-                self.logger.debug(f"⏱ monitor_and_update_active_orders took {time.monotonic() - start:.2f}s")
-                pass
-
-
-            except Exception as e:
-                self.logger.error(f"❌ refresh_market_data inner loop error: {e}", exc_info=True)
-
+            self.logger.debug("✅ refresh_market_data completed")
+            return True
 
         except asyncio.CancelledError:
-            self.logger.warning("⚠️ refresh_market_data was cancelled by the event loop.", exc_info=True)
-            raise  # allow the task to be properly cancelled
+            self.logger.info("⚠️ refresh_market_data was cancelled by the event loop")
+            raise
 
-        except Exception as e:
-            self.logger.error(f"❌ refresh_market_data crashed: {e}", exc_info=True)
-
-        finally:
-            self.logger.error("🚨 refresh_market_data loop exited unexpectedly!", exc_info=True)
-
+        except Exception:
+            self.logger.error("❌ refresh_market_data crashed", exc_info=True)
+            return False
 
     async def handle_order_fill(self, websocket_order_data: OrderData):
         """Process existing orders that are Open or Active or have been filled"""

@@ -673,7 +673,6 @@ class CentralConfig:
         docker_url = getattr(self, "_docker_url", None) or os.getenv("DOCKER_URL") or ""
 
         in_docker = running_in_docker()
-        run_mode = os.getenv("RUN_MODE", "both").lower()
 
         # Desktop (not in Docker)
         if not in_docker:
@@ -682,7 +681,7 @@ class CentralConfig:
             return "http://127.0.0.1:5003"
 
         # In Docker
-        if run_mode != "both":
+        if in_docker:
             # split mode (webhook/sighook): prefer service DNS
             return "http://webhook:5003"
 
