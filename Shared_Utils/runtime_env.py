@@ -1,7 +1,7 @@
 import os, pathlib
 
 def running_in_docker() -> bool:
-    val = os.getenv("DOCKER_ENV", "")
+    val = os.getenv("IN_DOCKER", "")
     if val:
         return val.lower() == "true"
     if pathlib.Path("/.dockerenv").exists():

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-import os, io, csv, datetime, ssl, re
 import boto3
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
 import pg8000.native as pg
+import os, io, csv, datetime, ssl
+
+from email.mime.text import MIMEText
+from urllib.parse import urlparse, parse_qs
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+
 
 REGION = os.getenv("AWS_REGION", "us-west-2")
 SENDER = os.getenv("REPORT_SENDER", "reports@a1zoobies.com")
@@ -15,15 +18,73 @@ ses = boto3.client("ses", region_name=REGION)
 
 def get_param(name): return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
 
-def get_db_conn():
-    host = get_param("/bottrader/prod/db/host")
-    name = get_param("/bottrader/prod/db/name")
-    user = get_param("/bottrader/prod/db/user")
-    pwd  = get_param("/bottrader/prod/db/password")
+def _maybe_ssl_context(require_ssl: bool):
+    if not require_ssl:
+        return None
     ctx = ssl.create_default_context()
-    # RDS global trust bundle (downloaded earlier to this path)
-    ctx.load_verify_locations(cafile="/etc/ssl/certs/rds-global-bundle.pem")
-    return pg.Connection(user=user, password=pwd, host=host, port=5432, database=name, ssl_context=ctx)
+    # Allow override; falls back to system CA store (works for RDS or other CAs if present)
+    bundle = os.getenv("RDS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt")
+    if os.path.exists(bundle):
+        try:
+            ctx.load_verify_locations(cafile=bundle)
+        except Exception:
+            pass
+    return ctx
+
+def _env_or_ssm(env_key: str, ssm_param_name: str | None, default: str | None = None):
+    v = os.getenv(env_key)
+    if v:
+        return v
+    if ssm_param_name:
+        return get_param(ssm_param_name)  # your existing SSM helper
+    if default is not None:
+        return default
+    raise RuntimeError(f"Missing {env_key} and no SSM fallback provided.")
+
+# --- REPLACE your get_db_conn() with this ---
+def get_db_conn():
+    """
+    Connection priority:
+      1) DATABASE_URL (postgres:// or postgresql://; honors ?sslmode=require/verify-*)
+      2) DB_* environment variables (with optional DB_SSL=require|disable)
+      3) SSM parameters (SSM_DB_HOST, SSM_DB_NAME, SSM_DB_USER, SSM_DB_PASSWORD)
+    """
+    url = os.getenv("DATABASE_URL")
+    if url:
+        u = urlparse(url)
+        host = u.hostname or "db"
+        port = int(u.port or 5432)
+        user = u.username
+        pwd  = u.password
+        name = (u.path or "/").lstrip("/")
+        qs = parse_qs(u.query or "")
+        sslmode = (qs.get("sslmode", [""])[0] or "").lower()
+        require_ssl = sslmode in {"require", "verify-ca", "verify-full"} or "+ssl" in u.scheme
+        return pg.Connection(
+            user=user, password=pwd, host=host, port=port, database=name,
+            ssl_context=_maybe_ssl_context(require_ssl)
+        )
+
+    # 2) ENV block
+    host = _env_or_ssm("DB_HOST", None, "db")
+    port = int(_env_or_ssm("DB_PORT", None, "5432"))
+    name = _env_or_ssm("DB_NAME", None, None)
+    user = _env_or_ssm("DB_USER", None, None)
+    pwd  = _env_or_ssm("DB_PASSWORD", None, None)
+    db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require", "true", "1"})
+    return pg.Connection(
+        user=user, password=pwd, host=host, port=port, database=name,
+        ssl_context=_maybe_ssl_context(db_ssl)
+    )
+
+    # 3) (Falls back to SSM only if you actually set SSM_* names)
+    # Uncomment below if you want pure-SSM fallback when none of the above are set:
+    # host = _env_or_ssm("DB_HOST", os.getenv("SSM_DB_HOST"))
+    # name = _env_or_ssm("DB_NAME", os.getenv("SSM_DB_NAME"))
+    # user = _env_or_ssm("DB_USER", os.getenv("SSM_DB_USER"))
+    # pwd  = _env_or_ssm("DB_PASSWORD", os.getenv("SSM_DB_PASSWORD"))
+    # return pg.Connection(user=user, password=pwd, host=host, port=5432, database=name,
+    #                      ssl_context=_maybe_ssl_context(True))
 
 # ---------- Auto-detection helpers ----------
 SYN_SYMBOL = {"symbol","ticker","asset","pair","instrument"}

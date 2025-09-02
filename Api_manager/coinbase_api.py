@@ -407,7 +407,7 @@ class CoinbaseAPI:
                     return await resp.json()
 
                 # ----- map common HTTP errors to structured dict ---------
-                self.logger.error(f"[{resp.status}] list_historical_orders → {text}", exc_inf=True)
+                self.logger.error(f"[{resp.status}] list_historical_orders → {text}", exc_info=True)
                 return {"error": f"HTTP {resp.status}", "details": text}
 
         except Exception as exc:

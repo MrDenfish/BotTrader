@@ -23,9 +23,9 @@ class SenderWebhook:
         self.config = CentralConfig()
 
         self._phone = self.config.phone
-        self._email = self.config.email
-        self._e_mailpass = self.config.e_mailpass
-        self._my_email = self.config.my_email
+        self._email_from = self.config.email_from
+        self._smtp_password = self.config.smtp_password
+        self._email_to = self.config.email_to
         self._email_alerts_on = self.config.email_alerts
         self._order_size_fiat = self.config.order_size_fiat
         self._version = self.config.program_version

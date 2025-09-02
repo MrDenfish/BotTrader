@@ -28,9 +28,9 @@ class AlertSystem:
     def __init__(self, logger_manager):
         self.logger = logger_manager.loggers['shared_logger']
         self.phone = _get('PHONE', 'ACCOUNT_PHONE', 'ALERT_PHONE')
-        self.email = os.getenv('EMAIL')
-        self.email_pass = os.getenv('E_MAILPASS')
-        self.my_email = os.getenv('MY_EMAIL')
+        self.email_from = os.getenv('EMAIL_FROM')
+        self.email_pass = os.getenv('SMTP_PASSWORD')
+        self.email_to = os.getenv('EMAIL_TO')
         self.email_alert_on = os.getenv('EMAIL_ALERTS', 'true').lower() == 'true'
 
         if self.email_alert_on:
@@ -43,9 +43,9 @@ class AlertSystem:
         if self.email_alert_on:
             missing = [k for k, v in {
                 'PHONE': self.phone,
-                'EMAIL': self.email,
-                'E_MAILPASS': self.email_pass,
-                'MY_EMAIL': self.my_email
+                'EMAIL_FROM': self.email_from,
+                'SMTP_PASSWORD': self.email_pass,
+                'EMAIL_TO': self.email_to
             }.items() if not v]
 
             if missing:
@@ -57,12 +57,12 @@ class AlertSystem:
                 print(f"🔸 callhome() skipped — email alerts are disabled.")
                 return
 
-            to = self.phone + '@txt.att.net' if mode == 'sms' else self.my_email
+            to = self.phone + '@txt.att.net' if mode == 'sms' else self.email_to
             email_text = f'Subject: {subject}\n\n{message}'
 
             with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-                server.login(self.email, self.email_pass)
-                server.sendmail(self.email, to, email_text)
+                server.login(self.email_from, self.email_pass)
+                server.sendmail(self.email_from, to, email_text)
 
             self.logger(f"� Alert sent to {'SMS' if mode == 'sms' else 'Email'}: {to}")
 

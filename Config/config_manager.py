@@ -36,7 +36,7 @@ class CentralConfig:
         """Set default values for all configuration attributes."""
         self.db_url = self.db_user = self.db_password = self.db_host = None
         self.db_port = self.db_name = self._api_url = self._json_config = None
-        self._phone = self._email = self._e_mailpass = self._my_email = self._email_alerts = None
+        self._phone = self._email_from = self._smtp_password = self._email_to = self._email_alerts = None
         self._order_size_fiat = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
@@ -61,7 +61,7 @@ class CentralConfig:
         self._json_config = {}
         self._log_level = "INFO"
         self._currency_pairs_ignored = []
-        self.is_docker = os.getenv("RUNNING_IN_DOCKER", "false").lower() == "true"
+        self.is_docker = os.getenv("IN_DOCKER", "false").lower() == "true"
 
     def _load_configuration(self):
         """Load configuration from environment variables and JSON files."""
@@ -91,13 +91,12 @@ class CentralConfig:
             "db_user": "DB_USER",
             "_db_monitor_interval": "DB_MONITOR_INTERVAL",
             "_db_connection_threshold": "DB_CONNECTION_THRESHOLD",
-            "docker_db_user": "DOCKER_DB_USER",
             "db_password": "DB_PASSWORD",
             "_email_alerts": "EMAIL_ALERTS",
-            "_email": "EMAIL",
-            "_email_password": "EMAIL_PASSWORD",
+            "_email_to": "EMAIL_TO",
+            "_email_from": "EMAIL_FROM",
+            "_email_password": "SMTP_PASSWORD",
             "_log_level": "LOG_LEVEL",
-            "_async_mode": "ASYNC_MODE",
             "_quote_currency": "QUOTE_CURRENCY",
             "_order_size_fiat": "ORDER_SIZE_FIAT", # in USD
             "_trailing_percentage": "TRAILING_PERCENTAGE",
@@ -119,8 +118,6 @@ class CentralConfig:
             "_roc_window": "ROC_WINDOW",
             "_roc_5min":"ROC_5MIN",
             "_min_spread_pct":"MIN_SPREAD_PCT",
-            "_docker_staticip": "DOCKER_STATICIP",
-            "_tv_whitelist": "TV_WHITELIST",
             "_coin_whitelist": "COIN_WHITELIST",
             "_version": "VERSION",
             "_bb_window": "BB_WINDOW",
@@ -141,18 +138,12 @@ class CentralConfig:
             "_sma": "SMA",
             "_swing_window": "SWING_WINDOW",
             "_sma_volatility": "SMA_VOLATILITY",
-            "_api_url": "API_URL",
-            "_pagekite_whitelist": "PAGEKITE_WHITELIST",
             "_trailing_stop": "TRAILING_STOP",
             "_trailing_limit": "TRAILING_LIMIT",
-            "_api_key": "API_KEY",
-            "_api_secret": "API_SECRET",
-            "_passphrase": "PASSPHRASE",
             "_currency_pairs_ignored": "CURRENCY_PAIRS_IGNORED",
             "_shill_coins": "SHILL_COINS",
             "_sleep_time": 'SLEEP',
-            "_pc_url": 'PC_URL',
-            "_docker_url": 'DOCKER_URL',
+            # "_pc_url": 'PC_URL',
             "_maker_fee": 'MAKER_FEE',
             "_taker_fee": 'TAKER_FEE',
 
@@ -160,9 +151,11 @@ class CentralConfig:
 
         for attr, env_var in env_vars.items():
             value = os.getenv(env_var)
+
             if value is not None:
                 setattr(self, attr, Decimal(value) if attr.startswith("_") and "percentage" in attr.lower() else value)
-
+            else:
+                pass
         print(f"Configuration loaded successfully.")
 
     def _load_json_config(self):
@@ -214,7 +207,10 @@ class CentralConfig:
                 self._json_config[key] = value
 
     def _generate_database_url(self):
-        """Generate the database URL from env/SSM with sensible precedence."""
+        """Generate the database URL from env/SSM with sensible precedence.
+        Precedence:
+      1) DATABASE_URL (complete URL, includes driver)
+      2) DB_* pieces (DB_HOST/DB_USER/DB_PASSWORD/DB_NAME/DB_PORT)"""
         try:
             def pick(*vals):
                 for v in vals:
@@ -222,23 +218,27 @@ class CentralConfig:
                         return v
                 return None
 
-            if self.is_docker:
-                # prefer docker-specific vars, then fall back to canonical DB_* ones
-                db_host = pick(os.getenv("DOCKER_DB_HOST"), self.db_host, os.getenv("DB_HOST"))
-                db_user = pick(os.getenv("DOCKER_DB_USER"), self.db_user, os.getenv("DB_USER"))
-            else:
-                db_host = pick(self.db_host, os.getenv("DB_HOST"))
-                db_user = pick(self.db_user, os.getenv("DB_USER"))
+            # 1) Honor DATABASE_URL if provided (let it include driver like postgresql+asyncpg://)
+            url = os.getenv("DATABASE_URL")
+            if url:
+                self.db_url = url
+                print(f"Configured PostgreSQL (from DATABASE_URL): {url}")
+                print(f" ❇️  web_url: {self.web_url}  ❇️ ")
+                return
 
-            db_pass = pick(self.db_password, os.getenv("DB_PASSWORD"))
-            db_name = pick(self.db_name, os.getenv("DB_NAME"))
-            db_port = pick(self.db_port, os.getenv("DB_PORT"), "5432")
+            # 2) Build from canonical DB_* (no docker-specific vars)
+            db_host = pick(os.getenv("DB_HOST"))
+            db_user = pick(os.getenv("DB_USER"))
+            db_pass = pick(os.getenv("DB_PASSWORD"))
+            db_name = pick(os.getenv("DB_NAME"))
+            db_port = pick(os.getenv("DB_PORT"), "5432")
 
             missing = [k for k, v in dict(DB_HOST=db_host, DB_USER=db_user,
                                           DB_PASSWORD=db_pass, DB_NAME=db_name).items() if not v]
             if missing:
                 raise ValueError(f"Missing DB settings: {', '.join(missing)}")
 
+            # Use async driver by default for SQLAlchemy async engines
             self.db_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
             print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{db_port}/{db_name}")
             print(f" ❇️  web_url: {self.web_url}  ❇️ ")
@@ -368,11 +368,6 @@ class CentralConfig:
         return self._docker_staticip
 
     @property
-    def tv_whitelist(self):
-        return self._tv_whitelist
-
-    #
-    @property
     def coin_whitelist(self):
         return self._coin_whitelist
 
@@ -397,29 +392,13 @@ class CentralConfig:
     def db_connection_threshold(self):
         return self._db_connection_threshold
 
-    @property
-    def db_max_overflow(self):
-        return self._db_max_overflow
+    # @property
+    # def db_max_overflow(self):
+    #     return self._db_max_overflow
 
     @property
     def log_level(self):
         return self._log_level
-
-    @property
-    def async_mode(self):
-        return self._async_mode
-
-    @property
-    def api_key(self):
-        return self._api_key
-
-    @property
-    def api_secret(self):
-        return self._api_secret
-
-    @property
-    def passphrase(self):
-        return self._passphrase
 
     @property
     def hodl(self):
@@ -495,10 +474,6 @@ class CentralConfig:
         return self.db_url
 
     @property
-    def api_url(self):
-        return self._api_url
-
-    @property
     def trailing_stop(self):
         return self._trailing_stop
 
@@ -511,16 +486,16 @@ class CentralConfig:
         return self._phone
 
     @property
-    def email(self):
-        return self._email
+    def email_from(self):
+        return self._email_from
 
     @property
-    def e_mailpass(self):
-        return self._e_mailpass
+    def smtp_password(self):
+        return self._smtp_password
 
     @property
-    def my_email(self):
-        return self._my_email
+    def email_to(self):
+        return self._email_to
 
     @property
     def email_alerts(self):
@@ -656,12 +631,12 @@ class CentralConfig:
 
     @property
     def web_url(self) -> str:
-        full = os.getenv("WEBHOOK_URL")
+        full = os.getenv("WEBHOOK_BASE_URL")
         if full:
             self._log_url("override", full)
             return full
 
-        base = os.getenv("WEBHOOK_BASE_URL") or self._default_base_url()
+        base = self._default_base_url()
         path = (os.getenv("WEBHOOK_PATH") or "/webhook").strip() or "/webhook"
         final = urljoin(base.rstrip("/") + "/", path.lstrip("/"))
         self._log_url("computed", final, base=base, path=path)
@@ -669,16 +644,17 @@ class CentralConfig:
 
     def _default_base_url(self) -> str:
         # legacy fallbacks if users still set them
-        pc_url = getattr(self, "_pc_url", None) or os.getenv("PC_URL") or ""
-        docker_url = getattr(self, "_docker_url", None) or os.getenv("DOCKER_URL") or ""
-
         in_docker = running_in_docker()
+        if in_docker is None:
+            pc_url = getattr(self, "_pc_url", None) or os.getenv("PC_URL") or ""
+            return self._strip_path(pc_url)
+        else:
+            docker_url = os.getenv("WEBHOOK_BASE_URL") or ""
+            return docker_url
 
-        # Desktop (not in Docker)
-        if not in_docker:
-            if pc_url:
-                return self._strip_path(pc_url)
-            return "http://127.0.0.1:5003"
+
+
+
 
         # In Docker
         if in_docker:
