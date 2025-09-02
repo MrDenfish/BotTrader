@@ -25,12 +25,10 @@ services:
     environment:
       TZ: ${TZ}
       RUN_MODE: webhook
-      DATABASE_URL: ${DATABASE_URL}
-    env_file:
-      - /opt/bot/.env_runtime
     depends_on:
       db:
         condition: service_healthy
+    entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
     expose:
       - "5003"
     healthcheck:
@@ -52,13 +50,12 @@ services:
       RUN_MODE: sighook
       DATABASE_URL: ${DATABASE_URL}
       WEBHOOK_BASE_URL: "http://webhook:5003"
-    env_file:
-      - /opt/bot/.env_runtime
     depends_on:
       db:
         condition: service_healthy
       webhook:
         condition: service_healthy
+    # no env_file; entrypoint reads /app/.env_tradebot
     volumes:
       - /opt/bot/.env_runtime:/app/.env_tradebot:ro
       - ./logs:/app/logs
