@@ -50,7 +50,6 @@ services:
     environment:
       TZ: ${TZ}
       RUN_MODE: sighook
-      DATABASE_URL: ${DATABASE_URL}
       WEBHOOK_BASE_URL: "http://webhook:5003"
     depends_on:
       db:
@@ -76,6 +75,9 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ}
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+      REPORT_SENDER: ${REPORT_SENDER}
+      REPORT_RECIPIENTS: ${REPORT_RECIPIENTS}
       # optional overrides if you DON'T want to use DATABASE_URL
       # DB_HOST: db
       # DB_PORT: "5432"
@@ -83,9 +85,6 @@ services:
       # DB_USER: ${DB_USER}
       # DB_PASSWORD: ${DB_PASSWORD}
       # DB_SSL: disable   # (or 'require' if you later use RDS)
-      AWS_REGION: ${AWS_REGION:-us-west-2}
-      REPORT_SENDER: ${REPORT_SENDER}
-      REPORT_RECIPIENTS: ${REPORT_RECIPIENTS}
     env_file:
       - /opt/bot/.env_runtime
     restart: "no"
