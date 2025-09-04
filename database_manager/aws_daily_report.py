@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 import boto3
 import pg8000.native as pg
+import numpy as np, pandas as pd
 import os, io, csv, datetime, ssl
 
+from decimal import Decimal
 from email.mime.text import MIMEText
+from email.utils import getaddresses
+from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 
 
 REGION = os.getenv("AWS_REGION", "us-west-2")
-SENDER = os.getenv("REPORT_SENDER", "reports@a1zoobies.com")
-RECIPIENTS = [r.strip() for r in os.getenv("REPORT_RECIPIENTS", "").split(",") if r.strip()]
+SENDER = os.getenv("REPORT_SENDER", "").strip()
+RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS","")]) if addr]
+if not SENDER or not RECIPIENTS:
+    raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
+TAKER_FEE = Decimal(os.getenv("TAKER_FEE","0.0040"))
+MAKER_FEE = Decimal(os.getenv("MAKER_FEE","0.0025"))
 
 ssm = boto3.client("ssm", region_name=REGION)
 ses = boto3.client("ses", region_name=REGION)
@@ -106,6 +114,33 @@ def load_catalog(conn):
         key = (schema, tname)
         tables.setdefault(key, {})[col.lower()] = dtype
     return tables  # {(schema,table): {col: dtype, ...}}
+
+def compute_kpis(trades_df: pd.DataFrame) -> dict:
+    pnl = pd.to_numeric(trades_df["realized_pnl"], errors="coerce").fillna(0)
+    wins = pnl[pnl>0]; losses = pnl[pnl<0]
+    gross_win = wins.sum(); gross_loss = -losses.sum()
+    p = (pnl>0).mean() if len(pnl) else 0
+    avg_win = wins.mean() if len(wins) else 0
+    avg_loss = losses.mean() if len(losses) else 0  # negative
+    profit_factor = (gross_win / gross_loss) if gross_loss else np.inf
+    expectancy = p*avg_win + (1-p)*avg_loss
+
+    # simple realized-only “equity” curve from daily sums
+    daily = trades_df.assign(day=pd.to_datetime(trades_df["ts"]).dt.date).groupby("day")["realized_pnl"].sum()
+    cum = daily.cumsum()
+    drawdown = cum - cum.cummax()
+    max_dd = float(drawdown.min()) if len(drawdown) else 0.0
+    sharpe = float(daily.mean()/daily.std()*np.sqrt(252)) if daily.std() else float("nan")
+
+    return dict(
+        trades=int(len(trades_df)),
+        win_rate=float(p),
+        profit_factor=float(profit_factor),
+        expectancy=float(expectancy),
+        max_drawdown=max_dd,
+        sharpe=sharpe,
+        fees_usd=float(trades_df.get("fee_usd", pd.Series(0)).sum()),
+    )
 
 def best_table_for(tables, needed_sets, optional_sets=()):
     """
@@ -397,6 +432,12 @@ def build_csv(total_pnl, open_pos, recent_trades):
         w.writerow(r)
     return buf.getvalue().encode("utf-8")
 
+def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
+    os.makedirs(out_dir, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S_UTC")
+    with open(os.path.join(out_dir, f"trading_report_{ts}.csv"), "wb") as f:
+        f.write(csv_bytes)
+
 def send_email(html, csv_bytes):
     msg = MIMEMultipart("mixed")
     msg["Subject"]="Daily Trading Bot Report"
@@ -423,6 +464,7 @@ def main():
         conn.close()
     html = build_html(total_pnl, open_pos, recent_trades, errors, detect_notes)
     csvb = build_csv(total_pnl, open_pos, recent_trades)
+    save_report_copy(csvb)
     send_email(html, csvb)
 
 if __name__ == "__main__":

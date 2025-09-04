@@ -73,6 +73,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
