@@ -91,6 +91,8 @@ services:
 
 volumes:
   pg_data:
+    external: true
+    name: bottrader-aws_pg_data
 
 
 
