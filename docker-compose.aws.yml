@@ -76,8 +76,6 @@ services:
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
-      REPORT_SENDER: ${REPORT_SENDER}
-      REPORT_RECIPIENTS: ${REPORT_RECIPIENTS}
       # optional overrides if you DON'T want to use DATABASE_URL
       # DB_HOST: db
       # DB_PORT: "5432"
