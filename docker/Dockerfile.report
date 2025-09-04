@@ -19,6 +19,7 @@
 #
 # ------------------------------------------------------------------------------
 
+# docker/Dockerfile.report
 FROM python:3.11-slim
 
 # system deps
@@ -26,22 +27,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl ca-certificates tini \
  && rm -rf /var/lib/apt/lists/*
 
-# app user
+# app user (optional hardening)
 RUN useradd -ms /bin/bash appuser
+
 WORKDIR /app
 COPY . /app
 
-# install only what's needed for reporting
-# If you have a separate requirements-report.txt use that; otherwise use your main requirements.txt
-ARG REQS=requirements.txt
+# Make Python see your local packages (database_manager, etc.)
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app
+
+# --- Install report requirements ---
+# If you maintain a separate lock for the report, use it (contains boto3, pg8000).
+# Otherwise fall back to main requirements.txt.
+ARG REQS=requirements-report.txt
 RUN pip install --no-cache-dir -r ${REQS}
 
 # good signals handling
 ENTRYPOINT ["/usr/bin/tini","--"]
 
-# Default: run the daily report script (adjust path/module if yours differs)
-# Example path based on your past naming:
-CMD ["python","-m","BotTrader.database_manager.aws_daily_report"]
+# Run the report module (your repo layout is /app/database_manager/aws_daily_report.py)
+CMD ["python","-m","database_manager.aws_daily_report"]
+
+# Optionally drop privileges (only if your report writes to places owned by appuser)
+# USER appuser
 
 
 
