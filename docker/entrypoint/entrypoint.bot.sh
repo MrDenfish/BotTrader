@@ -73,7 +73,7 @@ sanity_print() {
   local prefix="${COINBASE_API_PREFIX:-unset}"
   local sandbox="${COINBASE_USE_SANDBOX:-unset}"
   log "Coinbase cfg base=${base} prefix=${prefix} sandbox=${sandbox} key_len=${keylen} secret_len=${seclen} pp_len=${pplen}"
-  log "DB cfg host=${POSTGRES_HOST:-db} port=${POSTGRES_PORT:-5432} db=${POSTGRES_DB:-bot_trader_db} user=${POSTGRES_USER:-bottrader}"
+  log "DB cfg host=${POSTGRES_HOST:-db} port=${POSTGRES_PORT:-5432} db=${POSTGRES_DB:-bot_trader_db} user=${POSTGRES_USER:-bot_user}"
 }
 
 check_required() {
@@ -121,7 +121,7 @@ export_env_file_ro "/app/.env_tradebot"
 : "${DB_HOST:=db}"
 : "${DB_PORT:=5432}"
 : "${DB_NAME:=bot_trader_db}"
-: "${DB_USER:=bottrader}"
+: "${DB_USER:=bot_user}"
 : "${DB_PASSWORD:=changeme}"
 
 : "${POSTGRES_HOST:=$DB_HOST}"
