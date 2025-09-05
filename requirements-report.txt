@@ -21,6 +21,8 @@ numpy==2.2.6
     #   bottleneck
     #   numexpr
     #   pandas
+pandas==2.2.3
+    # via -r requirements-report.in
 pg8000==1.31.4
     # via -r requirements-report.in
 python-dateutil==2.9.0.post0
