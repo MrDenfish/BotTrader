@@ -26,6 +26,8 @@ if not SENDER or not RECIPIENTS:
 TAKER_FEE = Decimal(os.getenv("TAKER_FEE", "0.0040"))
 MAKER_FEE = Decimal(os.getenv("MAKER_FEE", "0.0025"))
 
+DEBUG = os.getenv("REPORT_DEBUG", "0").strip() in {"1", "true", "TRUE", "yes", "Yes"}
+
 ssm = boto3.client("ssm", region_name=REGION)
 ses = boto3.client("ses", region_name=REGION)
 
@@ -92,18 +94,22 @@ def get_db_conn():
     )
 
 # =========================
-# Information schema helpers
+# Information schema helpers (pg8000: use $1, $2 placeholders)
 # =========================
 
 def split_schema_table(qualified: str) -> tuple[str, str]:
-    """
-    Accepts 'schema.table' or 'table' (implies public). Returns (schema, table)
-    """
     q = qualified.strip().strip('"')
     if "." in q:
         s, t = q.split(".", 1)
-        return s.strip('"') or "public", t.strip('"')
-    return "public", q
+        return (s.strip('"') or "public", t.strip('"'))
+    return ("public", q)
+
+def qident(name: str) -> str:
+    return '"' + name.replace('"','""') + '"'
+
+def qualify(qualified: str) -> str:
+    sch, tbl = split_schema_table(qualified)
+    return f"{qident(sch)}.{qident(tbl)}"
 
 def table_columns(conn, qualified: str) -> set[str]:
     sch, tbl = split_schema_table(qualified)
@@ -117,14 +123,6 @@ def table_columns(conn, qualified: str) -> set[str]:
     )
     return {r[0] for r in rows}
 
-
-def qident(name: str) -> str:
-    return '"' + name.replace('"','""') + '"'
-
-def qualify(qualified: str) -> str:
-    sch, tbl = split_schema_table(qualified)
-    return f"{qident(sch)}.{qident(tbl)}"
-
 def pick_first_available(cols_present: set[str], candidates: list[str]) -> str | None:
     for c in candidates:
         if c and c in cols_present:
@@ -132,12 +130,12 @@ def pick_first_available(cols_present: set[str], candidates: list[str]) -> str |
     return None
 
 # =========================
-# Core Queries (robust to schema differences)
+# Core Queries (schema-aware)
 # =========================
 
 def run_queries(conn):
     """
-    Returns (total_pnl, open_positions, recent_trades, errors, notes)
+    Returns (total_pnl, open_positions, recent_trades, errors, detect_notes)
 
     - Uses env mappings where provided.
     - Builds column expressions ONLY from columns that exist in the table.
@@ -146,7 +144,7 @@ def run_queries(conn):
     - Falls back from REPORT_TRADES_TABLE -> public.trade_records if sparse.
     """
     errors = []
-    detect_notes = []
+    detect_notes = ["Build:v2"]
 
     # --- Env-driven config ---
     tbl_trades = os.getenv("REPORT_TRADES_TABLE", "public.trade_records")
@@ -167,7 +165,6 @@ def run_queries(conn):
             total_pnl = conn.run(f"SELECT COALESCE(SUM({qident(col_pnl)}),0) FROM {qualify(tbl_pnl)}")[0][0]
             detect_notes.append(f"PnL override: table=({tbl_pnl}) col={col_pnl}")
         else:
-            # Try common synonyms
             cols_present = table_columns(conn, tbl_pnl)
             choice = pick_first_available(cols_present, ["realized_profit","realized_pnl","pnl","profit"])
             if not choice:
@@ -184,23 +181,19 @@ def run_queries(conn):
     open_pos = []
     try:
         cols_pos = table_columns(conn, tbl_pos)
+        if DEBUG:
+            detect_notes.append(f"Columns({tbl_pos}): {sorted(cols_pos)}")
         if not cols_pos:
             raise RuntimeError(f"Table not found: {tbl_pos}")
 
-        # qty column from env or best guess
         qty_col = col_posqty if (col_posqty and col_posqty in cols_pos) else \
                   pick_first_available(cols_pos, ["position_qty","pos_qty","qty","size","amount"])
         if not qty_col:
             raise RuntimeError(f"No qty-like column found on {tbl_pos}")
 
-        # price column: prefer avg_price, else price, else None
         price_col = pick_first_available(cols_pos, ["avg_price","price"])
 
-        select_price = qident(price_col) if price_col else "NULL::numeric AS avg_price"
-        if price_col:
-            price_sql = f"{qident(price_col)} AS avg_price"
-        else:
-            price_sql = "NULL::numeric AS avg_price"
+        price_sql = f"{qident(price_col)} AS avg_price" if price_col else "NULL::numeric AS avg_price"
 
         q = f"""
             SELECT symbol,
@@ -218,53 +211,42 @@ def run_queries(conn):
     # ---------- TRADES (last 24h) ----------
     def run_trades_for(table_name: str, use_mappings: bool = True):
         cols_tr = table_columns(conn, table_name)
+        if DEBUG:
+            detect_notes.append(f"Columns({table_name}): {sorted(cols_tr)}")
         if not cols_tr:
             raise RuntimeError(f"Table not found: {table_name}")
 
-        # Build each expression using only available columns (or env mapping if valid)
+        # symbol column
         sym_col = col_symbol if (use_mappings and col_symbol in cols_tr) else \
                   pick_first_available(cols_tr, ["symbol","product_id"])
         if not sym_col:
-            # symbol is critical; bail out
             raise RuntimeError(f"No symbol-like column on {table_name}")
 
-        # side: use provided, else raw side if present, else derive from amount sign
+        # side expression
         if use_mappings and col_side in cols_tr:
             side_expr = qident(col_side)
         elif "side" in cols_tr:
             side_expr = "side"
         else:
-            # need an amount-like col to derive
-            amt_for_side = pick_first_available(cols_tr, ["qty_signed","amount","size"])
+            amt_for_side = pick_first_available(cols_tr, ["qty_signed","amount","size","executed_size","filled_size","base_amount","remaining_size"])
             if amt_for_side:
                 side_expr = f"CASE WHEN {qident(amt_for_side)} < 0 THEN 'sell' WHEN {qident(amt_for_side)} > 0 THEN 'buy' END"
             else:
-                side_expr = "'?'::text"  # unknown
+                side_expr = "'?'::text"
 
-        # price (try common names and exchange variants)
+        # price expression
         pr_col = col_price if (use_mappings and col_price in cols_tr) else \
-            pick_first_available(cols_tr, [
-                "price", "fill_price", "executed_price",
-                "avg_price", "avg_fill_price", "limit_price"
-            ])
+                 pick_first_available(cols_tr, ["price","fill_price","executed_price","avg_price","avg_fill_price","limit_price"])
         price_expr = qident(pr_col) if pr_col else "NULL::numeric"
 
-        # amount/size (signed size if available, else any executed/filled size; fall back to remaining_size)
+        # amount expression
         amt_col = col_size if (use_mappings and col_size in cols_tr) else \
-            pick_first_available(cols_tr, [
-                "qty_signed", "amount", "size",
-                "executed_size", "filled_size", "base_amount",
-                "remaining_size"
-            ])
+                  pick_first_available(cols_tr, ["qty_signed","amount","size","executed_size","filled_size","base_amount","remaining_size"])
         amt_expr = qident(amt_col) if amt_col else "NULL::numeric"
 
-        # timestamp (prefer trade/filled time; order_time is fine; include completed_at variants)
+        # timestamp expression
         ts_col = col_time if (use_mappings and col_time in cols_tr) else \
-            pick_first_available(cols_tr, [
-                "trade_time", "filled_at", "completed_at",
-                "order_time", "ts", "created_at", "executed_at"
-            ])
-
+                 pick_first_available(cols_tr, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
         if not ts_col:
             raise RuntimeError(f"No time-like column on {table_name}")
         ts_expr = qident(ts_col)
@@ -289,7 +271,6 @@ def run_queries(conn):
         return conn.run(q)
 
     recent_trades = []
-    # First try the configured table with mappings
     try:
         recent_trades = run_trades_for(tbl_trades, use_mappings=True)
         detect_notes.append(f"Trades source: {tbl_trades} (mapped where possible)")
@@ -297,7 +278,6 @@ def run_queries(conn):
         errors.append(f"Trades query failed on {tbl_trades}: {e}")
         recent_trades = []
 
-    # If sparse, try fallback to public.trade_records with auto-detect
     if len(recent_trades) < 5 and tbl_trades != "public.trade_records":
         try:
             alt = run_trades_for("public.trade_records", use_mappings=False)
@@ -314,10 +294,6 @@ def run_queries(conn):
 # =========================
 
 def compute_exposures(open_pos, top_n: int = 3):
-    """
-    open_pos: iterable of rows like (symbol, qty, avg_price)
-    Returns: dict with total_notional, items (top_n), all_items
-    """
     items = []
     total = 0.0
     for row in open_pos or []:
@@ -417,7 +393,6 @@ def build_csv(total_pnl, open_pos, recent_trades, exposures=None):
     w.writerow([])
     w.writerow(["Total Realized PnL (USD)"]); w.writerow([round(float(total_pnl or 0), 2)]); w.writerow([])
 
-    # Exposure snapshot (optional)
     if exposures and exposures.get("total_notional", 0) > 0:
         w.writerow(["Exposure Snapshot"])
         w.writerow(["Total Notional (USD)", f"{exposures['total_notional']:.2f}"])
@@ -426,14 +401,12 @@ def build_csv(total_pnl, open_pos, recent_trades, exposures=None):
             w.writerow([it["symbol"], f"{it['notional']:.2f}", f"{it['pct']:.1f}%", it["side"], it["qty"], it["price"]])
         w.writerow([])
 
-    # Positions
     w.writerow(["Open Positions"]); w.writerow(["Symbol","Qty","Avg Price"])
     for r in open_pos:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
         w.writerow(r)
     w.writerow([])
 
-    # Trades
     w.writerow(["Trades (Last 24h)"]); w.writerow(["Symbol","Side","Price","Amount","Time"])
     for r in recent_trades:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
@@ -488,5 +461,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
