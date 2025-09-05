@@ -5,9 +5,6 @@ import csv
 import ssl
 import boto3
 import pg8000.native as pg
-import numpy as np
-import pandas as pd
-
 from decimal import Decimal
 from email.mime.text import MIMEText
 from email.utils import getaddresses
@@ -23,19 +20,14 @@ from datetime import datetime, timezone
 REGION = os.getenv("AWS_REGION", "us-west-2")
 SENDER = os.getenv("REPORT_SENDER", "").strip()
 RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS", "")]) if addr]
-
 if not SENDER or not RECIPIENTS:
-    raise ValueError(
-        f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}"
-    )
+    raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
-# Fees only used if you later choose to display fee-adjusted stats
 TAKER_FEE = Decimal(os.getenv("TAKER_FEE", "0.0040"))
 MAKER_FEE = Decimal(os.getenv("MAKER_FEE", "0.0025"))
 
 ssm = boto3.client("ssm", region_name=REGION)
 ses = boto3.client("ses", region_name=REGION)
-
 
 # =========================
 # Utilities
@@ -43,7 +35,6 @@ ses = boto3.client("ses", region_name=REGION)
 
 def get_param(name: str) -> str:
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
-
 
 def _maybe_ssl_context(require_ssl: bool):
     if not require_ssl:
@@ -57,7 +48,6 @@ def _maybe_ssl_context(require_ssl: bool):
             pass
     return ctx
 
-
 def _env_or_ssm(env_key: str, ssm_param_name: str | None, default: str | None = None):
     v = os.getenv(env_key)
     if v:
@@ -68,13 +58,11 @@ def _env_or_ssm(env_key: str, ssm_param_name: str | None, default: str | None = 
         return default
     raise RuntimeError(f"Missing {env_key} and no SSM fallback provided.")
 
-
 def get_db_conn():
     """
     Connection priority:
-      1) DATABASE_URL (postgres:// or postgresql://; honors ?sslmode=require/verify-*)
-      2) DB_* environment variables (with optional DB_SSL=require|true|1)
-      3) SSM (not used by default here, but function supports it via _env_or_ssm)
+      1) DATABASE_URL (?sslmode respected)
+      2) DB_* env vars (optional DB_SSL=require|true|1)
     """
     url = os.getenv("DATABASE_URL")
     if url:
@@ -88,154 +76,227 @@ def get_db_conn():
         sslmode = (qs.get("sslmode", [""])[0] or "").lower()
         require_ssl = sslmode in {"require", "verify-ca", "verify-full"} or "+ssl" in (u.scheme or "")
         return pg.Connection(
-            user=user,
-            password=pwd,
-            host=host,
-            port=port,
-            database=name,
-            ssl_context=_maybe_ssl_context(require_ssl),
+            user=user, password=pwd, host=host, port=port, database=name,
+            ssl_context=_maybe_ssl_context(require_ssl)
         )
 
     host = _env_or_ssm("DB_HOST", None, "db")
     port = int(_env_or_ssm("DB_PORT", None, "5432"))
     name = _env_or_ssm("DB_NAME", None, None)
     user = _env_or_ssm("DB_USER", None, None)
-    pwd = _env_or_ssm("DB_PASSWORD", None, None)
-    db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require", "true", "1"})
-
+    pwd  = _env_or_ssm("DB_PASSWORD", None, None)
+    db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require","true","1"})
     return pg.Connection(
-        user=user,
-        password=pwd,
-        host=host,
-        port=port,
-        database=name,
-        ssl_context=_maybe_ssl_context(db_ssl),
+        user=user, password=pwd, host=host, port=port, database=name,
+        ssl_context=_maybe_ssl_context(db_ssl)
     )
 
+# =========================
+# Information schema helpers
+# =========================
+
+def split_schema_table(qualified: str) -> tuple[str, str]:
+    """
+    Accepts 'schema.table' or 'table' (implies public). Returns (schema, table)
+    """
+    q = qualified.strip().strip('"')
+    if "." in q:
+        s, t = q.split(".", 1)
+        return s.strip('"') or "public", t.strip('"')
+    return "public", q
+
+def table_columns(conn, qualified: str) -> set[str]:
+    sch, tbl = split_schema_table(qualified)
+    rows = conn.run("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema=%s AND table_name=%s
+    """, sch, tbl)
+    return {r[0] for r in rows}
+
+def qident(name: str) -> str:
+    return '"' + name.replace('"','""') + '"'
+
+def qualify(qualified: str) -> str:
+    sch, tbl = split_schema_table(qualified)
+    return f"{qident(sch)}.{qident(tbl)}"
+
+def pick_first_available(cols_present: set[str], candidates: list[str]) -> str | None:
+    for c in candidates:
+        if c and c in cols_present:
+            return c
+    return None
 
 # =========================
-# Core Queries
+# Core Queries (robust to schema differences)
 # =========================
 
 def run_queries(conn):
     """
-    Return (total_pnl, open_positions, recent_trades, errors, notes)
+    Returns (total_pnl, open_positions, recent_trades, errors, notes)
 
-    - Trades: prefer REPORT_TRADES_TABLE w/ mapped columns; if sparse (<5 rows),
-      auto-fallback to public.trade_records with auto-detected columns.
-    - Positions: REPORT_POSITIONS_TABLE (fallback public.positions), only non-zero qty.
-    - PnL: sum REPORT_COL_PNL if set; else coalesce common synonyms.
+    - Uses env mappings where provided.
+    - Builds column expressions ONLY from columns that exist in the table.
+    - Applies status filter only if the table has such a column.
+    - 24h window is UTC using the best-available timestamp column.
+    - Falls back from REPORT_TRADES_TABLE -> public.trade_records if sparse.
     """
     errors = []
     detect_notes = []
 
-    # --- Env-driven table/column config ---
+    # --- Env-driven config ---
     tbl_trades = os.getenv("REPORT_TRADES_TABLE", "public.trade_records")
-    tbl_pos = os.getenv("REPORT_POSITIONS_TABLE", "public.report_positions")
-    tbl_pnl = os.getenv("REPORT_PNL_TABLE", "public.trade_records")
+    tbl_pos    = os.getenv("REPORT_POSITIONS_TABLE", "public.report_positions")
+    tbl_pnl    = os.getenv("REPORT_PNL_TABLE", "public.trade_records")
 
-    col_symbol = os.getenv("REPORT_COL_SYMBOL")         # e.g., symbol
-    col_side = os.getenv("REPORT_COL_SIDE")             # e.g., side
-    col_price = os.getenv("REPORT_COL_PRICE")           # e.g., price
-    col_size = os.getenv("REPORT_COL_SIZE")             # e.g., qty_signed
-    col_time = os.getenv("REPORT_COL_TIME")             # e.g., ts
-    col_posqty = os.getenv("REPORT_COL_POS_QTY")        # e.g., position_qty
-    col_pnl = os.getenv("REPORT_COL_PNL")               # e.g., realized_profit
+    col_symbol = os.getenv("REPORT_COL_SYMBOL")       # symbol
+    col_side   = os.getenv("REPORT_COL_SIDE")         # side
+    col_price  = os.getenv("REPORT_COL_PRICE")        # price
+    col_size   = os.getenv("REPORT_COL_SIZE")         # qty_signed
+    col_time   = os.getenv("REPORT_COL_TIME")         # ts
+    col_posqty = os.getenv("REPORT_COL_POS_QTY")      # position_qty
+    col_pnl    = os.getenv("REPORT_COL_PNL")          # realized_profit
 
     # ---------- TOTAL REALIZED PNL ----------
     try:
         if col_pnl:
-            total_pnl = conn.run(f"""
-                SELECT COALESCE(SUM({col_pnl}), 0) FROM {tbl_pnl}
-            """)[0][0]
+            total_pnl = conn.run(f"SELECT COALESCE(SUM({qident(col_pnl)}),0) FROM {qualify(tbl_pnl)}")[0][0]
             detect_notes.append(f"PnL override: table=({tbl_pnl}) col={col_pnl}")
         else:
-            total_pnl = conn.run(f"""
-                SELECT COALESCE(SUM(COALESCE(realized_profit, realized_pnl, pnl, profit)), 0)
-                FROM {tbl_pnl}
-            """)[0][0]
-            detect_notes.append(
-                f"PnL auto-detect: table=({tbl_pnl}) coalesce(realized_profit, realized_pnl, pnl, profit)"
-            )
+            # Try common synonyms
+            cols_present = table_columns(conn, tbl_pnl)
+            choice = pick_first_available(cols_present, ["realized_profit","realized_pnl","pnl","profit"])
+            if not choice:
+                total_pnl = 0
+                detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
+            else:
+                total_pnl = conn.run(f"SELECT COALESCE(SUM({qident(choice)}),0) FROM {qualify(tbl_pnl)}")[0][0]
+                detect_notes.append(f"PnL auto: table=({tbl_pnl}) col={choice}")
     except Exception as e:
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
 
-    # ---------- OPEN POSITIONS (inventory snapshot, not open orders) ----------
+    # ---------- OPEN POSITIONS (non-zero qty) ----------
     open_pos = []
     try:
-        qty_expr = col_posqty or "COALESCE(position_qty, pos_qty, qty, size, amount)"
-        price_expr = "COALESCE(avg_price, price)"
+        cols_pos = table_columns(conn, tbl_pos)
+        if not cols_pos:
+            raise RuntimeError(f"Table not found: {tbl_pos}")
+
+        # qty column from env or best guess
+        qty_col = col_posqty if (col_posqty and col_posqty in cols_pos) else \
+                  pick_first_available(cols_pos, ["position_qty","pos_qty","qty","size","amount"])
+        if not qty_col:
+            raise RuntimeError(f"No qty-like column found on {tbl_pos}")
+
+        # price column: prefer avg_price, else price, else None
+        price_col = pick_first_available(cols_pos, ["avg_price","price"])
+
+        select_price = qident(price_col) if price_col else "NULL::numeric AS avg_price"
+        if price_col:
+            price_sql = f"{qident(price_col)} AS avg_price"
+        else:
+            price_sql = "NULL::numeric AS avg_price"
+
         q = f"""
             SELECT symbol,
-                   {qty_expr} AS qty,
-                   {price_expr} AS avg_price
-            FROM {tbl_pos}
-            WHERE COALESCE({qty_expr}, 0) <> 0
+                   {qident(qty_col)} AS qty,
+                   {price_sql}
+            FROM {qualify(tbl_pos)}
+            WHERE COALESCE({qident(qty_col)}, 0) <> 0
             ORDER BY symbol
         """
         open_pos = conn.run(q)
-        detect_notes.append(
-            f"Positions source: {tbl_pos} qty_col={col_posqty or 'auto'} price_col=auto"
-        )
+        detect_notes.append(f"Positions source: {tbl_pos} qty_col={qty_col} price_col={price_col or 'NULL'}")
     except Exception as e1:
-        # Fallback to plain positions if report_positions missing
-        try:
-            q2 = f"""
-                SELECT symbol,
-                       COALESCE(position_qty, pos_qty, qty, size, amount) AS qty,
-                       COALESCE(avg_price, price) AS avg_price
-                FROM public.positions
-                WHERE COALESCE(COALESCE(position_qty, pos_qty, qty, size, amount), 0) <> 0
-                ORDER BY symbol
-            """
-            open_pos = conn.run(q2)
-            detect_notes.append("Positions fallback: public.positions")
-        except Exception as e2:
-            errors.append(f"Positions query failed: {e1} / {e2}")
+        errors.append(f"Positions query failed: {e1}")
 
     # ---------- TRADES (last 24h) ----------
-    def _trades_query(table_name: str, use_mapped: bool = True) -> str:
-        # Column expressions (allow mapping or auto-detect)
-        sym = col_symbol if (use_mapped and col_symbol) else "COALESCE(symbol, product_id)"
-        side = (
-            col_side
-            if (use_mapped and col_side)
-            else "COALESCE(side, CASE WHEN COALESCE(qty_signed, amount, size, 0) < 0 THEN 'sell' ELSE 'buy' END)"
-        )
-        price = col_price if (use_mapped and col_price) else "COALESCE(price, fill_price, executed_price)"
-        amt = col_size if (use_mapped and col_size) else "COALESCE(qty_signed, amount, size)"
-        ts = col_time if (use_mapped and col_time) else "COALESCE(trade_time, order_time, ts, created_at)"
-        return f"""
-            SELECT {sym} AS symbol,
-                   {side} AS side,
-                   {price} AS price,
-                   {amt} AS amount,
-                   {ts} AS ts
-            FROM {table_name}
-            WHERE COALESCE(status, 'filled') IN ('filled','done')
-              AND {ts} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '24 hours')
-            ORDER BY {ts} DESC
+    def run_trades_for(table_name: str, use_mappings: bool = True):
+        cols_tr = table_columns(conn, table_name)
+        if not cols_tr:
+            raise RuntimeError(f"Table not found: {table_name}")
+
+        # Build each expression using only available columns (or env mapping if valid)
+        sym_col = col_symbol if (use_mappings and col_symbol in cols_tr) else \
+                  pick_first_available(cols_tr, ["symbol","product_id"])
+        if not sym_col:
+            # symbol is critical; bail out
+            raise RuntimeError(f"No symbol-like column on {table_name}")
+
+        # side: use provided, else raw side if present, else derive from amount sign
+        if use_mappings and col_side in cols_tr:
+            side_expr = qident(col_side)
+        elif "side" in cols_tr:
+            side_expr = "side"
+        else:
+            # need an amount-like col to derive
+            amt_for_side = pick_first_available(cols_tr, ["qty_signed","amount","size"])
+            if amt_for_side:
+                side_expr = f"CASE WHEN {qident(amt_for_side)} < 0 THEN 'sell' WHEN {qident(amt_for_side)} > 0 THEN 'buy' END"
+            else:
+                side_expr = "'?'::text"  # unknown
+
+        # price (try common names and exchange variants)
+        pr_col = col_price if (use_mappings and col_price in cols_tr) else \
+            pick_first_available(cols_tr, [
+                "price", "fill_price", "executed_price",
+                "avg_price", "avg_fill_price", "limit_price"
+            ])
+        price_expr = qident(pr_col) if pr_col else "NULL::numeric"
+
+        # amount/size (signed size if available, else any executed/filled size; fall back to remaining_size)
+        amt_col = col_size if (use_mappings and col_size in cols_tr) else \
+            pick_first_available(cols_tr, [
+                "qty_signed", "amount", "size",
+                "executed_size", "filled_size", "base_amount",
+                "remaining_size"
+            ])
+        amt_expr = qident(amt_col) if amt_col else "NULL::numeric"
+
+        # timestamp (prefer trade/filled time; order_time is fine; include completed_at variants)
+        ts_col = col_time if (use_mappings and col_time in cols_tr) else \
+            pick_first_available(cols_tr, [
+                "trade_time", "filled_at", "completed_at",
+                "order_time", "ts", "created_at", "executed_at"
+            ])
+
+        if not ts_col:
+            raise RuntimeError(f"No time-like column on {table_name}")
+        ts_expr = qident(ts_col)
+
+        # status filter only if present
+        status_filter = ""
+        if "status" in cols_tr:
+            status_filter = "AND COALESCE(status,'filled') IN ('filled','done')"
+
+        q = f"""
+            SELECT {qident(sym_col)} AS symbol,
+                   {side_expr} AS side,
+                   {price_expr} AS price,
+                   {amt_expr} AS amount,
+                   {ts_expr} AS ts
+            FROM {qualify(table_name)}
+            WHERE {ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '24 hours')
+              {status_filter}
+            ORDER BY {ts_expr} DESC
             LIMIT 1000
         """
+        return conn.run(q)
 
     recent_trades = []
+    # First try the configured table with mappings
     try:
-        # First attempt: configured table with mapped columns
-        q_tr = _trades_query(tbl_trades, use_mapped=True)
-        recent_trades = conn.run(q_tr)
-        detect_notes.append(
-            f"Trades source: {tbl_trades} columns={{'symbol': '{col_symbol}', 'side': '{col_side}', 'price': '{col_price}', 'size': '{col_size}', 'time': '{col_time}'}}"
-        )
+        recent_trades = run_trades_for(tbl_trades, use_mappings=True)
+        detect_notes.append(f"Trades source: {tbl_trades} (mapped where possible)")
     except Exception as e:
         errors.append(f"Trades query failed on {tbl_trades}: {e}")
         recent_trades = []
 
-    # Auto-fallback if sparse and not already using public.trade_records
+    # If sparse, try fallback to public.trade_records with auto-detect
     if len(recent_trades) < 5 and tbl_trades != "public.trade_records":
         try:
-            q_alt = _trades_query("public.trade_records", use_mapped=False)
-            alt = conn.run(q_alt)
+            alt = run_trades_for("public.trade_records", use_mappings=False)
             if len(alt) > len(recent_trades):
                 recent_trades = alt
                 detect_notes.append("Trades fallback: public.trade_records (auto-detected columns)")
@@ -243,7 +304,6 @@ def run_queries(conn):
             errors.append(f"Trades fallback query failed: {e}")
 
     return total_pnl, open_pos, recent_trades, errors, detect_notes
-
 
 # =========================
 # Exposure Snapshot
@@ -271,13 +331,12 @@ def compute_exposures(open_pos, top_n: int = 3):
             "qty": qty,
             "price": px,
             "side": "short" if qty < 0 else "long",
-            "pct": 0.0,  # filled later
+            "pct": 0.0,
         })
     items.sort(key=lambda x: x["notional"], reverse=True)
     for it in items:
         it["pct"] = (it["notional"] / total * 100.0) if total > 0 else 0.0
     return {"total_notional": total, "items": items[:top_n], "all_items": items}
-
 
 # =========================
 # Email / CSV Builders
@@ -291,16 +350,12 @@ def build_html(total_pnl, open_pos, recent_trades, errors, detect_notes, exposur
         for r in rows_:
             rr = []
             for c in r:
-                if hasattr(c, "isoformat"):
-                    rr.append(c.isoformat())
-                else:
-                    rr.append(c)
+                rr.append(c.isoformat() if hasattr(c, "isoformat") else c)
             out.append("<tr>" + "".join(f"<td>{c}</td>" for c in rr) + "</tr>")
         return "".join(out)
 
     now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    # Exposure snapshot HTML
     exposure_html = ""
     if exposures and exposures.get("total_notional", 0) > 0:
         total_notional = exposures["total_notional"]
@@ -351,50 +406,35 @@ def build_html(total_pnl, open_pos, recent_trades, errors, detect_notes, exposur
     <p style="color:#666">CSV attachment includes these tables.</p>
     </body></html>"""
 
-
 def build_csv(total_pnl, open_pos, recent_trades, exposures=None):
-    buf = io.StringIO()
-    w = csv.writer(buf)
+    buf = io.StringIO(); w = csv.writer(buf)
     w.writerow(["Daily Trading Bot Report"])
     w.writerow(["Generated (UTC)", datetime.utcnow().isoformat()])
     w.writerow([])
-    w.writerow(["Total Realized PnL (USD)"])
-    w.writerow([round(float(total_pnl or 0), 2)])
-    w.writerow([])
+    w.writerow(["Total Realized PnL (USD)"]); w.writerow([round(float(total_pnl or 0), 2)]); w.writerow([])
 
-    # Exposure Snapshot (optional)
+    # Exposure snapshot (optional)
     if exposures and exposures.get("total_notional", 0) > 0:
         w.writerow(["Exposure Snapshot"])
         w.writerow(["Total Notional (USD)", f"{exposures['total_notional']:.2f}"])
-        w.writerow(["Symbol", "Notional", "% of Total", "Side", "Qty", "Avg Price"])
+        w.writerow(["Symbol","Notional","% of Total","Side","Qty","Avg Price"])
         for it in exposures["items"]:
-            w.writerow([
-                it["symbol"],
-                f"{it['notional']:.2f}",
-                f"{it['pct']:.1f}%",
-                it["side"],
-                it["qty"],
-                it["price"],
-            ])
+            w.writerow([it["symbol"], f"{it['notional']:.2f}", f"{it['pct']:.1f}%", it["side"], it["qty"], it["price"]])
         w.writerow([])
 
     # Positions
-    w.writerow(["Open Positions"])
-    w.writerow(["Symbol", "Qty", "Avg Price"])
+    w.writerow(["Open Positions"]); w.writerow(["Symbol","Qty","Avg Price"])
     for r in open_pos:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
         w.writerow(r)
     w.writerow([])
 
     # Trades
-    w.writerow(["Trades (Last 24h)"])
-    w.writerow(["Symbol", "Side", "Price", "Amount", "Time"])
+    w.writerow(["Trades (Last 24h)"]); w.writerow(["Symbol","Side","Price","Amount","Time"])
     for r in recent_trades:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
         w.writerow(r)
-
     return buf.getvalue().encode("utf-8")
-
 
 # =========================
 # IO & Email
@@ -406,12 +446,11 @@ def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
     with open(os.path.join(out_dir, f"trading_report_{ts}.csv"), "wb") as f:
         f.write(csv_bytes)
 
-
 def send_email(html, csv_bytes):
     msg = MIMEMultipart("mixed")
-    msg["Subject"] = "Daily Trading Bot Report"
-    msg["From"] = SENDER
-    msg["To"] = ",".join(RECIPIENTS) if RECIPIENTS else SENDER
+    msg["Subject"]="Daily Trading Bot Report"
+    msg["From"]=SENDER
+    msg["To"]=",".join(RECIPIENTS) if RECIPIENTS else SENDER
 
     alt = MIMEMultipart("alternative")
     alt.attach(MIMEText("Your client does not support HTML.", "plain"))
@@ -422,12 +461,7 @@ def send_email(html, csv_bytes):
     part.add_header("Content-Disposition", 'attachment; filename="trading_report.csv"')
     msg.attach(part)
 
-    ses.send_raw_email(
-        Source=SENDER,
-        Destinations=RECIPIENTS or [SENDER],
-        RawMessage={"Data": msg.as_string().encode("utf-8")},
-    )
-
+    ses.send_raw_email(Source=SENDER, Destinations=RECIPIENTS or [SENDER], RawMessage={"Data": msg.as_string().encode("utf-8")})
 
 # =========================
 # Entry Point
@@ -448,7 +482,7 @@ def main():
     save_report_copy(csvb)
     send_email(html, csvb)
 
-
 if __name__ == "__main__":
     main()
+
 
