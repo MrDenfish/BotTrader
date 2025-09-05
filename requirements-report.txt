@@ -16,6 +16,11 @@ jmespath==1.0.1
     # via
     #   boto3
     #   botocore
+numpy==2.2.6
+    # via
+    #   bottleneck
+    #   numexpr
+    #   pandas
 pg8000==1.31.4
     # via -r requirements-report.in
 python-dateutil==2.9.0.post0
