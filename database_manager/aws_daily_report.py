@@ -13,10 +13,6 @@ from email.mime.application import MIMEApplication
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timezone
 
-# =========================
-# Configuration & Clients
-# =========================
-
 REGION = os.getenv("AWS_REGION", "us-west-2")
 SENDER = os.getenv("REPORT_SENDER", "").strip()
 RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS", "")]) if addr]
@@ -30,10 +26,6 @@ DEBUG = os.getenv("REPORT_DEBUG", "0").strip() in {"1", "true", "TRUE", "yes", "
 
 ssm = boto3.client("ssm", region_name=REGION)
 ses = boto3.client("ses", region_name=REGION)
-
-# =========================
-# Utilities
-# =========================
 
 def get_param(name: str) -> str:
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
@@ -61,26 +53,19 @@ def _env_or_ssm(env_key: str, ssm_param_name: str | None, default: str | None = 
     raise RuntimeError(f"Missing {env_key} and no SSM fallback provided.")
 
 def get_db_conn():
-    """
-    Connection priority:
-      1) DATABASE_URL (?sslmode respected)
-      2) DB_* env vars (optional DB_SSL=require|true|1)
-    """
     url = os.getenv("DATABASE_URL")
     if url:
         u = urlparse(url)
         host = u.hostname or "db"
         port = int(u.port or 5432)
         user = u.username
-        pwd = u.password
+        pwd  = u.password
         name = (u.path or "/").lstrip("/")
         qs = parse_qs(u.query or "")
         sslmode = (qs.get("sslmode", [""])[0] or "").lower()
         require_ssl = sslmode in {"require", "verify-ca", "verify-full"} or "+ssl" in (u.scheme or "")
-        return pg.Connection(
-            user=user, password=pwd, host=host, port=port, database=name,
-            ssl_context=_maybe_ssl_context(require_ssl)
-        )
+        return pg.Connection(user=user, password=pwd, host=host, port=port, database=name,
+                             ssl_context=_maybe_ssl_context(require_ssl))
 
     host = _env_or_ssm("DB_HOST", None, "db")
     port = int(_env_or_ssm("DB_PORT", None, "5432"))
@@ -88,14 +73,10 @@ def get_db_conn():
     user = _env_or_ssm("DB_USER", None, None)
     pwd  = _env_or_ssm("DB_PASSWORD", None, None)
     db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require","true","1"})
-    return pg.Connection(
-        user=user, password=pwd, host=host, port=port, database=name,
-        ssl_context=_maybe_ssl_context(db_ssl)
-    )
+    return pg.Connection(user=user, password=pwd, host=host, port=port, database=name,
+                         ssl_context=_maybe_ssl_context(db_ssl))
 
-# =========================
-# Information schema helpers (pg8000: use $1, $2 placeholders)
-# =========================
+# ---------- Identifier / information_schema helpers ----------
 
 def split_schema_table(qualified: str) -> tuple[str, str]:
     q = qualified.strip().strip('"')
@@ -111,16 +92,22 @@ def qualify(qualified: str) -> str:
     sch, tbl = split_schema_table(qualified)
     return f"{qident(sch)}.{qident(tbl)}"
 
+def _sql_str(s: str) -> str:
+    # safe single-quoted string literal
+    return "'" + s.replace("'", "''") + "'"
+
 def table_columns(conn, qualified: str) -> set[str]:
+    """
+    Build a literal (non-parameterized) info-schema query. This avoids pg8000 parameter
+    quirks in some environments.
+    """
     sch, tbl = split_schema_table(qualified)
-    rows = conn.run(
-        """
+    sql = f"""
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema = $1 AND table_name = $2
-        """,
-        sch, tbl,
-    )
+        WHERE table_schema = {_sql_str(sch)} AND table_name = {_sql_str(tbl)}
+    """
+    rows = conn.run(sql)
     return {r[0] for r in rows}
 
 def pick_first_available(cols_present: set[str], candidates: list[str]) -> str | None:
@@ -129,9 +116,7 @@ def pick_first_available(cols_present: set[str], candidates: list[str]) -> str |
             return c
     return None
 
-# =========================
-# Core Queries (schema-aware)
-# =========================
+# ---------- Core queries (schema-aware, Build:v3) ----------
 
 def run_queries(conn):
     """
@@ -144,22 +129,22 @@ def run_queries(conn):
     - Falls back from REPORT_TRADES_TABLE -> public.trade_records if sparse.
     """
     errors = []
-    detect_notes = ["Build:v2"]
+    detect_notes = ["Build:v3"]
 
-    # --- Env-driven config ---
+    # Env-driven config
     tbl_trades = os.getenv("REPORT_TRADES_TABLE", "public.trade_records")
     tbl_pos    = os.getenv("REPORT_POSITIONS_TABLE", "public.report_positions")
     tbl_pnl    = os.getenv("REPORT_PNL_TABLE", "public.trade_records")
 
-    col_symbol = os.getenv("REPORT_COL_SYMBOL")       # symbol
-    col_side   = os.getenv("REPORT_COL_SIDE")         # side
-    col_price  = os.getenv("REPORT_COL_PRICE")        # price
-    col_size   = os.getenv("REPORT_COL_SIZE")         # qty_signed
-    col_time   = os.getenv("REPORT_COL_TIME")         # ts
-    col_posqty = os.getenv("REPORT_COL_POS_QTY")      # position_qty
-    col_pnl    = os.getenv("REPORT_COL_PNL")          # realized_profit
+    col_symbol = os.getenv("REPORT_COL_SYMBOL")      # symbol
+    col_side   = os.getenv("REPORT_COL_SIDE")        # side
+    col_price  = os.getenv("REPORT_COL_PRICE")       # price
+    col_size   = os.getenv("REPORT_COL_SIZE")        # qty_signed
+    col_time   = os.getenv("REPORT_COL_TIME")        # ts
+    col_posqty = os.getenv("REPORT_COL_POS_QTY")     # position_qty
+    col_pnl    = os.getenv("REPORT_COL_PNL")         # realized_profit
 
-    # ---------- TOTAL REALIZED PNL ----------
+    # ----- PnL -----
     try:
         if col_pnl:
             total_pnl = conn.run(f"SELECT COALESCE(SUM({qident(col_pnl)}),0) FROM {qualify(tbl_pnl)}")[0][0]
@@ -177,7 +162,7 @@ def run_queries(conn):
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
 
-    # ---------- OPEN POSITIONS (non-zero qty) ----------
+    # ----- Positions (non-zero qty) -----
     open_pos = []
     try:
         cols_pos = table_columns(conn, tbl_pos)
@@ -192,7 +177,6 @@ def run_queries(conn):
             raise RuntimeError(f"No qty-like column found on {tbl_pos}")
 
         price_col = pick_first_available(cols_pos, ["avg_price","price"])
-
         price_sql = f"{qident(price_col)} AS avg_price" if price_col else "NULL::numeric AS avg_price"
 
         q = f"""
@@ -208,7 +192,7 @@ def run_queries(conn):
     except Exception as e1:
         errors.append(f"Positions query failed: {e1}")
 
-    # ---------- TRADES (last 24h) ----------
+    # ----- Trades (last 24h) -----
     def run_trades_for(table_name: str, use_mappings: bool = True):
         cols_tr = table_columns(conn, table_name)
         if DEBUG:
@@ -216,13 +200,13 @@ def run_queries(conn):
         if not cols_tr:
             raise RuntimeError(f"Table not found: {table_name}")
 
-        # symbol column
+        # symbol
         sym_col = col_symbol if (use_mappings and col_symbol in cols_tr) else \
                   pick_first_available(cols_tr, ["symbol","product_id"])
         if not sym_col:
             raise RuntimeError(f"No symbol-like column on {table_name}")
 
-        # side expression
+        # side
         if use_mappings and col_side in cols_tr:
             side_expr = qident(col_side)
         elif "side" in cols_tr:
@@ -234,24 +218,23 @@ def run_queries(conn):
             else:
                 side_expr = "'?'::text"
 
-        # price expression
+        # price
         pr_col = col_price if (use_mappings and col_price in cols_tr) else \
                  pick_first_available(cols_tr, ["price","fill_price","executed_price","avg_price","avg_fill_price","limit_price"])
         price_expr = qident(pr_col) if pr_col else "NULL::numeric"
 
-        # amount expression
+        # amount
         amt_col = col_size if (use_mappings and col_size in cols_tr) else \
                   pick_first_available(cols_tr, ["qty_signed","amount","size","executed_size","filled_size","base_amount","remaining_size"])
         amt_expr = qident(amt_col) if amt_col else "NULL::numeric"
 
-        # timestamp expression
+        # timestamp
         ts_col = col_time if (use_mappings and col_time in cols_tr) else \
                  pick_first_available(cols_tr, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
         if not ts_col:
             raise RuntimeError(f"No time-like column on {table_name}")
         ts_expr = qident(ts_col)
 
-        # status filter only if present
         status_filter = ""
         if "status" in cols_tr:
             status_filter = "AND COALESCE(status,'filled') IN ('filled','done')"
@@ -289,9 +272,7 @@ def run_queries(conn):
 
     return total_pnl, open_pos, recent_trades, errors, detect_notes
 
-# =========================
-# Exposure Snapshot
-# =========================
+# ---------- Exposure Snapshot ----------
 
 def compute_exposures(open_pos, top_n: int = 3):
     items = []
@@ -318,9 +299,7 @@ def compute_exposures(open_pos, top_n: int = 3):
         it["pct"] = (it["notional"] / total * 100.0) if total > 0 else 0.0
     return {"total_notional": total, "items": items[:top_n], "all_items": items}
 
-# =========================
-# Email / CSV Builders
-# =========================
+# ---------- Email / CSV ----------
 
 def build_html(total_pnl, open_pos, recent_trades, errors, detect_notes, exposures=None):
     def rows(rows_):
@@ -392,7 +371,6 @@ def build_csv(total_pnl, open_pos, recent_trades, exposures=None):
     w.writerow(["Generated (UTC)", datetime.utcnow().isoformat()])
     w.writerow([])
     w.writerow(["Total Realized PnL (USD)"]); w.writerow([round(float(total_pnl or 0), 2)]); w.writerow([])
-
     if exposures and exposures.get("total_notional", 0) > 0:
         w.writerow(["Exposure Snapshot"])
         w.writerow(["Total Notional (USD)", f"{exposures['total_notional']:.2f}"])
@@ -400,22 +378,16 @@ def build_csv(total_pnl, open_pos, recent_trades, exposures=None):
         for it in exposures["items"]:
             w.writerow([it["symbol"], f"{it['notional']:.2f}", f"{it['pct']:.1f}%", it["side"], it["qty"], it["price"]])
         w.writerow([])
-
     w.writerow(["Open Positions"]); w.writerow(["Symbol","Qty","Avg Price"])
     for r in open_pos:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
         w.writerow(r)
     w.writerow([])
-
     w.writerow(["Trades (Last 24h)"]); w.writerow(["Symbol","Side","Price","Amount","Time"])
     for r in recent_trades:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
         w.writerow(r)
     return buf.getvalue().encode("utf-8")
-
-# =========================
-# IO & Email
-# =========================
 
 def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
     os.makedirs(out_dir, exist_ok=True)
@@ -428,21 +400,14 @@ def send_email(html, csv_bytes):
     msg["Subject"]="Daily Trading Bot Report"
     msg["From"]=SENDER
     msg["To"]=",".join(RECIPIENTS) if RECIPIENTS else SENDER
-
     alt = MIMEMultipart("alternative")
     alt.attach(MIMEText("Your client does not support HTML.", "plain"))
     alt.attach(MIMEText(html, "html"))
     msg.attach(alt)
-
     part = MIMEApplication(csv_bytes, Name="trading_report.csv")
     part.add_header("Content-Disposition", 'attachment; filename="trading_report.csv"')
     msg.attach(part)
-
     ses.send_raw_email(Source=SENDER, Destinations=RECIPIENTS or [SENDER], RawMessage={"Data": msg.as_string().encode("utf-8")})
-
-# =========================
-# Entry Point
-# =========================
 
 def main():
     conn = get_db_conn()
@@ -450,17 +415,15 @@ def main():
         total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
     finally:
         conn.close()
-
     exposures = compute_exposures(open_pos, top_n=3)
-
     html = build_html(total_pnl, open_pos, recent_trades, errors, detect_notes, exposures=exposures)
     csvb = build_csv(total_pnl, open_pos, recent_trades, exposures=exposures)
-
     save_report_copy(csvb)
     send_email(html, csvb)
 
 if __name__ == "__main__":
     main()
+
 
 
 
