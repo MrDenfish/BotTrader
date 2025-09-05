@@ -176,7 +176,7 @@ def run_queries(conn):
         if not qty_col:
             raise RuntimeError(f"No qty-like column found on {tbl_pos}")
 
-        price_col = pick_first_available(cols_pos, ["avg_price","price"])
+        price_col = pick_first_available(cols_pos, ["avg_entry_price","avg_price","price"])
         price_sql = f"{qident(price_col)} AS avg_price" if price_col else "NULL::numeric AS avg_price"
 
         q = f"""
@@ -202,7 +202,7 @@ def run_queries(conn):
 
         # symbol
         sym_col = col_symbol if (use_mappings and col_symbol in cols_tr) else \
-                  pick_first_available(cols_tr, ["symbol","product_id"])
+            pick_first_available(cols_tr, ["symbol", "product_id"])
         if not sym_col:
             raise RuntimeError(f"No symbol-like column on {table_name}")
 
@@ -212,29 +212,55 @@ def run_queries(conn):
         elif "side" in cols_tr:
             side_expr = "side"
         else:
-            amt_for_side = pick_first_available(cols_tr, ["qty_signed","amount","size","executed_size","filled_size","base_amount","remaining_size"])
+            amt_for_side = pick_first_available(
+                cols_tr,
+                ["qty_signed", "amount", "size", "executed_size", "filled_size", "base_amount", "remaining_size"]
+            )
             if amt_for_side:
-                side_expr = f"CASE WHEN {qident(amt_for_side)} < 0 THEN 'sell' WHEN {qident(amt_for_side)} > 0 THEN 'buy' END"
+                side_expr = (
+                    f"CASE WHEN {qident(amt_for_side)} < 0 THEN 'sell' "
+                    f"WHEN {qident(amt_for_side)} > 0 THEN 'buy' END"
+                )
             else:
                 side_expr = "'?'::text"
 
         # price
         pr_col = col_price if (use_mappings and col_price in cols_tr) else \
-                 pick_first_available(cols_tr, ["price","fill_price","executed_price","avg_price","avg_fill_price","limit_price"])
+            pick_first_available(cols_tr, ["price", "fill_price", "executed_price", "avg_price", "avg_fill_price", "limit_price"])
         price_expr = qident(pr_col) if pr_col else "NULL::numeric"
 
         # amount
         amt_col = col_size if (use_mappings and col_size in cols_tr) else \
-                  pick_first_available(cols_tr, ["qty_signed","amount","size","executed_size","filled_size","base_amount","remaining_size"])
+            pick_first_available(cols_tr, ["qty_signed", "amount", "size", "executed_size", "filled_size", "base_amount", "remaining_size"])
         amt_expr = qident(amt_col) if amt_col else "NULL::numeric"
 
-        # timestamp
+        # timestamp column
         ts_col = col_time if (use_mappings and col_time in cols_tr) else \
-                 pick_first_available(cols_tr, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
+            pick_first_available(cols_tr, ["trade_time", "filled_at", "completed_at", "order_time", "ts", "created_at", "executed_at"])
         if not ts_col:
             raise RuntimeError(f"No time-like column on {table_name}")
         ts_expr = qident(ts_col)
 
+        # ----- time window -----
+        use_pt_day = os.getenv("REPORT_USE_PT_DAY", "0").strip() in {"1", "true", "TRUE", "yes", "Yes"}
+        lookback_hours = int(os.getenv("REPORT_LOOKBACK_HOURS", "24"))
+
+        if use_pt_day:
+            # PT midnight → now (computed server-side in SQL)
+            # DATE_TRUNC returns local PT midnight (timestamp without tz),
+            # then AT TIME ZONE converts it back to a UTC timestamptz.
+            time_window_sql = (
+                f"{ts_expr} >= (DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Los_Angeles')) "
+                f"AT TIME ZONE 'America/Los_Angeles')"
+            )
+        else:
+            # Rolling lookback window in UTC
+            time_window_sql = f"{ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '{lookback_hours} hours')"
+
+        # optional upper bound (defensive)
+        upper_bound_sql = f"AND {ts_expr} < (NOW() AT TIME ZONE 'UTC')"
+
+        # status filter only if present
         status_filter = ""
         if "status" in cols_tr:
             status_filter = "AND COALESCE(status,'filled') IN ('filled','done')"
@@ -246,7 +272,8 @@ def run_queries(conn):
                    {amt_expr} AS amount,
                    {ts_expr} AS ts
             FROM {qualify(table_name)}
-            WHERE {ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '24 hours')
+            WHERE {time_window_sql}
+              {upper_bound_sql}
               {status_filter}
             ORDER BY {ts_expr} DESC
             LIMIT 1000
