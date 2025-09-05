@@ -107,12 +107,16 @@ def split_schema_table(qualified: str) -> tuple[str, str]:
 
 def table_columns(conn, qualified: str) -> set[str]:
     sch, tbl = split_schema_table(qualified)
-    rows = conn.run("""
+    rows = conn.run(
+        """
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema=%s AND table_name=%s
-    """, sch, tbl)
+        WHERE table_schema = $1 AND table_name = $2
+        """,
+        sch, tbl,
+    )
     return {r[0] for r in rows}
+
 
 def qident(name: str) -> str:
     return '"' + name.replace('"','""') + '"'
