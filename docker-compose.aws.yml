@@ -17,6 +17,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
   webhook:
     build:
       context: .
@@ -25,11 +26,14 @@ services:
     environment:
       TZ: ${TZ}
       RUN_MODE: webhook
-    # DATABASE_URL optional; entrypoint builds it from POSTGRES_* if unset
+      PYTHONUNBUFFERED: "1"        # NEW: live stdout
+      PYTHONFAULTHANDLER: "1"      # NEW: better crash dumps
+      LOG_LEVEL: "INFO"            # optional if your app reads it
     depends_on:
       db:
         condition: service_healthy
     entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
+    # (if entrypoint uses python, PYTHONUNBUFFERED makes it unbuffered even without -u)
     expose:
       - "5003"
     healthcheck:
@@ -42,6 +46,7 @@ services:
       - ./logs:/app/logs
     user: "1000:1000"
     restart: unless-stopped
+
   sighook:
     build:
       context: .
@@ -51,20 +56,28 @@ services:
       TZ: ${TZ}
       RUN_MODE: sighook
       WEBHOOK_BASE_URL: "http://webhook:5003"
+      PYTHONUNBUFFERED: "1"        # NEW: live stdout
+      PYTHONFAULTHANDLER: "1"      # NEW
+      LOG_LEVEL: "INFO"            # optional
     depends_on:
       db:
         condition: service_healthy
       webhook:
         condition: service_healthy
-    # no env_file; entrypoint reads /app/.env_tradebot
     volumes:
       - /opt/bot/.env_runtime:/app/.env_tradebot:ro
       - ./logs:/app/logs
     entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
+    # Add a simple healthcheck that requires no extra packages:
+    healthcheck:
+      test: ["CMD-SHELL", "set -e; CMD=$(tr '\\0' ' ' </proc/1/cmdline); echo \"$CMD\" | grep -qi python && echo \"$CMD\" | grep -qi sighook"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     user: "1000:1000"
     restart: unless-stopped
 
-  # One-shot report runner (invoke on-demand or via cron)
   report-job:
     build:
       context: .
@@ -78,13 +91,6 @@ services:
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
-      # optional overrides if you DON'T want to use DATABASE_URL
-      # DB_HOST: db
-      # DB_PORT: "5432"
-      # DB_NAME: ${DB_NAME}
-      # DB_USER: ${DB_USER}
-      # DB_PASSWORD: ${DB_PASSWORD}
-      # DB_SSL: disable   # (or 'require' if you later use RDS)
     env_file:
       - /opt/bot/.env_runtime
     restart: "no"
