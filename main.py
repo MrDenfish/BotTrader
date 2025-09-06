@@ -47,6 +47,10 @@ from SharedDataManager.shared_data_manager import SharedDataManager, CustomJSOND
 
 shutdown_event = asyncio.Event()
 
+# sighook_logger = logger_manager.get_logger("sighook")
+# sighook_logger.info("sighook wiring: listener=%s coinbase_api=%s shared_mgr.cb=%s",
+#                     bool(listener), type(cb).__name__ if cb else None,
+#                     type(getattr(shared_data_manager, 'coinbase_api', None)).__name__ if getattr(shared_data_manager, 'coinbase_api', None) else None)
 
 def default_run_mode() -> str:
     # Desktop default = both (single process). Docker default = sighook (split).
@@ -245,8 +249,10 @@ async def refresh_loop(shared_data_manager, interval=30):
 
 
 
-async def run_sighook(config, shared_data_manager, market_data_updater, rest_client, portfolio_uuid, logger_manager, alert, order_book_manager,
-                      shared_utils_debugger, shared_utils_print, shared_utils_color, startup_event=None, listener=None):
+async def run_sighook(config, shared_data_manager, market_data_updater, rest_client, portfolio_uuid,
+                      logger_manager, alert, order_book_manager,
+                      shared_utils_debugger, shared_utils_print, shared_utils_color,
+                      startup_event=None, listener=None, coinbase_api=None):
 
     if startup_event:
         await startup_event.wait()
@@ -257,10 +263,17 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
     print(f"✅ Shared data is initialized. Proceeding with sighook setup.")
 
     websocket_helper = listener.websocket_helper if listener else None
-    coinbase_api = listener.coinbase_api if listener else None
+    # ⚙️ Finalize coinbase_api from any available source
+    cb = (
+            coinbase_api
+            or (listener.coinbase_api if listener else None)
+            or getattr(shared_data_manager, "coinbase_api", None)
+    )
+    if cb is None:
+        raise RuntimeError("sighook requires a Coinbase REST client; none was provided or discoverable.")
     exchange = config.exchange
     trade_bot = TradeBot(
-        coinbase_api=coinbase_api,
+        coinbase_api=cb,
         shared_data_mgr=shared_data_manager,
         shutdown_event=shutdown_event,
         trade_recorder=shared_data_manager.trade_recorder,
@@ -656,7 +669,8 @@ async def main():
                     order_book_manager=None,
                     shared_utils_debugger=shared_utils_debugger,
                     shared_utils_print=shared_utils_print,
-                    shared_utils_color=shared_utils_color
+                    shared_utils_color=shared_utils_color,
+                    coinbase_api=coinbase_api  # ← inject the real client
                 )
 
             elif args.run == 'both':

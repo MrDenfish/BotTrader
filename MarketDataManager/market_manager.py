@@ -57,6 +57,9 @@ class MarketManager:
         self.request_semaphore = asyncio.Semaphore(2)
         self.semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
+        if self.coinbase_api is None:
+            raise RuntimeError("MarketDataManager requires coinbase_api; got None")
+
     @property
     def market_data(self):
         return self.shared_data_manager.market_data

@@ -454,3 +454,286 @@ if __name__ == "__main__":
 
 
 
+# === Added: Strategy Breakdown (Matrix vs Passive vs Accumulation) ===
+
+def _table_exists(conn, schema: str, table: str) -> bool:
+    try:
+        q = """
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = %s AND table_name = %s
+        """
+        return bool(conn.run(q, (schema, table)))
+    except Exception:
+        return False
+
+def _first_ts_col(conn, schema: str, table: str):
+    # prefer order_time, then trade_time, then created_at, then time
+    cols = {c.lower() for c in table_columns(conn, f"{schema}.{table}")}
+    for c in ["order_time","trade_time","event_time","created_at","time","ts"]:
+        if c in cols:
+            return c
+    return None
+
+def _first_col(conn, schema: str, table: str, options):
+    cols = {c.lower() for c in table_columns(conn, f"{schema}.{table}")}
+    for c in options:
+        if c in cols:
+            return c
+    return None
+
+def run_strategy_breakdown(conn):
+    """
+    Returns a list of dicts with strategy stats for the last 24h:
+    [ {strategy, orders, fills, gross_cashflow, est_fees, pnl_cashflow, realized_pnl, win_trades, loss_trades} ]
+    Strategy attribution heuristic:
+      - type='tp_sl' -> excluded from strategy buckets (but available as exits)
+      - passive: source or notes contains 'passive'
+      - accumulation: source or notes contains 'accum'
+      - otherwise: matrix
+    """
+    errors = []
+    # Determine table
+    # Try env override
+    tbl = os.getenv("REPORT_TRADES_TABLE", "").strip() or "public.trade_records"
+    if "." in tbl:
+        schema, table = tbl.split(".", 1)
+    else:
+        schema, table = "public", tbl
+
+    if not _table_exists(conn, schema, table):
+        return {"rows": [], "errors": ["strategy: trades table not found: %s.%s" % (schema, table)]}
+
+    # Columns
+    ts_col = _first_ts_col(conn, schema, table) or "order_time"
+    side_col = _first_col(conn, schema, table, ["side"]) or "side"
+    price_col = _first_col(conn, schema, table, ["price","avg_price"]) or "price"
+    amt_col = _first_col(conn, schema, table, ["amount","size","filled_size","qty","quantity","base_amount"]) or "amount"
+    type_col = _first_col(conn, schema, table, ["type"]) or "type"
+    source_col = _first_col(conn, schema, table, ["source"]) or "source"
+    notes_col = _first_col(conn, schema, table, ["notes","comment","meta"]) or None
+    pnl_cols = [c for c in ["realized_pnl","realized_profit","pnl_usd","pnl","profit"] if _first_col(conn, schema, table, [c])]
+    fee_col = _first_col(conn, schema, table, ["fee","fees","fee_usd","commission","commission_usd"])  # optional
+
+    # Build attribution expressions
+    # CASE for strategy
+    notes_expr = f"COALESCE({notes_col}, '')" if notes_col else "''"
+    strat_case = f"""
+    CASE
+      WHEN LOWER(COALESCE({type_col},'')) = 'tp_sl' THEN 'exits'
+      WHEN LOWER(COALESCE({source_col},'')) LIKE '%passive%' OR LOWER({notes_expr}) LIKE '%passive%' THEN 'passive'
+      WHEN LOWER(COALESCE({source_col},'')) LIKE '%accum%'  OR LOWER({notes_expr}) LIKE '%accum%'  THEN 'accumulation'
+      ELSE 'matrix'
+    END AS strategy
+    """
+
+    # Time window: last 24h UTC
+    win = f"({ts_col} >= (NOW() AT TIME ZONE 'UTC') - INTERVAL '24 hours')"
+
+    # Cashflow math
+    cash_expr = f"CASE WHEN LOWER({side_col})='sell' THEN {amt_col}*{price_col} ELSE -({amt_col}*{price_col}) END"
+    fee_expr = f"COALESCE({fee_col},0)" if fee_col else "0"
+
+    # Prefer realized pnl column if present for 'realized_pnl' metric; else NULL
+    if pnl_cols:
+        pnl_expr = "COALESCE(" + ",".join(pnl_cols) + ")"
+    else:
+        pnl_expr = "NULL"
+
+    q = f"""
+    WITH base AS (
+      SELECT
+        {strat_case},
+        {cash_expr} AS cashflow,
+        {fee_expr}   AS fee,
+        {pnl_expr}   AS realized_pnl
+      FROM {schema}.{table}
+      WHERE {win}
+        AND COALESCE(LOWER({type_col}),'limit') <> 'tp_sl'  -- exclude exits from strategy buckets
+        AND {price_col} IS NOT NULL
+        AND {amt_col}   IS NOT NULL
+    )
+    SELECT
+      strategy,
+      COUNT(*)                       AS orders,
+      SUM(CASE WHEN cashflow <> 0 THEN 1 ELSE 0 END) AS fills, -- approximate
+      SUM(cashflow)                  AS pnl_cashflow,
+      SUM(fee)                       AS est_fees,
+      SUM(realized_pnl)              AS realized_pnl
+    FROM base
+    GROUP BY strategy
+    ORDER BY strategy;
+    """
+    try:
+        rows = conn.run(q)
+    except Exception as e:
+        return {"rows": [], "errors": [f"strategy query failed: {e}"]}
+
+    # Normalize rows into dicts
+    out = []
+    for r in rows:
+        strategy, orders, fills, pnl_cash, est_fees, realized = r
+        out.append({
+            "strategy": strategy,
+            "orders": int(orders or 0),
+            "fills": int(fills or 0),
+            "pnl_cashflow": float(pnl_cash or 0),
+            "est_fees": float(est_fees or 0),
+            "realized_pnl": (float(realized) if realized is not None else None),
+        })
+    return {"rows": out, "errors": errors}
+
+
+# Override build_html to include Strategy section (keeps prior sections intact)
+def build_html(total_pnl, open_pos, recent_trades, errors, detect_notes, exposures=None, strategies=None):
+    def rows(rows_):
+        if not rows_:
+            return "<tr><td colspan='99'>None</td></tr>"
+        out = []
+        for r in rows_:
+            rr = []
+            for c in r:
+                rr.append(c.isoformat() if hasattr(c, "isoformat") else c)
+            out.append("<tr>" + "".join(f"<td>{c}</td>" for c in rr) + "</tr>")
+        return "".join(out)
+
+    now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    exposure_html = ""
+    if exposures:
+        items = exposures.get("items", [])
+        total_notional = exposures.get("total_notional", 0)
+        if items:
+            exp_rows = "".join(
+                f"<tr><td>{it['symbol']}</td><td style='text-align:right'>{it['qty']}</td>"
+                f"<td style='text-align:right'>{it['price']}</td>"
+                f"<td style='text-align:right'>{it['notional']:.2f}</td>"
+                f"<td style='text-align:right'>{it['pct']:.2f}%</td></tr>"
+                for it in items
+            )
+            exposure_html = f"""
+            <h3>Top Exposures</h3>
+            <table border="1" cellpadding="4" cellspacing="0">
+              <tr><th>Symbol</th><th>Qty</th><th>Avg Price</th><th>Notional</th><th>% of Total</th></tr>
+              {exp_rows}
+              <tr><td colspan="3"><b>Total</b></td><td colspan="2"><b>{total_notional:.2f}</b></td></tr>
+            </table>
+            """
+
+    # New Strategy section
+    strat_html = ""
+    if strategies and strategies.get("rows"):
+        rows = []
+        for d in strategies["rows"]:
+            rpnl = "" if d["realized_pnl"] is None else f"{d['realized_pnl']:.2f}"
+            rows.append(
+                f"<tr><td>{d['strategy']}</td>"
+                f"<td style='text-align:right'>{d['orders']}</td>"
+                f"<td style='text-align:right'>{d['fills']}</td>"
+                f"<td style='text-align:right'>{d['pnl_cashflow']:.2f}</td>"
+                f"<td style='text-align:right'>{d['est_fees']:.2f}</td>"
+                f"<td style='text-align:right'>{rpnl}</td></tr>"
+            )
+        sh = "".join(rows)
+
+        strat_errs = "".join(f"<li>{e}</li>" for e in strategies.get("errors", []))
+        strat_html = f"""
+        <h3>Strategy Performance (Last 24h)</h3>
+        <table border="1" cellpadding="4" cellspacing="0">
+          <tr><th>Strategy</th><th>Orders</th><th>Fills</th><th>PnL (Cashflow)</th><th>Est. Fees</th><th>Realized PnL</th></tr>
+          {sh or "<tr><td colspan='6'>No strategy activity</td></tr>"}
+        </table>
+        {'<ul>'+strat_errs+'</ul>' if strat_errs else ''}
+        """
+
+    html = f"""
+    <html><body>
+    <h2>Daily Trading Bot Report</h2>
+    <p><i>As of: {now_utc}</i></p>
+
+    <h3>Key Metrics</h3>
+    <table border="1" cellpadding="4" cellspacing="0">
+      <tr><th>Total Realized PnL (USD)</th></tr>
+      <tr><td>{total_pnl}</td></tr>
+    </table>
+
+    {exposure_html}
+    {strat_html}
+
+    <h3>Open Positions</h3>
+    <table border="1" cellpadding="4" cellspacing="0">
+      <tr><th>Symbol</th><th>Qty</th><th>Avg Price</th></tr>
+      {rows(open_pos)}
+    </table>
+
+    <h3>Trades (Last 24h)</h3>
+    <table border="1" cellpadding="4" cellspacing="0">
+      <tr><th>Symbol</th><th>Side</th><th>Price</th><th>Amount</th><th>Time</th></tr>
+      {rows(recent_trades)}
+    </table>
+
+    <h3>Diagnostics</h3>
+    <ul>
+      {"".join(f"<li>{e}</li>" for e in errors)}
+      {"".join(f"<li>{n}</li>" for n in detect_notes)}
+    </ul>
+    </body></html>
+    """
+    return html
+
+# Override build_csv to include strategy section
+def build_csv(total_pnl, open_pos, recent_trades, exposures=None, strategies=None):
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Daily Trading Bot Report"])
+    from datetime import datetime as _dt
+    w.writerow([f"As of: {_dt.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"])
+    w.writerow([])
+    w.writerow(["Key Metrics"])
+    w.writerow(["Total Realized PnL (USD)"])
+    w.writerow([total_pnl])
+    w.writerow([])
+
+    if exposures:
+        w.writerow(["Top Exposures"])
+        w.writerow(["Symbol","Qty","Avg Price","Notional","% of Total"])
+        for it in exposures.get("items", []):
+            w.writerow([it["symbol"], it["qty"], it["price"], f"{it['notional']:.2f}", f"{it['pct']:.2f}%"])
+        w.writerow(["Total Notional", exposures.get("total_notional", 0)])
+        w.writerow([])
+
+    if strategies and strategies.get("rows"):
+        w.writerow(["Strategy Performance (Last 24h)"])
+        w.writerow(["Strategy","Orders","Fills","PnL (Cashflow)","Est. Fees","Realized PnL"])
+        for d in strategies["rows"]:
+            w.writerow([d["strategy"], d["orders"], d["fills"], f"{d['pnl_cashflow']:.2f}", f"{d['est_fees']:.2f}", "" if d["realized_pnl"] is None else f"{d['realized_pnl']:.2f}"])
+        w.writerow([])
+
+    w.writerow(["Open Positions"]); w.writerow(["Symbol","Qty","Avg Price"])
+    for r in open_pos:
+        r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
+        w.writerow(r)
+    w.writerow([])
+    w.writerow(["Trades (Last 24h)"]); w.writerow(["Symbol","Side","Price","Amount","Time"])
+    for r in recent_trades:
+        r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
+        w.writerow(r)
+    return buf.getvalue().encode("utf-8")
+
+
+# Override main to compute strategies and pass into report builders
+def main():
+    conn = get_db_conn()
+    try:
+        total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
+        strategies = run_strategy_breakdown(conn)
+    finally:
+        conn.close()
+    exposures = compute_exposures(open_pos, top_n=3)
+    html = build_html(total_pnl, open_pos, recent_trades, errors, detect_notes, exposures=exposures, strategies=strategies)
+    csvb = build_csv(total_pnl, open_pos, recent_trades, exposures=exposures, strategies=strategies)
+    save_report_copy(csvb)
+    send_email(html, csvb)
+
+
+
