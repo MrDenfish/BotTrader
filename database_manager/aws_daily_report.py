@@ -196,7 +196,7 @@ def run_queries(conn):
     - Falls back from REPORT_TRADES_TABLE -> public.trade_records if sparse.
     """
     errors = []
-    detect_notes = ["Build:v4"]
+    detect_notes = ["Build:v5"]
 
     # ----- PnL (realized) -----
     try:
@@ -443,33 +443,6 @@ def compute_unrealized_pnl(conn, open_pos):
         unreal += qty * (px - avg_px)  # works for long (qty>0) and short (qty<0)
     return unreal, notes
 
-def compute_realized_pnl_windowed(conn):
-    notes = []
-    tbl = REPORT_PNL_TABLE
-    cols = table_columns(conn, tbl)
-    if not cols:
-        return 0.0, [f"WindowedPnL: table not found: {tbl}"]
-
-    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
-    if not pnl_col:
-        return 0.0, [f"WindowedPnL: no pnl-like column on {tbl}"]
-
-    ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
-    if not ts_col:
-        return 0.0, [f"WindowedPnL: no time-like column on {tbl}"]
-
-    ts_expr = qident(ts_col)
-    time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
-    q = f"""
-        SELECT COALESCE(SUM({qident(pnl_col)}),0)
-        FROM {qualify(tbl)}
-        WHERE {time_window_sql} {upper_bound_sql}
-          AND {qident(pnl_col)} IS NOT NULL
-    """
-    val = conn.run(q)[0][0]
-    notes.append(f"WindowedPnL source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
-    return float(val or 0), notes
-
 def compute_win_rate(conn):
     """
     Returns (win_rate_pct: float, wins: int, total: int, notes: list[str])
@@ -510,6 +483,53 @@ def compute_win_rate(conn):
     notes.append(f"WinRate source: {tbl} pnl_col={pnl_col} ts_col={ts_col} (denominator includes breakeven)")
     return win_rate, wins, total, notes
 
+def compute_trade_stats_windowed(conn):
+    """
+    Computes average win, average loss, and profit factor within the same time window
+    used for win-rate. Returns (avg_win, avg_loss, profit_factor, notes).
+    avg_loss is returned as a negative number (e.g., -12.34).
+    profit_factor = gross_profit / gross_loss_abs.
+    """
+    notes = []
+    tbl = REPORT_WINRATE_TABLE or REPORT_TRADES_TABLE
+    cols = table_columns(conn, tbl)
+    if not cols:
+        return 0.0, 0.0, None, [f"TradeStats: table not found: {tbl}"]
+
+    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
+    if not pnl_col:
+        return 0.0, 0.0, None, [f"TradeStats: no pnl-like column found on {tbl}"]
+
+    ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
+    if not ts_col:
+        return 0.0, 0.0, None, [f"TradeStats: no time-like column on {tbl}"]
+
+    ts_expr = qident(ts_col)
+    time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
+
+    q = f"""
+        SELECT
+          AVG(CASE WHEN {qident(pnl_col)} > 0 THEN {qident(pnl_col)} END) AS avg_win,
+          AVG(CASE WHEN {qident(pnl_col)} < 0 THEN {qident(pnl_col)} END) AS avg_loss_neg,
+          SUM(CASE WHEN {qident(pnl_col)} > 0 THEN {qident(pnl_col)} ELSE 0 END) AS gross_profit,
+          SUM(CASE WHEN {qident(pnl_col)} < 0 THEN -{qident(pnl_col)} ELSE 0 END) AS gross_loss_abs
+        FROM {qualify(tbl)}
+        WHERE {time_window_sql}
+          {upper_bound_sql}
+          AND {qident(pnl_col)} IS NOT NULL
+    """
+    avg_win, avg_loss_neg, gross_profit, gross_loss_abs = conn.run(q)[0]
+    avg_win = float(avg_win or 0.0)
+    avg_loss_neg = float(avg_loss_neg or 0.0)  # this is <= 0 when present
+    pf = None
+    try:
+        pf = (float(gross_profit or 0.0) / float(gross_loss_abs or 0.0)) if float(gross_loss_abs or 0.0) > 0 else None
+    except Exception:
+        pf = None
+
+    notes.append(f"TradeStats source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
+    return avg_win, avg_loss_neg, pf, notes
+
 
 # -------------------------
 # Email / CSV Builders
@@ -525,6 +545,9 @@ def build_html(total_pnl,
                win_rate: float = 0.0,
                wins: int = 0,
                total_trades: int = 0,
+               avg_win: float = 0.0,
+               avg_loss: float = 0.0,
+               profit_factor: float | None = None,
                show_details: bool = False):
     def rows(rows_):
         if not rows_:
@@ -548,6 +571,21 @@ def build_html(total_pnl,
         <td>{round(float(total_pnl or 0), 2):,.2f}</td>
         <td>{round(float(unrealized_pnl or 0), 2):,.2f}</td>
         <td>{win_rate:.1f}% ({wins}/{total_trades})</td>
+      </tr>
+    </table>
+    """
+
+    # Trade Stats (Window)
+    pf_txt = "—" if (profit_factor is None) else f"{profit_factor:.2f}"
+    avg_loss_txt = f"-{abs(avg_loss):,.2f}" if avg_loss else "0.00"
+    trade_stats_html = f"""
+    <h4>Trade Stats (Window)</h4>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <tr><th>Avg Win</th><th>Avg Loss</th><th>Profit Factor</th></tr>
+      <tr>
+        <td>${avg_win:,.2f}</td>
+        <td>${avg_loss_txt}</td>
+        <td>{pf_txt}</td>
       </tr>
     </table>
     """
@@ -602,6 +640,7 @@ def build_html(total_pnl,
     return f"""<html><body style="font-family:Arial,Helvetica,sans-serif">
     <h2>Daily Trading Bot Report</h2><p><b>As of:</b> {now_utc}</p>
     {key_metrics_html}
+    {trade_stats_html}
     {exposure_html}
     {details_html}
     {notes_html}
@@ -615,7 +654,10 @@ def build_csv(total_pnl,
               unrealized_pnl: float = 0.0,
               win_rate: float = 0.0,
               wins: int = 0,
-              total_trades: int = 0):
+              total_trades: int = 0,
+              avg_win: float = 0.0,
+              avg_loss: float = 0.0,
+              profit_factor: float | None = None):
     buf = io.StringIO(); w = csv.writer(buf)
     w.writerow(["Daily Trading Bot Report"])
     w.writerow(["Generated (UTC)", datetime.utcnow().isoformat()])
@@ -626,6 +668,13 @@ def build_csv(total_pnl,
     w.writerow(["Realized PnL (USD)", round(float(total_pnl or 0), 2)])
     w.writerow(["Unrealized PnL (USD)", round(float(unrealized_pnl or 0), 2)])
     w.writerow(["Win Rate", f"{win_rate:.1f}% ({wins}/{total_trades})"])
+    w.writerow([])
+
+    # Trade stats (window)
+    w.writerow(["Trade Stats (Window)"])
+    w.writerow(["Avg Win", round(float(avg_win or 0), 2)])
+    w.writerow(["Avg Loss", round(float(avg_loss or 0), 2)])
+    w.writerow(["Profit Factor", "" if profit_factor is None else round(float(profit_factor), 2)])
     w.writerow([])
 
     # Exposure snapshot (optional)
@@ -693,11 +742,8 @@ def main():
         win_rate, wins, total_trades, wr_notes = compute_win_rate(conn)
         detect_notes.extend(wr_notes)
 
-        window_pnl, wp_notes = compute_realized_pnl_windowed(conn)
-        detect_notes.extend(wp_notes)
-
-        detect_notes.append(f"Lifetime realized PnL: {total_pnl:.2f}")
-
+        avg_win, avg_loss, profit_factor, ts_notes = compute_trade_stats_windowed(conn)
+        detect_notes.extend(ts_notes)
     finally:
         conn.close()
 
@@ -708,17 +754,33 @@ def main():
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
 
     html = build_html(
-        window_pnl,  # <- use windowed here for apples-to-apples
-        open_pos_out, trades_out, errors, detect_notes,
+        total_pnl,
+        open_pos_out,
+        trades_out,
+        errors,
+        detect_notes,
         exposures=exposures,
-        unrealized_pnl=unreal_pnl, win_rate=win_rate,
-        wins=wins, total_trades=total_trades, show_details=REPORT_SHOW_DETAILS,
+        unrealized_pnl=unreal_pnl,
+        win_rate=win_rate,
+        wins=wins,
+        total_trades=total_trades,
+        avg_win=avg_win,
+        avg_loss=avg_loss,
+        profit_factor=profit_factor,
+        show_details=REPORT_SHOW_DETAILS,
     )
     csvb = build_csv(
-        window_pnl,  # <- and here
-        open_pos_out, trades_out, exposures=exposures,
-        unrealized_pnl=unreal_pnl, win_rate=win_rate,
-        wins=wins, total_trades=total_trades,
+        total_pnl,
+        open_pos_out,
+        trades_out,
+        exposures=exposures,
+        unrealized_pnl=unreal_pnl,
+        win_rate=win_rate,
+        wins=wins,
+        total_trades=total_trades,
+        avg_win=avg_win,
+        avg_loss=avg_loss,
+        profit_factor=profit_factor,
     )
     save_report_copy(csvb)
     send_email(html, csvb)
