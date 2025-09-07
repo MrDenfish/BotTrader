@@ -443,6 +443,33 @@ def compute_unrealized_pnl(conn, open_pos):
         unreal += qty * (px - avg_px)  # works for long (qty>0) and short (qty<0)
     return unreal, notes
 
+def compute_realized_pnl_windowed(conn):
+    notes = []
+    tbl = REPORT_PNL_TABLE
+    cols = table_columns(conn, tbl)
+    if not cols:
+        return 0.0, [f"WindowedPnL: table not found: {tbl}"]
+
+    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
+    if not pnl_col:
+        return 0.0, [f"WindowedPnL: no pnl-like column on {tbl}"]
+
+    ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
+    if not ts_col:
+        return 0.0, [f"WindowedPnL: no time-like column on {tbl}"]
+
+    ts_expr = qident(ts_col)
+    time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
+    q = f"""
+        SELECT COALESCE(SUM({qident(pnl_col)}),0)
+        FROM {qualify(tbl)}
+        WHERE {time_window_sql} {upper_bound_sql}
+          AND {qident(pnl_col)} IS NOT NULL
+    """
+    val = conn.run(q)[0][0]
+    notes.append(f"WindowedPnL source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
+    return float(val or 0), notes
+
 def compute_win_rate(conn):
     """
     Returns (win_rate_pct: float, wins: int, total: int, notes: list[str])
@@ -665,6 +692,12 @@ def main():
 
         win_rate, wins, total_trades, wr_notes = compute_win_rate(conn)
         detect_notes.extend(wr_notes)
+
+        window_pnl, wp_notes = compute_realized_pnl_windowed(conn)
+        detect_notes.extend(wp_notes)
+
+        detect_notes.append(f"Lifetime realized PnL: {total_pnl:.2f}")
+
     finally:
         conn.close()
 
@@ -675,27 +708,17 @@ def main():
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
 
     html = build_html(
-        total_pnl,
-        open_pos_out,
-        trades_out,
-        errors,
-        detect_notes,
+        window_pnl,  # <- use windowed here for apples-to-apples
+        open_pos_out, trades_out, errors, detect_notes,
         exposures=exposures,
-        unrealized_pnl=unreal_pnl,
-        win_rate=win_rate,
-        wins=wins,
-        total_trades=total_trades,
-        show_details=REPORT_SHOW_DETAILS,
+        unrealized_pnl=unreal_pnl, win_rate=win_rate,
+        wins=wins, total_trades=total_trades, show_details=REPORT_SHOW_DETAILS,
     )
     csvb = build_csv(
-        total_pnl,
-        open_pos_out,
-        trades_out,
-        exposures=exposures,
-        unrealized_pnl=unreal_pnl,
-        win_rate=win_rate,
-        wins=wins,
-        total_trades=total_trades,
+        window_pnl,  # <- and here
+        open_pos_out, trades_out, exposures=exposures,
+        unrealized_pnl=unreal_pnl, win_rate=win_rate,
+        wins=wins, total_trades=total_trades,
     )
     save_report_copy(csvb)
     send_email(html, csvb)
