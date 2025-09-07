@@ -99,15 +99,19 @@ check_required() {
 
 start_app() {
   export PYTHONUNBUFFERED=1
+  export PYTHONFAULTHANDLER=1     # add this line
+
   local mode="${RUN_MODE:-both}"   # default keeps desktop behavior
 
   if [[ "${DEBUGPY:-0}" == "1" ]]; then
     local port="${DEBUGPY_PORT:-5678}"
     log "Starting under debugpy (mode=${mode})..."
-    exec python -X dev -m debugpy --listen 0.0.0.0:"${port}" --wait-for-client -m main --run "${mode}"
+    # add -u here ↓
+    exec python -u -X dev -m debugpy --listen 0.0.0.0:"${port}" --wait-for-client -m main --run "${mode}"
   else
     log "Starting main (mode=${mode})..."
-    exec python -m main --run "${mode}"
+    # add -u here ↓
+    exec python -u -m main --run "${mode}"
   fi
 }
 
