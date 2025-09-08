@@ -12,6 +12,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timezone
+from typing import Optional, List, Dict, Tuple
 
 # -------------------------
 # Config / Environment
@@ -51,6 +52,12 @@ REPORT_PRICE_SYM_COL    = os.getenv("REPORT_PRICE_SYM_COL")    # e.g. "symbol","
 # Win rate table (optional override)
 REPORT_WINRATE_TABLE = os.getenv("REPORT_WINRATE_TABLE")  # default: REPORT_TRADES_TABLE
 
+# Cash balances (optional)
+REPORT_BALANCES_TABLE  = os.getenv("REPORT_BALANCES_TABLE", "public.report_balances")
+REPORT_CASH_SYM_COL    = os.getenv("REPORT_CASH_SYM_COL")      # currency/asset/symbol
+REPORT_CASH_AMT_COL    = os.getenv("REPORT_CASH_AMT_COL")      # balance/available/free
+REPORT_CASH_SYMBOLS    = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMBOLS", "USD,USDC,USDT").split(",") if s.strip()]
+
 # Window semantics
 REPORT_USE_PT_DAY = os.getenv("REPORT_USE_PT_DAY", "0").strip() in {"1","true","TRUE","yes","Yes"}
 REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "24"))
@@ -82,7 +89,7 @@ def _maybe_ssl_context(require_ssl: bool):
             pass
     return ctx
 
-def _env_or_ssm(env_key: str, ssm_param_name: str | None, default: str | None = None):
+def _env_or_ssm(env_key: str, ssm_param_name: Optional[str], default: Optional[str] = None):
     v = os.getenv(env_key)
     if v:
         return v
@@ -121,7 +128,7 @@ def get_db_conn():
 # Identifier / info_schema
 # -------------------------
 
-def split_schema_table(qualified: str) -> tuple[str, str]:
+def split_schema_table(qualified: str):
     q = qualified.strip().strip('"')
     if "." in q:
         s, t = q.split(".", 1)
@@ -136,13 +143,9 @@ def qualify(qualified: str) -> str:
     return f"{qident(sch)}.{qident(tbl)}"
 
 def _sql_str(s: str) -> str:
-    # safe single-quoted string literal
     return "'" + s.replace("'", "''") + "'"
 
-def table_columns(conn, qualified: str) -> set[str]:
-    """
-    Build a literal (non-parameterized) info-schema query. This avoids pg8000 parameter quirks.
-    """
+def table_columns(conn, qualified: str):
     sch, tbl = split_schema_table(qualified)
     sql = f"""
         SELECT column_name
@@ -152,7 +155,7 @@ def table_columns(conn, qualified: str) -> set[str]:
     rows = conn.run(sql)
     return {r[0] for r in rows}
 
-def pick_first_available(cols_present: set[str], candidates: list[str]) -> str | None:
+def pick_first_available(cols_present, candidates):
     for c in candidates:
         if c and c in cols_present:
             return c
@@ -163,20 +166,15 @@ def pick_first_available(cols_present: set[str], candidates: list[str]) -> str |
 # Time Window Helper
 # -------------------------
 
-def _time_window_sql(ts_expr: str) -> tuple[str, str]:
+def _time_window_sql(ts_expr: str):
     if REPORT_USE_PT_DAY:
-        # PT midnight → now (computed server-side in SQL)
-        # DATE_TRUNC returns local PT midnight (timestamp without tz),
-        # then AT TIME ZONE converts it back to a UTC timestamptz.
         time_window_sql = (
             f"{ts_expr} >= (DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Los_Angeles')) "
             f"AT TIME ZONE 'America/Los_Angeles')"
         )
     else:
-        # Rolling lookback window in UTC
         time_window_sql = f"{ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '{REPORT_LOOKBACK_HOURS} hours')"
 
-    # optional upper bound (defensive)
     upper_bound_sql = f"AND {ts_expr} < (NOW() AT TIME ZONE 'UTC')"
     return time_window_sql, upper_bound_sql
 
@@ -186,17 +184,8 @@ def _time_window_sql(ts_expr: str) -> tuple[str, str]:
 # -------------------------
 
 def run_queries(conn):
-    """
-    Returns (total_pnl, open_positions, recent_trades, errors, detect_notes)
-
-    - Uses env mappings where provided.
-    - Builds column expressions ONLY from columns that exist in the table.
-    - Applies status filter only if the table has such a column.
-    - Time window is controlled globally (PT-day or rolling lookback).
-    - Falls back from REPORT_TRADES_TABLE -> public.trade_records if sparse.
-    """
     errors = []
-    detect_notes = ["Build:v5"]
+    detect_notes = ["Build:v6"]
 
     # ----- PnL (realized) -----
     try:
@@ -369,13 +358,11 @@ def compute_exposures(open_pos, top_n: int = 3):
 # Prices & Metrics
 # -------------------------
 
-def _latest_price_map(conn, price_table: str) -> dict[str, float]:
+def _latest_price_map(conn, price_table: str):
     cols = table_columns(conn, price_table)
     if not cols:
         return {}
 
-    # symbol column
-    symcol = None
     if REPORT_PRICE_SYM_COL and REPORT_PRICE_SYM_COL in cols:
         symcol = REPORT_PRICE_SYM_COL
     else:
@@ -383,7 +370,6 @@ def _latest_price_map(conn, price_table: str) -> dict[str, float]:
     if not symcol:
         return {}
 
-    # price/timestamp columns
     pcol = REPORT_PRICE_COL if (REPORT_PRICE_COL and REPORT_PRICE_COL in cols) else \
            pick_first_available(cols, ["price","last","mid","close","mark"])
     tcol = REPORT_PRICE_TIME_COL if (REPORT_PRICE_TIME_COL and REPORT_PRICE_TIME_COL in cols) else \
@@ -418,10 +404,6 @@ def _latest_price_map(conn, price_table: str) -> dict[str, float]:
     return out
 
 def compute_unrealized_pnl(conn, open_pos):
-    """
-    open_pos rows are (symbol, qty, avg_price).
-    Returns (unrealized_pnl_usd: float, notes: list[str])
-    """
     notes = []
     price_map = _latest_price_map(conn, REPORT_PRICE_TABLE)
     if not price_map:
@@ -440,14 +422,10 @@ def compute_unrealized_pnl(conn, open_pos):
         if px is None:
             notes.append(f"Missing price for {sym} in {REPORT_PRICE_TABLE}")
             continue
-        unreal += qty * (px - avg_px)  # works for long (qty>0) and short (qty<0)
+        unreal += qty * (px - avg_px)
     return unreal, notes
 
 def compute_win_rate(conn):
-    """
-    Returns (win_rate_pct: float, wins: int, total: int, notes: list[str])
-    By default, denominator includes breakeven trades (pnl = 0).
-    """
     notes = []
     tbl = REPORT_WINRATE_TABLE or REPORT_TRADES_TABLE
     cols = table_columns(conn, tbl)
@@ -484,12 +462,6 @@ def compute_win_rate(conn):
     return win_rate, wins, total, notes
 
 def compute_trade_stats_windowed(conn):
-    """
-    Computes average win, average loss, and profit factor within the same time window
-    used for win-rate. Returns (avg_win, avg_loss, profit_factor, notes).
-    avg_loss is returned as a negative number (e.g., -12.34).
-    profit_factor = gross_profit / gross_loss_abs.
-    """
     notes = []
     tbl = REPORT_WINRATE_TABLE or REPORT_TRADES_TABLE
     cols = table_columns(conn, tbl)
@@ -520,7 +492,7 @@ def compute_trade_stats_windowed(conn):
     """
     avg_win, avg_loss_neg, gross_profit, gross_loss_abs = conn.run(q)[0]
     avg_win = float(avg_win or 0.0)
-    avg_loss_neg = float(avg_loss_neg or 0.0)  # this is <= 0 when present
+    avg_loss_neg = float(avg_loss_neg or 0.0)
     pf = None
     try:
         pf = (float(gross_profit or 0.0) / float(gross_loss_abs or 0.0)) if float(gross_loss_abs or 0.0) > 0 else None
@@ -529,6 +501,85 @@ def compute_trade_stats_windowed(conn):
 
     notes.append(f"TradeStats source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
     return avg_win, avg_loss_neg, pf, notes
+
+def compute_max_drawdown(conn):
+    notes = []
+    tbl = REPORT_PNL_TABLE
+    cols = table_columns(conn, tbl)
+    if not cols:
+        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: table not found: {tbl}"]
+
+    pnl_col = REPORT_COL_PNL if (REPORT_COL_PNL and REPORT_COL_PNL in cols) else \
+              pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
+    if not pnl_col:
+        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no pnl-like column on {tbl}"]
+
+    ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
+    if not ts_col:
+        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no time-like column on {tbl}"]
+
+    q = f"""
+        WITH t AS (
+          SELECT {qident(ts_col)} AS ts, COALESCE({qident(pnl_col)},0) AS pnl
+          FROM {qualify(tbl)}
+          WHERE {qident(pnl_col)} IS NOT NULL
+        ),
+        c AS (
+          SELECT ts,
+                 SUM(pnl) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS equity
+          FROM t
+        ),
+        d AS (
+          SELECT ts, equity,
+                 MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS run_max
+          FROM c
+        )
+        SELECT
+          MIN((equity - run_max) / NULLIF(run_max,0.0)) AS min_frac,
+          MIN(equity - run_max) AS min_abs,
+          MAX(run_max) AS peak_eq,
+          MIN(equity) AS trough_eq
+        FROM d
+    """
+    min_frac, min_abs, peak_eq, trough_eq = conn.run(q)[0]
+    if min_frac is None or peak_eq in (None, 0):
+        dd_pct = 0.0
+    else:
+        dd_pct = abs(float(min_frac) * 100.0)
+    dd_abs = abs(float(min_abs or 0.0))
+    notes.append(f"Drawdown source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
+    return dd_pct, dd_abs, float(peak_eq or 0.0), float(trough_eq or 0.0), notes
+
+def compute_cash_vs_invested(conn, exposures):
+    invested = float(exposures.get("total_notional", 0.0) if exposures else 0.0)
+    notes = []
+    tbl = REPORT_BALANCES_TABLE
+    cols = table_columns(conn, tbl)
+    if not cols:
+        notes.append(f"Cash: table not found: {tbl}")
+        return 0.0, invested, 0.0, notes
+
+    sym_col = REPORT_CASH_SYM_COL if (REPORT_CASH_SYM_COL and REPORT_CASH_SYM_COL in cols) else \
+              pick_first_available(cols, ["currency","asset","symbol","coin"])
+    amt_col = REPORT_CASH_AMT_COL if (REPORT_CASH_AMT_COL and REPORT_CASH_AMT_COL in cols) else \
+              pick_first_available(cols, ["available","balance","free","amount","qty","quantity"])
+
+    if not sym_col or not amt_col:
+        notes.append(f"Cash: missing sym/amt columns on {tbl}")
+        return 0.0, invested, 0.0, notes
+
+    syms_list = ",".join(f"{_sql_str(s)}" for s in REPORT_CASH_SYMBOLS)
+    q = f"""
+        SELECT SUM({qident(amt_col)})
+        FROM {qualify(tbl)}
+        WHERE UPPER({qident(sym_col)}) IN ({syms_list})
+    """
+    row = conn.run(q)[0][0] if cols else 0
+    cash = float(row or 0.0)
+    total_cap = cash + invested
+    invested_pct = (invested / total_cap * 100.0) if total_cap > 0 else 0.0
+    notes.append(f"Cash source: {tbl} sym_col={sym_col} amt_col={amt_col} symbols={REPORT_CASH_SYMBOLS}")
+    return cash, invested, invested_pct, notes
 
 
 # -------------------------
@@ -547,7 +598,12 @@ def build_html(total_pnl,
                total_trades: int = 0,
                avg_win: float = 0.0,
                avg_loss: float = 0.0,
-               profit_factor: float | None = None,
+               profit_factor: Optional[float] = None,
+               max_dd_pct: float = 0.0,
+               cash_usd: float = 0.0,
+               invested_usd: float = 0.0,
+               invested_pct: float = 0.0,
+               strat_rows: Optional[list] = None,
                show_details: bool = False):
     def rows(rows_):
         if not rows_:
@@ -562,7 +618,6 @@ def build_html(total_pnl,
 
     now_utc = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-    # Key Metrics block (always render)
     key_metrics_html = f"""
     <h3>Key Metrics</h3>
     <table border="1" cellpadding="6" cellspacing="0">
@@ -575,22 +630,35 @@ def build_html(total_pnl,
     </table>
     """
 
-    # Trade Stats (Window)
     pf_txt = "—" if (profit_factor is None) else f"{profit_factor:.2f}"
     avg_loss_txt = f"-{abs(avg_loss):,.2f}" if avg_loss else "0.00"
+    win_loss_ratio = ("—" if not avg_loss else f"{(avg_win / abs(avg_loss)):.2f}") if avg_win else "—"
     trade_stats_html = f"""
     <h4>Trade Stats (Window)</h4>
     <table border="1" cellpadding="6" cellspacing="0">
-      <tr><th>Avg Win</th><th>Avg Loss</th><th>Profit Factor</th></tr>
+      <tr><th>Avg Win</th><th>Avg Loss</th><th>Profit Factor</th><th>Avg W / Avg L</th></tr>
       <tr>
         <td>${avg_win:,.2f}</td>
         <td>${avg_loss_txt}</td>
         <td>{pf_txt}</td>
+        <td>{win_loss_ratio}</td>
       </tr>
     </table>
     """
 
-    # Exposure (optional, only if available)
+    risk_cap_html = f"""
+    <h3>Risk &amp; Capital</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <tr><th>Max Drawdown (since inception)</th><th>Cash (USD)</th><th>Invested Notional (USD)</th><th>Invested %</th></tr>
+      <tr>
+        <td>{max_dd_pct:.1f}%</td>
+        <td>${cash_usd:,.2f}</td>
+        <td>${invested_usd:,.2f}</td>
+        <td>{invested_pct:.1f}%</td>
+      </tr>
+    </table>
+    """
+
     exposure_html = ""
     if exposures and exposures.get("total_notional", 0) > 0:
         total_notional = exposures["total_notional"]
@@ -617,13 +685,27 @@ def build_html(total_pnl,
         {warn}
         """
 
-    # Notes
+    strat_html = ""
+    if strat_rows:
+        body = []
+        for r in strat_rows:
+            body.append(
+                f"<tr><td>{r['strategy']}</td><td>{r['total']}</td><td>{r['wins']}</td>"
+                f"<td>{r['win_rate']:.1f}%</td><td>{r['pnl']:,.2f}</td></tr>"
+            )
+        strat_html = f"""
+        <h3>Strategy Breakdown (Window)</h3>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Strategy</th><th>Trades</th><th>Wins</th><th>Win Rate</th><th>Realized PnL (USD)</th></tr>
+          {''.join(body)}
+        </table>
+        """
+
     notes_html = ""
     if errors or detect_notes:
         items = "".join(f"<li>{e}</li>" for e in errors + detect_notes)
         notes_html = f"<h3>Notes</h3><ul>{items}</ul>"
 
-    # Optional details
     details_html = ""
     if show_details:
         details_html = f"""
@@ -641,7 +723,9 @@ def build_html(total_pnl,
     <h2>Daily Trading Bot Report</h2><p><b>As of:</b> {now_utc}</p>
     {key_metrics_html}
     {trade_stats_html}
+    {risk_cap_html}
     {exposure_html}
+    {strat_html}
     {details_html}
     {notes_html}
     <p style="color:#666">CSV attachment includes these tables.</p>
@@ -657,27 +741,37 @@ def build_csv(total_pnl,
               total_trades: int = 0,
               avg_win: float = 0.0,
               avg_loss: float = 0.0,
-              profit_factor: float | None = None):
+              profit_factor: Optional[float] = None,
+              max_dd_pct: float = 0.0,
+              cash_usd: float = 0.0,
+              invested_usd: float = 0.0,
+              invested_pct: float = 0.0,
+              strat_rows: Optional[list] = None):
     buf = io.StringIO(); w = csv.writer(buf)
     w.writerow(["Daily Trading Bot Report"])
     w.writerow(["Generated (UTC)", datetime.utcnow().isoformat()])
     w.writerow([])
 
-    # Key metrics
     w.writerow(["Key Metrics"])
     w.writerow(["Realized PnL (USD)", round(float(total_pnl or 0), 2)])
     w.writerow(["Unrealized PnL (USD)", round(float(unrealized_pnl or 0), 2)])
     w.writerow(["Win Rate", f"{win_rate:.1f}% ({wins}/{total_trades})"])
     w.writerow([])
 
-    # Trade stats (window)
     w.writerow(["Trade Stats (Window)"])
     w.writerow(["Avg Win", round(float(avg_win or 0), 2)])
     w.writerow(["Avg Loss", round(float(avg_loss or 0), 2)])
     w.writerow(["Profit Factor", "" if profit_factor is None else round(float(profit_factor), 2)])
+    w.writerow(["Avg W / Avg L", "" if not avg_loss else round(float((avg_win / abs(avg_loss))), 2)])
     w.writerow([])
 
-    # Exposure snapshot (optional)
+    w.writerow(["Risk & Capital"])
+    w.writerow(["Max Drawdown (since inception) %", round(float(max_dd_pct or 0.0), 2)])
+    w.writerow(["Cash (USD)", round(float(cash_usd or 0.0), 2)])
+    w.writerow(["Invested Notional (USD)", round(float(invested_usd or 0.0), 2)])
+    w.writerow(["Invested %", round(float(invested_pct or 0.0), 2)])
+    w.writerow([])
+
     if exposures and exposures.get("total_notional", 0) > 0:
         w.writerow(["Exposure Snapshot"])
         w.writerow(["Total Notional (USD)", f"{exposures['total_notional']:.2f}"])
@@ -686,7 +780,13 @@ def build_csv(total_pnl,
             w.writerow([it["symbol"], f"{it['notional']:.2f}", f"{it['pct']:.1f}%", it["side"], it["qty"], it["price"]])
         w.writerow([])
 
-    # Optional details: positions / trades (will be empty if caller passed [])
+    if strat_rows:
+        w.writerow(["Strategy Breakdown (Window)"])
+        w.writerow(["Strategy","Trades","Wins","Win Rate %","Realized PnL (USD)"])
+        for r in strat_rows:
+            w.writerow([r["strategy"], r["total"], r["wins"], round(r["win_rate"], 2), round(r["pnl"], 2)])
+        w.writerow([])
+
     w.writerow(["Open Positions"]); w.writerow(["Symbol","Qty","Avg Price"])
     for r in open_pos:
         r = [c.isoformat() if hasattr(c, "isoformat") else c for c in r]
@@ -699,6 +799,53 @@ def build_csv(total_pnl,
         w.writerow(r)
 
     return buf.getvalue().encode("utf-8")
+
+
+# -------------------------
+# Strategy breakdown (optional)
+# -------------------------
+
+def compute_strategy_breakdown_windowed(conn):
+    tbl = REPORT_TRADES_TABLE
+    cols = table_columns(conn, tbl)
+    out = []
+    notes = []
+    if not cols:
+        return out, ["Strategy: table not found"]
+
+    strat_col = pick_first_available(cols, ["strategy","module","algo","tag"])
+    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
+    ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
+    if not strat_col or not pnl_col or not ts_col:
+        miss = []
+        if not strat_col: miss.append("strategy-like column")
+        if not pnl_col: miss.append("pnl-like column")
+        if not ts_col: miss.append("time-like column")
+        notes.append("Strategy: missing " + ", ".join(miss))
+        return out, notes
+
+    ts_expr = qident(ts_col)
+    time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
+    q = f"""
+        SELECT {qident(strat_col)} AS strat,
+               COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE {qident(pnl_col)} > 0) AS wins,
+               COALESCE(SUM({qident(pnl_col)}),0) AS pnl
+        FROM {qualify(tbl)}
+        WHERE {time_window_sql}
+          {upper_bound_sql}
+          AND {qident(pnl_col)} IS NOT NULL
+        GROUP BY {qident(strat_col)}
+        ORDER BY total DESC
+        LIMIT 20
+    """
+    for strat, total, wins, pnl in conn.run(q):
+        total = int(total or 0)
+        wins = int(wins or 0)
+        wr = (wins / total * 100.0) if total > 0 else 0.0
+        out.append({"strategy": strat, "total": total, "wins": wins, "win_rate": wr, "pnl": float(pnl or 0.0)})
+    notes.append(f"Strategy source: {tbl} strat_col={strat_col} pnl_col={pnl_col} ts_col={ts_col}")
+    return out, notes
 
 
 # -------------------------
@@ -735,7 +882,6 @@ def main():
     try:
         total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
 
-        # NEW metrics
         unreal_pnl, unreal_notes = compute_unrealized_pnl(conn, open_pos)
         detect_notes.extend(unreal_notes)
 
@@ -744,12 +890,19 @@ def main():
 
         avg_win, avg_loss, profit_factor, ts_notes = compute_trade_stats_windowed(conn)
         detect_notes.extend(ts_notes)
+
+        max_dd_pct, max_dd_abs, peak_eq, trough_eq, dd_notes = compute_max_drawdown(conn)
+        detect_notes.extend(dd_notes)
+
+        exposures = compute_exposures(open_pos, top_n=3)
+        cash_usd, invested_usd, invested_pct, cash_notes = compute_cash_vs_invested(conn, exposures)
+        detect_notes.extend(cash_notes)
+
+        strat_rows, strat_notes = compute_strategy_breakdown_windowed(conn)
+        detect_notes.extend(strat_notes)
     finally:
         conn.close()
 
-    exposures = compute_exposures(open_pos, top_n=3)
-
-    # Overview vs details
     open_pos_out = open_pos if REPORT_SHOW_DETAILS else []
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
 
@@ -767,6 +920,11 @@ def main():
         avg_win=avg_win,
         avg_loss=avg_loss,
         profit_factor=profit_factor,
+        max_dd_pct=max_dd_pct,
+        cash_usd=cash_usd,
+        invested_usd=invested_usd,
+        invested_pct=invested_pct,
+        strat_rows=strat_rows,
         show_details=REPORT_SHOW_DETAILS,
     )
     csvb = build_csv(
@@ -781,6 +939,11 @@ def main():
         avg_win=avg_win,
         avg_loss=avg_loss,
         profit_factor=profit_factor,
+        max_dd_pct=max_dd_pct,
+        cash_usd=cash_usd,
+        invested_usd=invested_usd,
+        invested_pct=invested_pct,
+        strat_rows=strat_rows,
     )
     save_report_copy(csvb)
     send_email(html, csvb)

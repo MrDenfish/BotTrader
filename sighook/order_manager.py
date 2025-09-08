@@ -6,6 +6,8 @@ from decimal import Decimal
 from typing import Union, Optional
 import aiohttp
 import pandas as pd
+from numpy.f2py.crackfortran import sourcecodeform
+
 from Config.config_manager import CentralConfig
 
 
@@ -486,6 +488,7 @@ class OrderManager:
 
             # ✅ Always TP/SL-first
             webhook_payload = self.build_webhook_payload(
+                source='Matrix',
                 symbol=symbol,
                 side="buy",
                 order_type="tp_sl",  # explicitly TP/SL
@@ -651,6 +654,7 @@ class OrderManager:
 
     def build_webhook_payload(
             self,
+            source: str,
             symbol: str,
             side: str,
             order_type: str,
@@ -703,6 +707,7 @@ class OrderManager:
             "base_avail_to_trade": base_avail_to_trade,
             "limit_price": price,
             "origin": "SIGHOOK",
+            "source": source,
             "trigger": trigger,
             "score": score,
             "verified": valid_order

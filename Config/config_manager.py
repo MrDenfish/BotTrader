@@ -55,6 +55,7 @@ class CentralConfig:
         self._quote_currency = self._trailing_percentage = self._min_volume = self._min_cooldown = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
+        self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = None
         self.exchange: Optional[Any] = None
 
         # Default values
@@ -118,6 +119,9 @@ class CentralConfig:
             "_roc_window": "ROC_WINDOW",
             "_roc_5min":"ROC_5MIN",
             "_min_spread_pct":"MIN_SPREAD_PCT",
+            "_edge_buffer_pct":"EDGE_BUFFER_PCT",
+            "_max_lifetime":"MAX_LIFETIME",
+            "_inventory_bias_factor":"INVENTORY_BIAS_FACTOR",
             "_coin_whitelist": "COIN_WHITELIST",
             "_version": "VERSION",
             "_bb_window": "BB_WINDOW",
@@ -609,7 +613,19 @@ class CentralConfig:
 
     @property
     def min_spread_pct(self):
-        return Decimal(self._min_spread_pct)/100 # .0025% for example
+        return Decimal(self._min_spread_pct)
+
+    @property
+    def edge_buffer_pct(self):
+        return Decimal(self._edge_buffer_pct)
+
+    @property
+    def max_lifetime(self):
+        return self._max_lifetime
+
+    @property
+    def inventory_bias_factor(self):
+        return self._inventory_bias_factor
 
     @property
     def csv_dir(self):

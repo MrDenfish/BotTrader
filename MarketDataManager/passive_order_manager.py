@@ -37,6 +37,7 @@ from typing import Dict, Any, Optional
 # ---------------------------------------------------------------------------
 
 class PassiveOrderManager:
+    EDGE_BUFFER = Decimal("0.0005")  # 5 bps extra to clear slippage/queue risk
     """A lightweight maker‑side quoting engine."""
 
     #: How wide the spread must be *before* we even attempt to quote.
@@ -48,8 +49,9 @@ class PassiveOrderManager:
     #: How aggressively to bias quotes when inventory is skewed.
     INVENTORY_BIAS_FACTOR = Decimal("0.10")  # ≤ 25 % of current spread Lower inventory skew
 
-    def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility, shared_utils_precision,
-                 trade_order_manager, order_manager, logger_manager, min_spread_pct, fee_cache: Dict[str, Decimal], *, max_lifetime: int | None = None) -> None:
+    def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility,
+                 shared_utils_precision, trade_order_manager, order_manager, logger_manager, edge_buffer_pct, min_spread_pct,
+                 max_lifetime, inventory_bias_factor,fee_cache: Dict[str, Decimal]) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager
@@ -74,11 +76,19 @@ class PassiveOrderManager:
 
         # Trading parameters
         self._stop_loss = Decimal(config.stop_loss)
+        self._min_volume = Decimal(config.min_volume)
         self._take_profit = Decimal(config.take_profit)
         self._trailing_percentage = Decimal(config.trailing_percentage)
         self._trailing_stop = Decimal(config.trailing_stop)
         self._min_order_amount_fiat = Decimal(config.min_order_amount_fiat)
         self._min_buy_value = Decimal(config.min_buy_value)
+
+        # Passive order parameters
+        self._min_spread_pct = Decimal(config.min_spread_pct)
+        self._edge_buffer_pct = Decimal(config.edge_buffer_pct)
+        self._inventory_bias_factor = Decimal(config.inventory_bias_factor)
+        self._max_lifetime = int(config.max_lifetime)
+
 
         # Data managers
         self.ohlcv_manager = ohlcv_manager
@@ -189,12 +199,9 @@ class PassiveOrderManager:
             self.logger.error(f"❌ Error in monitor_passive_position() for {symbol}: {e}", exc_info=True)
 
     async def evaluate_exit_conditions(self, od: OrderData) -> Optional[dict]:
-        """
-        Evaluate stop-loss, take-profit, and return trigger info if any conditions are met.
-        """
+
         symbol = od.trading_pair
         side = od.side.upper()
-        base = od.base_currency
         filled_price = od.filled_price
         available_qty = od.available_to_trade_crypto
         current_price = od.lowest_ask if side == "SELL" else od.highest_bid
@@ -203,27 +210,29 @@ class PassiveOrderManager:
             self.logger.warning(f"Skipping {symbol}: invalid current_price or quantity.")
             return None
 
-        estimated_value = available_qty * current_price
-        original_cost = available_qty * filled_price
-        raw_profit = estimated_value - original_cost
-        profit_pct = (raw_profit / original_cost) * 100 if original_cost > 0 else Decimal(0)
+        # --- Fee-aware break-evens ---
+        be_maker_exit, be_taker_exit = self._break_even_prices(Decimal(filled_price))
+
+        # Assume take-profit exits passively (maker), stop-loss exits aggressively (taker)
+        tp_edge_over_entry = ((Decimal(current_price) - be_maker_exit) / Decimal(filled_price)) * 100
+        sl_edge_over_entry = ((Decimal(current_price) - be_taker_exit) / Decimal(filled_price)) * 100
 
         min_profit_pct = Decimal(self.tom.config.get("min_profit_pct", "1.0"))
-        max_loss_pct = Decimal(self.tom.config.get("max_loss_pct", "-5.0"))
+        max_loss_pct   = Decimal(self.tom.config.get("max_loss_pct", "-5.0"))
 
-        if profit_pct >= min_profit_pct:
+        if tp_edge_over_entry >= min_profit_pct:
             return {
                 "trigger": {
                     "trigger": ExitCondition.TAKE_PROFIT.value,
-                    "trigger_note": f"Profit +{profit_pct:.2f}% >= {min_profit_pct}%",
+                    "trigger_note": f"Net≥TP {tp_edge_over_entry:.2f}% >= {min_profit_pct}% (fee-aware)"
                 }
             }
 
-        if profit_pct <= max_loss_pct:
+        if sl_edge_over_entry <= max_loss_pct:
             return {
                 "trigger": {
                     "trigger": ExitCondition.STOP_LOSS.value,
-                    "trigger_note": f"Loss {profit_pct:.2f}% <= {max_loss_pct}%",
+                    "trigger_note": f"Net≤SL {sl_edge_over_entry:.2f}% <= {max_loss_pct}% (fee-aware)"
                 }
             }
 
@@ -244,7 +253,7 @@ class PassiveOrderManager:
             min_pnl_usd=Decimal("1.0"),
             lookback_days=7,
             source_filter=None,
-            min_24h_volume=Decimal("750000"),  # 7.5k USD min volume
+            min_24h_volume=Decimal(self._min_volume),  # 7.5k USD min volume
             refresh_interval=300
         )
         if trading_pair not in profitable_symbols:
@@ -278,8 +287,9 @@ class PassiveOrderManager:
         )
 
         dynamic_min_spread = max(
-            self.fee["maker"] * (Decimal("2.0") + (volatility_factor / 2)),
-            self.min_spread_pct
+            self.fee["maker"] * (Decimal("2.0") + (volatility_factor / 2)) + self.EDGE_BUFFER,
+            self.min_spread_pct,
+            self.fee["maker"] * Decimal("2.0") + self.EDGE_BUFFER
         )
 
         if spread_pct < dynamic_min_spread:
@@ -407,7 +417,7 @@ class PassiveOrderManager:
             quote_od.order_amount_fiat = target_sell_value
 
             min_profit_pct = self._take_profit + self.fee["maker"]
-            min_sell_price = od.price * (Decimal("1.0") + min_profit_pct)
+            min_sell_price = self._break_even_prices(Decimal(od.filled_price))[0] * (Decimal('1') + self._take_profit)
             current_price = od.lowest_ask
 
             if average_close and average_close < current_price:
@@ -471,6 +481,18 @@ class PassiveOrderManager:
     # ------------------------------------------------------------------
     # Helper methods
     # ------------------------------------------------------------------
+    def _break_even_prices(self, entry_price: Decimal) -> tuple[Decimal, Decimal]:
+        """Return (maker_exit_be, taker_exit_be) prices that net to ~zero after entry+exit fees.
+        maker_exit_be: paid maker on entry, will pay maker on exit (post‑only TP)
+        taker_exit_be: paid maker on entry, will pay taker on exit (market/urgent SL)
+        """
+        maker = self.fee["maker"]
+        taker = self.fee["taker"]
+        one = Decimal("1")
+        be_maker_exit = entry_price * (one + maker) * (one + maker)
+        be_taker_exit = entry_price * (one + maker) * (one + taker)
+        return (be_maker_exit, be_taker_exit)
+
     def _compute_inventory_bias(
         self, *, asset_value: Decimal, usd_value: Decimal, spread: Decimal
     ) -> Decimal:
@@ -492,7 +514,14 @@ class PassiveOrderManager:
             if od.usd_avail_balance < cost:
                 return False
         else:  # sell
-            if od.base_avail_balance  <= od.total_balance_crypto:
+            # Determine intended order size in base units
+            if getattr(od, 'order_amount_crypto', None):
+                intended_qty = od.order_amount_crypto
+            elif getattr(od, 'order_amount_fiat', None) and getattr(od, 'limit_price', None):
+                intended_qty = od.order_amount_fiat / od.limit_price
+            else:
+                intended_qty = Decimal('0')
+            if od.base_avail_balance < intended_qty:
                 return False
         return True
 

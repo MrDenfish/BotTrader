@@ -202,6 +202,7 @@ class WebHookManager:
                 "quote_currency": quote_currency,
                 "action": request_json.get("action", "UNKNOWN"),
                 "origin": request_json.get("origin", "UNKNOWN"),
+                "source": request_json.get("source", "UNKNOWN"),
                 "uuid": request_json.get("uuid"),
                 "time": int(request_json.get("timestamp", time.time() * 1000)),
                 "trigger": trigger

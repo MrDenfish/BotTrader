@@ -11,6 +11,8 @@ import datetime as dt
 
 from aiohttp import web
 from decimal import Decimal
+
+from numpy.f2py.crackfortran import sourcecodeform
 from sqlalchemy.sql import text
 from sqlalchemy import case, or_
 from sqlalchemy.exc import DBAPIError
@@ -369,10 +371,11 @@ class WebhookListener:
             trade_order_manager=None,
             order_manager = None,
             logger_manager=self.logger_manager,
+            edge_buffer_pct=bot_config.edge_buffer_pct,
             min_spread_pct=self.bot_config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
-            fee_cache=self.fee_rates,
-            # optional knobs ↓
-            max_lifetime=90,  # cancel / refresh after 90 s
+            max_lifetime=bot_config.max_lifetime,
+            inventory_bias_factor=bot_config.inventory_bias_factor,
+            fee_cache=coinbase_api.get_fee_rates(),
         )
         self.websocket_manager = WebSocketManager(self.bot_config, self, self.ccxt_api, self.logger,
                                                   self.websocket_helper)
@@ -677,6 +680,7 @@ class WebhookListener:
             side = request_json.get("side")
             order_amount = request_json.get("order_amount_fiat")
             origin = request_json.get("origin")
+            source = request_json.get("source")
 
             if origin == "TradingView":
                 print(f"Handling webhook request from: {origin} {symbol} uuid :{request_json.get('uuid')}")
@@ -864,7 +868,7 @@ class WebhookListener:
                 )
 
             # ✅ Build order (pass test_mode directly)
-            source = "Webhook"
+            source = trade_data.get("source", "Webhook")
             trigger = trade_data.get("trigger", "strategy")
             trigger = {"trigger": f"{trigger}", "trigger_note": "from webhook"}
 

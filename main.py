@@ -152,10 +152,11 @@ async def build_websocket_components(config, listener, shared_data_manager):
         trade_order_manager=listener.trade_order_manager,
         order_manager=listener.order_manager,
         logger_manager=listener.logger_manager,
-        min_spread_pct=config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
-        fee_cache=fee_rates,  # ← new
-        # optional knobs ↓
-        max_lifetime=90,  # cancel / refresh after 90 s
+        edge_buffer_pct=config.edge_buffer_pct,
+        min_spread_pct=config.min_spread_pct,
+        max_lifetime=config.max_lifetime,
+        inventory_bias_factor=config.inventory_bias_factor,
+        fee_cache=fee_rates,
     )
 
     asset_monitor = AssetMonitor(

@@ -601,8 +601,6 @@ class TradeOrderManager:
                     response = await self.order_types.place_limit_order(order_data.source, order_data)
                 elif order_type == 'tp_sl':
                     response = await self.order_types.process_limit_and_tp_sl_orders(order_data.source, order_data, tp, sl)
-                # elif order_type == 'trailing_stop':
-                #     response = await self.order_types.place_trailing_stop_order(order_book, order_data, highest_bid)
                 else:
                     return False, {
                         'success': False,
