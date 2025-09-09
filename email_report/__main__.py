@@ -11,7 +11,11 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine
 import sqlalchemy
 
-from .metrics_compute import fetch_trade_stats, fetch_sharpe_trade
+from .metrics_compute import (
+    fetch_trade_stats,
+    fetch_sharpe_trade,
+    fetch_max_drawdown,
+)
 
 
 def _env(name: str, default: Optional[str] = None) -> Optional[str]:
@@ -20,57 +24,53 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 
 
 def build_db_url_from_env() -> str:
-    """
-    Builds an async SQLAlchemy URL from env vars.
-    Falls back to the values you shared earlier:
-      DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
-    Also supports DATABASE_URL if you prefer a single var.
-    """
-    # Prefer DATABASE_URL if provided (must be asyncpg)
     db_url = _env("DATABASE_URL")
     if db_url:
-        # Upgrade to async driver if the URL looks sync
         if db_url.startswith("postgresql://"):
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         return db_url
-
     host = _env("DB_HOST", "db")
     port = _env("DB_PORT", "5432")
     name = _env("DB_NAME", "bot_trader_db")
     user = _env("DB_USER", "bot_user")
     pwd  = _env("DB_PASSWORD", "")
-
     return f"postgresql+asyncpg://{user}:{pwd}@{host}:{port}/{name}"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Minimal email_report runner: computes Trade Stats and renders tiny HTML."
-    )
-    parser.add_argument("--hours", type=int, default=24,
-                        help="Window length in hours ending at --as-of (default: 24)")
-    parser.add_argument("--as-of", type=str, default=None,
-                        help="As-of timestamp in UTC (ISO 8601). Default: now()")
-    parser.add_argument("--use-report-trades", action="store_true",
-                        help="Compute stats from public.report_trades instead of trade_records.")
-    parser.add_argument("--out", type=str, default="/tmp/daily_report_preview.html",
-                        help="Path to write the HTML preview.")
-    return parser.parse_args()
+    p = argparse.ArgumentParser(description="Compute metrics and render a tiny HTML preview.")
+    p.add_argument("--hours", type=int, default=24, help="Window length ending at --as-of (default: 24)")
+    p.add_argument("--as-of", type=str, default=None, help="As-of timestamp in UTC (ISO 8601). Default: now()")
+    p.add_argument("--use-report-trades", action="store_true",
+                   help="Use public.report_trades instead of trade_records.")
+    p.add_argument("--out", type=str, default="/tmp/daily_report_preview.html",
+                   help="Path to write the HTML preview.")
+    p.add_argument("--starting-equity", type=float, default=3000.0,
+                   help="Starting equity (USD) used to normalize drawdown.")
+    p.add_argument("--since-inception", action="store_true",
+                   help="Override start time to inception (min ts) for the chosen source.")
+    return p.parse_args()
 
 
-def iso_utc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
-
-
-def render_tiny_html(as_of_utc: datetime, stats: dict, window_hours: int, source: str, sharpe: Optional[dict] = None) -> str:
-    # Keep this minimal; planning to move to Jinja2 later.
+def render_tiny_html(
+    *,
+    as_of_utc: datetime,
+    stats: dict,
+    sharpe: Optional[dict],
+    mdd: Optional[dict],
+    window_hours: int,
+    source: str,
+    starting_equity: float,
+    since_inception: bool,
+) -> str:
     def fmt_money(x: float) -> str:
         return f"${x:,.2f}"
 
-    # Pull in Sharpe numbers (optional if no trades)
     mean_pnl = sharpe.get("mean_pnl_per_trade", 0.0) if sharpe else 0.0
     stdev_pnl = sharpe.get("stdev_pnl_per_trade", 0.0) if sharpe else 0.0
     sharpe_like = sharpe.get("sharpe_like_per_trade", 0.0) if sharpe else 0.0
+    dd_pct = mdd.get("max_drawdown_pct", 0.0) if mdd else 0.0
+    dd_abs = mdd.get("max_drawdown_abs", 0.0) if mdd else 0.0
 
     html = f"""<!doctype html>
 <html>
@@ -91,14 +91,11 @@ def render_tiny_html(as_of_utc: datetime, stats: dict, window_hours: int, source
   </head>
   <body>
     <h1>Daily Trading Bot Report</h1>
-    <div><small>As of: {iso_utc(as_of_utc)} (UTC) · Window: last {window_hours}h · Source: {source}</small></div>
+    <div><small>As of: {as_of_utc.astimezone(timezone.utc).isoformat()} (UTC) · Window: {'since inception' if since_inception else f'last {window_hours}h'} · Source: {source}</small></div>
 
     <table class="metrics">
       <thead>
-        <tr>
-          <th>Stat</th>
-          <th>Value</th>
-        </tr>
+        <tr><th>Stat</th><th>Value</th></tr>
       </thead>
       <tbody>
         <tr><td>Total Trades</td><td>{stats.get("n_total", 0):,}</td></tr>
@@ -106,20 +103,30 @@ def render_tiny_html(as_of_utc: datetime, stats: dict, window_hours: int, source
         <tr><td>Win Rate</td><td>{stats.get("win_rate_pct", 0.0):.1f}%</td></tr>
         <tr><td>Avg Win</td><td>{fmt_money(stats.get("avg_win", 0.0))}</td></tr>
         <tr><td>Avg Loss</td><td>{fmt_money(stats.get("avg_loss", 0.0))}</td></tr>
+        <tr><td>Avg W / Avg L</td><td>{stats.get("avg_w_over_avg_l", 0.0):.3f}</td></tr>
         <tr><td>Profit Factor</td><td>{stats.get("profit_factor", 0.0):.3f}</td></tr>
         <tr><td>Expectancy / Trade</td><td>{fmt_money(stats.get("expectancy_per_trade", 0.0))}</td></tr>
         <tr><td>Mean PnL / Trade</td><td>{fmt_money(mean_pnl)}</td></tr>
         <tr><td>Stdev PnL / Trade</td><td>{fmt_money(stdev_pnl)}</td></tr>
         <tr><td>Sharpe-like (per trade)</td><td>{sharpe_like:.4f}</td></tr>
+        <tr><td>Max Drawdown (window)</td><td>{dd_pct:.2f}% ({fmt_money(dd_abs)})</td></tr>
       </tbody>
     </table>
 
     <div class="note">
       Notes: Win rate includes breakevens in the denominator. Profit Factor = gross profits / gross losses.
+      Starting equity for drawdown: {fmt_money(starting_equity)}.
     </div>
   </body>
 </html>"""
     return html
+
+
+async def get_inception_ts(conn, *, use_report_trades: bool):
+    sql = sqlalchemy.text("SELECT MIN(ts) AS t0 FROM public.report_trades") if use_report_trades \
+        else sqlalchemy.text("SELECT MIN(order_time) AS t0 FROM public.trade_records")
+    row = (await conn.execute(sql)).mappings().first()
+    return row["t0"]
 
 
 async def main_async() -> int:
@@ -137,10 +144,15 @@ async def main_async() -> int:
 
     try:
         async with engine.begin() as conn:
+            if args.since_inception:
+                t0 = await get_inception_ts(conn, use_report_trades=args.use_report_trades)
+                if t0:
+                    start = t0
+
             stats = await fetch_trade_stats(
                 conn,
-                start_ts=start,     # pass datetime objects
-                end_ts=as_of,       # pass datetime objects
+                start_ts=start,
+                end_ts=as_of,
                 use_report_trades=args.use_report_trades,
             )
             sharpe = await fetch_sharpe_trade(
@@ -149,7 +161,13 @@ async def main_async() -> int:
                 end_ts=as_of,
                 use_report_trades=args.use_report_trades,
             )
-
+            mdd = await fetch_max_drawdown(
+                conn,
+                start_ts=start,
+                end_ts=as_of,
+                starting_equity=args.starting_equity,
+                use_report_trades=args.use_report_trades,
+            )
     finally:
         await engine.dispose()
 
@@ -160,9 +178,12 @@ async def main_async() -> int:
     html = render_tiny_html(
         as_of_utc=as_of,
         stats=stats,
+        sharpe=sharpe,
+        mdd=mdd,
         window_hours=args.hours,
         source=("report_trades" if args.use_report_trades else "trade_records"),
-        sharpe=sharpe,
+        starting_equity=args.starting_equity,
+        since_inception=args.since_inception,
     )
 
     out_path = Path(args.out)
@@ -177,3 +198,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
