@@ -130,8 +130,8 @@ async def main_async() -> int:
         async with engine.begin() as conn:
             stats = await fetch_trade_stats(
                 conn,
-                start_ts=iso_utc(start),
-                end_ts=iso_utc(as_of),
+                start_ts=start,     # pass datetime objects
+                end_ts=as_of,       # pass datetime objects
                 use_report_trades=args.use_report_trades,
             )
     finally:
