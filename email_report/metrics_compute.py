@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from typing import Dict, Any, Optional, Union
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncConnection
 import sqlalchemy
+from sqlalchemy import bindparam, Numeric
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 
 # -------- Trade Stats (Avg Win/Loss, PF, Expectancy, Win Rate) --------
@@ -135,7 +136,7 @@ WITH t AS (
   ORDER BY ts
 ),
 curve AS (
-  SELECT ts, SUM(pnl) OVER (ORDER BY ts) + :starting_equity::numeric AS equity
+  SELECT ts, SUM(pnl) OVER (ORDER BY ts) + :starting_equity AS equity
   FROM t
 ),
 peaks AS (
@@ -152,7 +153,11 @@ dd AS (
   FROM peaks
 )
 SELECT MIN(dd_pct) AS min_dd_pct, MIN(dd_abs) AS min_dd_abs FROM dd
-""")
+""").bindparams(
+    bindparam("start_ts"),
+    bindparam("end_ts"),
+    bindparam("starting_equity", type_=Numeric())
+)
 
 MDD_SQL_RT = sqlalchemy.text("""
 WITH t AS (
@@ -162,7 +167,7 @@ WITH t AS (
   ORDER BY ts
 ),
 curve AS (
-  SELECT ts, SUM(pnl) OVER (ORDER BY ts) + :starting_equity::numeric AS equity
+  SELECT ts, SUM(pnl) OVER (ORDER BY ts) + :starting_equity AS equity
   FROM t
 ),
 peaks AS (
@@ -179,16 +184,20 @@ dd AS (
   FROM peaks
 )
 SELECT MIN(dd_pct) AS min_dd_pct, MIN(dd_abs) AS min_dd_abs FROM dd
-""")
+""").bindparams(
+    bindparam("start_ts"),
+    bindparam("end_ts"),
+    bindparam("starting_equity", type_=Numeric())
+)
 
 async def fetch_max_drawdown(
     conn: AsyncConnection,
-    start_ts: Union[datetime, str],
-    end_ts: Union[datetime, str],
+    start_ts,
+    end_ts,
     *,
     starting_equity: float,
     use_report_trades: bool = False,
-) -> Dict[str, float]:
+):
     sql = MDD_SQL_RT if use_report_trades else MDD_SQL_TR
     row = (await conn.execute(sql, {
         "start_ts": start_ts,
@@ -198,7 +207,7 @@ async def fetch_max_drawdown(
     if not row or row["min_dd_pct"] is None:
         return {"max_drawdown_pct": 0.0, "max_drawdown_abs": 0.0}
     return {
-        "max_drawdown_pct": round(float(row["min_dd_pct"]) * 100.0, 2),  # negative percent
+        "max_drawdown_pct": round(float(row["min_dd_pct"]) * 100.0, 2),
         "max_drawdown_abs": round(float(row["min_dd_abs"]), 2),
     }
 
