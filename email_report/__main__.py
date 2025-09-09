@@ -62,13 +62,13 @@ def iso_utc(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
-def render_tiny_html(as_of_utc: datetime, stats: dict, window_hours: int, source: str) -> str:
-    # Keep this minimal; we can move to Jinja2 later.
+def render_tiny_html(as_of_utc: datetime, stats: dict, window_hours: int, source: str, sharpe: Optional[dict] = None) -> str:
+    # Keep this minimal; planning to move to Jinja2 later.
     def fmt_money(x: float) -> str:
         return f"${x:,.2f}"
 
     # Pull in Sharpe numbers (optional if no trades)
-    mean_pnl = sharpe.get("mean_pnl_per_trade", 0.0) if (sharpe := locals().get("sharpe")) else 0.0
+    mean_pnl = sharpe.get("mean_pnl_per_trade", 0.0) if sharpe else 0.0
     stdev_pnl = sharpe.get("stdev_pnl_per_trade", 0.0) if sharpe else 0.0
     sharpe_like = sharpe.get("sharpe_like_per_trade", 0.0) if sharpe else 0.0
 
@@ -107,6 +107,7 @@ def render_tiny_html(as_of_utc: datetime, stats: dict, window_hours: int, source
         <tr><td>Avg Win</td><td>{fmt_money(stats.get("avg_win", 0.0))}</td></tr>
         <tr><td>Avg Loss</td><td>{fmt_money(stats.get("avg_loss", 0.0))}</td></tr>
         <tr><td>Profit Factor</td><td>{stats.get("profit_factor", 0.0):.3f}</td></tr>
+        <tr><td>Expectancy / Trade</td><td>{fmt_money(stats.get("expectancy_per_trade", 0.0))}</td></tr>
         <tr><td>Mean PnL / Trade</td><td>{fmt_money(mean_pnl)}</td></tr>
         <tr><td>Stdev PnL / Trade</td><td>{fmt_money(stdev_pnl)}</td></tr>
         <tr><td>Sharpe-like (per trade)</td><td>{sharpe_like:.4f}</td></tr>
@@ -161,6 +162,7 @@ async def main_async() -> int:
         stats=stats,
         window_hours=args.hours,
         source=("report_trades" if args.use_report_trades else "trade_records"),
+        sharpe=sharpe,
     )
 
     out_path = Path(args.out)
