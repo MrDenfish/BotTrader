@@ -44,7 +44,6 @@ from Shared_Utils.snapshots_manager import SnapshotsManager
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from webhook.websocket_market_manager import WebSocketMarketManager
-from MarketDataManager.passive_order_manager import PassiveOrderManager
 
 
 
@@ -285,7 +284,8 @@ class WebhookListener:
     _exchange_instance_count = 0
 
     def __init__(self, bot_config, shared_data_manager, shutdown_event: asyncio.Event, shared_utils_color, market_data_updater,
-                 database_session_manager, logger_manager,coinbase_api, session, market_manager, exchange, alert, order_book_manager):
+                 database_session_manager, logger_manager,coinbase_api, session, market_manager, exchange, alert, order_book_manager,
+                 passive_order_manager=None, original_fees=None):
 
         self.bot_config = bot_config
         self.test_mode = self.bot_config.test_mode
@@ -312,7 +312,7 @@ class WebhookListener:
         self.ohlcv_manager = None
         self.order_manager = None
         self.processed_uuids = set()
-        self.fee_rates={}
+        self.original_fees = original_fees or {}
 
         # Core Utilities
         self.shared_utils_exchange = self.exchange
@@ -358,25 +358,8 @@ class WebhookListener:
 
         )
 
-        self.passive_order_manager = PassiveOrderManager(
-            config=self.bot_config,
-            ccxt_api=None,
-            coinbase_api=None,
-            exchange=None,
-            ohlcv_manager=None,
-            shared_data_manager=self.shared_data_manager,
-            shared_utils_color=self.shared_utils_color,
-            shared_utils_utility=None,
-            shared_utils_precision=None,
-            trade_order_manager=None,
-            order_manager = None,
-            logger_manager=self.logger_manager,
-            edge_buffer_pct=bot_config.edge_buffer_pct,
-            min_spread_pct=self.bot_config.min_spread_pct,  # 0.15 %, overrides default 0.20 %
-            max_lifetime=bot_config.max_lifetime,
-            inventory_bias_factor=bot_config.inventory_bias_factor,
-            fee_cache=coinbase_api.get_fee_rates(),
-        )
+        self.passive_order_manager = passive_order_manager
+
         self.websocket_manager = WebSocketManager(self.bot_config, self, self.ccxt_api, self.logger,
                                                   self.websocket_helper)
 
@@ -843,10 +826,27 @@ class WebhookListener:
             asset_obj = order_management_snapshot.get("non_zero_balances", {}).get(asset)
 
             # ✅ Update fee cache if changed
-            new_maker = self.fee_info.get("maker")
-            old_maker = self.passive_order_manager.fee.get("maker")
-            if new_maker is not None and new_maker != old_maker:
-                await self.passive_order_manager.update_fee_cache(self.fee_info)
+            pom = self.passive_order_manager
+            if pom is None:
+                self.logger.warning("PassiveOrderManager not initialized yet")
+                return web.json_response(
+                    {"success": False, "message": "Service warming up"},
+                    status=503
+                )
+
+            # Ensure fees are loaded once (if your POM supports it)
+            if not getattr(pom, "fee", None) and hasattr(pom, "ensure_fees_loaded"):
+                await pom.ensure_fees_loaded()
+
+            try:
+                new_rates = await self.coinbase_api.get_fee_rates()
+                old_maker = (pom.fee or {}).get("maker")
+                new_maker = Decimal(str(new_rates.get("maker"))) if "maker" in new_rates else None
+                if new_maker is not None and (old_maker is None or new_maker != old_maker):
+                    await pom.set_fee_cache(new_rates)
+                    self.fee_rates = pom.fee
+            except Exception as e:
+                self.logger.debug(f"Fee refresh skipped: {e}")
 
             # ✅ Order size validation
             _, _, base_value = self.calculate_order_size_fiat(

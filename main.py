@@ -131,12 +131,24 @@ async def init_shared_data(config, logger_manager, shared_logger, coinbase_api):
 
     return shared_data_manager, shared_utils_debugger, shared_utils_print, shared_utils_color, shared_utils_utility, shared_utils_precision
 
+def _normalize_fees(fees_like: dict) -> dict:
+    # make sure everything is Decimal and present
+    maker = Decimal(str(fees_like.get("maker", "0.0020")))
+    taker = Decimal(str(fees_like.get("taker", "0.0025")))
+    return {"maker": maker, "taker": taker}
+
 async def build_websocket_components(config, listener, shared_data_manager):
     # --- NEW: pull latest maker / taker rates -------------
-    fee_rates = await listener.coinbase_api.get_fee_rates()
-    if "maker" not in fee_rates:  # API down?  Use a worst-case stub
-        listener.logger.warning("⚠️  Using fallback fee tier 0.0020")
-        fee_rates = {"maker": Decimal("0.0020"), "taker": Decimal("0.0025")}
+       # 1) Fetch & normalize once (await the coroutine here)
+    try:
+        fee_rates = await listener.coinbase_api.get_fee_rates()
+        if "maker" not in fee_rates:
+            raise ValueError("fee payload missing 'maker'")
+    except Exception:
+        listener.logger.warning("⚠️ Using fallback fee tier 0.0020/0.0025")
+        fee_rates = {"maker": "0.0020", "taker": "0.0025"}
+
+    fee_rates = _normalize_fees(fee_rates)
 
     # ------------------------------------------------------
     passive_order_manager = PassiveOrderManager(
@@ -158,6 +170,9 @@ async def build_websocket_components(config, listener, shared_data_manager):
         inventory_bias_factor=config.inventory_bias_factor,
         fee_cache=fee_rates,
     )
+
+    listener.passive_order_manager = passive_order_manager
+    listener.fee_rates = passive_order_manager.original_fees = fee_rates
 
     asset_monitor = AssetMonitor(
         listener=listener,
@@ -342,9 +357,6 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, market_dat
 async def init_webhook(config, session, coinbase_api, shared_data_manager, market_data_updater, logger_manager,shared_utils_debugger,
                        shared_utils_print, shared_utils_color, alert, startup_event=None, trade_bot=None, order_book_manager=None):
 
-
-    exchange = config.exchange
-
     listener = WebhookListener(
         bot_config=config,
         shared_data_manager=shared_data_manager,
@@ -358,7 +370,9 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, marke
         market_manager=None,
         exchange=config.exchange,
         alert=alert,
-        order_book_manager=order_book_manager  # ✅ injected
+        order_book_manager=order_book_manager,
+        passive_order_manager=None,
+        original_fees=None
     )
     listener.rest_client = config.rest_client
     listener.portfolio_uuid = config.portfolio_uuid

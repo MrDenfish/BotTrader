@@ -51,7 +51,7 @@ class PassiveOrderManager:
 
     def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility,
                  shared_utils_precision, trade_order_manager, order_manager, logger_manager, edge_buffer_pct, min_spread_pct,
-                 max_lifetime, inventory_bias_factor,fee_cache: Dict[str, Decimal]) -> None:
+                 max_lifetime, inventory_bias_factor, fee_cache: Dict[str, Decimal]) -> None:
         self.config = config
         self.tom = trade_order_manager  # shorthand inside class
         self.order_manager = order_manager

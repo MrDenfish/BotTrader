@@ -621,7 +621,7 @@ class CentralConfig:
 
     @property
     def max_lifetime(self):
-        return self._max_lifetime
+        return int(self._max_lifetime)
 
     @property
     def inventory_bias_factor(self):
