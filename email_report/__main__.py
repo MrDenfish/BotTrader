@@ -68,15 +68,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--equity-usd", type=float, default=None,
                    help = "Equity (USD) for Invested %% / Leverage (defaults to --starting-equity).")
     p.add_argument("--send", action="store_true",
-                   help="Send the report via Amazon SES.")
-    p.add_argument("--email-from", default=os.getenv("REPORT_SENDER"),
-                   help="Sender address (SES-verified). Defaults to $REPORT_SENDER")
-    p.add_argument("--email-to", default=os.getenv("REPORT_RECIPIENTS"),
-                   help="Recipient(s), comma-separated. Defaults to REPORT_RECIPIENTS")
+                   help = "Send the report via Amazon SES.")
+    # New env names first, old names as fallback
+    default_sender = os.getenv("REPORT_SENDER") or os.getenv("EMAIL_FROM")
+    default_to = (
+        os.getenv("REPORT_RECIPIENT") or
+        os.getenv("REPORT_RECIPIENTS") or
+        os.getenv("EMAIL_TO")
+        )
+
+    p.add_argument("--email-from", dest="email_from", default=default_sender,
+                   help = "Sender address (SES-verified). Uses $REPORT_SENDER or $EMAIL_FROM.")
+    p.add_argument("--email-to", dest="email_to", default=default_to,
+                   help = "Recipient(s), comma- or space-separated. Uses $REPORT_RECIPIENT, $REPORT_RECIPIENTS, or $EMAIL_TO.")
     p.add_argument("--aws-region", default=os.getenv("AWS_REGION", "us-west-2"),
                    help="AWS region for SES. Default: env or us-west-2.")
     p.add_argument("--subject", default=None,
-                   help="Email subject. Default: auto-generated.")
+                   help="Email subject. Daily Trading Bot Report")
     return p.parse_args()
 
 
