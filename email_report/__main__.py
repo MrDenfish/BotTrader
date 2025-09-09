@@ -69,10 +69,10 @@ def parse_args() -> argparse.Namespace:
                    help = "Equity (USD) for Invested %% / Leverage (defaults to --starting-equity).")
     p.add_argument("--send", action="store_true",
                    help="Send the report via Amazon SES.")
-    p.add_argument("--email-from", default=os.getenv("EMAIL_FROM"),
-                   help="Sender address (SES-verified). Defaults to $EMAIL_FROM")
-    p.add_argument("--email-to", default=os.getenv("EMAIL_TO"),
-                   help="Recipient(s), comma-separated. Defaults to $EMAIL_TO")
+    p.add_argument("--email-from", default=os.getenv("REPORT_SENDER"),
+                   help="Sender address (SES-verified). Defaults to $REPORT_SENDER")
+    p.add_argument("--email-to", default=os.getenv("REPORT_RECIPIENTS"),
+                   help="Recipient(s), comma-separated. Defaults to REPORT_RECIPIENTS")
     p.add_argument("--aws-region", default=os.getenv("AWS_REGION", "us-west-2"),
                    help="AWS region for SES. Default: env or us-west-2.")
     p.add_argument("--subject", default=None,
@@ -276,13 +276,13 @@ async def main_async() -> int:
     # optional email send
     if args.send:
         debug = os.getenv("REPORT_DEBUG", "0") == "1"
-        sender = args.email_from
-        to_csv = args.email_to or ""
+        sender = args.report_sender
+        to_csv = args.report_sender or ""
         recipients = [x.strip() for x in to_csv.split(",") if x.strip()]
         subject = args.subject or f"Daily Trading Bot Report — {as_of.isoformat()} UTC"
 
         if not sender or not recipients:
-            raise SystemExit("Send requested but EMAIL_FROM/--email-from or EMAIL_TO/--email-to missing.")
+            raise SystemExit("Send requested but REPORT_SENDER/--email-from or REPORT_RECIPIENTS/--email-to missing.")
 
         if debug:
             print(f"[DRY RUN] Would send SES email: from={sender} to={recipients} subject={subject}")

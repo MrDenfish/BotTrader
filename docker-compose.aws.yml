@@ -94,8 +94,14 @@ services:
       PYTHONPATH: /app          # <— add this
     env_file:
       - /opt/bot/.env_runtime
-    # Optional: run the tiny HTML preview by default
-    command: [ "python","-m","email_report","--hours","24","--use-report-trades","--out","/app/logs/daily_report_preview.html" ]
+    # Optional: send daily email reports
+    command: >-
+      python -u -m email_report
+        --hours ${REPORT_LOOKBACK_HOURS:-24}
+        --use-report-trades
+        --starting-equity ${REPORT_STARTING_EQUITY:-3000}
+        --equity-usd ${REPORT_EQUITY_USD:-3000}
+        --send
     restart: "no"
 
 volumes:

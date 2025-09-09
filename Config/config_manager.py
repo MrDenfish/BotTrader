@@ -36,7 +36,7 @@ class CentralConfig:
         """Set default values for all configuration attributes."""
         self.db_url = self.db_user = self.db_password = self.db_host = None
         self.db_port = self.db_name = self._api_url = self._json_config = None
-        self._phone = self._email_from = self._smtp_password = self._email_to = self._email_alerts = None
+        self._phone = self._report_sender = self._smtp_password = self._report_recipient = self._email_alerts = None
         self._order_size_fiat = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
@@ -94,8 +94,8 @@ class CentralConfig:
             "_db_connection_threshold": "DB_CONNECTION_THRESHOLD",
             "db_password": "DB_PASSWORD",
             "_email_alerts": "EMAIL_ALERTS",
-            "_email_to": "EMAIL_TO",
-            "_email_from": "EMAIL_FROM",
+            "_report_recipient": "REPORT_RECIPIENT",
+            "_report_sender": "REPORT_SENDER",
             "_email_password": "SMTP_PASSWORD",
             "_log_level": "LOG_LEVEL",
             "_quote_currency": "QUOTE_CURRENCY",
@@ -490,16 +490,16 @@ class CentralConfig:
         return self._phone
 
     @property
-    def email_from(self):
-        return self._email_from
+    def report_sender(self):
+        return self._report_sender
 
     @property
     def smtp_password(self):
         return self._smtp_password
 
     @property
-    def email_to(self):
-        return self._email_to
+    def report_recipient(self):
+        return self._report_recipient
 
     @property
     def email_alerts(self):
