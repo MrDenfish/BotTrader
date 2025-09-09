@@ -92,7 +92,10 @@ def render_tiny_html(
         )
         for p in positions
     )
-
+    concentration_note = (
+        '<div class="note" style="color:#b00;margin-top:8px;">⚠️ Largest single exposure ≥ 25% of total notional.</div>'
+        if exposure.get("largest_exposure_pct", 0.0) >= 25.0 else ""
+    )
     html = f"""<!doctype html>
 <html>
   <head>
@@ -135,23 +138,27 @@ def render_tiny_html(
      </table>
 
     <h2 style="margin-top:28px;">Capital & Exposure</h2>
-    <table class="metrics">
-      <thead><tr><th>Field</th><th>Value</th></tr></thead>
-      <tbody>
-        <tr><td>Total Notional</td><td>${exposure.get('total_notional_usd', 0):,.2f}</td></tr>
-        <tr><td>Invested % of Equity</td><td>{exposure.get('invested_pct', 0.0):.2f}%</td></tr>
-        <tr><td>Leverage Used</td><td>{exposure.get('leverage', 0.0):.3f}×</td></tr>
-      </tbody>
-    </table>
+<table class="metrics">
+  <thead><tr><th>Field</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Total Notional</td><td>${exposure.get('total_notional_usd', 0):,.2f}</td></tr>
+    <tr><td>Invested % of Equity</td><td>{exposure.get('invested_pct', 0.0):.2f}%</td></tr>
+    <tr><td>Leverage Used</td><td>{exposure.get('leverage', 0.0):.3f}×</td></tr>
+    <tr><td>Long Notional</td><td>${exposure.get('long_notional_usd', 0):,.2f}</td></tr>
+    <tr><td>Short Notional</td><td>${exposure.get('short_notional_usd', 0):,.2f}</td></tr>
+    <tr><td>Net Exposure</td><td>${exposure.get('net_exposure_usd', 0):,.2f} ({exposure.get('net_exposure_pct', 0.0):.2f}%)</td></tr>
+  </tbody>
+</table>
+{concentration_note}
 
-    <table class="metrics">
-      <thead>
-        <tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Price</th><th>Notional</th><th>% of Total</th></tr>
-      </thead>
-      <tbody>
-        {positions_rows}
-      </tbody>
-    </table>
+<table class="metrics">
+  <thead>
+    <tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Price</th><th>Notional</th><th>% of Total</th></tr>
+  </thead>
+  <tbody>
+    {positions_rows}
+  </tbody>
+</table>
     
     <div class="note">
       Notes: Win rate includes breakevens in the denominator. Profit Factor = gross profits / gross losses.

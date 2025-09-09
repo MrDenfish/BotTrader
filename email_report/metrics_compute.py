@@ -217,16 +217,14 @@ EXPOSURE_SQL = sqlalchemy.text("""
 SELECT
   symbol,
   position_qty::numeric AS qty,
-  avg_entry_price::numeric AS avg_price,
-  ABS(position_qty::numeric * avg_entry_price::numeric) AS notional_usd,
-  CASE WHEN position_qty::numeric >= 0 THEN 'long' ELSE 'short' END AS side
+  avg_entry_price::numeric AS avg_price
 FROM public.report_positions
 """)
 
 async def fetch_exposure_snapshot(
     conn: AsyncConnection,
     *,
-    equity_usd: float,          # use your true equity; if unknown, pass starting_equity for now
+    equity_usd: float,
     top_n: int = 5
 ) -> Dict[str, Any]:
     rows = (await conn.execute(EXPOSURE_SQL)).mappings().all()
@@ -235,33 +233,62 @@ async def fetch_exposure_snapshot(
             "total_notional_usd": 0.0,
             "invested_pct": 0.0,
             "leverage": 0.0,
+            "long_notional_usd": 0.0,
+            "short_notional_usd": 0.0,
+            "net_exposure_usd": 0.0,
+            "net_exposure_pct": 0.0,
+            "largest_exposure_pct": 0.0,
             "positions": []
         }
 
     positions = []
     total_notional = 0.0
+    long_notional = 0.0
+    short_notional = 0.0
+
     for r in rows:
-        notional = float(r["notional_usd"] or 0.0)
+        qty = float(r["qty"] or 0.0)
+        avg_price = float(r["avg_price"] or 0.0)
+        notional = abs(qty * avg_price)
+        side = "long" if qty >= 0 else "short"
         total_notional += notional
+        if side == "long":
+            long_notional += notional
+        else:
+            short_notional += notional
         positions.append({
             "symbol": r["symbol"],
-            "qty": float(r["qty"] or 0.0),
-            "avg_price": float(r["avg_price"] or 0.0),
+            "qty": qty,
+            "avg_price": avg_price,
             "notional_usd": notional,
-            "side": r["side"],
+            "side": side,
         })
 
+    # Sort + percentages
     positions.sort(key=lambda x: x["notional_usd"], reverse=True)
-    for p in positions:
-        p["pct_of_total"] = round(100.0 * p["notional_usd"] / total_notional, 2) if total_notional > 0 else 0.0
+    if total_notional > 0:
+        for p in positions:
+            p["pct_of_total"] = round(100.0 * p["notional_usd"] / total_notional, 2)
+        largest_exposure_pct = positions[0]["pct_of_total"]
+    else:
+        for p in positions:
+            p["pct_of_total"] = 0.0
+        largest_exposure_pct = 0.0
 
     invested_pct = (100.0 * total_notional / equity_usd) if equity_usd > 0 else 0.0
     leverage = (total_notional / equity_usd) if equity_usd > 0 else 0.0
+    net_exposure_usd = long_notional - short_notional
+    net_exposure_pct = (100.0 * net_exposure_usd / equity_usd) if equity_usd > 0 else 0.0
 
     return {
         "total_notional_usd": round(total_notional, 2),
         "invested_pct": round(invested_pct, 2),
         "leverage": round(leverage, 3),
-        "positions": positions[:top_n],   # top N by notional
+        "long_notional_usd": round(long_notional, 2),
+        "short_notional_usd": round(short_notional, 2),
+        "net_exposure_usd": round(net_exposure_usd, 2),       # long - short (can be negative)
+        "net_exposure_pct": round(net_exposure_pct, 2),       # % of equity
+        "largest_exposure_pct": round(largest_exposure_pct, 2),
+        "positions": positions[:top_n],
     }
 
