@@ -91,8 +91,11 @@ services:
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
+      PYTHONPATH: /app          # <— add this
     env_file:
       - /opt/bot/.env_runtime
+    # Optional: run the tiny HTML preview by default
+    command: [ "python","-m","email_report","--hours","24","--use-report-trades","--out","/app/logs/daily_report_preview.html" ]
     restart: "no"
 
 volumes:

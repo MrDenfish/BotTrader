@@ -2,3 +2,7 @@ boto3
 pg8000>=1.30  # for pg8000.native
 numpy==2.2.6
 pandas==2.2.3
+sqlalchemy>=2.0
+asyncpg>=0.29
+# (soon) for templating:
+# jinja2>=3.1

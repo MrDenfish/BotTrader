@@ -6,20 +6,25 @@
 #
 asn1crypto==1.5.1
     # via scramp
-boto3>=1.34
+async-timeout==5.0.1
+    # via asyncpg
+asyncpg==0.30.0
+    # via -r requirements-report.in
+boto3==1.40.11
     # via -r requirements-report.in
 botocore==1.40.11
     # via
     #   boto3
     #   s3transfer
+greenlet==3.2.4
+    # via sqlalchemy
 jmespath==1.0.1
     # via
     #   boto3
     #   botocore
 numpy==2.2.6
     # via
-    #   bottleneck
-    #   numexpr
+    #   -r requirements-report.in
     #   pandas
 pandas==2.2.3
     # via -r requirements-report.in
@@ -28,12 +33,21 @@ pg8000==1.31.4
 python-dateutil==2.9.0.post0
     # via
     #   botocore
+    #   pandas
     #   pg8000
+pytz==2025.2
+    # via pandas
 s3transfer==0.13.1
     # via boto3
 scramp==1.4.6
     # via pg8000
 six==1.17.0
     # via python-dateutil
+sqlalchemy==2.0.43
+    # via -r requirements-report.in
+typing-extensions==4.15.0
+    # via sqlalchemy
+tzdata==2025.2
+    # via pandas
 urllib3==2.5.0
     # via botocore
