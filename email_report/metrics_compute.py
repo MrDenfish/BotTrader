@@ -44,6 +44,29 @@ SELECT
 FROM trades
 """)
 
+SHARPE_TRADE_SQL_TR = sqlalchemy.text("""
+WITH t AS (
+  SELECT realized_profit::numeric AS pnl
+  FROM public.trade_records
+  WHERE order_time >= :start_ts AND order_time < :end_ts
+)
+SELECT
+  AVG(pnl) AS mean_pnl,
+  STDDEV_SAMP(pnl) AS stdev_pnl
+FROM t
+""")
+
+SHARPE_TRADE_SQL_RT = sqlalchemy.text("""
+WITH t AS (
+  SELECT realized_pnl::numeric AS pnl
+  FROM public.report_trades
+  WHERE ts >= :start_ts AND ts < :end_ts
+)
+SELECT
+  AVG(pnl) AS mean_pnl,
+  STDDEV_SAMP(pnl) AS stdev_pnl
+FROM t
+""")
 
 async def fetch_trade_stats(
     conn: AsyncConnection,
@@ -92,3 +115,23 @@ async def fetch_trade_stats(
         "expectancy_per_trade": round(expectancy, 6),
     }
 
+async def fetch_sharpe_trade(
+    conn: AsyncConnection,
+    start_ts,
+    end_ts,
+    *,
+    use_report_trades: bool = False
+) -> Optional[Dict[str, float]]:
+    sql = SHARPE_TRADE_SQL_RT if use_report_trades else SHARPE_TRADE_SQL_TR
+    res = await conn.execute(sql, {"start_ts": start_ts, "end_ts": end_ts})
+    row = res.mappings().first()
+    if not row:
+        return None
+    mean = float(row["mean_pnl"] or 0.0)
+    stdev = float(row["stdev_pnl"] or 0.0)
+    sharpe = (mean / stdev) if stdev else 0.0
+    return {
+        "mean_pnl_per_trade": round(mean, 6),
+        "stdev_pnl_per_trade": round(stdev, 6),
+        "sharpe_like_per_trade": round(sharpe, 6),
+    }
