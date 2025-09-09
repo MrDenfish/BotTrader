@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import os
+import logging
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 import asyncio
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -22,6 +25,18 @@ from .metrics_compute import (
 def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     v = os.getenv(name)
     return v if v not in (None, "") else default
+
+def send_email_html(*, html: str, subject: str, sender: str, recipients: list[str], region: str) -> str:
+    ses = boto3.client("ses", region_name=region)
+    resp = ses.send_email(
+        Source=sender,
+        Destination={"ToAddresses": recipients},
+        Message={
+            "Subject": {"Data": subject},
+            "Body": {"Html": {"Data": html}}
+        },
+    )
+    return resp["MessageId"]
 
 
 def build_db_url_from_env() -> str:
@@ -52,6 +67,16 @@ def parse_args() -> argparse.Namespace:
                    help="Override start time to inception (min ts) for the chosen source.")
     p.add_argument("--equity-usd", type=float, default=None,
                    help = "Equity (USD) for Invested %% / Leverage (defaults to --starting-equity).")
+    p.add_argument("--send", action="store_true",
+                   help="Send the report via Amazon SES.")
+    p.add_argument("--email-from", default=os.getenv("EMAIL_FROM"),
+                   help="Sender address (SES-verified). Defaults to $EMAIL_FROM")
+    p.add_argument("--email-to", default=os.getenv("EMAIL_TO"),
+                   help="Recipient(s), comma-separated. Defaults to $EMAIL_TO")
+    p.add_argument("--aws-region", default=os.getenv("AWS_REGION", "us-west-2"),
+                   help="AWS region for SES. Default: env or us-west-2.")
+    p.add_argument("--subject", default=None,
+                   help="Email subject. Default: auto-generated.")
     return p.parse_args()
 
 
@@ -241,9 +266,36 @@ async def main_async() -> int:
         exposure=exposure,
     )
 
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"Rendered preview → {args.out}")
+
     out_path = Path(args.out)
     out_path.write_text(html, encoding="utf-8")
-    print(f"Rendered preview → {out_path}")
+    # optional email send
+    if args.send:
+        debug = os.getenv("REPORT_DEBUG", "0") == "1"
+        sender = args.email_from
+        to_csv = args.email_to or ""
+        recipients = [x.strip() for x in to_csv.split(",") if x.strip()]
+        subject = args.subject or f"Daily Trading Bot Report — {as_of.isoformat()} UTC"
+
+        if not sender or not recipients:
+            raise SystemExit("Send requested but EMAIL_FROM/--email-from or EMAIL_TO/--email-to missing.")
+
+        if debug:
+            print(f"[DRY RUN] Would send SES email: from={sender} to={recipients} subject={subject}")
+        else:
+            try:
+                msg_id = send_email_html(
+                    html=html, subject=subject, sender=sender,
+                    recipients=recipients, region=args.aws_region
+                )
+                print(f"SES send OK (MessageId={msg_id})")
+            except (BotoCoreError, ClientError) as e:
+                logging.exception("SES send_email failed")
+                raise SystemExit(f"SES send failed: {e}")
     return 0
 
 
