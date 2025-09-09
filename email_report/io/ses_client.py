@@ -1,0 +1,1 @@
+# SES send; fallback SMTP if needed
