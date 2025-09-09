@@ -15,6 +15,7 @@ from .metrics_compute import (
     fetch_trade_stats,
     fetch_sharpe_trade,
     fetch_max_drawdown,
+    fetch_exposure_snapshot,
 )
 
 
@@ -49,6 +50,8 @@ def parse_args() -> argparse.Namespace:
                    help="Starting equity (USD) used to normalize drawdown.")
     p.add_argument("--since-inception", action="store_true",
                    help="Override start time to inception (min ts) for the chosen source.")
+    p.add_argument("--equity-usd", type=float, default=None,
+                   help = "Equity (USD) for Invested % / Leverage (defaults to --starting-equity).")
     return p.parse_args()
 
 
@@ -62,6 +65,7 @@ def render_tiny_html(
     source: str,
     starting_equity: float,
     since_inception: bool,
+    exposure: dict | None = None
 ) -> str:
     def fmt_money(x: float) -> str:
         return f"${x:,.2f}"
@@ -71,6 +75,23 @@ def render_tiny_html(
     sharpe_like = sharpe.get("sharpe_like_per_trade", 0.0) if sharpe else 0.0
     dd_pct = mdd.get("max_drawdown_pct", 0.0) if mdd else 0.0
     dd_abs = mdd.get("max_drawdown_abs", 0.0) if mdd else 0.0
+
+    exposure = exposure or {}
+    positions = exposure.get("positions", [])
+
+    positions_rows = "".join(
+        (
+            f"<tr>"
+            f"<td>{p['symbol']}</td>"
+            f"<td>{p['side']}</td>"
+            f"<td>{p['qty']:.6g}</td>"
+            f"<td>${p['avg_price']:,.6f}</td>"
+            f"<td>${p['notional_usd']:,.2f}</td>"
+            f"<td>{p['pct_of_total']:.2f}%</td>"
+            f"</tr>"
+        )
+        for p in positions
+    )
 
     html = f"""<!doctype html>
 <html>
@@ -111,8 +132,27 @@ def render_tiny_html(
         <tr><td>Sharpe-like (per trade)</td><td>{sharpe_like:.4f}</td></tr>
         <tr><td>Max Drawdown (window)</td><td>{dd_pct:.2f}% ({fmt_money(dd_abs)})</td></tr>
       </tbody>
+     </table>
+
+    <h2 style="margin-top:28px;">Capital & Exposure</h2>
+    <table class="metrics">
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Total Notional</td><td>${exposure.get('total_notional_usd', 0):,.2f}</td></tr>
+        <tr><td>Invested % of Equity</td><td>{exposure.get('invested_pct', 0.0):.2f}%</td></tr>
+        <tr><td>Leverage Used</td><td>{exposure.get('leverage', 0.0):.3f}×</td></tr>
+      </tbody>
     </table>
 
+    <table class="metrics">
+      <thead>
+        <tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Price</th><th>Notional</th><th>% of Total</th></tr>
+      </thead>
+      <tbody>
+        {positions_rows}
+      </tbody>
+    </table>
+    
     <div class="note">
       Notes: Win rate includes breakevens in the denominator. Profit Factor = gross profits / gross losses.
       Starting equity for drawdown: {fmt_money(starting_equity)}.
@@ -148,6 +188,7 @@ async def main_async() -> int:
                 t0 = await get_inception_ts(conn, use_report_trades=args.use_report_trades)
                 if t0:
                     start = t0
+            equity_usd = args.equity_usd if args.equity_usd is not None else args.starting_equity
 
             stats = await fetch_trade_stats(
                 conn,
@@ -168,6 +209,12 @@ async def main_async() -> int:
                 starting_equity=args.starting_equity,
                 use_report_trades=args.use_report_trades,
             )
+            exposure = await fetch_exposure_snapshot(
+            conn,
+            equity_usd=equity_usd,
+            top_n=5
+            )
+
     finally:
         await engine.dispose()
 
@@ -184,6 +231,7 @@ async def main_async() -> int:
         source=("report_trades" if args.use_report_trades else "trade_records"),
         starting_equity=args.starting_equity,
         since_inception=args.since_inception,
+        exposure=exposure,
     )
 
     out_path = Path(args.out)

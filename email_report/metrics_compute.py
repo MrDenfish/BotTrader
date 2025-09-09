@@ -211,3 +211,57 @@ async def fetch_max_drawdown(
         "max_drawdown_abs": round(float(row["min_dd_abs"]), 2),
     }
 
+# ---------------------- Capital & Exposure (positions) ----------------------
+
+EXPOSURE_SQL = sqlalchemy.text("""
+SELECT
+  symbol,
+  position_qty::numeric AS qty,
+  avg_entry_price::numeric AS avg_price,
+  ABS(position_qty::numeric * avg_entry_price::numeric) AS notional_usd,
+  CASE WHEN position_qty::numeric >= 0 THEN 'long' ELSE 'short' END AS side
+FROM public.report_positions
+""")
+
+async def fetch_exposure_snapshot(
+    conn: AsyncConnection,
+    *,
+    equity_usd: float,          # use your true equity; if unknown, pass starting_equity for now
+    top_n: int = 5
+) -> Dict[str, Any]:
+    rows = (await conn.execute(EXPOSURE_SQL)).mappings().all()
+    if not rows:
+        return {
+            "total_notional_usd": 0.0,
+            "invested_pct": 0.0,
+            "leverage": 0.0,
+            "positions": []
+        }
+
+    positions = []
+    total_notional = 0.0
+    for r in rows:
+        notional = float(r["notional_usd"] or 0.0)
+        total_notional += notional
+        positions.append({
+            "symbol": r["symbol"],
+            "qty": float(r["qty"] or 0.0),
+            "avg_price": float(r["avg_price"] or 0.0),
+            "notional_usd": notional,
+            "side": r["side"],
+        })
+
+    positions.sort(key=lambda x: x["notional_usd"], reverse=True)
+    for p in positions:
+        p["pct_of_total"] = round(100.0 * p["notional_usd"] / total_notional, 2) if total_notional > 0 else 0.0
+
+    invested_pct = (100.0 * total_notional / equity_usd) if equity_usd > 0 else 0.0
+    leverage = (total_notional / equity_usd) if equity_usd > 0 else 0.0
+
+    return {
+        "total_notional_usd": round(total_notional, 2),
+        "invested_pct": round(invested_pct, 2),
+        "leverage": round(leverage, 3),
+        "positions": positions[:top_n],   # top N by notional
+    }
+
