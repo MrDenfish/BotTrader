@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import logging
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -274,23 +275,36 @@ async def main_async() -> int:
         exposure=exposure,
     )
 
+
+
+    out_path = Path(args.out)
+    out_path.write_text(html, encoding="utf-8")
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             f.write(html)
         print(f"Rendered preview → {args.out}")
-
-    out_path = Path(args.out)
-    out_path.write_text(html, encoding="utf-8")
     # optional email send
     if args.send:
         debug = os.getenv("REPORT_DEBUG", "0") == "1"
-        sender = args.report_sender
-        to_csv = args.report_sender or ""
-        recipients = [x.strip() for x in to_csv.split(",") if x.strip()]
+        # pull from CLI first, then new env names, then legacy env names
+        sender = (
+            getattr(args, "email_from", None)
+            or os.getenv("REPORT_SENDER")
+            or os.getenv("EMAIL_FROM")
+        )
+        to_csv = (
+            getattr(args, "email_to", None)
+            or os.getenv("REPORT_RECIPIENT")
+            or os.getenv("REPORT_RECIPIENTS")
+            or os.getenv("EMAIL_TO")
+            or ""
+        )
+        # allow comma, semicolon, or whitespace separated lists
+        recipients = [x.strip() for x in re.split(r"[,\s;]+", to_csv) if x.strip()]
         subject = args.subject or f"Daily Trading Bot Report — {as_of.isoformat()} UTC"
 
         if not sender or not recipients:
-            raise SystemExit("Send requested but REPORT_SENDER/--email-from or REPORT_RECIPIENTS/--email-to missing.")
+            raise SystemExit("Send requested but REPORT_SENDER/--email-from or REPORT_RECIPIENT(S)/--email-to missing.")
 
         if debug:
             print(f"[DRY RUN] Would send SES email: from={sender} to={recipients} subject={subject}")
