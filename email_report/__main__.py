@@ -127,7 +127,7 @@ def render_tiny_html(
         for p in positions
     )
     concentration_note = (
-        '<div class="note" style="color:#b00;margin-top:8px;">⚠️ Largest single exposure ≥ 25%% of total notional.</div>'
+        '<div class="note" style="color:#b00;margin-top:8px;">⚠️ Largest single exposure ≥ 25% of total notional.</div>'
         if exposure.get("largest_exposure_pct", 0.0) >= 25.0 else ""
     )
     html = f"""<!doctype html>
@@ -158,7 +158,7 @@ def render_tiny_html(
       <tbody>
         <tr><td>Total Trades</td><td>{stats.get("n_total", 0):,}</td></tr>
         <tr><td>Breakeven Trades</td><td>{stats.get("n_breakeven", 0):,}</td></tr>
-        <tr><td>Win Rate</td><td>{stats.get("win_rate_pct", 0.0):.1f}%%</td></tr>
+        <tr><td>Win Rate</td><td>{stats.get("win_rate_pct", 0.0):.1f}%</td></tr>
         <tr><td>Avg Win</td><td>{fmt_money(stats.get("avg_win", 0.0))}</td></tr>
         <tr><td>Avg Loss</td><td>{fmt_money(stats.get("avg_loss", 0.0))}</td></tr>
         <tr><td>Avg W / Avg L</td><td>{stats.get("avg_w_over_avg_l", 0.0):.3f}</td></tr>
@@ -167,7 +167,7 @@ def render_tiny_html(
         <tr><td>Mean PnL / Trade</td><td>{fmt_money(mean_pnl)}</td></tr>
         <tr><td>Stdev PnL / Trade</td><td>{fmt_money(stdev_pnl)}</td></tr>
         <tr><td>Sharpe-like (per trade)</td><td>{sharpe_like:.4f}</td></tr>
-        <tr><td>Max Drawdown (window)</td><td>{dd_pct:.2f}%% ({fmt_money(dd_abs)})</td></tr>
+        <tr><td>Max Drawdown (window)</td><td>{dd_pct:.2f}% ({fmt_money(dd_abs)})</td></tr>
       </tbody>
      </table>
 
@@ -176,18 +176,18 @@ def render_tiny_html(
   <thead><tr><th>Field</th><th>Value</th></tr></thead>
   <tbody>
     <tr><td>Total Notional</td><td>${exposure.get('total_notional_usd', 0):,.2f}</td></tr>
-    <tr><td>Invested %% of Equity</td><td>{exposure.get('invested_pct', 0.0):.2f}%%</td></tr>
+    <tr><td>Invested %% of Equity</td><td>{exposure.get('invested_pct', 0.0):.2f}%</td></tr>
     <tr><td>Leverage Used</td><td>{exposure.get('leverage', 0.0):.3f}×</td></tr>
     <tr><td>Long Notional</td><td>${exposure.get('long_notional_usd', 0):,.2f}</td></tr>
     <tr><td>Short Notional</td><td>${exposure.get('short_notional_usd', 0):,.2f}</td></tr>
-    <tr><td>Net Exposure</td><td>${exposure.get('net_exposure_usd', 0):,.2f} ({exposure.get('net_exposure_pct', 0.0):.2f}%%)</td></tr>
+    <tr><td>Net Exposure</td><td>${exposure.get('net_exposure_usd', 0):,.2f} ({exposure.get('net_exposure_pct', 0.0):.2f}%)</td></tr>
   </tbody>
 </table>
 {concentration_note}
 
 <table class="metrics">
   <thead>
-    <tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Price</th><th>Notional</th><th>%% of Total</th></tr>
+    <tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Price</th><th>Notional</th><th>% of Total</th></tr>
   </thead>
   <tbody>
     {positions_rows}
