@@ -384,8 +384,45 @@ class WebSocketHelper:
                     print(f"💙 MARKET heartbeat: Counter={heartbeat_counter}")
                     self.count = 0
 
+
             elif channel == "subscriptions":
-                self.logger.info(f"💙 Confirmed Market Subscriptions: {data}")
+
+                # Extract the subscriptions block safely
+
+                events = data.get("events") or [{}]
+
+                subs = (events[0].get("subscriptions") or {}) if events else {}
+
+                ts = data.get("timestamp")
+
+                seq = data.get("sequence_num")
+
+                # Build a compact per-channel summary like: "heartbeats=1, ticker_batch=123"
+
+                parts = []
+
+                for name, value in subs.items():
+                    count = len(value) if isinstance(value, list) else 1
+
+                    parts.append(f"{name}={count}")
+
+                summary = ", ".join(parts) if parts else "no-channels"
+
+                # Optional: show a tiny preview of tickers (first few only)
+
+                tickers = subs.get("ticker_batch") or []
+
+                preview = ", ".join(tickers[:5])
+
+                preview_str = f" · ticker_batch: {len(tickers)} symbols ({preview}{'…' if len(tickers) > 5 else ''})" if tickers else ""
+
+                # Concise INFO line
+
+                self.logger.info(f"🟢🟢🟢 Subscriptions confirmed · seq={seq} · {summary}{preview_str} · ts={ts} 🟢🟢🟢")
+
+                # Full payload only at DEBUG (for deep dives when needed)
+
+                self.logger.debug("subscriptions payload: %r", data)
 
             else:
                 self.logger.warning(f"⚠️ Unhandled market WebSocket channel: {channel} | Message: {json.dumps(data)}")

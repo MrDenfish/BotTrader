@@ -169,8 +169,8 @@ def pick_first_available(cols_present, candidates):
 def _time_window_sql(ts_expr: str):
     if REPORT_USE_PT_DAY:
         time_window_sql = (
-            f"{ts_expr} >= (DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Los_Angeles')) "
-            f"AT TIME ZONE 'America/Los_Angeles')"
+            f"{ts_expr} >= (DATE_TRUNC('day', (NOW() AT TIME ZONE 'America/Anchorage')) "
+            f"AT TIME ZONE 'America/Anchorage')"
         )
     else:
         time_window_sql = f"{ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '{REPORT_LOOKBACK_HOURS} hours')"
