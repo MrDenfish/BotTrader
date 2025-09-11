@@ -8,12 +8,11 @@ import pandas as pd
 import pg8000.native as pg
 
 from decimal import Decimal
-from sqlalchemy import text
 from datetime import timezone
-from sqlalchemy import create_engine
 from email.mime.text import MIMEText
 from email.utils import getaddresses
 from datetime import datetime, timezone
+from sqlalchemy import text, create_engine
 from urllib.parse import urlparse, parse_qs
 from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
@@ -79,28 +78,7 @@ ses = boto3.client("ses", region_name=REGION)
 # DB Connection Helpers
 # -------------------------
 
-def get_sa_engine():
-    """
-    Build a SQLAlchemy engine for read-only reporting queries.
-    Uses pg8000 via 'postgresql+pg8000://'.
-    """
-    url = os.getenv("DATABASE_URL")
-    if url:
-        u = urlparse(url)
-        host = u.hostname or "db"
-        port = int(u.port or 5432)
-        user = u.username or ""
-        pwd  = u.password or ""
-        name = (u.path or "/").lstrip("/")
-        return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
 
-    # Fall back to explicit env vars (same as get_db_conn)
-    host = os.getenv("DB_HOST", "db")
-    port = int(os.getenv("DB_PORT", "5432"))
-    name = os.getenv("DB_NAME", "")
-    user = os.getenv("DB_USER", "")
-    pwd  = os.getenv("DB_PASSWORD", "")
-    return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
 
 def get_param(name: str) -> str:
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
@@ -151,6 +129,28 @@ def get_db_conn():
     return pg.Connection(user=user, password=pwd, host=host, port=port, database=name,
                          ssl_context=_maybe_ssl_context(db_ssl))
 
+def get_sa_engine():
+    """
+    Build a SQLAlchemy engine for read-only reporting queries.
+    Uses pg8000 via 'postgresql+pg8000://'.
+    """
+    url = os.getenv("DATABASE_URL")
+    if url:
+        u = urlparse(url)
+        host = u.hostname or "db"
+        port = int(u.port or 5432)
+        user = u.username or ""
+        pwd  = u.password or ""
+        name = (u.path or "/").lstrip("/")
+        return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
+
+    # Fall back to explicit env vars (same as get_db_conn)
+    host = os.getenv("DB_HOST", "db")
+    port = int(os.getenv("DB_PORT", "5432"))
+    name = os.getenv("DB_NAME", "")
+    user = os.getenv("DB_USER", "")
+    pwd  = os.getenv("DB_PASSWORD", "")
+    return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
 
 # -------------------------
 # Identifier / info_schema
@@ -670,8 +670,6 @@ LIMIT 200;
 """)
 
 def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
-    from pandas import to_datetime
-
     with engine.begin() as conn:
         df = pd.read_sql(FAST_RT_SQL, conn)
 
@@ -682,15 +680,13 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         """
         return html.strip(), None, df
 
-    # Cleanup/formatting
-    df["entry_time"] = to_datetime(df["entry_time"]).dt.tz_convert("UTC")
-    df["exit_time"]  = to_datetime(df["exit_time"]).dt.tz_convert("UTC")
+    df["entry_time"] = pd.to_datetime(df["entry_time"]).dt.tz_convert("UTC")
+    df["exit_time"]  = pd.to_datetime(df["exit_time"]).dt.tz_convert("UTC")
 
     n = len(df)
     median_hold = int(df["hold_seconds"].median())
     total_pnl = float(df["pnl_abs"].sum())
 
-    # Build a compact HTML table (top 8)
     view_cols = [
         "symbol","entry_time","exit_time","hold_seconds",
         "entry_price","exit_price","pnl_abs","pnl_pct"
@@ -703,8 +699,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     show["entry_price"]= show["entry_price"].map(lambda x: f"{x:.8f}".rstrip('0').rstrip('.'))
     show["exit_price"] = show["exit_price"].map(lambda x: f"{x:.8f}".rstrip('0').rstrip('.'))
 
-    head = show.head(8)
-    html_table = head.to_html(index=False, border=1, justify="center")
+    html_table = show.head(8).to_html(index=False, border=1, justify="center")
 
     html = f"""
     <h3>Near-Instant Roundtrips (≤60s)</h3>
@@ -713,7 +708,6 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     <p style="color:#666;margin-top:6px">Full list (up to 200) saved as CSV on the server.</p>
     """
 
-    # Persist full list as CSV (optional)
     csv_out = None
     try:
         df.to_csv(csv_path, index=False)
@@ -1070,11 +1064,18 @@ def main():
         strat_rows=strat_rows,
         show_details=REPORT_SHOW_DETAILS,
     )
-    sa_engine = get_sa_engine()
-    fast_html, fast_csv_path, _ = fetch_fast_roundtrips(sa_engine)
-    html = html + "\n" + fast_html
-    print("DEBUG: fast_html block =")
-    print(fast_html[:500])
+
+    try:
+        sa_engine = get_sa_engine()
+        fast_html, fast_csv_path, _ = fetch_fast_roundtrips(sa_engine)
+        # Append at end (robust even if there’s no </body>)
+        if "</body></html>" in html:
+            html = html.replace("</body></html>", fast_html + "\n</body></html>")
+        else:
+            html = html + "\n" + fast_html
+    except Exception as e:
+        if DEBUG:
+            print(f"[fast_roundtrips] error: {e}")
 
     csvb = build_csv(
         total_pnl,
