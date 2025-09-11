@@ -4,15 +4,20 @@ import io
 import csv
 import ssl
 import boto3
+import pandas as pd
 import pg8000.native as pg
+
 from decimal import Decimal
+from sqlalchemy import text
+from datetime import timezone
+from sqlalchemy import create_engine
 from email.mime.text import MIMEText
 from email.utils import getaddresses
+from datetime import datetime, timezone
+from urllib.parse import urlparse, parse_qs
+from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from urllib.parse import urlparse, parse_qs
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Tuple
 
 # -------------------------
 # Config / Environment
@@ -73,6 +78,29 @@ ses = boto3.client("ses", region_name=REGION)
 # -------------------------
 # DB Connection Helpers
 # -------------------------
+
+def get_sa_engine():
+    """
+    Build a SQLAlchemy engine for read-only reporting queries.
+    Uses pg8000 via 'postgresql+pg8000://'.
+    """
+    url = os.getenv("DATABASE_URL")
+    if url:
+        u = urlparse(url)
+        host = u.hostname or "db"
+        port = int(u.port or 5432)
+        user = u.username or ""
+        pwd  = u.password or ""
+        name = (u.path or "/").lstrip("/")
+        return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
+
+    # Fall back to explicit env vars (same as get_db_conn)
+    host = os.getenv("DB_HOST", "db")
+    port = int(os.getenv("DB_PORT", "5432"))
+    name = os.getenv("DB_NAME", "")
+    user = os.getenv("DB_USER", "")
+    pwd  = os.getenv("DB_PASSWORD", "")
+    return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
 
 def get_param(name: str) -> str:
     return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
@@ -581,6 +609,120 @@ def compute_cash_vs_invested(conn, exposures):
     notes.append(f"Cash source: {tbl} sym_col={sym_col} amt_col={amt_col} symbols={REPORT_CASH_SYMBOLS}")
     return cash, invested, invested_pct, notes
 
+FAST_RT_SQL = text("""
+-- Paste the SQL from Section 1 here verbatim
+WITH execs AS (
+  SELECT
+      e.id,
+      e.symbol,
+      e.side,
+      e.qty         ::numeric(38,18) AS qty,
+      e.price       ::numeric(38,18) AS price,
+      COALESCE(e.fee, 0)::numeric(38,18)          AS fee,
+      e.exec_time   ::timestamptz     AS exec_time,
+      COALESCE(e.position_id, e.parent_id, e.bracket_id, e.client_order_group) AS link_key
+  FROM exchange_executions e
+  WHERE e.status = 'filled'
+),
+paired AS (
+  SELECT
+      a.id               AS entry_id,
+      a.symbol,
+      a.link_key,
+      a.side             AS entry_side,
+      a.qty              AS entry_qty,
+      a.price            AS entry_price,
+      a.fee              AS entry_fee,
+      a.exec_time        AS entry_time,
+      b.id               AS exit_id,
+      b.side             AS exit_side,
+      b.qty              AS exit_qty,
+      b.price            AS exit_price,
+      b.fee              AS exit_fee,
+      b.exec_time        AS exit_time,
+      EXTRACT(EPOCH FROM (b.exec_time - a.exec_time))::int AS hold_seconds
+  FROM execs a
+  JOIN LATERAL (
+      SELECT *
+      FROM execs b
+      WHERE b.symbol = a.symbol
+        AND ( (a.link_key IS NULL AND b.link_key IS NULL) OR (a.link_key = b.link_key) )
+        AND b.exec_time > a.exec_time
+        AND b.side <> a.side
+      ORDER BY b.exec_time
+      LIMIT 1
+  ) b ON TRUE
+)
+SELECT
+    entry_id, exit_id, symbol,
+    entry_side, entry_qty, entry_price, entry_fee, entry_time,
+    exit_side,  exit_qty,  exit_price,  exit_fee,  exit_time,
+    hold_seconds,
+    LEAST(entry_qty, exit_qty) * entry_price                                              AS notional_entry,
+    LEAST(entry_qty, exit_qty) * (exit_price - entry_price) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END
+                                                                                         AS pnl_abs,
+    100.0 * (exit_price / NULLIF(entry_price,0) - 1.0) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END
+                                                                                         AS pnl_pct
+FROM paired
+WHERE hold_seconds BETWEEN 0 AND 60
+ORDER BY entry_time DESC
+LIMIT 200;
+""")
+
+def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
+    from pandas import to_datetime
+
+    with engine.begin() as conn:
+        df = pd.read_sql(FAST_RT_SQL, conn)
+
+    if df.empty:
+        html = """
+        <h3>Near-Instant Roundtrips (≤60s)</h3>
+        <p>No roundtrips ≤60 seconds in this window.</p>
+        """
+        return html.strip(), None, df
+
+    # Cleanup/formatting
+    df["entry_time"] = to_datetime(df["entry_time"]).dt.tz_convert("UTC")
+    df["exit_time"]  = to_datetime(df["exit_time"]).dt.tz_convert("UTC")
+
+    n = len(df)
+    median_hold = int(df["hold_seconds"].median())
+    total_pnl = float(df["pnl_abs"].sum())
+
+    # Build a compact HTML table (top 8)
+    view_cols = [
+        "symbol","entry_time","exit_time","hold_seconds",
+        "entry_price","exit_price","pnl_abs","pnl_pct"
+    ]
+    show = df[view_cols].copy()
+    show["entry_time"] = show["entry_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    show["exit_time"]  = show["exit_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    show["pnl_abs"]    = show["pnl_abs"].map(lambda x: f"${x:,.2f}")
+    show["pnl_pct"]    = show["pnl_pct"].map(lambda x: f"{x:,.2f}%")
+    show["entry_price"]= show["entry_price"].map(lambda x: f"{x:.8f}".rstrip('0').rstrip('.'))
+    show["exit_price"] = show["exit_price"].map(lambda x: f"{x:.8f}".rstrip('0').rstrip('.'))
+
+    head = show.head(8)
+    html_table = head.to_html(index=False, border=1, justify="center")
+
+    html = f"""
+    <h3>Near-Instant Roundtrips (≤60s)</h3>
+    <p>Count: <b>{n}</b> &nbsp; Median hold: <b>{median_hold}s</b> &nbsp; Total PnL: <b>${total_pnl:,.2f}</b></p>
+    {html_table}
+    <p style="color:#666;margin-top:6px">Full list (up to 200) saved as CSV on the server.</p>
+    """
+
+    # Persist full list as CSV (optional)
+    csv_out = None
+    try:
+        df.to_csv(csv_path, index=False)
+        csv_out = csv_path
+    except Exception:
+        pass
+
+    return html.strip(), csv_out, df
+
 
 # -------------------------
 # Email / CSV Builders
@@ -879,6 +1021,7 @@ def send_email(html, csv_bytes):
 
 def main():
     conn = get_db_conn()
+    detect_notes = []
     try:
         total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
 
@@ -927,6 +1070,10 @@ def main():
         strat_rows=strat_rows,
         show_details=REPORT_SHOW_DETAILS,
     )
+    sa_engine = get_sa_engine()
+    fast_html, fast_csv_path, _ = fetch_fast_roundtrips(sa_engine)
+    html = html.replace("</body></html>", fast_html + "\n</body></html>")
+
     csvb = build_csv(
         total_pnl,
         open_pos_out,
