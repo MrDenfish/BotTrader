@@ -1109,6 +1109,7 @@ def send_email(html, csv_bytes):
 def main():
     conn = get_db_conn()
     detect_notes = []
+    fast_html = ""
     try:
         total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
 
@@ -1161,14 +1162,21 @@ def main():
     try:
         sa_engine = get_sa_engine()
         fast_html, fast_csv_path, _ = fetch_fast_roundtrips(sa_engine)
-        # Append at end (robust even if there’s no </body>)
-        if "</body></html>" in html:
-            html = html.replace("</body></html>", fast_html + "\n</body></html>")
-        else:
-            html = html + "\n" + fast_html
     except Exception as e:
+
         if DEBUG:
             print(f"[fast_roundtrips] error: {e}")
+        # Always render something so you can see *why* it didn’t show
+        fast_html = (
+            "<h3>Near-Instant Roundtrips (≤60s)</h3>"
+            "<p style='color:#b00;'>Error computing fast roundtrips.</p>"
+        )
+    finally:
+        if fast_html:
+            if "</body></html>" in html:
+                html = html.replace("</body></html>", fast_html + "\n</body></html>")
+            else:
+                html = html + "\n" + fast_html
 
     csvb = build_csv(
         total_pnl,
