@@ -77,7 +77,7 @@ class CentralConfig:
     @staticmethod
     def load_dotenv_settings():
         from pathlib import Path
-        if os.getenv("RUNNING_IN_DOCKER", "false").lower() == "true":
+        if os.getenv("IN_DOCKER", "false").lower() == "true":
             # Don’t load local .env inside containers
             return
         env_path = Path(__file__).resolve().parent.parent / '.env_tradebot'

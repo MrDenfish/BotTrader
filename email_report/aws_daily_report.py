@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 import os
 import io
+
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
+
+import emailio
 import csv
 import ssl
 import boto3
 import pandas as pd
 import pg8000.native as pg
 
+from pathlib import Path
 from decimal import Decimal
 from datetime import timezone
 from email.mime.text import MIMEText
@@ -21,10 +26,46 @@ from email.mime.application import MIMEApplication
 # -------------------------
 # Config / Environment
 # -------------------------
+SENDER = RECIPIENTS= REGION=None
 
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
+
+def load_report_dotenv():
+    """
+    Local-only env loader for the email report.
+    - If RUNNING_IN_DOCKER=true: do nothing (Compose/entrypoint env wins).
+    - Else: load ENV_FILE (absolute path) or project-root/.env_runtime by default.
+    - Does NOT override already-set env vars (override=False).
+    - Falls back to .env_tradebot only if .env_runtime is missing.
+    """
+    if os.getenv("IN_DOCKER", "false").lower() == "true":
+        return
+    if load_dotenv is None:
+        return
+
+    here = Path(__file__).resolve()
+    project_root = here.parents[1]  # .../BotTrader/
+    in_docker = os.getenv("IN_DOCKER")
+    env_path = Path(project_root / ".env_runtime") if in_docker else (project_root / ".env_tradebot")
+    if not env_path.is_absolute():
+        env_path = (project_root / env_path).resolve()
+
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path, override=False)
+        return
+
+    fallback = (project_root / ".env_tradebot")
+    if fallback.exists():
+        load_dotenv(dotenv_path=fallback, override=False)
+IN_DOCKER = os.getenv("IN_DOCKER", "false").lower() == "true"
 REGION = os.getenv("AWS_REGION", "us-west-2")
-SENDER = os.getenv("REPORT_SENDER", "").strip()
-RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS", "")]) if addr]
+SENDER = os.getenv("REPORT_SENDER", "reports@a1zoobies.com").strip()
+RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS", "dennfish@gmail.com")]) if addr]
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
@@ -66,8 +107,6 @@ REPORT_CASH_SYMBOLS    = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMB
 REPORT_USE_PT_DAY = os.getenv("REPORT_USE_PT_DAY", "0").strip() in {"1","true","TRUE","yes","Yes"}
 REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "24"))
 
-# Executions source for fast roundtrips (configurable)
-REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.exchange_executions")
 
 # Overview vs Details
 REPORT_SHOW_DETAILS = os.getenv("REPORT_SHOW_DETAILS", "0").strip() in {"1","true","TRUE","yes","Yes"}
@@ -108,52 +147,76 @@ def _env_or_ssm(env_key: str, ssm_param_name: Optional[str], default: Optional[s
         return default
     raise RuntimeError(f"Missing {env_key} and no SSM fallback provided.")
 
-def get_db_conn():
-    url = os.getenv("DATABASE_URL")
-    if url:
-        u = urlparse(url)
-        host = u.hostname or "db"
-        port = int(u.port or 5432)
-        user = u.username
-        pwd  = u.password
-        name = (u.path or "/").lstrip("/")
-        qs = parse_qs(u.query or "")
-        sslmode = (qs.get("sslmode", [""])[0] or "").lower()
-        require_ssl = sslmode in {"require", "verify-ca", "verify-full"} or "+ssl" in (u.scheme or "")
-        return pg.Connection(user=user, password=pwd, host=host, port=port, database=name,
-                             ssl_context=_maybe_ssl_context(require_ssl))
+# aws_daily_report.py
 
-    host = _env_or_ssm("DB_HOST", None, "db")
-    port = int(_env_or_ssm("DB_PORT", None, "5432"))
-    name = _env_or_ssm("DB_NAME", None, None)
-    user = _env_or_ssm("DB_USER", None, None)
-    pwd  = _env_or_ssm("DB_PASSWORD", None, None)
-    db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require","true","1"})
-    return pg.Connection(user=user, password=pwd, host=host, port=port, database=name,
-                         ssl_context=_maybe_ssl_context(db_ssl))
+def get_db_conn():
+    try:
+        url = os.getenv("DATABASE_URL")
+
+        def _log_conn_plan(source, host, port, user, name, ssl):
+            # Avoid logging sensitive info; show just the plan.
+            print(f"[DB] source={source} host={host} port={port} user={user} db={name} ssl={'on' if ssl else 'off'}")
+
+        if url:
+            u = urlparse(url)
+            host = u.hostname or "db"  # use 'db' as safer default in containers
+            port = int(u.port or 5432)
+            user = u.username
+            pwd  = u.password
+            name = (u.path or "/").lstrip("/")
+            qs = parse_qs(u.query or "")
+            sslmode = (qs.get("sslmode", [""])[0] or "").lower()
+            require_ssl = sslmode in {"require", "verify-ca", "verify-full"} or "+ssl" in (u.scheme or "")
+            _log_conn_plan("DATABASE_URL", host, port, user, name, require_ssl)
+            return pg.Connection(
+                user=user, password=pwd, host=host, port=port, database=name,
+                ssl_context=_maybe_ssl_context(require_ssl)
+            )
+
+        in_docker = IN_DOCKER
+        # Default host: 'db' when in Docker; otherwise localhost
+        default_host = "db" if in_docker else "localhost"
+        default_user = "DB_USER" if in_docker else "Manny"
+        host = _env_or_ssm("DB_HOST", None, default_host)
+        port = int(_env_or_ssm("DB_PORT", None, "5432"))
+        name = _env_or_ssm("DB_NAME", None, None)
+        user = _env_or_ssm("DB_USER", None, default_user)
+        pwd  = _env_or_ssm("DB_PASSWORD", None, None)
+        db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require", "true", "1"})
+        _log_conn_plan("ENV_VARS", host, port, user, name, db_ssl)
+        return pg.Connection(
+            user=user, password=pwd, host=host, port=port, database=name,
+            ssl_context=_maybe_ssl_context(db_ssl)
+        )
+    except Exception as e:
+        # Improve the error so we see which source/host/user was attempted.
+        raise RuntimeError(f"DB connection failed: {e}")
+
 
 def get_sa_engine():
     """
-    Build a SQLAlchemy engine for read-only reporting queries.
-    Uses pg8000 via 'postgresql+pg8000://'.
+    SQLAlchemy engine (pg8000). Defaults to 'db' in Docker and '127.0.0.1' locally.
     """
+    in_docker = IN_DOCKER
+
     url = os.getenv("DATABASE_URL")
     if url:
         u = urlparse(url)
-        host = u.hostname or "db"
-        port = int(u.port or 5432)
+        host = u.hostname or ("db" if in_docker else "127.0.0.1")
+        port = u.port or 5432
         user = u.username or ""
         pwd  = u.password or ""
         name = (u.path or "/").lstrip("/")
         return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
 
-    # Fall back to explicit env vars (same as get_db_conn)
-    host = os.getenv("DB_HOST", "db")
-    port = int(os.getenv("DB_PORT", "5432"))
-    name = os.getenv("DB_NAME", "")
-    user = os.getenv("DB_USER", "")
-    pwd  = os.getenv("DB_PASSWORD", "")
+    host = (os.getenv("DB_HOST") or ("db" if in_docker else "127.0.0.1")).strip()
+    port = int((os.getenv("DB_PORT") or "5432").strip() or 5432)
+    name = (os.getenv("DB_NAME") or "").strip()
+    user = (os.getenv("DB_USER") or "").strip()
+    pwd  = (os.getenv("DB_PASSWORD") or "").strip()
+
     return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
+
 
 # -------------------------
 # Identifier / info_schema
@@ -619,7 +682,7 @@ def build_fast_rt_sql(table_name: str):
       - time:  order_time (timestamptz)
       - qty:   size
       - fee:   total_fees_usd
-      - link:  parent_id (buys use own order_id; sells reference the buy's order_id)
+      - link:  parent_id (sells reference the buy's order_id)
     """
     return text(f"""
 WITH execs AS (
@@ -658,11 +721,9 @@ paired AS (
       SELECT *
       FROM execs b
       WHERE b.symbol = a.symbol
-        -- Prefer exact bracket/parent linkage when available
         AND (
              (a.link_key IS NOT NULL AND b.link_key = a.link_key)
              OR
-             -- Fallback: if link_key is NULL, pair by symbol only
              (a.link_key IS NULL AND b.link_key IS NULL)
         )
         AND b.exec_time > a.exec_time
@@ -687,17 +748,22 @@ LIMIT 200;
 
 
 
+
 def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
+    # Always try to render a visible section, even on error
     try:
         with engine.begin() as conn:
-            df = pd.read_sql(build_fast_rt_sql(REPORT_EXECUTIONS_TABLE), conn)
+            df = pd.read_sql(build_fast_rt_sql(os.getenv("REPORT_EXECUTIONS_TABLE", REPORT_EXECUTIONS_TABLE)), conn)
     except Exception as e:
+        msg = f"{type(e).__name__}: {str(e)}"
+        if os.getenv("REPORT_DEBUG") == "1":
+            print(f"[fast_roundtrips] error: {msg}")
         html = f"""
-                <h3>Near-Instant Roundtrips (≤60s)</h3>
-                <p style="color:#b00;">Could not compute fast roundtrips. Set REPORT_EXECUTIONS_TABLE to your fills table and ensure columns:
-                <code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol</code>.<br/>
-                <small>{type(e).__name__}: {str(e)}</small></p>
-                """
+        <h3>Near-Instant Roundtrips (≤60s)</h3>
+        <p style="color:#b00;">Could not compute fast roundtrips. Ensure REPORT_EXECUTIONS_TABLE points to your fills table and column names match:
+        <code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol, order_id</code>.<br/>
+        <small>{msg}</small></p>
+        """
         return html.strip(), None, None
 
     if df.empty:
@@ -707,6 +773,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         """
         return html.strip(), None, df
 
+    # Format
     df["entry_time"] = pd.to_datetime(df["entry_time"]).dt.tz_convert("UTC")
     df["exit_time"]  = pd.to_datetime(df["exit_time"]).dt.tz_convert("UTC")
 
@@ -714,10 +781,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     median_hold = int(df["hold_seconds"].median())
     total_pnl = float(df["pnl_abs"].sum())
 
-    view_cols = [
-        "symbol","entry_time","exit_time","hold_seconds",
-        "entry_price","exit_price","pnl_abs","pnl_pct"
-    ]
+    view_cols = ["symbol", "entry_time", "exit_time", "hold_seconds", "entry_price", "exit_price", "pnl_abs", "pnl_pct"]
     show = df[view_cols].copy()
     show["entry_time"] = show["entry_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     show["exit_time"]  = show["exit_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -735,6 +799,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     <p style="color:#666;margin-top:6px">Full list (up to 200) saved as CSV on the server.</p>
     """
 
+    # Persist CSV (optional)
     csv_out = None
     try:
         df.to_csv(csv_path, index=False)
@@ -743,6 +808,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         pass
 
     return html.strip(), csv_out, df
+
 
 
 # -------------------------
@@ -1122,11 +1188,15 @@ def main():
         invested_pct=invested_pct,
         strat_rows=strat_rows,
     )
-    save_report_copy(csvb)
-    send_email(html, csvb)
+    if IN_DOCKER:
+        save_report_copy(csvb)
+        send_email(html, csvb)
+    else:
+        print(f"{csvb},  {html}")
 
 
 if __name__ == "__main__":
+    load_report_dotenv()
     main()
 
 
