@@ -28,9 +28,9 @@ class AlertSystem:
     def __init__(self, logger_manager):
         self.logger = logger_manager.loggers['shared_logger']
         self.phone = _get('PHONE', 'ACCOUNT_PHONE', 'ALERT_PHONE')
-        self.email_from = os.getenv('EMAIL_FROM')
+        self.email_from = os.getenv('REPORT_SENDER')
         self.email_pass = os.getenv('SMTP_PASSWORD')
-        self.email_to = os.getenv('EMAIL_TO')
+        self.email_to = os.getenv('REPORT_RECIPIENTS')
         self.email_alert_on = os.getenv('EMAIL_ALERTS', 'true').lower() == 'true'
 
         if self.email_alert_on:
