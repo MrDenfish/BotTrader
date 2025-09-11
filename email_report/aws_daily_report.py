@@ -613,18 +613,26 @@ def compute_cash_vs_invested(conn, exposures):
     return cash, invested, invested_pct, notes
 
 def build_fast_rt_sql(table_name: str):
-    # NOTE: table_name should be fully-qualified already (e.g., "public.exchange_executions")
+    """
+    Build SQL to find ≤60s roundtrips from the fills table.
+    Aligned to trade_records schema:
+      - time:  order_time (timestamptz)
+      - qty:   size
+      - fee:   total_fees_usd
+      - link:  parent_id (buys use own order_id; sells reference the buy's order_id)
+    """
     return text(f"""
 WITH execs AS (
   SELECT
-      e.id,
-      e.symbol,
-      e.side,
-      e.qty         ::numeric(38,18) AS qty,
-      e.price       ::numeric(38,18) AS price,
-      COALESCE(e.fee, 0)::numeric(38,18)          AS fee,
-      e.exec_time   ::timestamptz     AS exec_time,
-      COALESCE(e.position_id, e.parent_id, e.bracket_id, e.client_order_group) AS link_key
+      e.order_id                                     AS id,
+      e.symbol                                       AS symbol,
+      e.side                                         AS side,          -- 'buy' or 'sell'
+      e.size::numeric(38,18)                         AS qty,
+      e.price::numeric(38,18)                        AS price,
+      COALESCE(e.total_fees_usd, 0)::numeric(38,18)  AS fee,
+      e.order_time::timestamptz                      AS exec_time,
+      e.parent_id                                    AS link_key,
+      e.status                                       AS status
   FROM {table_name} e
   WHERE e.status = 'filled'
 ),
@@ -650,7 +658,13 @@ paired AS (
       SELECT *
       FROM execs b
       WHERE b.symbol = a.symbol
-        AND ( (a.link_key IS NULL AND b.link_key IS NULL) OR (a.link_key = b.link_key) )
+        -- Prefer exact bracket/parent linkage when available
+        AND (
+             (a.link_key IS NOT NULL AND b.link_key = a.link_key)
+             OR
+             -- Fallback: if link_key is NULL, pair by symbol only
+             (a.link_key IS NULL AND b.link_key IS NULL)
+        )
         AND b.exec_time > a.exec_time
         AND b.side <> a.side
       ORDER BY b.exec_time
@@ -672,16 +686,17 @@ LIMIT 200;
 """)
 
 
+
 def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     try:
         with engine.begin() as conn:
             df = pd.read_sql(build_fast_rt_sql(REPORT_EXECUTIONS_TABLE), conn)
     except Exception as e:
-        # Always show the section header + an inline note if the SQL failed,
-        # so you can see *something* in the email.
         html = f"""
                 <h3>Near-Instant Roundtrips (≤60s)</h3>
-                <p style="color:#b00;">Could not compute fast roundtrips (error). Tip: set REPORT_EXECUTIONS_TABLE env var to your fills table. <code>{type(e).__name__}: {str(e)}</code></p>
+                <p style="color:#b00;">Could not compute fast roundtrips. Set REPORT_EXECUTIONS_TABLE to your fills table and ensure columns:
+                <code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol</code>.<br/>
+                <small>{type(e).__name__}: {str(e)}</small></p>
                 """
         return html.strip(), None, None
 
