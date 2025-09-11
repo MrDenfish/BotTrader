@@ -66,6 +66,9 @@ REPORT_CASH_SYMBOLS    = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMB
 REPORT_USE_PT_DAY = os.getenv("REPORT_USE_PT_DAY", "0").strip() in {"1","true","TRUE","yes","Yes"}
 REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "24"))
 
+# Executions source for fast roundtrips (configurable)
+REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.exchange_executions")
+
 # Overview vs Details
 REPORT_SHOW_DETAILS = os.getenv("REPORT_SHOW_DETAILS", "0").strip() in {"1","true","TRUE","yes","Yes"}
 
@@ -609,8 +612,9 @@ def compute_cash_vs_invested(conn, exposures):
     notes.append(f"Cash source: {tbl} sym_col={sym_col} amt_col={amt_col} symbols={REPORT_CASH_SYMBOLS}")
     return cash, invested, invested_pct, notes
 
-FAST_RT_SQL = text("""
--- Paste the SQL from Section 1 here verbatim
+def build_fast_rt_sql(table_name: str):
+    # NOTE: table_name should be fully-qualified already (e.g., "public.exchange_executions")
+    return text(f"""
 WITH execs AS (
   SELECT
       e.id,
@@ -621,7 +625,7 @@ WITH execs AS (
       COALESCE(e.fee, 0)::numeric(38,18)          AS fee,
       e.exec_time   ::timestamptz     AS exec_time,
       COALESCE(e.position_id, e.parent_id, e.bracket_id, e.client_order_group) AS link_key
-  FROM exchange_executions e
+  FROM {table_name} e
   WHERE e.status = 'filled'
 ),
 paired AS (
@@ -659,19 +663,27 @@ SELECT
     exit_side,  exit_qty,  exit_price,  exit_fee,  exit_time,
     hold_seconds,
     LEAST(entry_qty, exit_qty) * entry_price                                              AS notional_entry,
-    LEAST(entry_qty, exit_qty) * (exit_price - entry_price) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END
-                                                                                         AS pnl_abs,
-    100.0 * (exit_price / NULLIF(entry_price,0) - 1.0) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END
-                                                                                         AS pnl_pct
+    LEAST(entry_qty, exit_qty) * (exit_price - entry_price) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END AS pnl_abs,
+    100.0 * (exit_price / NULLIF(entry_price,0) - 1.0) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END     AS pnl_pct
 FROM paired
 WHERE hold_seconds BETWEEN 0 AND 60
 ORDER BY entry_time DESC
 LIMIT 200;
 """)
 
+
 def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
-    with engine.begin() as conn:
-        df = pd.read_sql(FAST_RT_SQL, conn)
+    try:
+        with engine.begin() as conn:
+            df = pd.read_sql(build_fast_rt_sql(REPORT_EXECUTIONS_TABLE), conn)
+    except Exception as e:
+        # Always show the section header + an inline note if the SQL failed,
+        # so you can see *something* in the email.
+        html = f"""
+                <h3>Near-Instant Roundtrips (≤60s)</h3>
+                <p style="color:#b00;">Could not compute fast roundtrips (error). Tip: set REPORT_EXECUTIONS_TABLE env var to your fills table. <code>{type(e).__name__}: {str(e)}</code></p>
+                """
+        return html.strip(), None, None
 
     if df.empty:
         html = """
