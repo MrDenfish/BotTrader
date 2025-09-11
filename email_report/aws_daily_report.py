@@ -1073,6 +1073,8 @@ def main():
     sa_engine = get_sa_engine()
     fast_html, fast_csv_path, _ = fetch_fast_roundtrips(sa_engine)
     html = html + "\n" + fast_html
+    print("DEBUG: fast_html block =")
+    print(fast_html[:500])
 
     csvb = build_csv(
         total_pnl,
