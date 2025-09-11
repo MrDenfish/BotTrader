@@ -387,6 +387,13 @@ class OrderManager:
             self.logger.error(f"❌ Error executing actions: {e}", exc_info=True)
             return None
 
+    def render_usd_info(self, info):
+        asset = info.get("asset", "")
+        total = float(info.get("total_balance_fiat", 0))
+        avail = float(info.get("available_to_trade_fiat", 0))
+        alloc = float(info.get("allocation", 0)) * 100
+        return f"{asset} | total=${total:.2f} | avail=${avail:.2f} | alloc={alloc:.2f}% "
+
     async def handle_actions(self, order, holdings):
         """Process buy, sell, and trailing stop conditions based on the order action."""
         await self.open_http_session()  # Ensure session is open
@@ -406,7 +413,7 @@ class OrderManager:
             )
 
             usd_balance_info = self.filtered_balances.get('USD', {})
-            print(f"USD Balance Info: {usd_balance_info}")  # debug
+            print(f"USD Balance Info: {self.render_usd_info(usd_balance_info)}")  # debug
             quote_avail_balance = Decimal(usd_balance_info['available_to_trade_fiat'])
             quote_avail_balance = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, quote_avail_balance, convert='quote'
