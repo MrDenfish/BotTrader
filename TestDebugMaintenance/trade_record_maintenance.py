@@ -23,6 +23,11 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                 print("⚠️ No trades found in database. Running maintenance anyway.")
             else:
                 # Check for incomplete fields
+                count_missing = (await session.execute(text(f"""
+                  SELECT count(*) FROM {TradeRecord.__tablename__}
+                  WHERE side='buy' AND (parent_id IS NULL OR parent_ids IS NULL)
+                """))).scalar_one()
+                print(f"   • BUY parent fields missing: {count_missing}")
                 result = await session.execute(
                     select(TradeRecord).where(
                         or_(
@@ -55,6 +60,11 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     async with shared_data_manager.database_session_manager.async_session() as session:
         async with session.begin():
             # ⛔ Block until we hold the global maintenance lock
+            count_missing = (await session.execute(text(f"""
+              SELECT count(*) FROM {TradeRecord.__tablename__}
+              WHERE side='buy' AND (parent_id IS NULL OR parent_ids IS NULL)
+            """))).scalar_one()
+            print(f"   • BUY parent fields missing: {count_missing}")
             await session.execute(text("SELECT pg_advisory_lock(:k)"), {"k": GLOBAL_LOCK_KEY})
             try:
                 # BUY Fixes
@@ -72,6 +82,11 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                         TradeRecord.parent_ids: None
                     })
                 )
+                count_missing = (await session.execute(text(f"""
+                  SELECT count(*) FROM {TradeRecord.__tablename__}
+                  WHERE side='buy' AND (parent_id IS NULL OR parent_ids IS NULL)
+                """))).scalar_one()
+                print(f"   • BUY parent fields missing: {count_missing}")
                 result = await session.execute(buy_fix_stmt)
                 print(f"    → Fixed parent fields for {result.rowcount} BUY trades.")
 
@@ -86,6 +101,11 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                     )
                     .values({TradeRecord.remaining_size: TradeRecord.size})
                 )
+                count_missing = (await session.execute(text(f"""
+                  SELECT count(*) FROM {TradeRecord.__tablename__}
+                  WHERE side='buy' AND (parent_id IS NULL OR parent_ids IS NULL)
+                """))).scalar_one()
+                print(f"   • BUY parent fields missing: {count_missing}")
                 result = await session.execute(remaining_fix_stmt)
                 print(f"    → Fixed remaining_size for {result.rowcount} BUY trades.")
 
@@ -114,6 +134,12 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                         TradeRecord.parent_id: None
                     })
                 )
+                count_missing = (await session.execute(text(f"""
+                  SELECT count(*) FROM {TradeRecord.__tablename__}
+                  WHERE side='buy' AND (parent_id IS NULL OR parent_ids IS NULL)
+                """))).scalar_one()
+                print(f"   • BUY parent fields missing: {count_missing}")
+
                 result = await session.execute(sell_reset_stmt)
                 print(f"    → Reset {result.rowcount} incomplete SELL trades for backfill.")
             finally:
