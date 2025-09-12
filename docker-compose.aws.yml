@@ -70,11 +70,12 @@ services:
     entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
     # Add a simple healthcheck that requires no extra packages:
     healthcheck:
-      test: ["CMD-SHELL", "set -e; CMD=$$(tr '\0' ' ' </proc/1/cmdline); echo \"$$CMD\" | grep -qi python && echo \"$$CMD\" | grep -qi sighook"]
+      test: [ "CMD-SHELL", "grep -qi python /proc/1/comm && grep -qi sighook /proc/1/cmdline" ]
       interval: 30s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 40s
+
     user: "1000:1000"
     restart: unless-stopped
 
