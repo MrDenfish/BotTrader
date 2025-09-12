@@ -7,13 +7,13 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
+      POSTGRES_USER: bot_user
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       TZ: ${TZ}
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME} -h 127.0.0.1 -p ${DB_PORT:-5432}"]
+      test: ["CMD-SHELL", "pg_isready -U bot_user -d ${DB_NAME} -h 127.0.0.1 -p ${DB_PORT:-5432}"]
       interval: 5s
       timeout: 5s
       retries: 20

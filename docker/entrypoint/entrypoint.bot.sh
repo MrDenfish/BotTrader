@@ -152,7 +152,7 @@ fi
 : "${POSTGRES_HOST:=$DB_HOST}"
 : "${POSTGRES_PORT:=$DB_PORT}"
 : "${POSTGRES_DB:=$DB_NAME}"
-: "${POSTGRES_USER:=$DB_USER}"
+: "${POSTGRES_USER:=bot_user}"
 : "${POSTGRES_PASSWORD:=$DB_PASSWORD}"
 
 if [[ -z "${DATABASE_URL-}" || -z "$DATABASE_URL" ]]; then
