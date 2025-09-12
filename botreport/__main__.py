@@ -1,4 +1,4 @@
-# optional: `python -m email_report ...`
+# optional: `python -m botreport ...`
 from __future__ import annotations
 
 import os

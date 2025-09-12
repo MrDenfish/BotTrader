@@ -1,1 +1,0 @@
-# Pydantic settings or simple dataclass

@@ -1,13 +1,252 @@
 # thin wrappers calling SQL, returning dicts
 from __future__ import annotations
 
+import os
 from typing import Dict, Any, Optional, Union
 from datetime import datetime
 import sqlalchemy
 from sqlalchemy import bindparam, Numeric
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+# -------------------------
+# Env-driven table / column config (back-compat)
+# -------------------------
 
+TRADES_TABLE        = os.getenv("REPORT_TRADES_TABLE", "public.trade_records")
+POSITIONS_TABLE     = os.getenv("REPORT_POSITIONS_TABLE", "public.report_positions")
+PRICES_TABLE        = os.getenv("REPORT_PRICE_TABLE", "public.report_prices")
+BALANCES_TABLE      = os.getenv("REPORT_BALANCES_TABLE", "public.report_balances")
+
+COL_SYMBOL          = os.getenv("REPORT_COL_SYMBOL") or "symbol"
+COL_SIDE            = os.getenv("REPORT_COL_SIDE")   or "side"
+COL_PRICE           = os.getenv("REPORT_COL_PRICE")  or "price"
+COL_SIZE            = os.getenv("REPORT_COL_SIZE")   or "qty_signed"
+COL_TIME            = os.getenv("REPORT_COL_TIME")   or "ts"
+COL_POS_QTY         = os.getenv("REPORT_COL_POS_QTY") or "position_qty"
+COL_PNL             = os.getenv("REPORT_COL_PNL")    or "realized_profit"  # fallback "pnl_usd"
+COL_PNL_FALLBACK    = "pnl_usd"
+
+PRICE_COL           = os.getenv("REPORT_PRICE_COL")      or "price"
+PRICE_TIME_COL      = os.getenv("REPORT_PRICE_TIME_COL") or "ts"
+PRICE_SYM_COL       = os.getenv("REPORT_PRICE_SYM_COL")  or "symbol"
+
+CASH_SYM_COL        = os.getenv("REPORT_CASH_SYM_COL")   or "symbol"
+CASH_AMT_COL        = os.getenv("REPORT_CASH_AMT_COL")   or "balance"
+CASH_SYMBOLS        = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMBOLS", "USD,USDC,USDT").split(",") if s.strip()]
+
+# -------------------------
+# Helpers
+# -------------------------
+
+def _ensure_conn(engine_or_conn: Engine | Connection) -> Tuple[Connection, bool]:
+    """Return (conn, own_conn) where own_conn indicates we opened it."""
+    if hasattr(engine_or_conn, "execute") and not hasattr(engine_or_conn, "begin"):
+        # legacy style
+        conn = engine_or_conn  # type: ignore
+        return conn, False
+    if hasattr(engine_or_conn, "connect"):
+        conn = engine_or_conn.connect()  # type: ignore
+        return conn, True
+    raise TypeError("Expected SQLAlchemy Engine or Connection")
+
+def _safe_decimal(x) -> Optional[float]:
+    if x is None:
+        return None
+    if isinstance(x, Decimal):
+        return float(x)
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+def _table_exists(conn: Connection, fqtn: str) -> bool:
+    """
+    Check if a fully-qualified table name exists (e.g., 'public.report_positions').
+    """
+    if "." in fqtn:
+        schema, name = fqtn.split(".", 1)
+    else:
+        schema, name = "public", fqtn
+    chk = text("""
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = :schema AND table_name = :name
+        LIMIT 1
+    """)
+    row = conn.execute(chk, {"schema": schema, "name": name}).fetchone()
+    return bool(row)
+# -------------------------
+# Queries (minimal; adjust to your schema as needed)
+# -------------------------
+
+def query_trade_pnls(engine_or_conn: Engine | Connection, start: datetime, end: datetime) -> Tuple[List[float], List[float], List[float], int]:
+    """
+    Pull closed-trade PnL from trade_records within [start, end).
+    - Uses realized_profit primarily; falls back to pnl_usd if realized_profit is NULL.
+    - Breakevens counted with an epsilon to avoid float noise.
+    """
+    eps = float(os.getenv("BREAKEVEN_EPS", "1e-9"))
+
+    # COALESCE(realized_profit, pnl_usd) covers both older and newer rows
+    sql = text(f"""
+        SELECT COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) AS pnl
+        FROM {TRADES_TABLE}
+        WHERE {COL_TIME} >= :start
+          AND {COL_TIME} <  :end
+          AND COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) IS NOT NULL
+    """)
+
+    conn, own = _ensure_conn(engine_or_conn)
+    try:
+        rows = conn.execute(sql, {"start": start, "end": end}).fetchall()
+    finally:
+        if own: conn.close()
+
+    closed, wins, losses = [], [], []
+    breakevens = 0
+    for (pnl,) in rows:
+        v = _safe_decimal(pnl)
+        if v is None:
+            continue
+        closed.append(v)
+        if v > eps:
+            wins.append(v)
+        elif v < -eps:
+            losses.append(v)
+        else:
+            breakevens += 1
+
+    return closed, wins, losses, breakevens
+
+def query_open_positions(engine_or_conn: Engine | Connection, as_of: datetime) -> List[dict]:
+    """
+    Return list of open positions with schema:
+      {symbol, side, qty, avg_price, notional, pct_total}
+    If you don't have a positions table, compute from your own holdings view.
+    """
+    # This is a generic shape. Adjust columns to your table.
+    sql = text(f"""
+        SELECT
+            {COL_SYMBOL} AS symbol,
+            {COL_SIDE}   AS side,
+            {COL_POS_QTY} AS qty,
+            {COL_PRICE}  AS avg_price
+        FROM {POSITIONS_TABLE}
+        WHERE {COL_POS_QTY} IS NOT NULL
+          AND ABS({COL_POS_QTY}) > 0
+    """)
+    conn, own = _ensure_conn(engine_or_conn)
+    try:
+        rows = conn.execute(sql).fetchall()
+    finally:
+        if own: conn.close()
+
+    out = []
+    total_notional = 0.0
+    for symbol, side, qty, avg_price in rows:
+        qty_f = _safe_decimal(qty) or 0.0
+        px_f  = _safe_decimal(avg_price) or 0.0
+        notional = abs(qty_f) * px_f
+        total_notional += notional
+        out.append({
+            "symbol": symbol,
+            "side": (str(side).lower() if side is not None else ("long" if qty_f >= 0 else "short")),
+            "qty": qty_f,
+            "avg_price": px_f,
+            "notional": notional,
+            # pct_total filled later once total is known
+        })
+
+    # fill % of total
+    if total_notional > 0:
+        for row in out:
+            row["pct_total"] = (100.0 * row["notional"] / total_notional)
+    else:
+        for row in out:
+            row["pct_total"] = 0.0
+    return out
+
+def query_cash_balances(engine_or_conn: Engine | Connection, as_of: datetime) -> float:
+    """
+    Sum balances for cash-like symbols (USD/USDC/USDT by default).
+    Adjust the filter if your table uses different naming.
+    """
+    if not BALANCES_TABLE:
+        return 0.0
+
+    placeholders = ", ".join([f":s{i}" for i in range(len(CASH_SYMBOLS))]) or "''"
+    sql = text(f"""
+        SELECT COALESCE(SUM({CASH_AMT_COL}), 0) AS cash_total
+        FROM {BALANCES_TABLE}
+        WHERE UPPER({CASH_SYM_COL}) IN ({placeholders})
+    """)
+    params = {f"s{i}": sym for i, sym in enumerate(CASH_SYMBOLS)}
+
+    conn, own = _ensure_conn(engine_or_conn)
+    try:
+        row = conn.execute(sql, params).fetchone()
+    finally:
+        if own: conn.close()
+
+    return float(row[0] or 0.0) if row else 0.0
+
+def compute_exposure_totals(open_positions: List[dict], equity_usd: Optional[float]) -> dict:
+    """
+    Turn positions list into the exposure_totals dict expected by the report.
+    """
+    total_notional = sum(abs(p["notional"] or 0.0) for p in open_positions) if open_positions else 0.0
+    long_notional  = sum((p["notional"] or 0.0) for p in open_positions if (p.get("side") == "long" or (p.get("qty", 0.0) >= 0)))
+    short_notional = sum(abs(p["notional"] or 0.0) for p in open_positions if (p.get("side") == "short" or (p.get("qty", 0.0) < 0)))
+    net_exposure   = long_notional - short_notional
+
+    invested_pct   = (100.0 * total_notional / equity_usd) if equity_usd and equity_usd > 0 else None
+    leverage_used  = (total_notional / equity_usd) if equity_usd and equity_usd > 0 else None
+    net_pct        = (100.0 * net_exposure / equity_usd) if equity_usd and equity_usd > 0 else None
+
+    return {
+        "total_notional": round(total_notional, 2),
+        "invested_pct_of_equity": (round(invested_pct, 2) if invested_pct is not None else None),
+        "leverage_used": (round(leverage_used, 3) if leverage_used is not None else None),
+        "long_notional": round(long_notional, 2),
+        "short_notional": round(short_notional, 2),
+        "net_abs": round(net_exposure, 2),
+        "net_pct": (round(net_pct, 2) if net_pct is not None else None),
+    }
+
+def query_unrealized_pnl_placeholder(open_positions: List[dict]) -> Optional[float]:
+    """
+    If you don't have a live price table plugged yet, keep unrealized at 0 or None.
+    Replace this with a join to PRICES_TABLE on symbol=PRICE_SYM_COL, latest <= end.
+    """
+    return 0.0
+
+# -------------------------
+# Public: compute everything the report needs for a window
+# -------------------------
+
+def compute_windowed_metrics(engine_or_conn: Engine | Connection,
+                             start: datetime,
+                             end: datetime,
+                             source: str) -> dict:
+    closed, wins, losses, breakevens = query_trade_pnls(engine_or_conn, start, end)
+    open_pos = query_open_positions(engine_or_conn, end)
+    cash_usd = query_cash_balances(engine_or_conn, end)
+    exposure_totals = compute_exposure_totals(open_pos, equity_usd=cash_usd if cash_usd > 0 else None)
+
+    realized_pnl   = sum(closed) if closed else 0.0
+    unrealized_pnl = query_unrealized_pnl_placeholder(open_pos)
+
+    return {
+        "as_of_iso": end.isoformat(),
+        "closed_trade_pnls": closed,
+        "wins": wins,
+        "losses": losses,
+        "breakevens": breakevens,
+        "open_positions": open_pos,
+        "exposure_totals": exposure_totals,
+        "realized_pnl": realized_pnl,
+        "unrealized_pnl": unrealized_pnl,
+    }
 # -------- Trade Stats (Avg Win/Loss, PF, Expectancy, Win Rate) --------
 
 TRADE_STATS_SQL_TR = sqlalchemy.text("""

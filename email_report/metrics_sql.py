@@ -1,1 +1,0 @@
-# SQL text blocks (expectancy, sharpe, dd…)
