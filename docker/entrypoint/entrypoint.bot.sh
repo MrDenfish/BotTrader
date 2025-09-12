@@ -26,9 +26,23 @@ export_env_file_ro() {
 
 infer_static_ip() {
   if [[ -z "${DOCKER_STATICIP-}" || -z "${DOCKER_STATICIP}" ]]; then
-    local ip=""
-    ip="$(curl -fsS http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
-    [[ -z "$ip" ]] && ip="$(curl -fsS https://checkip.amazonaws.com || true)"
+    local ip="" token=""
+# Try IMDSv2 (fast timeout, no noisy errors)
+    token="$(curl -sS --connect-timeout 1 -m 1 -X PUT \
+      "http://169.254.169.254/latest/api/token" \
+        -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)"
+    if [[ -n "$token" ]]; then
+      ip="$(curl -sS --connect-timeout 1 -m 1 \
+        -H "X-aws-ec2-metadata-token: $token" \
+        http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
+    fi
+    # Quiet fallbacks
+    if [[ -z "$ip" ]]; then
+      ip="$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null || true)"
+    fi
+    if [[ -z "$ip" ]]; then
+      ip="$(curl -sS --connect-timeout 1 -m 1 https://checkip.amazonaws.com 2>/dev/null || true)"
+    fi
     if [[ -n "$ip" ]]; then
       export DOCKER_STATICIP="$ip"
       log "Inferred DOCKER_STATICIP=$DOCKER_STATICIP"
