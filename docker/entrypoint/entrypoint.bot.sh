@@ -120,7 +120,14 @@ start_app() {
 log "BotTrader starting (Option A)..."
 
 # 1) Export env from the bind-mounted file (read-only safe)
-export_env_file_ro "/app/.env_tradebot"
+#     Prefer .env_runtime in containers; fallback to .env_tradebot for legacy.
+if [ -f /app/.env_runtime ]; then
+  export_env_file_ro "/app/.env_runtime"
+elif [ -f /app/.env_tradebot ]; then
+  export_env_file_ro "/app/.env_tradebot"
+else
+  warn "No .env_runtime or .env_tradebot found under /app; continuing with existing env."
+fi
 # --- compat shim: map DB_* -> POSTGRES_* if POSTGRES_* not set ---
 : "${DB_HOST:=db}"
 : "${DB_PORT:=5432}"

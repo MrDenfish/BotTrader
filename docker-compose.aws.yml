@@ -42,7 +42,7 @@ services:
       timeout: 3s
       retries: 10
     volumes:
-      - /opt/bot/.env_runtime:/app/.env_tradebot:ro
+      - /opt/bot/.env_runtime:/app/.env_runtime:ro
       - ./logs:/app/logs
     user: "1000:1000"
     restart: unless-stopped
@@ -65,7 +65,7 @@ services:
       webhook:
         condition: service_healthy
     volumes:
-      - /opt/bot/.env_runtime:/app/.env_tradebot:ro
+      - /opt/bot/.env_runtime:/app/.env_runtime:ro
       - ./logs:/app/logs
     entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
     # Add a simple healthcheck that requires no extra packages:
