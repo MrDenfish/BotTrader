@@ -16,12 +16,14 @@ from decimal import Decimal
 from datetime import timezone
 from email.mime.text import MIMEText
 from email.utils import getaddresses
+from statistics import mean, pstdev
 from datetime import datetime, timezone
 from sqlalchemy import text, create_engine
 from urllib.parse import urlparse, parse_qs
 from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email_report_print_format import build_console_report
 
 # -------------------------
 # Config / Environment
@@ -284,18 +286,36 @@ def run_queries(conn):
     # ----- PnL (realized) -----
     try:
         tbl_pnl = REPORT_PNL_TABLE
-        if REPORT_COL_PNL:
-            total_pnl = conn.run(f"SELECT COALESCE(SUM({qident(REPORT_COL_PNL)}),0) FROM {qualify(tbl_pnl)}")[0][0]
-            detect_notes.append(f"PnL override: table=({tbl_pnl}) col={REPORT_COL_PNL}")
+        cols_present = table_columns(conn, tbl_pnl)
+        if DEBUG:
+            detect_notes.append(f"Columns({tbl_pnl}): {sorted(cols_present)}")
+
+        # Pick the correct PnL column, prefer explicit override
+        pnl_candidates = ["pnl_usd", "realized_pnl_usd", "realized_pnl", "pnl", "profit", "realized_profit"]
+        pnl_col = REPORT_COL_PNL if REPORT_COL_PNL else pick_first_available(cols_present, pnl_candidates)
+
+        if not pnl_col:
+            total_pnl = 0
+            detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
         else:
-            cols_present = table_columns(conn, tbl_pnl)
-            choice = pick_first_available(cols_present, ["realized_profit","realized_pnl","pnl","profit"])
-            if not choice:
-                total_pnl = 0
-                detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
+            # Find a timestamp column so we can apply the report’s time window
+            ts_candidates = ["order_time", "exec_time", "time", "ts", "timestamp", "created_at", "updated_at"]
+            ts_col = pick_first_available(cols_present, ts_candidates)
+
+            if ts_col:
+                low_sql, high_sql = _time_window_sql(qident(ts_col))
+                q = f"""
+                            SELECT COALESCE(SUM({qident(pnl_col)}), 0)
+                            FROM {qualify(tbl_pnl)}
+                            WHERE {low_sql} {high_sql}
+                        """
+                detect_notes.append(f"PnL windowed: table=({tbl_pnl}) col={pnl_col} ts={ts_col}")
             else:
-                total_pnl = conn.run(f"SELECT COALESCE(SUM({qident(choice)}),0) FROM {qualify(tbl_pnl)}")[0][0]
-                detect_notes.append(f"PnL auto: table=({tbl_pnl}) col={choice}")
+                # Fallback to all-time if no timestamp column
+                q = f"SELECT COALESCE(SUM({qident(pnl_col)}), 0) FROM {qualify(tbl_pnl)}"
+                detect_notes.append(f"PnL ALL-TIME (no ts col): table=({tbl_pnl}) col={pnl_col}")
+
+            total_pnl = conn.run(q)[0][0]
     except Exception as e:
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
@@ -1080,6 +1100,61 @@ def compute_strategy_breakdown_windowed(conn):
 # -------------------------
 # IO helpers
 # -------------------------
+def derive_extra_metrics(win_rate_pct: float | None,
+                         avg_win: float | None,
+                         avg_loss: float | None,
+                         recent_trades: list[dict] | None):
+    """
+    Returns a dict containing:
+      - expectancy_per_trade
+      - mean_pnl_per_trade
+      - stdev_pnl_per_trade
+      - sharpe_like  (mean/stdev using population stdev; None if stdev==0 or no data)
+    Tries to pull signed PnL from recent_trades using common field names.
+    Falls back to expectancy formula if no per-trade PnL list is available.
+    """
+    # 1) Expectancy by definition if we have win rate and avg win/loss
+    expectancy = None
+    if win_rate_pct is not None and avg_win is not None and avg_loss is not None:
+        p_win = float(win_rate_pct) / 100.0
+        p_loss = 1.0 - p_win
+        expectancy = p_win * float(avg_win) + p_loss * float(avg_loss)
+
+    # 2) Try to build a signed PnL list from recent_trades
+    pnl_keys = ("pnl", "pnl_usd", "pnl_signed", "pnl_abs")  # preference order
+    pnl_list: list[float] = []
+    if recent_trades:
+        for r in recent_trades:
+            val = None
+            for k in pnl_keys:
+                if k in r and r[k] is not None:
+                    val = float(r[k])
+                    break
+            # If only 'pnl_abs' is present, we can’t infer sign reliably; skip it.
+            if val is not None and ("pnl_abs" not in r or "pnl" in r or "pnl_usd" in r or "pnl_signed" in r):
+                pnl_list.append(val)
+
+    mean_pnl = None
+    sd_pnl = None
+    sharpe_like = None
+
+    if pnl_list:
+        mean_pnl = mean(pnl_list)
+        # population stdev (pstdev) to be stable with small N; switch to stdev if you prefer sample stdev
+        sd_pnl = pstdev(pnl_list)
+        if sd_pnl and sd_pnl > 0:
+            sharpe_like = mean_pnl / sd_pnl
+
+        # If expectancy was unknown but we do have a per-trade mean, use it:
+        if expectancy is None:
+            expectancy = mean_pnl
+
+    return {
+        "expectancy_per_trade": expectancy,
+        "mean_pnl_per_trade": mean_pnl,
+        "stdev_pnl_per_trade": sd_pnl,
+        "sharpe_like": sharpe_like,
+    }
 
 def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
     os.makedirs(out_dir, exist_ok=True)
@@ -1131,6 +1206,14 @@ def main():
 
         strat_rows, strat_notes = compute_strategy_breakdown_windowed(conn)
         detect_notes.extend(strat_notes)
+
+        extras = derive_extra_metrics(
+            win_rate_pct=win_rate,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
+            recent_trades=recent_trades  # or recent_trades if that’s your variable
+        )
+
     finally:
         conn.close()
 
@@ -1161,7 +1244,7 @@ def main():
 
     try:
         sa_engine = get_sa_engine()
-        fast_html, fast_csv_path, _ = fetch_fast_roundtrips(sa_engine)
+        fast_html, fast_csv_path, fast_df = fetch_fast_roundtrips(sa_engine)
     except Exception as e:
 
         if DEBUG:
@@ -1200,7 +1283,41 @@ def main():
         save_report_copy(csvb)
         send_email(html, csvb)
     else:
-        print(f"{csvb},  {html}")
+        # Build a readable console report (no HTML)
+        # These names match variables your script computes just before build_html()
+        as_of_utc = datetime.now(timezone.utc)  # or whatever you used in your header
+        window_label = "last 24h"
+        source_label = "report_trades"
+
+        console_text = build_console_report(
+            as_of_utc=as_of_utc,
+            window_label=window_label,
+            source_label=source_label,
+            total_pnl=total_pnl,
+            unrealized_pnl=unreal_pnl,
+            win_rate=win_rate,
+            wins=wins,
+            total_trades=total_trades,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
+            profit_factor=profit_factor,
+            expectancy_per_trade=extras.get("expectancy_per_trade",None),
+            mean_pnl_per_trade=extras.get("mean_pnl_per_trade",None),
+            stdev_pnl_per_trade=extras.get("stdev_pnl_per_trade",None),
+            sharpe_like=extras.get("sharpe_like",None),
+            max_dd_pct_window=max_dd_pct,  # or a window-specific DD if you compute it
+            exposures_table=exposures,  # list OR dict {'total_notional', 'items', 'all_items'}
+            strat_rows=strat_rows,  # optional list of dicts
+            notes=detect_notes,  # optional list[str]
+            fast_df=fast_df,
+        )
+
+        # Keep writing the CSV locally for dev convenience
+        with open("trading_report_local.csv", "wb") as f:
+            f.write(csvb)
+
+        print(console_text)
+        print("\n[Saved CSV] trading_report_local.csv")
 
 
 if __name__ == "__main__":
