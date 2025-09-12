@@ -96,7 +96,7 @@ services:
       - /opt/bot/.env_runtime
     # Optional: send daily email reports
     command: >-
-      python -u -m email_report
+      python -u -m botreport
         --hours ${REPORT_LOOKBACK_HOURS:-24}
         --use-report-trades
         --starting-equity ${REPORT_STARTING_EQUITY:-3000}
