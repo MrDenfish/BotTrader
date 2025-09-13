@@ -105,6 +105,7 @@ class SenderWebhook:
 
                 headers = {"Content-Type": "application/json"}
                 if not token:
+                    print(f"⚠️ Warning: WEBHOOK_TOKEN is not set; {token}")
                     self.logger.error("WEBHOOK_TOKEN is missing; server will reject the webhook")
                 else:
                     if auth_header_name.lower() == "authorization":
