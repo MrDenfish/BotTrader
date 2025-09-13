@@ -106,11 +106,9 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     async with shared_data_manager.database_session_manager.async_session() as session:
         async with session.begin():
             # Safety timeouts so we never hang in a tx
-            await session.execute(text("""
-                SET LOCAL lock_timeout = '5s';
-                SET LOCAL statement_timeout = '60s';
-                SET LOCAL idle_in_transaction_session_timeout = '60s';
-            """))
+            await session.execute(text("SET LOCAL lock_timeout = '5s'"))
+            await session.execute(text("SET LOCAL statement_timeout = '60s'"))
+            await session.execute(text("SET LOCAL idle_in_transaction_session_timeout = '60s'"))
 
             got_lock = (await session.execute(
                 text("SELECT pg_try_advisory_lock(:k)"), {"k": GLOBAL_LOCK_KEY}
