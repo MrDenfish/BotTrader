@@ -1,9 +1,10 @@
-import os
-import json
+
 import random
 import asyncio
 import aiohttp
+import os, json, logging, requests
 
+from urllib.parse import urljoin
 from Shared_Utils.enum import ValidationCode
 from Config.config_manager import CentralConfig
 
@@ -70,6 +71,13 @@ class SenderWebhook:
     @property
     def email_alerts_on(self):
         return self._email_alerts_on
+
+    def _build_webhook_url(self):
+        base = os.getenv("WEBHOOK_BASE_URL", "http://webhook:5003").rstrip("/")
+        path = os.getenv("WEBHOOK_PATH", "/webhook").strip()  # e.g. /api/v1/signal
+        if not path.startswith("/"):
+            path = "/" + path
+        return f"{base}{path}"
 
     async def send_webhook(self, http_session, webhook_payload, retries=3, initial_delay=1, max_delay=60):
         """

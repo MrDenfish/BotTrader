@@ -647,15 +647,15 @@ class CentralConfig:
 
     @property
     def web_url(self) -> str:
-        full = os.getenv("WEBHOOK_BASE_URL")
-        if full:
-            self._log_url("override", full)
-            return full
-
-        base = self._default_base_url()
+        # base: scheme://host[:port] only (no path)
+        base = (os.getenv("WEBHOOK_BASE_URL") or self._default_base_url()).rstrip("/")
+        # path: default to /webhook; accept env override
         path = (os.getenv("WEBHOOK_PATH") or "/webhook").strip() or "/webhook"
-        final = urljoin(base.rstrip("/") + "/", path.lstrip("/"))
+        if not path.startswith("/"):
+            path = "/" + path
+        final = urljoin(base + "/", path.lstrip("/"))
         self._log_url("computed", final, base=base, path=path)
+        print("Webhook URL resolved to:", final)
         return final
 
     def _default_base_url(self) -> str:
