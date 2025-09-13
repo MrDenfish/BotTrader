@@ -166,7 +166,8 @@ class SenderWebhook:
         code = str(status)
 
         if code in {"403", "404"}:
-            self.logger.error(f"‼️ Non-recoverable error {status}: {response_text}")
+
+            self.logger.error(f"‼️ Non-recoverable error {status}: {response_text}: payload:{webhook_payload}")
             return True
 
         if code in {
