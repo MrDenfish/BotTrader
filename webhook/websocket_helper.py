@@ -418,7 +418,7 @@ class WebSocketHelper:
 
                 # Concise INFO line
 
-                self.logger.info(f"🟢🟢🟢 Subscriptions confirmed · seq={seq} · {summary}{preview_str} · ts={ts} 🟢🟢🟢")
+                print(f"🟢🟢🟢 Subscriptions confirmed · {summary}{preview_str}  🟢🟢🟢")
 
                 # Full payload only at DEBUG (for deep dives when needed)
 

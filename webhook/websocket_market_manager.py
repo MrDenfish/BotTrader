@@ -420,9 +420,10 @@ class WebSocketMarketManager:
                     order_success, response_msg = await self.trade_order_manager.place_order(roc_order_data)
                     print(f"‼️ ROC ALERT: {product_id} increased by {log_roc:.2f}% 5 minutes. A buy order was placed!")
             else:
-                print(f"⛔ Skipped {product_id}: ROC={log_roc}%, Passed ROC={log_roc >= self._roc_5min}, "
-                      f"Vol={volatility}, Adaptive={adaptive_threshold}, "
-                      f"Passed Vol={volatility >= adaptive_threshold} ⛔")
+                return
+                # print(f"⛔ Skipped {product_id}: ROC={log_roc}%, Passed ROC={log_roc >= self._roc_5min}, "
+                #       f"Vol={volatility}, Adaptive={adaptive_threshold}, "
+                #       f"Passed Vol={volatility >= adaptive_threshold} ⛔") # debug
 
         except Exception as e:
             self.logger.error(f"Error in _process_single_ticker for {ticker.get('product_id')}: {e}", exc_info=True)

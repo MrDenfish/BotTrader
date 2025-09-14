@@ -455,7 +455,8 @@ class PassiveOrderManager:
         if not self._passes_balance_check(quote_od):
             return
 
-        print(f"📈 Placing Passive order: {quote_od}")
+        print(f"📈 Placing {quote_od.source} order: {quote_od.trading_pair} {quote_od.side.upper()} "
+              f"{quote_od.adjusted_size} @ {price}  | Spread: {quote_od.spread}")
 
         ok, res = await self.tom.place_order(quote_od)
 
