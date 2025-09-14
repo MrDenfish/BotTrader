@@ -6,9 +6,9 @@ from TableModels.trade_record import TradeRecord
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from asyncio import Queue
 from typing import Optional
-from sqlalchemy import case,func, Float, and_, or_, not_, update
+from sqlalchemy import func, and_, or_, not_
 from sqlalchemy.future import select
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal ,ROUND_DOWN
 from datetime import datetime, timezone, timedelta
 
 class TradeRecorder:
@@ -193,6 +193,8 @@ class TradeRecorder:
                 if parsed_time.tzinfo
                 else parsed_time.replace(tzinfo=timezone.utc)
             )
+            order_time = order_time.astimezone(timezone.utc)
+            order_time_str = order_time.strftime("%Y-%m-%d %H:%M:%S.%f+00")
 
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
             base_q = Decimal("1").scaleb(-base_deci)
@@ -217,28 +219,70 @@ class TradeRecorder:
                         if fees_override is not None:
                             total_fees = fees_override
 
-                        fifo_result = await self.compute_cost_basis_and_sale_proceeds(
-                            symbol=symbol,
-                            size=amount,
-                            sell_price=price,
-                            total_fees=total_fees,
-                            quote_q=quote_q,
-                            base_q=base_q,
-                            sell_time=order_time,
-                            sell_fills=None,
-                            cost_basis_usd=Decimal(0),
-                            gross_override=gross_override,
-                            sell_fee_total_override=fees_override,
-                            preferred_parent_id=preferred_parent_id,
+                        # BEFORE calling compute_cost_basis_and_sale_proceeds(...)
+                        # Verify there are enough unlinked BUYs to cover the SELL size
+                        total_rem = Decimal("0")
+                        tolerance = timedelta(seconds=1)
+                        stmt = (
+                            select(TradeRecord)
+                            .where(
+                                TradeRecord.symbol == symbol,
+                                TradeRecord.side == "buy",
+                                TradeRecord.order_time <= trade_data.get("order_time") + tolerance,
+                                or_(TradeRecord.remaining_size.is_(None), TradeRecord.remaining_size > 0),
+                                not_(TradeRecord.order_id.like('%-FILL-%')),
+                                not_(TradeRecord.order_id.like('%-FALLBACK'))
+                            )
+                            .order_by(TradeRecord.order_time.asc())
                         )
+                        res = await session.execute(stmt)
+                        parents = res.scalars().all()
+                        for pt in parents:
+                            total_rem += Decimal(str(pt.remaining_size or pt.size or 0))
 
-                        parent_ids = fifo_result["parent_ids"]
-                        cost_basis_usd = fifo_result["cost_basis_usd"]
-                        sale_proceeds_usd = fifo_result["sale_proceeds_usd"]
-                        net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
-                        pnl_usd = fifo_result["pnl_usd"]
-                        update_instructions = fifo_result["update_instructions"]
-                        parent_id = parent_ids[0] if parent_ids else parent_id
+                        if total_rem < amount:
+                            # Not enough parent liquidity — defer/skip to avoid bogus PnL.
+                            self.logger.warning(
+                                f"[FIFO] Insufficient BUY liquidity for SELL {order_id} {symbol}. "
+                                f"Need {amount}, have {total_rem}. Deferring PnL computation."
+                            )
+                            # Option A (recommended): save the SELL without pnl/cost fields; a later maintenance pass resolves it
+                            pnl_usd = None
+                            cost_basis_usd = None
+                            sale_proceeds_usd = None
+                            net_sale_proceeds_usd = None
+                            update_instructions = []
+                        else:
+                            fifo_result = await self.compute_cost_basis_and_sale_proceeds(
+                                symbol=symbol,
+                                size=amount,
+                                sell_price=price,
+                                total_fees=total_fees,
+                                quote_q=quote_q,
+                                base_q=base_q,
+                                sell_time=trade_data.order_time,
+                                cost_basis_usd=None,
+                                preferred_parent_id=preferred_parent_id,
+                                sell_fills=None,
+                                gross_override=gross_override,
+                                sell_fee_total_override=fees_override
+                            )
+                            parent_ids = fifo_result["parent_ids"]
+                            cost_basis_usd = fifo_result["cost_basis_usd"]
+                            sale_proceeds_usd = fifo_result["sale_proceeds_usd"]
+                            net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
+                            pnl_usd = fifo_result["pnl_usd"]
+                            update_instructions = fifo_result["update_instructions"]
+                            parent_id = parent_ids[0] if parent_ids else parent_id
+                            # --- Breakeven tolerance clamp ---
+                            BE_TOL_ABS = Decimal("0.01")  # $0.01
+                            BE_TOL_PCT = Decimal("0.0002")  # 0.02%
+                            if pnl_usd is not None and cost_basis_usd:
+                                pnl_d = Decimal(str(pnl_usd))
+                                cb_d = Decimal(str(cost_basis_usd))
+                                if pnl_d.copy_abs() < BE_TOL_ABS or (cb_d > 0 and (pnl_d.copy_abs() / cb_d) < BE_TOL_PCT):
+                                    pnl_usd = Decimal("0")
+                            # ---------------------------------
 
                         self.logger.info(
                             f"[RECORD_TRADE DEBUG] SELL PnL={pnl_usd}, Parents={parent_ids}, "
@@ -370,7 +414,11 @@ class TradeRecorder:
             # ---------- 1) Proceeds (prefer overrides) ----------
             if gross_override is not None or sell_fee_total_override is not None:
                 gross = gross_override if gross_override is not None else (size * sell_price)
-                sell_fee_total = sell_fee_total_override if sell_fee_total_override is not None else (total_fees or Decimal("0"))
+                sell_fee_total = (
+                    sell_fee_total_override
+                    if sell_fee_total_override is not None
+                    else (total_fees or Decimal("0"))
+                )
             elif sell_fills:
                 gross = sum(Decimal(str(f["qty"])) * Decimal(str(f["price"])) for f in sell_fills)
                 sell_fee_total = sum(Decimal(str(f.get("fee_usd", "0"))) for f in sell_fills)
@@ -935,216 +983,3 @@ class TradeRecorder:
                 self.logger.error(f"❌ Error fetching sells for {date}: {e}", exc_info=True)
             return []
 
-
-# <><><><><><><><><><><><><><><><><><>><><><><<>
-#     async def test_fifo_prod(self, symbol: str):
-#         """
-#         Quick production test harness to validate FIFO logic directly
-#         against the live trade_records table.
-#
-#         Args:
-#             symbol (str): Trading pair to test (e.g., "EDGE-USD").
-#         """
-#         try:
-#             # ✅ 1. Fetch first SELL trade from production table
-#             async with self.db_session_manager.async_session() as session:
-#                 async with session.begin():
-#                     stmt = (
-#                         select(TradeRecord)
-#                         .where(
-#                             TradeRecord.symbol == symbol,
-#                             TradeRecord.side == "sell"
-#                         )
-#                         .order_by(TradeRecord.order_time.asc())
-#                         .limit(1)
-#                     )
-#                     async with self.db_session_manager.async_session() as session:
-#                         result = await session.execute(stmt)
-#                     sell_trade = result.scalar_one_or_none()
-#
-#             if not sell_trade:
-#                 self.logger.warning(f"[TEST HARNESS PROD] No SELL trades found for {symbol}")
-#                 return
-#
-#             # ✅ 2. Prepare precision
-#             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
-#             base_q = Decimal("1").scaleb(-base_deci)
-#             quote_q = Decimal("1").scaleb(-quote_deci)
-#
-#             self.logger.info(
-#                 f"\n========== [TEST HARNESS: FIFO PROD START] ==========\n"
-#                 f"Symbol: {symbol}\n"
-#                 f"Sell Order ID: {sell_trade.order_id}\n"
-#                 f"Sell Size: {sell_trade.size}\n"
-#                 f"Sell Price: {sell_trade.price}\n"
-#                 f"====================================================="
-#             )
-#
-#             # ✅ 3. Run production FIFO method
-#             async with self.db_session_manager.async_session() as session:
-#                 async with session.begin():
-#                     result = await self.compute_cost_basis_and_sale_proceeds(
-#                         session=session,
-#                         symbol=symbol,
-#                         size=Decimal(sell_trade.size),
-#                         sell_price=Decimal(sell_trade.price),
-#                         total_fees=Decimal(sell_trade.total_fees_usd or 0),
-#                         quote_q=quote_q,
-#                         base_q=base_q,
-#                         sell_time=sell_trade.order_time
-#                     )
-#
-#             # ✅ 4. Display Results
-#             self.logger.info(
-#                 f"\n========== [TEST HARNESS: FIFO PROD RESULT] ==========\n"
-#                 f"Cost Basis USD: {result['cost_basis_usd']}\n"
-#                 f"Sale Proceeds USD: {result['sale_proceeds_usd']}\n"
-#                 f"Net Sale Proceeds USD: {result['net_sale_proceeds_usd']}\n"
-#                 f"PnL USD: {result['pnl_usd']}\n"
-#                 f"Parent IDs: {result['parent_ids']}\n"
-#                 f"Update Instructions: {result['update_instructions']}\n"
-#                 f"======================================================"
-#             )
-#
-#         except Exception as e:
-#             self.logger.error(f"❌ [TEST HARNESS PROD ERROR] {e}", exc_info=True)
-
-    # async def test_fifo_debug(self, symbol: str):
-    #     """
-    #     Quick test harness to run FIFO debug on the first SELL trade of a given symbol.
-    #     Uses trade_records_debug table for safety.
-    #
-    #     Args:
-    #         trade_recorder: Instance of TradeRecorder (with compute_cost_basis_and_sale_proceeds_debug method).
-    #         symbol (str): The trading pair to test (e.g., "SPK-USD").
-    #     """
-    #     try:
-    #         # -----------------------------
-    #         # ✅ Step 1: Fetch first SELL trade from debug table
-    #         # -----------------------------
-    #         async with self.db_session_manager.async_session() as session:
-    #             async with session.begin():
-    #                 stmt = (
-    #                     select(TradeRecordDebug)
-    #                     .where(
-    #                         TradeRecordDebug.symbol == symbol,
-    #                         TradeRecordDebug.side == "sell"
-    #                     )
-    #                     .order_by(TradeRecordDebug.order_time.asc())
-    #                     .limit(1)
-    #                 )
-    #                 async with self.db_session_manager.async_session() as session:
-    #                     result = await session.execute(stmt)
-    #                 sell_trade = result.scalar_one_or_none()
-    #
-    #         if not sell_trade:
-    #             self.logger.warning(f"[TEST HARNESS] No SELL trades found for {symbol}")
-    #             return
-    #
-    #         # -----------------------------
-    #         # ✅ Step 2: Prepare precision & debug call
-    #         # -----------------------------
-    #         base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
-    #         base_q = Decimal("1").scaleb(-base_deci)
-    #         quote_q = Decimal("1").scaleb(-quote_deci)
-    #
-    #         self.logger.info(
-    #             f"\n========== [TEST HARNESS: FIFO DEBUG START] ==========\n"
-    #             f"Symbol: {symbol}\n"
-    #             f"Sell Order ID: {sell_trade.order_id}\n"
-    #             f"Sell Size: {sell_trade.size}\n"
-    #             f"Sell Price: {sell_trade.price}\n"
-    #             f"====================================================="
-    #         )
-    #
-    #         # -----------------------------
-    #         # ✅ Step 3: Run the FIFO Debug
-    #         # -----------------------------
-    #         async with self.db_session_manager.async_session() as session:
-    #             async with session.begin():
-    #                 result = await self.compute_cost_basis_and_sale_proceeds_debug(
-    #                     session=session,
-    #                     symbol=symbol,
-    #                     size=Decimal(sell_trade.size),
-    #                     sell_price=Decimal(sell_trade.price),
-    #                     total_fees=Decimal(sell_trade.total_fees_usd or 0),
-    #                     quote_q=quote_q,
-    #                     base_q=base_q,
-    #                     sell_time=sell_trade.order_time
-    #                 )
-    #
-    #         # -----------------------------
-    #         # ✅ Step 4: Display Results
-    #         # -----------------------------
-    #         self.logger.info(
-    #             f"\n========== [TEST HARNESS: FIFO DEBUG RESULT] ==========\n"
-    #             f"Cost Basis USD: {result['cost_basis_usd']}\n"
-    #             f"Sale Proceeds USD: {result['sale_proceeds_usd']}\n"
-    #             f"Net Sale Proceeds USD: {result['net_sale_proceeds_usd']}\n"
-    #             f"PnL USD: {result['pnl_usd']}\n"
-    #             f"Parent IDs: {result['parent_ids']}\n"
-    #             f"Update Instructions: {result['update_instructions']}\n"
-    #             f"======================================================"
-    #         )
-    #
-    #     except Exception as e:
-    #         self.logger.error(f"❌ [TEST HARNESS ERROR] {e}", exc_info=True)
-
-    # async def test_performance_tracker(self):
-    #     """
-    #     Test harness to verify PassiveMM performance tracker alignment with SQL logic.
-    #     Prints the same output as the SQL query.
-    #     """
-    #     try:
-    #         self.logger.info("[TEST PERFORMANCE TRACKER] Running SQL-aligned performance stats...")
-    #
-    #         async with self.db_session_manager.async_session() as session:
-    #             async with session.begin():
-    #                 stmt = (
-    #                     select(
-    #                         TradeRecord.symbol,
-    #                         func.count().label("total_trades"),
-    #                         (
-    #                                 func.sum(
-    #                                     case((TradeRecord.pnl_usd > 0, 1), else_=0)
-    #                                 ).cast(Float) / func.count() * 100
-    #                         ).label("win_rate"),
-    #                         func.sum(TradeRecord.pnl_usd).label("total_pnl"),
-    #                         func.avg(TradeRecord.pnl_usd).label("avg_pnl"),
-    #                     )
-    #                     .where(
-    #                         TradeRecord.side == "sell",
-    #                         TradeRecord.pnl_usd.isnot(None),
-    #                         TradeRecord.order_time >= datetime.now(timezone.utc) - timedelta(days=7),
-    #                     )
-    #                     .group_by(TradeRecord.symbol)
-    #                     .order_by(func.sum(TradeRecord.pnl_usd).asc())
-    #                     .limit(10)
-    #                 )
-    #
-    #                 async with self.db_session_manager.async_session() as session:
-    #                     result = await session.execute(stmt)
-    #                 rows = result.all()
-    #
-    #         total_trades = sum(row.total_trades for row in rows)
-    #         win_rate = (
-    #             (sum(1 for row in rows if row.total_pnl > 0) / len(rows)) * 100
-    #             if rows else 0.0
-    #         )
-    #         total_pnl = sum(row.total_pnl for row in rows)
-    #         avg_pnl = total_pnl / total_trades if total_trades else 0.0
-    #         top_symbols = {row.symbol: row.total_pnl for row in rows}
-    #
-    #         # ✅ Log in the same style as the old tracker
-    #         self.logger.info(
-    #             "\n========== [TEST HARNESS: PERFORMANCE TRACKER RESULT] ==========\n"
-    #             f"Total Trades (last 7d): {total_trades}\n"
-    #             f"Win Rate: {win_rate:.2f}%\n"
-    #             f"Total PnL: {total_pnl:+.2f} USD\n"
-    #             f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
-    #             f"Top Symbols: {top_symbols}\n"
-    #             "==============================================================="
-    #         )
-    #
-    #     except Exception as e:
-    #         self.logger.error(f"❌ [TEST PERFORMANCE TRACKER ERROR] {e}", exc_info=True)
