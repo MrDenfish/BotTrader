@@ -166,6 +166,8 @@ class TradeRecorder:
             - Insert/Update SELL or BUY trade
             - Update parent BUYs' remaining_size & realized_profit (SELL only)
         """
+
+
         try:
             fills_in = trade_data.get("fills")
             gross_override_raw = trade_data.get("gross_override")
@@ -188,13 +190,18 @@ class TradeRecorder:
                 parsed_time = datetime.fromisoformat(order_time_raw.replace("Z", "+00:00"))
             else:
                 parsed_time = order_time_raw
+
+            order_time_utc = (
+                parsed_time.astimezone(timezone.utc)
+                if parsed_time.tzinfo else parsed_time.replace(tzinfo=timezone.utc)
+            )
+
             order_time = (
                 parsed_time.astimezone(timezone.utc)
                 if parsed_time.tzinfo
                 else parsed_time.replace(tzinfo=timezone.utc)
             )
-            order_time = order_time.astimezone(timezone.utc)
-            order_time_str = order_time.strftime("%Y-%m-%d %H:%M:%S.%f+00")
+
 
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
             base_q = Decimal("1").scaleb(-base_deci)
@@ -209,7 +216,7 @@ class TradeRecorder:
             parent_id = trade_data.get("parent_id")
             parent_ids, pnl_usd, cost_basis_usd, sale_proceeds_usd, net_sale_proceeds_usd = [], None, None, None, None
             update_instructions = []
-
+            print(f"[record_trade] order_time type={type(order_time_utc)} value={order_time_utc.isoformat()}") #debug
             async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     self.active_session = session
@@ -228,7 +235,7 @@ class TradeRecorder:
                             .where(
                                 TradeRecord.symbol == symbol,
                                 TradeRecord.side == "buy",
-                                TradeRecord.order_time <= trade_data.get("order_time") + tolerance,
+                                TradeRecord.order_time <= order_time_utc + tolerance,  # space
                                 or_(TradeRecord.remaining_size.is_(None), TradeRecord.remaining_size > 0),
                                 not_(TradeRecord.order_id.like('%-FILL-%')),
                                 not_(TradeRecord.order_id.like('%-FALLBACK'))
@@ -247,10 +254,7 @@ class TradeRecorder:
                                 f"Need {amount}, have {total_rem}. Deferring PnL computation."
                             )
                             # Option A (recommended): save the SELL without pnl/cost fields; a later maintenance pass resolves it
-                            pnl_usd = None
-                            cost_basis_usd = None
-                            sale_proceeds_usd = None
-                            net_sale_proceeds_usd = None
+                            pnl_usd = cost_basis_usd = sale_proceeds_usd = net_sale_proceeds_usd = None
                             update_instructions = []
                         else:
                             fifo_result = await self.compute_cost_basis_and_sale_proceeds(
@@ -260,7 +264,7 @@ class TradeRecorder:
                                 total_fees=total_fees,
                                 quote_q=quote_q,
                                 base_q=base_q,
-                                sell_time=trade_data.order_time,
+                                sell_time=order_time_utc,
                                 cost_basis_usd=None,
                                 preferred_parent_id=preferred_parent_id,
                                 sell_fills=None,
@@ -294,8 +298,9 @@ class TradeRecorder:
                         # ✅ BUY Logic (Initial Baseline)
                         # -----------------------------
                     else:
-                        parent_id = trade_data.get("parent_id") or order_id
-                        parent_ids = [parent_id] if parent_id else []
+                        # For buys, let recorder assign chain id via parent_ids only
+                        parent_id = trade_data.get("parent_id")  # leave as provided if any, else None
+                        parent_ids = [order_id]  # anchor chain to this buy
 
                         # If no fees provided in trade_data, but we have fills, sum the actual USD fees
                         if (total_fees is None or total_fees == 0) and fills_in:
@@ -318,7 +323,7 @@ class TradeRecorder:
                         "parent_ids": parent_ids or None,
                         "symbol": symbol,
                         "side": side,
-                        "order_time": order_time,
+                        "order_time": order_time_utc,
                         "price": float(price),
                         "size": float(amount),
                         "pnl_usd": float(pnl_usd) if pnl_usd is not None else None,
