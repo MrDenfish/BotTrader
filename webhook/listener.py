@@ -965,48 +965,59 @@ class WebhookListener:
         shared_data_manager = self.shared_data_manager
 
         def _gross_and_fees_from_batch(order: dict) -> tuple[str, str]:
-            # Keep as strings (JSON-safe); record_trade will Decimal() them.
             gross = str(order.get("filled_value") or "")
             fees = str(order.get("total_fees") or "")
             return gross, fees
 
+        def _norm_iso_utc(ts: str) -> str:
+            # Accepts ISO-ish inputs, returns 'YYYY-MM-DD HH:MM:SS.ffffff+00'
+            from datetime import datetime, timezone
+            if not ts:
+                return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f+00")
+            try:
+                ts = str(ts)
+                # Allow 'Z'
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                dt = dt.astimezone(timezone.utc)
+            except Exception:
+                dt = datetime.now(timezone.utc)
+            return dt.strftime("%Y-%m-%d %H:%M:%S.%f+00")
+
         try:
             logger.info("🔁 Starting reconciliation via REST API...")
 
-            # ✅ Fetch open orders
+            # ✅ Refresh open orders into tracker for context
             open_orders = await coinbase_api.fetch_open_orders(limit=limit)
             logger.debug(f"📥 Retrieved {len(open_orders)} open orders")
 
             tracker = shared_data_manager.order_management.setdefault("order_tracker", {})
-
             for raw_order in open_orders:
                 normalized = shared_data_manager.normalize_raw_order(raw_order)
                 if not normalized:
                     continue
-
-                order_id = normalized.get("order_id")
-                if order_id not in tracker:
-                    tracker[order_id] = normalized
-                    logger.debug(f"📌 Added missing open order: {order_id}")
+                oid = normalized.get("order_id")
+                if oid and oid not in tracker:
+                    tracker[oid] = normalized
+                    logger.debug(f"📌 Added missing open order: {oid}")
 
             # ✅ Fetch recent FILLED orders
-            params = {
-                "limit": limit,
-                "order_status": ["FILLED"],
-            }
+            params = {"limit": limit, "order_status": ["FILLED"]}
             filled_response = await coinbase_api.get_historical_orders_batch(params)
-            orders = filled_response.get("orders", [])
+            orders = filled_response.get("orders", []) or []
             logger.debug(f"📘 Retrieved {len(orders)} filled orders")
 
             reconciled_trades = []
 
             for order in orders:
+                if (order.get("status") or "").upper() != "FILLED":
+                    continue
+
                 order_id = order.get("order_id")
-                if not order_id or (order.get("status") or "").upper() != "FILLED":
+                if not order_id:
                     continue
 
                 existing_trade = await shared_data_manager.trade_recorder.fetch_trade_by_order_id(order_id)
-                # ✅ Only skip fully complete trades
+                # ✅ Only skip fully-complete trades
                 if existing_trade and existing_trade.parent_id and existing_trade.parent_ids:
                     continue
                 elif existing_trade:
@@ -1014,71 +1025,79 @@ class WebhookListener:
 
                 side = (order.get("side") or "").lower()
                 symbol = order.get("product_id")
-                price = order.get("average_filled_price") or order.get("price")
-                size = order.get("filled_size") or order.get("order_size") or "0"
+                filled_size = order.get("filled_size") or order.get("order_size") or None
+                avg_price = order.get("average_filled_price") or order.get("price") or None
 
-                # Parse/clean order_time
+                # Time normalization (UTC full ISO)
                 order_time = (
                         order.get("last_fill_time")
                         or order.get("completed_time")
                         or order.get("created_time")
-                        or datetime.now(timezone.utc).isoformat()
+                        or ""
                 )
-                total_fees = order.get("total_fees")
+                order_time = _norm_iso_utc(order_time)
 
-                # Parent suggestions (just hints; record_trade will FIFO anyway)
+                # Overrides from batch (strings expected by recorder)
+                gross_override, fees_override = _gross_and_fees_from_batch(order)
+
+                # Parent hints
+                preferred_parent_id = order.get("originating_order_id") or None
                 parent_id = None
                 parent_ids = None
-                preferred_parent_id =  None
-                if side == "buy":
-                    parent_id = order_id
-                    parent_ids = [order_id]
-                elif side == "sell":
-                    parent_id = await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
+                if side == "sell":
+                    # Prefer true origination if present, else FIFO hint
+                    parent_id = preferred_parent_id or await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
                     parent_ids = [parent_id] if parent_id else None
-                    preferred_parent_id = order.get("originating_order_id") or None
+                else:
+                    # For buys, let the recorder assign chain id; don't self-parent
+                    parent_id = None
+                    parent_ids = [order_id]
 
-                # 👇 Step 5: use batch values instead of per-fill calls
-                gross_override, fees_override = _gross_and_fees_from_batch(order)
+                # SELL safety checks — without these, PnL can explode due to zero/NaN basis
+                if side == "sell":
+                    if not filled_size or not gross_override:
+                        logger.warning(f"⚠️ Skipping SELL {order_id}: missing filled_size/filled_value for cost-basis/PnL.")
+                        continue
 
                 trade_data = {
                     "order_id": order_id,
                     "parent_id": parent_id,
                     "parent_ids": parent_ids,
-                    "preferred_parent_id": preferred_parent_id,  # new optional hint
+                    "preferred_parent_id": preferred_parent_id,  # recorder may use this to seed chain
                     "symbol": symbol,
                     "side": side,
-                    "price": price,
-                    "amount": size,
+                    "price": str(avg_price) if avg_price is not None else "",
+                    "amount": str(filled_size) if filled_size is not None else "",
                     "status": "filled",
                     "order_time": order_time,
                     "trigger": {"trigger": order.get("order_type", "market")},
                     "source": "reconciled",
-                    "total_fees": total_fees,
-                    # No 'fills' key in step 5
-                    "gross_override": gross_override,  # order['filled_value']
+                    # Per-order fees (may be empty string for buys if API omits; recorder should handle)
+                    "total_fees": order.get("total_fees"),
+                    # Batch overrides used by recorder to compute cost_basis/sale_proceeds precisely
+                    "gross_override": gross_override,  # order['filled_value'] (SELL proceeds or BUY notional)
                     "fees_override": fees_override,  # order['total_fees']
                 }
 
                 reconciled_trades.append(trade_data)
 
-                # 🔧 Helper for sorting
-                def parse_order_time(trade_dict):
-                    ot = trade_dict["order_time"]
-                    if isinstance(ot, str):
-                        return datetime.fromisoformat(ot.replace("Z", "+00:00"))
-                    return ot
+            # 🔧 Sort once (by normalized UTC time) and enqueue once
+            from datetime import datetime
+            def _parse_utc(s: str):
+                # s like 'YYYY-MM-DD HH:MM:SS.ffffff+00'
+                return datetime.fromisoformat(s.replace(" ", "T"))
 
-                reconciled_trades.sort(key=parse_order_time)
+            reconciled_trades.sort(key=lambda t: _parse_utc(t["order_time"]))
 
-                for trade in reconciled_trades:
-                    await shared_data_manager.trade_recorder.enqueue_trade(trade)
-                    logger.debug(f"🧾 Reconciled and recorded trade: {trade['order_id']}")
+            for trade in reconciled_trades:
+                await shared_data_manager.trade_recorder.enqueue_trade(trade)
+                logger.debug(f"🧾 Reconciled and recorded trade: {trade['order_id']}")
 
-                await shared_data_manager.set_order_management({"order_tracker": tracker})
-                await shared_data_manager.save_data()
+            # Persist tracker
+            await shared_data_manager.set_order_management({"order_tracker": tracker})
+            await shared_data_manager.save_data()
 
-                logger.debug("✅ Reconciliation complete.")
+            logger.debug("✅ Reconciliation complete.")
         except Exception as e:
             logger.error(f"❌ reconcile_with_rest_api() failed: {e}", exc_info=True)
 
