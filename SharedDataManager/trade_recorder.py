@@ -196,13 +196,6 @@ class TradeRecorder:
                 if parsed_time.tzinfo else parsed_time.replace(tzinfo=timezone.utc)
             )
 
-            order_time = (
-                parsed_time.astimezone(timezone.utc)
-                if parsed_time.tzinfo
-                else parsed_time.replace(tzinfo=timezone.utc)
-            )
-
-
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
             base_q = Decimal("1").scaleb(-base_deci)
             quote_q = Decimal("1").scaleb(-quote_deci)
@@ -269,7 +262,7 @@ class TradeRecorder:
                                 preferred_parent_id=preferred_parent_id,
                                 sell_fills=None,
                                 gross_override=gross_override,
-                                sell_fee_total_override=fees_override
+                                sell_fee_total_override=total_fees
                             )
                             parent_ids = fifo_result["parent_ids"]
                             cost_basis_usd = fifo_result["cost_basis_usd"]
