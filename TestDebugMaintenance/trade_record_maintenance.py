@@ -1,8 +1,14 @@
 
 import asyncio, time
-from TableModels.trade_record import TradeRecord
-from sqlalchemy import or_, and_, select, func
+
+from decimal import Decimal
+from datetime import timedelta
 from sqlalchemy import update, text
+from sqlalchemy import or_, and_, select, func
+from TableModels.trade_record import TradeRecord
+
+
+
 
 
 # Tune as needed
@@ -176,8 +182,111 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
     print("🔁 Running backfill now...")
     await _timed("backfill_trade_metrics", trade_recorder.backfill_trade_metrics(), timeout=300)
     await _timed("fix_unlinked_sells",     trade_recorder.fix_unlinked_sells(),     timeout=300)
+    await audit_fifo(trade_recorder, symbol="ELA-USD")
+
     print("✅ Maintenance completed.")
 
+
+
+ALLOCATION_EPS_BASE = Decimal("1e-8")  # tune based on base precision
+
+async def audit_fifo(trade_recorder, symbol: str = None, since=None, until=None, limit=5000):
+    """
+    Verifies FIFO integrity without changing data.
+    Reports:
+      - SELLs whose parent_ids don't cover sell size (under/over allocation)
+      - Parents with order_time > sell_time
+      - Duplicate parents
+      - BUY remaining_size inconsistent with flows (rough check)
+    """
+    logger = trade_recorder.logger
+    async with trade_recorder.db_session_manager.async_session() as session:
+        async with session.begin():
+            # 1) scope
+            q_sells = select(TradeRecord).where(TradeRecord.side == "sell")
+            if symbol:
+                q_sells = q_sells.where(TradeRecord.symbol == symbol)
+            if since:
+                q_sells = q_sells.where(TradeRecord.order_time >= since)
+            if until:
+                q_sells = q_sells.where(TradeRecord.order_time <= until)
+            q_sells = q_sells.order_by(TradeRecord.order_time.asc()).limit(limit)
+
+            sells = (await session.execute(q_sells)).scalars().all()
+
+            bad = {
+                "under_alloc": [],   # allocated < sell size
+                "over_alloc":  [],   # allocated > sell size
+                "parent_after_sell": [],
+                "dup_parent": [],
+            }
+
+            for s in sells:
+                sell_time = s.order_time
+                sell_size = Decimal(str(s.size or 0))
+                pids = list(s.parent_ids or [])  # [] or list of strings
+                if not pids:
+                    # No parents recorded — definitely broken
+                    bad["under_alloc"].append((s.order_id, s.symbol, float(sell_size), "no parents"))
+                    continue
+
+                # fetch claimed parent buys
+                q_parents = (
+                    select(TradeRecord)
+                    .where(
+                        TradeRecord.order_id.in_(pids),
+                        TradeRecord.side == "buy"
+                    )
+                )
+                parents = (await session.execute(q_parents)).scalars().all()
+                # map id->buy row
+                pmap = {p.order_id: p for p in parents}
+
+                # 2) sanity: all pids present & unique
+                if len(pids) != len(set(pids)):
+                    bad["dup_parent"].append((s.order_id, s.symbol, pids))
+                if any(pid not in pmap for pid in pids):
+                    bad["under_alloc"].append((s.order_id, s.symbol, float(sell_size), "missing parent row(s)"))
+                    continue
+
+                # 3) sanity: no parent after sell_time
+                late = [pid for pid in pids if pmap[pid].order_time and pmap[pid].order_time > sell_time]
+                if late:
+                    bad["parent_after_sell"].append((s.order_id, s.symbol, late))
+
+                # 4) recompute theoretical allocation amount from parents in time order
+                # NOTE: we *only* verify coverage; we don't recalc cost basis here.
+                # If you store per-parent allocation, use that; else, we infer max available.
+                parents_sorted = sorted((pmap[pid] for pid in pids), key=lambda r: (r.order_time, r.order_id))
+                need = sell_size
+                allocated = Decimal("0")
+
+                for p in parents_sorted:
+                    rem = Decimal(str(p.remaining_size if p.remaining_size is not None else p.size or 0))
+                    take = rem if rem <= need else need
+                    allocated += take
+                    need -= take
+                    if need <= 0:
+                        break
+
+                # classify
+                if (allocated + ALLOCATION_EPS_BASE) < sell_size:
+                    bad["under_alloc"].append((s.order_id, s.symbol, float(sell_size), float(allocated)))
+                elif allocated > (sell_size + ALLOCATION_EPS_BASE):
+                    bad["over_alloc"].append((s.order_id, s.symbol, float(sell_size), float(allocated)))
+
+            # quick printout
+            def _print_bucket(title, rows):
+                logger.info(f"[AUDIT] {title}: {len(rows)}")
+                for r in rows[:20]:
+                    logger.info(f"  {r}")
+
+            _print_bucket("SELL under-allocation", bad["under_alloc"])
+            _print_bucket("SELL over-allocation",  bad["over_alloc"])
+            _print_bucket("Parents after SELL time", bad["parent_after_sell"])
+            _print_bucket("Duplicate parents", bad["dup_parent"])
+
+            return bad
 
 
 

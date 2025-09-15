@@ -1,6 +1,9 @@
+from __future__ import annotations  # optional, but nice for type hints
+
+import decimal
+from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 import asyncio
-
 from TableModels.trade_record import TradeRecord
 # from TableModels.trade_record_debug import TradeRecordDebug
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -8,7 +11,7 @@ from asyncio import Queue
 from typing import Optional
 from sqlalchemy import func, and_, or_, not_
 from sqlalchemy.future import select
-from decimal import Decimal ,ROUND_DOWN
+
 from datetime import datetime, timezone, timedelta
 
 class TradeRecorder:
@@ -210,6 +213,7 @@ class TradeRecorder:
             parent_ids, pnl_usd, cost_basis_usd, sale_proceeds_usd, net_sale_proceeds_usd = [], None, None, None, None
             update_instructions = []
             print(f"[record_trade] order_time type={type(order_time_utc)} value={order_time_utc.isoformat()}") #debug
+
             async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     self.active_session = session
@@ -374,29 +378,26 @@ class TradeRecorder:
             quote_q: Decimal,
             base_q: Decimal,
             sell_time: datetime,
-            cost_basis_usd: Optional[Decimal] = 0,
+            cost_basis_usd: Optional[Decimal] = None,
             preferred_parent_id: Optional[str] = None,
             *,
             sell_fills: Optional[list[dict]] = None,
             gross_override: Optional[Decimal] = None,
-            sell_fee_total_override: Optional[Decimal] = None
+            sell_fee_total_override: Optional[Decimal] = None,
     ) -> dict:
         """
-        Computes FIFO cost basis and sale proceeds for a SELL trade with fee-inclusive logic.
-
-        - Cost basis = SUM over parents ( (take / parent.original_size) * (parent.subtotal + parent.buy_fees) )
-          where parent.subtotal ≈ parent.price * parent.original_size
-        - Net proceeds = gross - sell_fees (from fills if provided; else price*size - total_fees)
-        - PnL = net - cost_basis
+        FIFO cost-basis & proceeds for a SELL (fee-inclusive).
 
         Returns:
-            {
-              "cost_basis_usd", "sale_proceeds_usd", "net_sale_proceeds_usd",
-              "pnl_usd", "parent_ids", "update_instructions"
-            }
+          {
+            "cost_basis_usd": Decimal,
+            "sale_proceeds_usd": Decimal,
+            "net_sale_proceeds_usd": Decimal,
+            "pnl_usd": Decimal,
+            "parent_ids": list[str],
+            "update_instructions": [{"order_id": str, "remaining_size": float}, ...]
+          }
         """
-        parent_ids: list[str] = []
-        update_instructions: list[dict] = []
 
         def q_usd(x: Decimal) -> Decimal:
             return self.shared_utils_precision.safe_quantize(x, quote_q)
@@ -407,13 +408,13 @@ class TradeRecorder:
         try:
             session = self.active_session
             if not session:
-                raise RuntimeError("No active DB session. Must be called from inside record_trade().")
+                raise RuntimeError("No active DB session. Must be called inside record_trade().")
 
-            # ---------- 1) Proceeds (prefer overrides) ----------
+            # ---------- 1) Proceeds (prefer overrides, then fills, then default) ----------
             if gross_override is not None or sell_fee_total_override is not None:
-                gross = gross_override if gross_override is not None else (size * sell_price)
+                gross = Decimal(str(gross_override)) if gross_override is not None else (size * sell_price)
                 sell_fee_total = (
-                    sell_fee_total_override
+                    Decimal(str(sell_fee_total_override))
                     if sell_fee_total_override is not None
                     else (total_fees or Decimal("0"))
                 )
@@ -424,112 +425,117 @@ class TradeRecorder:
                 gross = size * sell_price
                 sell_fee_total = total_fees or Decimal("0")
 
-            net = gross - sell_fee_total
+            gross = q_usd(gross)
+            sell_fee_total = q_usd(sell_fee_total)
+            if size <= 0:
+                self.logger.warning(f"[FIFO] Non-positive sell size for {symbol}: {size}")
+                return self._empty_result()
 
-            # ---------- 2) Fetch candidate BUY parents (FIFO) ----------
+            # ---------- 2) Eligible BUY parents (FIFO) ----------
+            from sqlalchemy import select, or_, not_, func
+            from datetime import timedelta
             tolerance = timedelta(seconds=1)
-            stmt = (
+
+            eligible_q = (
                 select(TradeRecord)
                 .where(
                     TradeRecord.symbol == symbol,
                     TradeRecord.side == "buy",
-                    TradeRecord.order_time <= sell_time + tolerance,
-
-                    TradeRecord.order_time <= sell_time,
-                    or_(
-                        TradeRecord.remaining_size.is_(None),
-                        TradeRecord.remaining_size > 0
-                    ),
+                    TradeRecord.order_time <= (sell_time + tolerance),
+                    func.coalesce(TradeRecord.remaining_size, 0) > 0,  # NULL treated as 0 (exclude)
                     not_(TradeRecord.order_id.like('%-FILL-%')),
-                    not_(TradeRecord.order_id.like('%-FALLBACK'))
+                    not_(TradeRecord.order_id.like('%-FALLBACK%')),
                 )
-                .order_by(TradeRecord.order_time.asc())
+                .order_by(TradeRecord.order_time.asc(), TradeRecord.order_id.asc())
             )
-            result = await session.execute(stmt)
-            parent_trades = result.scalars().all()
+            parents = list((await session.execute(eligible_q)).scalars().all())
 
+            # Prefer (do not restrict to) a hinted parent
             if preferred_parent_id:
-                parent_trades = [pt for pt in parent_trades if pt.order_id == preferred_parent_id]
-                if not parent_trades:
-                    self.logger.warning(f"[FIFO] Specified parent {preferred_parent_id} not found or exhausted.")
-                    return self._empty_result()
+                parents.sort(key=lambda p: 0 if p.order_id == preferred_parent_id else 1)
 
-            if not parent_trades:
-                self.logger.warning(f"[FIFO] No eligible BUY trades for {symbol} before {sell_time}")
+            if not parents:
+                self.logger.warning(f"[FIFO] No eligible BUY parents for {symbol} <= {sell_time}")
                 return self._empty_result()
 
-            # ---------- 3) Allocate FIFO with fee-inclusive cost basis ----------
-            need = size
+            # ---------- 3) Allocate across parents until fully covered ----------
+            need = Decimal(str(size))
+            allocated = Decimal("0")
+            parent_ids: list[str] = []
+            update_instructions: list[dict] = []
             total_cost_basis = Decimal("0")
 
-            for pt in parent_trades:
-                if need <= 0:
-                    break
+            # optional tracking/sanity (not required, but handy)
+            gross_alloc_sum = Decimal("0")
+            sell_fee_alloc_sum = Decimal("0")
 
-                original_size = Decimal(str(pt.size or 0))  # original buy size
-                rem_size = Decimal(str(pt.remaining_size or pt.size or 0))
-                if rem_size <= 0 or original_size <= 0:
+            for p in parents:
+                rem = Decimal(str(p.remaining_size or 0))
+                if rem <= 0 or need <= 0:
                     continue
 
-                take = min(rem_size, need)
+                take = rem if rem <= need else need
                 if take <= 0:
                     continue
 
-                buy_price = Decimal(str(pt.price or 0))
-                buy_fees = Decimal(str(pt.total_fees_usd or 0))
+                parent_size = Decimal(str(p.size or 0))
+                buy_price = Decimal(str(p.price or 0))
+                buy_fees = Decimal(str(p.total_fees_usd or 0))
 
                 # Fee-inclusive total buy cost for the parent
-                parent_gross_subtotal = buy_price * original_size
-                parent_total_cost = parent_gross_subtotal + buy_fees
+                parent_total_cost = (buy_price * parent_size) + buy_fees
 
-                # Pro-rate by original size (not remaining)
-                ratio = take / original_size
+                # Pro-rate cost by *original* size (not remaining)
+                ratio = (take / parent_size) if parent_size > 0 else Decimal("0")
                 cost_alloc = parent_total_cost * ratio
 
+                # Pro-rate proceeds/fees for this slice
+                gross_alloc = gross * (take / size)
+                fee_alloc = sell_fee_total * (take / size)
+                net_alloc = gross_alloc - fee_alloc
+
+                realized_profit_delta = net_alloc - cost_alloc
                 total_cost_basis += cost_alloc
+                gross_alloc_sum += gross_alloc
+                sell_fee_alloc_sum += fee_alloc
+                allocated += take
+                need -= take
 
-                # Track
-                if pt.order_id not in parent_ids:
-                    parent_ids.append(pt.order_id)
+                parent_ids.append(p.order_id)
 
-                # Update parent remaining_size and (optionally) parent realized_profit increment
-                remaining_after = q_base(rem_size - take)
-
-                # Pro-rate sell fee to this allocation by quantity share of the SELL
-                sell_fee_alloc = (sell_fee_total * (take / size)) if size > 0 else Decimal("0")
-                # Pro-rate gross proceeds to this allocation
-                gross_alloc = (gross * (take / size)) if size > 0 else Decimal("0")
-                # Net alloc
-                net_alloc = gross_alloc - sell_fee_alloc
-
-                realized_profit_alloc = net_alloc - cost_alloc
-
+                new_rem = rem - take
+                if new_rem < 0:
+                    new_rem = Decimal("0")
                 update_instructions.append({
-                    "order_id": pt.order_id,
-                    "remaining_size": float(remaining_after),
-                    # Optional: keep parents’ realized_profit as running total.
-                    # If you prefer to *not* track realized_profit on BUY rows, set this to float(pt.realized_profit or 0)
-                    "realized_profit": float(q_usd(Decimal(str(pt.realized_profit or 0)) + realized_profit_alloc)),
+                    "order_id": p.order_id,
+                    "remaining_size": float(q_base(new_rem)),
+                    "realized_profit_delta": float(q_usd(realized_profit_delta)),
                 })
 
-                need = q_base(need - take)
+                if need <= 0:
+                    break
 
-            if size <= 0:
+            # HARD GUARD: Do not finalize partial basis vs full gross
+            if need > 0:
+                self.logger.warning(
+                    f"[FIFO] SELL not fully covered for {symbol} at {sell_time}. "
+                    f"allocated={allocated} < size={size} (need={need}). Deferring."
+                )
                 return self._empty_result()
 
-            # ---------- 4) Finalize numbers ----------
-            cost_basis_usd = q_usd(total_cost_basis)
+            # ---------- 4) Finalize ----------
             sale_proceeds_usd = q_usd(gross)
-            net_sale_proceeds_usd = q_usd(net)
-            pnl_usd = q_usd(net - total_cost_basis)
+            net_sale_proceeds_usd = q_usd(gross - sell_fee_total)
+            cost_basis_usd = q_usd(total_cost_basis)
+            pnl_usd = q_usd(net_sale_proceeds_usd - cost_basis_usd)
 
             return {
-                "cost_basis_usd": float(cost_basis_usd),
-                "sale_proceeds_usd": float(sale_proceeds_usd),
-                "net_sale_proceeds_usd": float(net_sale_proceeds_usd),
-                "pnl_usd": float(pnl_usd),
+                "cost_basis_usd": cost_basis_usd,
+                "sale_proceeds_usd": sale_proceeds_usd,
+                "net_sale_proceeds_usd": net_sale_proceeds_usd,
+                "pnl_usd": pnl_usd,
                 "parent_ids": parent_ids,
-                "update_instructions": update_instructions
+                "update_instructions": update_instructions,
             }
 
         except asyncio.CancelledError:
@@ -859,13 +865,13 @@ class TradeRecorder:
                 self.logger.info(f"🛡️ Skipping PnL calc for reconciled trade {sell_trade.order_id}")
                 return
 
-            size = Decimal(str(sell_trade.size or 0))
-            price = Decimal(str(sell_trade.price or 0))
-            total_fees = Decimal(str(sell_trade.total_fees_usd or 0))
+            size = decimal.Decimal(str(sell_trade.size or 0))
+            price = decimal.Decimal(str(sell_trade.price or 0))
+            total_fees = decimal.Decimal(str(sell_trade.total_fees_usd or 0))
 
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(sell_trade.symbol)
-            base_q = Decimal("1").scaleb(-base_deci)
-            quote_q = Decimal("1").scaleb(-quote_deci)
+            base_q = decimal.Decimal("1").scaleb(-base_deci)
+            quote_q = decimal.Decimal("1").scaleb(-quote_deci)
 
             self.active_session = session  # ensure compute_* sees a session
 
@@ -890,10 +896,23 @@ class TradeRecorder:
 
             # 🔁 Update parents
             for instr in fifo_result["update_instructions"]:
+                if not fifo_result["parent_ids"]:
+                    self.logger.warning(f"[FIFO] No parents for SELL {sell_trade.order_id}; deferring PnL.")
+                    return
                 parent = await session.get(TradeRecord, instr["order_id"])
-                if parent:
+                if not parent:
+                    continue
+
+                # Always update remaining_size when provided
+                if "remaining_size" in instr and instr["remaining_size"] is not None:
                     parent.remaining_size = instr["remaining_size"]
+
+                # Support either absolute realized_profit or a delta
+                if "realized_profit" in instr:
                     parent.realized_profit = instr["realized_profit"]
+                elif "realized_profit_delta" in instr:
+                    base = Decimal(str(parent.realized_profit or 0))
+                    parent.realized_profit = float(base + Decimal(str(instr["realized_profit_delta"])))
 
         except asyncio.CancelledError:
             self.logger.warning(f"🛑 FIFO PnL task cancelled for sell trade {sell_trade.order_id}")
