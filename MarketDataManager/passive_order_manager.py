@@ -26,6 +26,7 @@ import copy
 import time
 import  json
 import pandas as pd
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.enum import ExitCondition
@@ -327,6 +328,60 @@ class PassiveOrderManager:
         """
         trading_pair = product_id  # e.g. "AVNT-USD"
         try:
+            # Helper: normalize TOM.place_order return shapes
+            def _order_result(res):
+                """
+                Normalize various response shapes to (ok: bool, order_id: str|None, raw: Any).
+                Supported:
+                    - object with .ok and .order_id / .id
+                    - dict with 'ok'/'success' and 'order_id'/'id'/'client_order_id'
+                    - tuple/list (try to infer a bool and an id-like string from elements)
+                    - None => (False, None, None)
+                """
+                if res is None:
+                    return False, None, None
+
+                # Object with attributes
+                ok = getattr(res, "ok", None)
+
+                if isinstance(ok, bool):
+                    oid = getattr(res, "order_id", None) or getattr(res, "id", None)
+                    return ok, str(oid) if oid else None, res
+
+                # Mapping/dict
+                try:
+                    if isinstance(res, Mapping):
+                        ok_val = res.get("ok")
+                        if not isinstance(ok_val, bool):
+                            ok_val = res.get("success")
+                            if isinstance(ok_val, str):
+                                ok_val = ok_val.lower() in {"true", "1", "yes", "ok"}
+                        oid = res.get("order_id") or res.get("id") or res.get("client_order_id") or res.get("clientOrderId")
+                        return bool(ok_val), str(oid) if oid else None, res
+                except Exception:
+                    pass
+
+                # Tuple/list
+                if isinstance(res, (tuple, list)):
+                    ok_guess = None
+                    oid_guess = None
+                    for el in res:
+                        if isinstance(el, bool) and ok_guess is None:
+                            ok_guess = el
+                        elif isinstance(el, (str, int)) and oid_guess is None:
+                            # very light heuristic for order id
+                            s = str(el)
+                            if len(s) >= 6:
+                                oid_guess = s
+                        elif hasattr(el, "ok") and ok_guess is None:
+                            ok_guess = bool(getattr(el, "ok"))
+                        elif isinstance(el, dict) and oid_guess is None:
+                            oid_guess = el.get("order_id") or el.get("id") or el.get("client_order_id") or el.get("clientOrderId")
+                    return bool(ok_guess), str(oid_guess) if oid_guess else None, res
+
+                # Fallback: treat anything else as failure but return raw for logging
+                return False, None, res
+
             # -------- 0) Quick guards --------
             if not self.shared_data_manager:
                 self.logger.debug("⛔ No shared_data_manager; skipping passive orders.")
@@ -432,8 +487,8 @@ class PassiveOrderManager:
                 buy_od.source = "PassiveMM"
 
                 res_buy = await self.tom.place_order(buy_od)
-                if res_buy and res_buy.ok:
-                    order_id_buy = res_buy.order_id
+                ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
+                if ok_buy and order_id_buy:
                     # Persist to passive_orders
                     await self.shared_data_manager.add_passive_order(
                         order_id=order_id_buy,
@@ -446,7 +501,7 @@ class PassiveOrderManager:
                     )
                     self.logger.info(f"✅ Placed PASSIVE BUY {trading_pair} {buy_sz} @ {buy_px} (order_id={order_id_buy})")
                 else:
-                    self.logger.error(f"❌ Failed to place PASSIVE BUY for {trading_pair}: {res_buy}")
+                    self.logger.error(f"❌ Failed to place PASSIVE BUY for {trading_pair} — normalized=(ok={ok_buy}, id={order_id_buy}) raw={raw_buy!r}")
             except Exception as e:
                 self.logger.error(f"❌ Exception placing PASSIVE BUY for {trading_pair}: {e}", exc_info=True)
 
@@ -463,8 +518,8 @@ class PassiveOrderManager:
                 sell_od.source = "PassiveMM"
 
                 res_sell = await self.tom.place_order(sell_od)
-                if res_sell and res_sell.ok:
-                    order_id_sell = res_sell.order_id
+                ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
+                if ok_sell and order_id_sell:
                     # Persist to passive_orders
                     await self.shared_data_manager.add_passive_order(
                         order_id=order_id_sell,
@@ -477,7 +532,7 @@ class PassiveOrderManager:
                     )
                     self.logger.info(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})")
                 else:
-                    self.logger.error(f"❌ Failed to place PASSIVE SELL for {trading_pair}: {res_sell}")
+                    self.logger.error(f"❌ Failed to place PASSIVE SELL for {trading_pair} — normalized=(ok={ok_sell}, id={order_id_sell}) raw={raw_sell!r}")
             except Exception as e:
                 self.logger.error(f"❌ Exception placing PASSIVE SELL for {trading_pair}: {e}", exc_info=True)
 
