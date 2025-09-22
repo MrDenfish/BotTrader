@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import os
-from decimal import Decimal
-from typing import Dict, Any, Optional, Union
-from datetime import datetime
 import sqlalchemy
-from sqlalchemy import bindparam, Numeric
+from decimal import Decimal
+from datetime import datetime
 from sqlalchemy.sql import text
+from sqlalchemy import bindparam, Numeric
+from sqlalchemy.engine import Engine, Connection
 from sqlalchemy.ext.asyncio import AsyncConnection
+from typing import Dict, Any, Optional, Union, Tuple, List
+
 
 # -------------------------
 # Env-driven table / column config (back-compat)
@@ -46,9 +48,6 @@ def _ensure_conn(engine_or_conn: Engine | Connection) -> Tuple[Connection, bool]
         # legacy style
         conn = engine_or_conn  # type: ignore
         return conn, False
-    if hasattr(engine_or_conn, "connect"):
-        conn = engine_or_conn.connect()  # type: ignore
-        return conn, True
     raise TypeError("Expected SQLAlchemy Engine or Connection")
 
 def _safe_decimal(x) -> Optional[float]:

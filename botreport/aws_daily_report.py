@@ -1,12 +1,15 @@
 
 
 #!/usr/bin/env python3
+
+""" AWS Daily Report Emailer
+Scheduling is managed externally
+ - host-level cron job
+ - 6 hour cycle.
+
+ """
 import os
 import io
-
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
-
-import emailio
 import csv
 import ssl
 import boto3
@@ -15,7 +18,6 @@ import pg8000.native as pg
 
 from pathlib import Path
 from decimal import Decimal
-from datetime import timezone
 from email.mime.text import MIMEText
 from email.utils import getaddresses
 from statistics import mean, pstdev
@@ -26,6 +28,7 @@ from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email_report_print_format import build_console_report
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
 
 # -------------------------
 # Config / Environment
