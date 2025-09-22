@@ -120,7 +120,7 @@ services:
       - /opt/bot/.env_runtime
     volumes:
       - ./logs:/app/logs
-    entrypoint: [ "python", "-u", "-m", "jobs.leaderboard_runner" ]
+    entrypoint: [ "python", "-u", "-m", "SharedDataManager.leaderboard_runner" ]
     restart: "no"
 
 volumes:
