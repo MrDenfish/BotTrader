@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import math
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from Shared_Utils.logging_manager import LoggerManager
 from TableModels.active_symbols import ActiveSymbol
 from TableModels.trade_record import TradeRecord  # if you have a model; else we’ll query table via text()
 
@@ -35,7 +35,7 @@ async def _fetch_last_window_sells(session: AsyncSession, since_utc: datetime):
             select(TradeRecord.symbol, TradeRecord.pnl_usd)
             .where(
                 and_(
-                    TradeRecord.side == 'SELL',
+                    TradeRecord.side == 'sell',
                     TradeRecord.status == 'filled',
                     TradeRecord.order_time >= since_utc
                 )
@@ -49,7 +49,7 @@ async def _fetch_last_window_sells(session: AsyncSession, since_utc: datetime):
         stmt = text("""
             SELECT symbol, pnl_usd
             FROM trade_records
-            WHERE side='SELL' AND status='filled'
+            WHERE side='sell' AND status='filled'
               AND order_time >= :since
         """)
         rows = (await session.execute(stmt, {"since": since_utc})).all()
@@ -87,6 +87,7 @@ def _fold_metrics(rows):
     return out
 
 async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: LeaderboardConfig = LeaderboardConfig()):
+
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=cfg.lookback_hours)
 
@@ -125,6 +126,12 @@ async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: Leader
             }
         )
         upserts.append(stmt)
+    symbols = {r["symbol"] for r in rows}
+    eligible_cnt = sum(1 for m in metrics if (
+            m["n"] >= cfg.min_n_24h and m["win_rate"] >= cfg.win_rate_min and
+            m["mean_pnl"] > 0 and (m["profit_factor"] or 0) >= cfg.pf_min
+    ))
+    print(f"Leaderboard scan: rows={len(rows)} symbols={len(symbols)} eligible={eligible_cnt}")
 
     for s in upserts:
         await session.execute(s)
