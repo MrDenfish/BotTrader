@@ -40,9 +40,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 # --- Install report requirements ---
 # If you maintain a separate lock for the report, use it (contains boto3, pg8000).
-# Otherwise fall back to main requirements.txt.
-ARG REQS=requirements-report.txt
-RUN pip install --no-cache-dir -r ${REQS}
+# Install both: report deps + full bot deps
+RUN python -m pip install --no-cache-dir --upgrade pip \
+ && python -m pip install --no-cache-dir -r requirements-report.txt \
+ && python -m pip install --no-cache-dir -r requirements.txt
 
 # good signals handling
 ENTRYPOINT ["/usr/bin/tini","--"]
