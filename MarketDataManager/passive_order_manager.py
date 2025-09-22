@@ -26,12 +26,12 @@ import copy
 import time
 import  json
 import pandas as pd
-from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
-from typing import Dict, Any, Optional
+from typing import Any, Mapping, Tuple, Optional, Dict
+
 
 # ---------------------------------------------------------------------------
 # Type aliases – keep it loose here, real project will import your dataclass
@@ -239,302 +239,276 @@ class PassiveOrderManager:
 
         return None
 
-    # async def place_passive_orders(self, asset: str, product_id: str) -> None:
-    #     """
-    #     Attempt to quote both sides of the book for *product_id*.
-    #
-    #     ✅ Step 1: Adaptive spread requirement scaled by volatility.
-    #     ✅ Step 2: Skip unprofitable & illiquid symbols based on all historical trades.
-    #     """
-    #     trading_pair = product_id.replace("/", "-")
-    #
-    #     # ✅ Step 2: Skip unprofitable or illiquid symbols (all trade sources considered)
-    #     profitable_symbols = await self.get_profitable_symbols(
-    #         min_trades=5,
-    #         min_pnl_usd=Decimal("1.0"),
-    #         lookback_days=7,
-    #         source_filter=None,
-    #         min_24h_volume=Decimal(self._min_volume),  # 7.5k USD min volume
-    #         refresh_interval=300
-    #     )
-    #     if trading_pair not in profitable_symbols:
-    #         self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
-    #         return
-    #
-    #     try:
-    #         od: OrderData | None = await self.tom.build_order_data(
-    #             source="PassiveMM",
-    #             trigger="market_making",
-    #             asset=asset,
-    #             product_id=product_id,
-    #         )
-    #     except Exception as exc:
-    #         self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
-    #         return
-    #
-    #     if not od or od.highest_bid == 0 or od.lowest_ask == 0:
-    #         return  # No usable order book
-    #
-    #     spread = od.lowest_ask - od.highest_bid
-    #     od.spread = spread
-    #
-    #     mid_price = (od.lowest_ask + od.highest_bid) / 2
-    #     spread_pct = spread / mid_price
-    #
-    #     # ✅ Step 1: Adaptive minimum spread requirement
-    #     volatility_factor = max(
-    #         Decimal("1.0"),
-    #         spread / (mid_price * Decimal("0.01"))  # % spread (e.g., 1% => 1.0)
-    #     )
-    #
-    #     dynamic_min_spread = max(
-    #         self.fee["maker"] * (Decimal("2.0") + (volatility_factor / 2)) + self.EDGE_BUFFER,
-    #         self.min_spread_pct,
-    #         self.fee["maker"] * Decimal("2.0") + self.EDGE_BUFFER
-    #     )
-    #
-    #     if spread_pct < dynamic_min_spread:
-    #         self.logger.info(
-    #             f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < dynamic threshold {dynamic_min_spread:.4%}"
-    #         )
-    #         return
-    #
-    #     try:
-    #         tick = self.shared_utils_precision.safe_convert(od.quote_increment, od.quote_decimal)
-    #
-    #         try:
-    #             oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
-    #         except Exception as exc:
-    #             self.logger.warning(
-    #                 f"⚠️ Failed to fetch OHLCV for {trading_pair}, skipping SELL: {exc}", exc_info=True
-    #             )
-    #             oldest_close = latest_close = average_close = None
-    #
-    #         await self._quote_passive_buy(od, trading_pair, tick)
-    #         await self._quote_passive_sell(od, trading_pair, tick, average_close)
-    #
-    #     except Exception as exc:
-    #         self.logger.error(f"❌ Error in passive MM for {trading_pair}: {exc}", exc_info=True)
-    # inside PassiveOrderManager
-
     async def place_passive_orders(self, asset: str, product_id: str) -> None:
         """
-        Maker-only placement for a symbol, gated by:
-          1) recent profitability/liquidity screen
-          2) rolling leaderboard 'active_symbols' eligibility (6h fresh)
-        Creates one resting BUY near best bid and one resting SELL near best ask,
-        if spread clears fee+edge and min notional constraints are satisfied.
-        Persists to passive_orders table on success.
+        Passive MM:
+          1) Profitability/liquidity gate
+          2) active_symbols gate
+          3) Build OrderData
+          4) Spread/edge checks
+          5) BUY via quote notional (order_amount_fiat); SELL via base_avail_balance
+          6) Robust result normalization + 'validated-only' detection
         """
-        trading_pair = product_id  # e.g. "AVNT-USD"
+        trading_pair = product_id
+
+        # ---------- helpers ----------
+        def _to_step(value: Decimal, step: Decimal, rounding=ROUND_DOWN) -> Decimal:
+            return value.quantize(step, rounding=rounding)
+
+        def _order_result(res: Any) -> Tuple[bool, Optional[str], Any]:
+            """
+            Normalize to (ok, order_id, raw). Special-cased for (bool, dict) path.
+            """
+            if res is None:
+                return False, None, None
+            # Primary TOM path: (bool, dict)
+            if isinstance(res, (tuple, list)) and len(res) == 2 and isinstance(res[0], bool):
+                ok = res[0]
+                payload = res[1]
+                oid = None
+                if isinstance(payload, Mapping):
+                    oid = payload.get("order_id") or payload.get("id") or payload.get("client_order_id") \
+                          or payload.get("clientOrderId") or payload.get("Order Id")
+                    # common nestings
+                    if not oid and isinstance(payload.get("details"), Mapping):
+                        det = payload["details"]
+                        oid = det.get("order_id") or det.get("id") or det.get("Order Id")
+                    if not oid and isinstance(payload.get("response"), Mapping):
+                        rsp = payload["response"]
+                        oid = rsp.get("order_id") or rsp.get("id") or rsp.get("client_order_id") or rsp.get("clientOrderId")
+                return ok, str(oid) if oid else None, res
+            # Dict fallback
+            if isinstance(res, Mapping):
+                ok_val = res.get("ok")
+                if not isinstance(ok_val, bool):
+                    ok_val = res.get("success")
+                    if isinstance(ok_val, str):
+                        ok_val = ok_val.lower() in {"true", "1", "yes", "ok"}
+                oid = res.get("order_id") or res.get("id") or res.get("client_order_id") \
+                      or res.get("clientOrderId") or res.get("Order Id")
+                if not oid and isinstance(res.get("details"), Mapping):
+                    det = res["details"]
+                    oid = det.get("order_id") or det.get("id") or det.get("Order Id")
+                if not oid and isinstance(res.get("response"), Mapping):
+                    rsp = res["response"]
+                    oid = rsp.get("order_id") or rsp.get("id") or rsp.get("client_order_id") or rsp.get("clientOrderId")
+                return bool(ok_val), str(oid) if oid else None, res
+            # Last resort
+            return False, None, res
+
+        def _validated_only(raw: Any) -> Tuple[bool, Optional[str]]:
+            """
+            Detect (False, {'is_valid': True, 'code': '200', 'message': ...}) shape.
+            """
+            if isinstance(raw, (tuple, list)) and len(raw) == 2 and raw[0] is False and isinstance(raw[1], Mapping):
+                d = raw[1]
+                if d.get("is_valid") is True and str(d.get("code")) == "200":
+                    return True, d.get("message") or "Validation OK; not submitted"
+            return False, None
+
+        async def _balances(trading_pair: str) -> dict:
+            """
+            Snapshot balances; replace these with your real cached calls if you have them.
+            Return {'usd': Decimal, 'base': Decimal}
+            """
+            usd = Decimal("0")
+            base = Decimal("0")
+            try:
+                usd = await self.shared_data_manager.fetch_usd_available()
+                base = await self.shared_data_manager.fetch_base_available(trading_pair)
+            except Exception:
+                pass
+            # coerce
+            try:
+                usd = Decimal(str(usd))
+            except Exception:
+                usd = Decimal("0")
+            try:
+                base = Decimal(str(base))
+            except Exception:
+                base = Decimal("0")
+            return {"usd": usd, "base": base}
+
         try:
-            # Helper: normalize TOM.place_order return shapes
-            def _order_result(res):
-                """
-                Normalize various response shapes to (ok: bool, order_id: str|None, raw: Any).
-                Supported:
-                    - object with .ok and .order_id / .id
-                    - dict with 'ok'/'success' and 'order_id'/'id'/'client_order_id'
-                    - tuple/list (try to infer a bool and an id-like string from elements)
-                    - None => (False, None, None)
-                """
-                if res is None:
-                    return False, None, None
-
-                # Object with attributes
-                ok = getattr(res, "ok", None)
-
-                if isinstance(ok, bool):
-                    oid = getattr(res, "order_id", None) or getattr(res, "id", None)
-                    return ok, str(oid) if oid else None, res
-
-                # Mapping/dict
-                try:
-                    if isinstance(res, Mapping):
-                        ok_val = res.get("ok")
-                        if not isinstance(ok_val, bool):
-                            ok_val = res.get("success")
-                            if isinstance(ok_val, str):
-                                ok_val = ok_val.lower() in {"true", "1", "yes", "ok"}
-                        oid = res.get("order_id") or res.get("id") or res.get("client_order_id") or res.get("clientOrderId")
-                        return bool(ok_val), str(oid) if oid else None, res
-                except Exception:
-                    pass
-
-                # Tuple/list
-                if isinstance(res, (tuple, list)):
-                    ok_guess = None
-                    oid_guess = None
-                    for el in res:
-                        if isinstance(el, bool) and ok_guess is None:
-                            ok_guess = el
-                        elif isinstance(el, (str, int)) and oid_guess is None:
-                            # very light heuristic for order id
-                            s = str(el)
-                            if len(s) >= 6:
-                                oid_guess = s
-                        elif hasattr(el, "ok") and ok_guess is None:
-                            ok_guess = bool(getattr(el, "ok"))
-                        elif isinstance(el, dict) and oid_guess is None:
-                            oid_guess = el.get("order_id") or el.get("id") or el.get("client_order_id") or el.get("clientOrderId")
-                    return bool(ok_guess), str(oid_guess) if oid_guess else None, res
-
-                # Fallback: treat anything else as failure but return raw for logging
-                return False, None, res
-
-            # -------- 0) Quick guards --------
+            # -------- 0) guards --------
             if not self.shared_data_manager:
                 self.logger.debug("⛔ No shared_data_manager; skipping passive orders.")
                 return
 
-            # -------- 1) Profitability / liquidity screen (your existing helper) --------
-            profitable_symbols = await self.shared_data_manager.fetch_profitable_symbols(
-                min_trades=5,
-                min_pnl_usd=Decimal("0.0"),
-                lookback_days=7,
-                source_filter=None,
-                min_24h_volume=Decimal(self._min_volume),  # or 750_000
-                refresh_interval=300
+            # -------- 1) profitability/liquidity gate --------
+            profitable = await self.shared_data_manager.fetch_profitable_symbols(
+                min_trades=5, min_pnl_usd=Decimal("0.0"), lookback_days=7,
+                source_filter=None, min_24h_volume=Decimal(self._min_volume), refresh_interval=300
             )
-            if trading_pair not in profitable_symbols:
+            if trading_pair not in profitable:
                 self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
                 return
 
-            # -------- 2) Rolling leaderboard eligibility (new) --------
+            # -------- 2) active_symbols gate --------
             try:
                 active_syms = await self.shared_data_manager.fetch_active_symbols(as_of_max_age_sec=6 * 3600)
             except Exception as e:
-                # Fail-safe: if leaderboard fetch fails, do NOT place orders
                 self.logger.error(f"⚠️ fetch_active_symbols failed; skipping {trading_pair}: {e}", exc_info=True)
                 return
-
             if trading_pair not in active_syms:
                 self.logger.debug(f"⛔ Skipping {trading_pair} — not in active_symbols (leaderboard filter)")
                 return
 
-            # -------- 3) Build OrderData from book/ticker (your existing TOM hook) --------
+            # -------- 3) build OrderData --------
             try:
-                od: OrderData | None = await self.tom.build_order_data(
-                    source="PassiveMM",
-                    trigger="market_making",
-                    asset=asset,
-                    product_id=product_id,
+                od = await self.tom.build_order_data(
+                    source="PassiveMM", trigger="market_making", asset=asset, product_id=product_id
                 )
             except Exception as exc:
                 self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
                 return
-
             if not od or not od.highest_bid or not od.lowest_ask:
                 self.logger.debug(f"⛔ No viable book for {trading_pair}")
                 return
 
-            # -------- 4) Spread / edge checks --------
+            # -------- 4) spread/edge checks --------
             best_bid = Decimal(od.highest_bid)
             best_ask = Decimal(od.lowest_ask)
             if best_ask <= best_bid:
                 self.logger.debug(f"⛔ Crossed/locked book on {trading_pair}")
                 return
-
             mid = (best_bid + best_ask) / Decimal("2")
-            spread_abs = best_ask - best_bid
-            spread_pct = spread_abs / mid  # e.g., 0.0025 = 25 bps
-
-            # Require: spread ≥ (min_spread + edge_buffer) to clear fees/queue risk
-            min_spread_req = self._min_spread_pct + self._edge_buffer_pct  # both are Decimals
+            spread_pct = (best_ask - best_bid) / mid
+            min_spread_req = self._min_spread_pct + self._edge_buffer_pct
             if spread_pct < min_spread_req:
                 self.logger.debug(
-                    f"⛔ {trading_pair} spread too tight "
-                    f"({(spread_pct * 100):.2f}% < {(min_spread_req * 100):.2f}%)"
+                    f"⛔ {trading_pair} spread too tight ({(spread_pct * 100):.2f}% < {(min_spread_req * 100):.2f}%)"
                 )
                 return
 
-            # -------- 5) Compute maker quote prices (one tick inside the spread) --------
+            # -------- 5) steps / mins --------
             q_dec = int(od.quote_decimal)
             b_dec = int(od.base_decimal)
-            price_step = Decimal("1").scaleb(-q_dec)  # e.g., 0.0001
-            size_step = Decimal("1").scaleb(-b_dec)  # e.g., 0.000001
+            price_step = Decimal("1").scaleb(-q_dec)
+            size_step = Decimal("1").scaleb(-b_dec)
 
-            # Buy: slightly improve best bid; Sell: slightly improve best ask
-            buy_px = (best_bid + price_step).quantize(price_step, rounding=ROUND_DOWN)
-            sell_px = (best_ask - price_step).quantize(price_step, rounding=ROUND_DOWN)
+            min_base_size = getattr(od, "min_base_size", None) or Decimal("0")
+            min_quote_notional = getattr(od, "min_quote_notional", None) or Decimal("0")
 
-            # -------- 6) Sizing to meet min notional --------
-            # Use your configured notional floor per leg
+            # -------- 6) compute maker quotes --------
+            buy_px = _to_step(best_bid + price_step, price_step, ROUND_DOWN)
+            sell_px = _to_step(best_ask - price_step, price_step, ROUND_DOWN)
+
+            # Base sizes implied by your min fiat floor (used for initial suggestion only)
             min_fiat = Decimal(self._min_order_amount_fiat)  # e.g., $10 or $60
-            buy_sz = (min_fiat / buy_px).quantize(size_step, rounding=ROUND_DOWN)
-            sell_sz = (min_fiat / sell_px).quantize(size_step, rounding=ROUND_DOWN)
+            implied_buy_base = _to_step(min_fiat / buy_px, size_step, ROUND_DOWN)
+            implied_sell_base = _to_step(min_fiat / sell_px, size_step, ROUND_DOWN)
 
-            # Sanity: positive sizes
-            if buy_sz <= 0 or sell_sz <= 0:
-                self.logger.debug(f"⛔ Non-positive quote size for {trading_pair}")
+            # -------- 7) balances + clamp SELL --------
+            bal = await _balances(trading_pair)
+            usd_bal = bal["usd"]
+            base_bal = bal["base"]
+
+            sell_sz = min(implied_sell_base, base_bal)
+            sell_sz = _to_step(sell_sz, size_step, ROUND_DOWN)
+            if min_base_size and sell_sz < min_base_size:
+                self.logger.debug(f"⛔ Sell size {sell_sz} < min {min_base_size} for {trading_pair}")
+                sell_sz = Decimal("0")
+
+            # -------- 8) BUY notional (Option A via order_amount_fiat) --------
+            # leave 5% buffer to avoid insuff-funds on fees/rounding
+            buy_notional = min(min_fiat, usd_bal * Decimal("0.95"))
+            # honor min notional if present
+            if min_quote_notional and buy_notional < min_quote_notional:
+                self.logger.debug(f"⛔ Notional ${buy_notional} below min ${min_quote_notional} for {trading_pair}")
+                buy_notional = Decimal("0")
+            buy_notional = buy_notional.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+
+            place_buy = buy_notional > 0
+            place_sell = sell_sz > 0
+            if not place_buy and not place_sell:
+                self.logger.debug(f"⛔ Both legs not placeable for {trading_pair} (buy_notional={buy_notional}, sell_sz={sell_sz})")
                 return
 
-            # -------- 7) Create post-only limit orders via TOM --------
-            # If your OrderData has fields to carry intent, set them here
-            # (post_only, time_in_force, client tags, etc.)
-            # You can also copy/clone od and just adjust price/size/side.
+            # -------- 9) submit BUY first (via order_amount_fiat) --------
+            if place_buy:
+                try:
+                    buy_od = copy.deepcopy(od)
+                    buy_od.side = "buy"
+                    buy_od.type = "limit"
+                    buy_od.price = str(buy_px)  # adapter expects strings fine
+                    buy_od.order_amount_fiat = str(buy_notional)  # <-- key for your handle_order()
+                    # make sure these exist for the adjust functions:
+                    buy_od.base_avail_balance = getattr(buy_od, "base_avail_balance", Decimal("0"))
 
-            # BUY side
-            try:
-                buy_od = copy.deepcopy(od)
-                buy_od.side = "buy"
-                buy_od.type = "limit"
-                buy_od.price = buy_px
-                buy_od.size = buy_sz
-                buy_od.post_only = True
-                buy_od.time_in_force = "GTC"
-                buy_od.strategy_tag = "PassiveMM"
-                buy_od.source = "PassiveMM"
+                    buy_od.post_only = True
+                    buy_od.time_in_force = "GTC"
+                    buy_od.strategy_tag = "PassiveMM"
+                    buy_od.source = "PassiveMM"
 
-                res_buy = await self.tom.place_order(buy_od)
-                ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
-                if ok_buy and order_id_buy:
-                    # Persist to passive_orders
-                    await self.shared_data_manager.add_passive_order(
-                        order_id=order_id_buy,
-                        symbol=trading_pair,
-                        side="buy",
-                        order_data=buy_od.to_dict() if hasattr(buy_od, "to_dict") else {
-                            "price": str(buy_px), "size": str(buy_sz),
-                            "post_only": True, "tif": "GTC", "source": "PassiveMM"
-                        }
-                    )
-                    self.logger.info(f"✅ Placed PASSIVE BUY {trading_pair} {buy_sz} @ {buy_px} (order_id={order_id_buy})")
-                else:
-                    self.logger.error(f"❌ Failed to place PASSIVE BUY for {trading_pair} — normalized=(ok={ok_buy}, id={order_id_buy}) raw={raw_buy!r}")
-            except Exception as e:
-                self.logger.error(f"❌ Exception placing PASSIVE BUY for {trading_pair}: {e}", exc_info=True)
+                    res_buy = await self.tom.place_order(buy_od)
+                    ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
+                    v_only, reason = _validated_only(raw_buy)
 
-            # SELL side
-            try:
-                sell_od = copy.deepcopy(od)
-                sell_od.side = "sell"
-                sell_od.type = "limit"
-                sell_od.price = sell_px
-                sell_od.size = sell_sz
-                sell_od.post_only = True
-                sell_od.time_in_force = "GTC"
-                sell_od.strategy_tag = "PassiveMM"
-                sell_od.source = "PassiveMM"
+                    if v_only:
+                        self.logger.info(
+                            f"ℹ️ PASSIVE BUY validated-only {trading_pair}: {reason}; "
+                            f"order_amount_fiat=${buy_notional} @ {buy_px}"
+                        )
+                    elif ok_buy and order_id_buy:
+                        await self.shared_data_manager.add_passive_order(
+                            order_id=order_id_buy, symbol=trading_pair, side="buy",
+                            order_data=getattr(buy_od, "to_dict", lambda: {
+                                "price": str(buy_px), "order_amount_fiat": str(buy_notional),
+                                "post_only": True, "tif": "GTC", "source": "PassiveMM"
+                            })()
+                        )
+                        self.logger.info(f"✅ Placed PASSIVE BUY {trading_pair} ${buy_notional} @ {buy_px} (order_id={order_id_buy})")
+                    else:
+                        self.logger.error(
+                            f"❌ Failed to place PASSIVE BUY for {trading_pair} — "
+                            f"normalized=(ok={ok_buy}, id={order_id_buy}) raw={raw_buy!r}"
+                        )
+                except Exception as e:
+                    self.logger.error(f"❌ Exception placing PASSIVE BUY for {trading_pair}: {e}", exc_info=True)
 
-                res_sell = await self.tom.place_order(sell_od)
-                ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
-                if ok_sell and order_id_sell:
-                    # Persist to passive_orders
-                    await self.shared_data_manager.add_passive_order(
-                        order_id=order_id_sell,
-                        symbol=trading_pair,
-                        side="sell",
-                        order_data=sell_od.to_dict() if hasattr(sell_od, "to_dict") else {
-                            "price": str(sell_px), "size": str(sell_sz),
-                            "post_only": True, "tif": "GTC", "source": "PassiveMM"
-                        }
-                    )
-                    self.logger.info(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})")
-                else:
-                    self.logger.error(f"❌ Failed to place PASSIVE SELL for {trading_pair} — normalized=(ok={ok_sell}, id={order_id_sell}) raw={raw_sell!r}")
-            except Exception as e:
-                self.logger.error(f"❌ Exception placing PASSIVE SELL for {trading_pair}: {e}", exc_info=True)
+            # -------- 10) submit SELL (via base_avail_balance) --------
+            if place_sell:
+                try:
+                    sell_od = copy.deepcopy(od)
+                    sell_od.side = "sell"
+                    sell_od.type = "limit"
+                    sell_od.price = str(sell_px)
+                    # drive sizing through base_avail_balance for handle_order()
+                    sell_od.base_avail_balance = str(sell_sz)
+                    # if your adjust functions also consult order_amount_fiat on SELL, keep it empty/zero
+                    sell_od.order_amount_fiat = str(Decimal("0"))
+
+                    sell_od.post_only = True
+                    sell_od.time_in_force = "GTC"
+                    sell_od.strategy_tag = "PassiveMM"
+                    sell_od.source = "PassiveMM"
+
+                    res_sell = await self.tom.place_order(sell_od)
+                    ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
+                    v_only, reason = _validated_only(raw_sell)
+
+                    if v_only:
+                        self.logger.info(
+                            f"ℹ️ PASSIVE SELL validated-only {trading_pair}: {reason}; "
+                            f"size={sell_sz} @ {sell_px}"
+                        )
+                    elif ok_sell and order_id_sell:
+                        await self.shared_data_manager.add_passive_order(
+                            order_id=order_id_sell, symbol=trading_pair, side="sell",
+                            order_data=getattr(sell_od, "to_dict", lambda: {
+                                "price": str(sell_px), "size": str(sell_sz),
+                                "post_only": True, "tif": "GTC", "source": "PassiveMM"
+                            })()
+                        )
+                        self.logger.info(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})")
+                    else:
+                        self.logger.error(
+                            f"❌ Failed to place PASSIVE SELL for {trading_pair} — "
+                            f"normalized=(ok={ok_sell}, id={order_id_sell}) raw={raw_sell!r}"
+                        )
+                except Exception as e:
+                    self.logger.error(f"❌ Exception placing PASSIVE SELL for {trading_pair}: {e}", exc_info=True)
 
         except asyncio.CancelledError:
             self.logger.warning(f"🛑 place_passive_orders cancelled for {product_id}")
