@@ -1,5 +1,4 @@
-# aws_daily_report.py
-# (see full content in this block)
+
 
 #!/usr/bin/env python3
 import os

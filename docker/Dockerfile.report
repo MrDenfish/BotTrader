@@ -47,8 +47,8 @@ RUN pip install --no-cache-dir -r ${REQS}
 # good signals handling
 ENTRYPOINT ["/usr/bin/tini","--"]
 
-# Run the report module (your repo layout is /app/database_manager/aws_daily_report.py)
-CMD ["python","-m","database_manager.aws_daily_report"]
+# Run the report module (your repo layout is /app/botreport/aws_daily_report.py)
+CMD ["python","-m","botreport.aws_daily_report"]
 
 # Optionally drop privileges (only if your report writes to places owned by appuser)
 # USER appuser

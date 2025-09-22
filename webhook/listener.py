@@ -970,18 +970,18 @@ class WebhookListener:
             return gross, fees
 
         def _norm_iso_utc(ts: str) -> str:
-            # Accepts ISO-ish inputs, returns 'YYYY-MM-DD HH:MM:SS.ffffff+00'
+            # Accepts ISO-ish inputs, returns 'YYYY-MM-DDTHH:MM:SS.ffffff+00:00'
             from datetime import datetime, timezone
             if not ts:
-                return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f+00")
+                return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
             try:
                 ts = str(ts)
-                # Allow 'Z'
+                # handle 'Z'
                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                 dt = dt.astimezone(timezone.utc)
             except Exception:
                 dt = datetime.now(timezone.utc)
-            return dt.strftime("%Y-%m-%d %H:%M:%S.%f+00")
+            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
 
         try:
             logger.info("🔁 Starting reconciliation via REST API...")
@@ -1082,10 +1082,20 @@ class WebhookListener:
                 reconciled_trades.append(trade_data)
 
             # 🔧 Sort once (by normalized UTC time) and enqueue once
-            from datetime import datetime
             def _parse_utc(s: str):
-                # s like 'YYYY-MM-DD HH:MM:SS.ffffff+00'
-                return datetime.fromisoformat(s.replace(" ", "T"))
+                if not s:
+                    raise ValueError("empty timestamp")
+                s = s.strip().replace(" ", "T")
+                # normalize common variants
+                if s.endswith("+00"):
+                    s = s + ":00"  # -> +00:00
+                if s.endswith("Z"):
+                    s = s[:-1] + "+00:00"  # -> +00:00
+                # if there is a timezone without colon like +0000
+                if len(s) >= 5 and (s[-5] in ["+", "-"]) and s[-3] != ":":
+                    # e.g., 2025-09-21T23:30:22.516246+0000 -> +00:00
+                    s = s[:-5] + s[-5:-2] + ":" + s[-2:]
+                return datetime.fromisoformat(s)
 
             reconciled_trades.sort(key=lambda t: _parse_utc(t["order_time"]))
 

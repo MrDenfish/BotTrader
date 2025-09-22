@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal
 from typing import Dict, Any, Optional, Union
 from datetime import datetime
 import sqlalchemy
 from sqlalchemy import bindparam, Numeric
+from sqlalchemy.sql import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 # -------------------------

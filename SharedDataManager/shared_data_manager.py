@@ -11,10 +11,13 @@ from asyncio import Event
 from decimal import Decimal
 from sqlalchemy.sql import text
 from sqlalchemy import select, delete
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from TableModels.passive_orders import PassiveOrder
+from TableModels.active_symbols import ActiveSymbol
 from SharedDataManager.trade_recorder import TradeRecorder
+from SharedDataManager.leader_board import recompute_and_upsert_active_symbols, LeaderboardConfig
+
 
 
 class CustomJSONDecoder(json.JSONDecoder):
@@ -129,6 +132,11 @@ class SharedDataManager:
 
         self.lock = asyncio.Lock()
         self._initialized_event = Event()
+
+        self._profitable_symbols_cache = {
+            "last_update": 0.0,
+            "symbols": set()
+        }
 
     def inject_maintenance_callback(self):
         from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
@@ -721,3 +729,137 @@ class SharedDataManager:
 
         except Exception as e:
             self.logger.error(f"❌ Failed to reconcile passive orders: {e}", exc_info=True)
+
+    async def fetch_profitable_symbols(
+            self,
+            min_trades: int = 5,
+            min_pnl_usd: Decimal = Decimal("0.0"),
+            lookback_days: int = 7,
+            source_filter: str | None = None,
+            min_24h_volume: Decimal = Decimal("750000"),
+            refresh_interval: int = 300
+    ) -> set[str]:
+        """
+        Returns symbols that are (a) recently profitable by realized SELL PnL and
+        (b) meet a simple 24h volume filter.
+
+        - Uses cache to avoid DB churn (refresh every `refresh_interval` seconds).
+        - Fetches only trades in last `lookback_days`.
+        - If `source_filter` is set, restricts to that strategy source.
+
+        Dependencies:
+          • self.trade_recorder.fetch_recent_trades(days=lookback_days)  -> list of trade objs
+          • self.market_data["usd_pairs_cache"] with column 'volume_24h' (optional)
+        """
+        try:
+            now = time.time()
+            if now - self._profitable_symbols_cache["last_update"] < refresh_interval:
+                return self._profitable_symbols_cache["symbols"]
+
+            cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+
+            # Pull recent trades via your existing helper
+            trades = await self.trade_recorder.fetch_recent_trades(days=lookback_days)
+            if not trades:
+                self._profitable_symbols_cache.update({"last_update": now, "symbols": set()})
+                return set()
+
+            # Normalize rows -> DataFrame
+            df = pd.DataFrame([t.__dict__ for t in trades])
+
+            # Robust column names (your snippet used realized_profit; DB often has pnl_usd)
+            # Create a single 'realized_pnl_usd' column from what's available.
+            if "realized_profit" in df.columns:
+                df["realized_pnl_usd"] = df["realized_profit"]
+            elif "pnl_usd" in df.columns:
+                df["realized_pnl_usd"] = df["pnl_usd"]
+            else:
+                # If neither column present, nothing to compute
+                self.logger.warning("⚠️ No realized PnL column found (expected realized_profit or pnl_usd).")
+                self._profitable_symbols_cache.update({"last_update": now, "symbols": set()})
+                return set()
+
+            # Time filter (order_time assumed ISO/UTC)
+            df = df[pd.to_datetime(df["order_time"], utc=True, errors="coerce") >= cutoff_time]
+
+            if source_filter:
+                if "source" in df.columns:
+                    df = df[df["source"] == source_filter]
+                else:
+                    self.logger.warning("⚠️ source_filter provided but 'source' column missing; ignoring source filter.")
+
+            if df.empty:
+                self._profitable_symbols_cache.update({"last_update": now, "symbols": set()})
+                return set()
+
+            grouped = df.groupby("symbol").agg(
+                trade_count=("order_id", "count"),
+                total_profit=("realized_pnl_usd", "sum"),
+            )
+
+            filtered = grouped[
+                (grouped["trade_count"] >= int(min_trades)) &
+                (grouped["total_profit"] >= float(min_pnl_usd))
+                ]
+
+            profitable_symbols: set[str] = set(filtered.index)
+
+            # Optional liquidity filter via market_data cache
+            try:
+                usd_pairs = self.market_data.get("usd_pairs_cache", pd.DataFrame())
+                if not usd_pairs.empty and "volume_24h" in usd_pairs.columns:
+                    liquid_symbols = set(
+                        usd_pairs[usd_pairs["volume_24h"] >= float(min_24h_volume)]["symbol"]
+                    )
+                    profitable_symbols = profitable_symbols.intersection(liquid_symbols)
+                else:
+                    # Not a hard error—just warn once in logs if you like
+                    pass
+            except Exception as e:
+                self.logger.warning(f"⚠️ 24h volume filter failed: {e}")
+
+            self._profitable_symbols_cache.update({
+                "last_update": now,
+                "symbols": profitable_symbols
+            })
+
+            self.logger.info(
+                f"✅ Profitable & Liquid symbols (cached {refresh_interval}s): {sorted(profitable_symbols)}"
+            )
+            return profitable_symbols
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ fetch_profitable_symbols failed: {e}", exc_info=True)
+            return set()
+
+
+    async def recompute_leaderboard(self, lookback_hours: int = 24, min_n_24h: int = 3,
+                                    win_rate_min: float = 0.35, pf_min: float = 1.30) -> None:
+        """
+        Recompute rolling leaderboard and upsert into active_symbols.
+        Runs inside a pooled AsyncSession managed by DatabaseSessionManager.
+        """
+        cfg = LeaderboardConfig(
+            lookback_hours=lookback_hours,
+            min_n_24h=min_n_24h,
+            win_rate_min=win_rate_min,
+            pf_min=pf_min
+        )
+        async with self.database_session_manager.async_session() as session:
+            async with session.begin():
+                # Note: function itself commits; we start a tx for safety in your manager style
+                await recompute_and_upsert_active_symbols(session, cfg)
+
+    async def fetch_active_symbols(self, as_of_max_age_sec: int = 6*3600) -> set[str]:
+        """
+        Return symbols where eligible=true and as_of is recent.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=as_of_max_age_sec)
+        async with self.database_session_manager.async_session() as session:
+            async with session.begin():
+                rows = await session.execute(
+                    select(ActiveSymbol.symbol)
+                    .where(ActiveSymbol.eligible == True)
+                    .where(ActiveSymbol.as_of >= cutoff)
+                )
+                return {r[0] for r in rows.fetchall()}

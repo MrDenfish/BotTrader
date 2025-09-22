@@ -50,7 +50,7 @@ def load_report_dotenv_if_needed() -> None:
     if load_dotenv is None:
         return
     here = Path(__file__).resolve()
-    # botreport/ -> project root at parents[1] (adjust if your layout differs)
+    # botreport/ -> project root at parents[1]
     project_root = here.parents[1]
     preferred = project_root / ".env_runtime"
     fallback  = project_root / ".env_tradebot"

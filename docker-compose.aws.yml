@@ -104,6 +104,24 @@ services:
         --equity-usd ${REPORT_EQUITY_USD:-3000}
         --send
     restart: "no"
+  leaderboard-job:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.report
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      TZ: ${TZ}
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+      PYTHONPATH: /app
+    env_file:
+      - /opt/bot/.env_runtime
+    volumes:
+      - ./logs:/app/logs
+    entrypoint: [ "python", "-u", "-m", "jobs.leaderboard_runner" ]
+    restart: "no"
 
 volumes:
   pg_data:

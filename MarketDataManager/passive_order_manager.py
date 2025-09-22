@@ -238,82 +238,254 @@ class PassiveOrderManager:
 
         return None
 
+    # async def place_passive_orders(self, asset: str, product_id: str) -> None:
+    #     """
+    #     Attempt to quote both sides of the book for *product_id*.
+    #
+    #     ✅ Step 1: Adaptive spread requirement scaled by volatility.
+    #     ✅ Step 2: Skip unprofitable & illiquid symbols based on all historical trades.
+    #     """
+    #     trading_pair = product_id.replace("/", "-")
+    #
+    #     # ✅ Step 2: Skip unprofitable or illiquid symbols (all trade sources considered)
+    #     profitable_symbols = await self.get_profitable_symbols(
+    #         min_trades=5,
+    #         min_pnl_usd=Decimal("1.0"),
+    #         lookback_days=7,
+    #         source_filter=None,
+    #         min_24h_volume=Decimal(self._min_volume),  # 7.5k USD min volume
+    #         refresh_interval=300
+    #     )
+    #     if trading_pair not in profitable_symbols:
+    #         self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
+    #         return
+    #
+    #     try:
+    #         od: OrderData | None = await self.tom.build_order_data(
+    #             source="PassiveMM",
+    #             trigger="market_making",
+    #             asset=asset,
+    #             product_id=product_id,
+    #         )
+    #     except Exception as exc:
+    #         self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
+    #         return
+    #
+    #     if not od or od.highest_bid == 0 or od.lowest_ask == 0:
+    #         return  # No usable order book
+    #
+    #     spread = od.lowest_ask - od.highest_bid
+    #     od.spread = spread
+    #
+    #     mid_price = (od.lowest_ask + od.highest_bid) / 2
+    #     spread_pct = spread / mid_price
+    #
+    #     # ✅ Step 1: Adaptive minimum spread requirement
+    #     volatility_factor = max(
+    #         Decimal("1.0"),
+    #         spread / (mid_price * Decimal("0.01"))  # % spread (e.g., 1% => 1.0)
+    #     )
+    #
+    #     dynamic_min_spread = max(
+    #         self.fee["maker"] * (Decimal("2.0") + (volatility_factor / 2)) + self.EDGE_BUFFER,
+    #         self.min_spread_pct,
+    #         self.fee["maker"] * Decimal("2.0") + self.EDGE_BUFFER
+    #     )
+    #
+    #     if spread_pct < dynamic_min_spread:
+    #         self.logger.info(
+    #             f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < dynamic threshold {dynamic_min_spread:.4%}"
+    #         )
+    #         return
+    #
+    #     try:
+    #         tick = self.shared_utils_precision.safe_convert(od.quote_increment, od.quote_decimal)
+    #
+    #         try:
+    #             oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
+    #         except Exception as exc:
+    #             self.logger.warning(
+    #                 f"⚠️ Failed to fetch OHLCV for {trading_pair}, skipping SELL: {exc}", exc_info=True
+    #             )
+    #             oldest_close = latest_close = average_close = None
+    #
+    #         await self._quote_passive_buy(od, trading_pair, tick)
+    #         await self._quote_passive_sell(od, trading_pair, tick, average_close)
+    #
+    #     except Exception as exc:
+    #         self.logger.error(f"❌ Error in passive MM for {trading_pair}: {exc}", exc_info=True)
+    # inside PassiveOrderManager
+
     async def place_passive_orders(self, asset: str, product_id: str) -> None:
         """
-        Attempt to quote both sides of the book for *product_id*.
-
-        ✅ Step 1: Adaptive spread requirement scaled by volatility.
-        ✅ Step 2: Skip unprofitable & illiquid symbols based on all historical trades.
+        Maker-only placement for a symbol, gated by:
+          1) recent profitability/liquidity screen
+          2) rolling leaderboard 'active_symbols' eligibility (6h fresh)
+        Creates one resting BUY near best bid and one resting SELL near best ask,
+        if spread clears fee+edge and min notional constraints are satisfied.
+        Persists to passive_orders table on success.
         """
-        trading_pair = product_id.replace("/", "-")
-
-        # ✅ Step 2: Skip unprofitable or illiquid symbols (all trade sources considered)
-        profitable_symbols = await self.get_profitable_symbols(
-            min_trades=5,
-            min_pnl_usd=Decimal("1.0"),
-            lookback_days=7,
-            source_filter=None,
-            min_24h_volume=Decimal(self._min_volume),  # 7.5k USD min volume
-            refresh_interval=300
-        )
-        if trading_pair not in profitable_symbols:
-            self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
-            return
-
+        trading_pair = product_id  # e.g. "AVNT-USD"
         try:
-            od: OrderData | None = await self.tom.build_order_data(
-                source="PassiveMM",
-                trigger="market_making",
-                asset=asset,
-                product_id=product_id,
+            # -------- 0) Quick guards --------
+            if not self.shared_data_manager:
+                self.logger.debug("⛔ No shared_data_manager; skipping passive orders.")
+                return
+
+            # -------- 1) Profitability / liquidity screen (your existing helper) --------
+            profitable_symbols = await self.shared_data_manager.fetch_profitable_symbols(
+                min_trades=5,
+                min_pnl_usd=Decimal("0.0"),
+                lookback_days=7,
+                source_filter=None,
+                min_24h_volume=Decimal(self._min_volume),  # or 750_000
+                refresh_interval=300
             )
-        except Exception as exc:
-            self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
-            return
+            if trading_pair not in profitable_symbols:
+                self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
+                return
 
-        if not od or od.highest_bid == 0 or od.lowest_ask == 0:
-            return  # No usable order book
-
-        spread = od.lowest_ask - od.highest_bid
-        od.spread = spread
-
-        mid_price = (od.lowest_ask + od.highest_bid) / 2
-        spread_pct = spread / mid_price
-
-        # ✅ Step 1: Adaptive minimum spread requirement
-        volatility_factor = max(
-            Decimal("1.0"),
-            spread / (mid_price * Decimal("0.01"))  # % spread (e.g., 1% => 1.0)
-        )
-
-        dynamic_min_spread = max(
-            self.fee["maker"] * (Decimal("2.0") + (volatility_factor / 2)) + self.EDGE_BUFFER,
-            self.min_spread_pct,
-            self.fee["maker"] * Decimal("2.0") + self.EDGE_BUFFER
-        )
-
-        if spread_pct < dynamic_min_spread:
-            self.logger.info(
-                f"⛔ Skipping {trading_pair} — Spread {spread_pct:.4%} < dynamic threshold {dynamic_min_spread:.4%}"
-            )
-            return
-
-        try:
-            tick = self.shared_utils_precision.safe_convert(od.quote_increment, od.quote_decimal)
-
+            # -------- 2) Rolling leaderboard eligibility (new) --------
             try:
-                oldest_close, latest_close, average_close = await self.ohlcv_manager.fetch_last_5min_ohlcv(product_id)
-            except Exception as exc:
-                self.logger.warning(
-                    f"⚠️ Failed to fetch OHLCV for {trading_pair}, skipping SELL: {exc}", exc_info=True
+                active_syms = await self.shared_data_manager.fetch_active_symbols(as_of_max_age_sec=6 * 3600)
+            except Exception as e:
+                # Fail-safe: if leaderboard fetch fails, do NOT place orders
+                self.logger.error(f"⚠️ fetch_active_symbols failed; skipping {trading_pair}: {e}", exc_info=True)
+                return
+
+            if trading_pair not in active_syms:
+                self.logger.debug(f"⛔ Skipping {trading_pair} — not in active_symbols (leaderboard filter)")
+                return
+
+            # -------- 3) Build OrderData from book/ticker (your existing TOM hook) --------
+            try:
+                od: OrderData | None = await self.tom.build_order_data(
+                    source="PassiveMM",
+                    trigger="market_making",
+                    asset=asset,
+                    product_id=product_id,
                 )
-                oldest_close = latest_close = average_close = None
+            except Exception as exc:
+                self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
+                return
 
-            await self._quote_passive_buy(od, trading_pair, tick)
-            await self._quote_passive_sell(od, trading_pair, tick, average_close)
+            if not od or not od.highest_bid or not od.lowest_ask:
+                self.logger.debug(f"⛔ No viable book for {trading_pair}")
+                return
 
-        except Exception as exc:
-            self.logger.error(f"❌ Error in passive MM for {trading_pair}: {exc}", exc_info=True)
+            # -------- 4) Spread / edge checks --------
+            best_bid = Decimal(od.highest_bid)
+            best_ask = Decimal(od.lowest_ask)
+            if best_ask <= best_bid:
+                self.logger.debug(f"⛔ Crossed/locked book on {trading_pair}")
+                return
+
+            mid = (best_bid + best_ask) / Decimal("2")
+            spread_abs = best_ask - best_bid
+            spread_pct = spread_abs / mid  # e.g., 0.0025 = 25 bps
+
+            # Require: spread ≥ (min_spread + edge_buffer) to clear fees/queue risk
+            min_spread_req = self._min_spread_pct + self._edge_buffer_pct  # both are Decimals
+            if spread_pct < min_spread_req:
+                self.logger.debug(
+                    f"⛔ {trading_pair} spread too tight "
+                    f"({(spread_pct * 100):.2f}% < {(min_spread_req * 100):.2f}%)"
+                )
+                return
+
+            # -------- 5) Compute maker quote prices (one tick inside the spread) --------
+            q_dec = int(od.quote_decimal)
+            b_dec = int(od.base_decimal)
+            price_step = Decimal("1").scaleb(-q_dec)  # e.g., 0.0001
+            size_step = Decimal("1").scaleb(-b_dec)  # e.g., 0.000001
+
+            # Buy: slightly improve best bid; Sell: slightly improve best ask
+            buy_px = (best_bid + price_step).quantize(price_step, rounding=ROUND_DOWN)
+            sell_px = (best_ask - price_step).quantize(price_step, rounding=ROUND_DOWN)
+
+            # -------- 6) Sizing to meet min notional --------
+            # Use your configured notional floor per leg
+            min_fiat = Decimal(self._min_order_amount_fiat)  # e.g., $10 or $60
+            buy_sz = (min_fiat / buy_px).quantize(size_step, rounding=ROUND_DOWN)
+            sell_sz = (min_fiat / sell_px).quantize(size_step, rounding=ROUND_DOWN)
+
+            # Sanity: positive sizes
+            if buy_sz <= 0 or sell_sz <= 0:
+                self.logger.debug(f"⛔ Non-positive quote size for {trading_pair}")
+                return
+
+            # -------- 7) Create post-only limit orders via TOM --------
+            # If your OrderData has fields to carry intent, set them here
+            # (post_only, time_in_force, client tags, etc.)
+            # You can also copy/clone od and just adjust price/size/side.
+
+            # BUY side
+            try:
+                buy_od = copy.deepcopy(od)
+                buy_od.side = "buy"
+                buy_od.type = "limit"
+                buy_od.price = buy_px
+                buy_od.size = buy_sz
+                buy_od.post_only = True
+                buy_od.time_in_force = "GTC"
+                buy_od.strategy_tag = "PassiveMM"
+                buy_od.source = "PassiveMM"
+
+                res_buy = await self.tom.place_order(buy_od)
+                if res_buy and res_buy.ok:
+                    order_id_buy = res_buy.order_id
+                    # Persist to passive_orders
+                    await self.shared_data_manager.add_passive_order(
+                        order_id=order_id_buy,
+                        symbol=trading_pair,
+                        side="buy",
+                        order_data=buy_od.to_dict() if hasattr(buy_od, "to_dict") else {
+                            "price": str(buy_px), "size": str(buy_sz),
+                            "post_only": True, "tif": "GTC", "source": "PassiveMM"
+                        }
+                    )
+                    self.logger.info(f"✅ Placed PASSIVE BUY {trading_pair} {buy_sz} @ {buy_px} (order_id={order_id_buy})")
+                else:
+                    self.logger.error(f"❌ Failed to place PASSIVE BUY for {trading_pair}: {res_buy}")
+            except Exception as e:
+                self.logger.error(f"❌ Exception placing PASSIVE BUY for {trading_pair}: {e}", exc_info=True)
+
+            # SELL side
+            try:
+                sell_od = copy.deepcopy(od)
+                sell_od.side = "sell"
+                sell_od.type = "limit"
+                sell_od.price = sell_px
+                sell_od.size = sell_sz
+                sell_od.post_only = True
+                sell_od.time_in_force = "GTC"
+                sell_od.strategy_tag = "PassiveMM"
+                sell_od.source = "PassiveMM"
+
+                res_sell = await self.tom.place_order(sell_od)
+                if res_sell and res_sell.ok:
+                    order_id_sell = res_sell.order_id
+                    # Persist to passive_orders
+                    await self.shared_data_manager.add_passive_order(
+                        order_id=order_id_sell,
+                        symbol=trading_pair,
+                        side="sell",
+                        order_data=sell_od.to_dict() if hasattr(sell_od, "to_dict") else {
+                            "price": str(sell_px), "size": str(sell_sz),
+                            "post_only": True, "tif": "GTC", "source": "PassiveMM"
+                        }
+                    )
+                    self.logger.info(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})")
+                else:
+                    self.logger.error(f"❌ Failed to place PASSIVE SELL for {trading_pair}: {res_sell}")
+            except Exception as e:
+                self.logger.error(f"❌ Exception placing PASSIVE SELL for {trading_pair}: {e}", exc_info=True)
+
+        except asyncio.CancelledError:
+            self.logger.warning(f"🛑 place_passive_orders cancelled for {product_id}")
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ place_passive_orders fatal error for {product_id}: {e}", exc_info=True)
 
     async def _submit_passive_sell(self, symbol: str, od: OrderData, price: Decimal, reason: str, note: str = ""):
         try:
@@ -631,82 +803,82 @@ class PassiveOrderManager:
         finally:
             entry["monitor_task"] = None
 
-    async def get_profitable_symbols(
-            self,
-            min_trades: int = 5,
-            min_pnl_usd: Decimal = Decimal("0.0"),
-            lookback_days: int = 7,
-            source_filter: str | None = None,
-            min_24h_volume: Decimal = Decimal("750000"),  # 750k USD
-            refresh_interval: int = 300  # 5 minutes
-    ) -> set:
-        """
-        Returns profitable & liquid symbols based on recent trades.
-
-        ✅ Uses caching to avoid DB overload (refresh every `refresh_interval` seconds).
-        ✅ Fetches only trades in the last `lookback_days` (not the entire table).
-        ✅ Includes all trade sources by default (PassiveMM + others).
-        ✅ Filters by technical liquidity (24h volume > threshold).
-        """
-        try:
-            now = time.time()
-            # ✅ Return cached results if refresh interval not exceeded
-            if now - self._profitable_symbols_cache["last_update"] < refresh_interval:
-                return self._profitable_symbols_cache["symbols"]
-
-            cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-
-            # ✅ Fetch only recent trades instead of full-table
-            trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades(
-                days=lookback_days
-            )
-
-            if not trades:
-                return set()
-
-            df = pd.DataFrame([t.__dict__ for t in trades])
-            df = df[pd.to_datetime(df['order_time']) >= cutoff_time]
-
-            if source_filter:
-                df = df[df['source'] == source_filter]
-
-            grouped = df.groupby('symbol').agg(
-                trade_count=('order_id', 'count'),
-                total_profit=('realized_profit', 'sum')
-            )
-
-            filtered = grouped[
-                (grouped['trade_count'] >= min_trades) &
-                (grouped['total_profit'] >= float(min_pnl_usd))
-                ]
-
-            profitable_symbols = set(filtered.index)
-
-            # ✅ Cross-check with liquidity filter (24h volume > threshold)
-            try:
-                usd_pairs = self.shared_data_manager.market_data.get("usd_pairs_cache", pd.DataFrame())
-                if not usd_pairs.empty and 'volume_24h' in usd_pairs.columns:
-                    liquid_symbols = set(
-                        usd_pairs[usd_pairs['volume_24h'] >= float(min_24h_volume)]['symbol']
-                    )
-                    profitable_symbols = profitable_symbols.intersection(liquid_symbols)
-            except Exception as e:
-                self.logger.warning(f"⚠️ 24h volume filter failed: {e}")
-
-            # ✅ Cache results for next call
-            self._profitable_symbols_cache.update({
-                "last_update": now,
-                "symbols": profitable_symbols
-            })
-
-            self.logger.info(
-                f"✅ Profitable & Liquid symbols (cached for {refresh_interval}s): {profitable_symbols}"
-            )
-            return profitable_symbols
-
-        except Exception as e:
-            self.logger.warning(f"⚠️ Failed to fetch profitable symbols: {e}", exc_info=True)
-            return set()
+    # async def get_profitable_symbols(
+    #         self,
+    #         min_trades: int = 5,
+    #         min_pnl_usd: Decimal = Decimal("0.0"),
+    #         lookback_days: int = 7,
+    #         source_filter: str | None = None,
+    #         min_24h_volume: Decimal = Decimal("750000"),  # 750k USD
+    #         refresh_interval: int = 300  # 5 minutes
+    # ) -> set:
+    #     """
+    #     Returns profitable & liquid symbols based on recent trades.
+    #
+    #     ✅ Uses caching to avoid DB overload (refresh every `refresh_interval` seconds).
+    #     ✅ Fetches only trades in the last `lookback_days` (not the entire table).
+    #     ✅ Includes all trade sources by default (PassiveMM + others).
+    #     ✅ Filters by technical liquidity (24h volume > threshold).
+    #     """
+    #     try:
+    #         now = time.time()
+    #         # ✅ Return cached results if refresh interval not exceeded
+    #         if now - self._profitable_symbols_cache["last_update"] < refresh_interval:
+    #             return self._profitable_symbols_cache["symbols"]
+    #
+    #         cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+    #
+    #         # ✅ Fetch only recent trades instead of full-table
+    #         trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades(
+    #             days=lookback_days
+    #         )
+    #
+    #         if not trades:
+    #             return set()
+    #
+    #         df = pd.DataFrame([t.__dict__ for t in trades])
+    #         df = df[pd.to_datetime(df['order_time']) >= cutoff_time]
+    #
+    #         if source_filter:
+    #             df = df[df['source'] == source_filter]
+    #
+    #         grouped = df.groupby('symbol').agg(
+    #             trade_count=('order_id', 'count'),
+    #             total_profit=('realized_profit', 'sum')
+    #         )
+    #
+    #         filtered = grouped[
+    #             (grouped['trade_count'] >= min_trades) &
+    #             (grouped['total_profit'] >= float(min_pnl_usd))
+    #             ]
+    #
+    #         profitable_symbols = set(filtered.index)
+    #
+    #         # ✅ Cross-check with liquidity filter (24h volume > threshold)
+    #         try:
+    #             usd_pairs = self.shared_data_manager.market_data.get("usd_pairs_cache", pd.DataFrame())
+    #             if not usd_pairs.empty and 'volume_24h' in usd_pairs.columns:
+    #                 liquid_symbols = set(
+    #                     usd_pairs[usd_pairs['volume_24h'] >= float(min_24h_volume)]['symbol']
+    #                 )
+    #                 profitable_symbols = profitable_symbols.intersection(liquid_symbols)
+    #         except Exception as e:
+    #             self.logger.warning(f"⚠️ 24h volume filter failed: {e}")
+    #
+    #         # ✅ Cache results for next call
+    #         self._profitable_symbols_cache.update({
+    #             "last_update": now,
+    #             "symbols": profitable_symbols
+    #         })
+    #
+    #         self.logger.info(
+    #             f"✅ Profitable & Liquid symbols (cached for {refresh_interval}s): {profitable_symbols}"
+    #         )
+    #         return profitable_symbols
+    #
+    #     except Exception as e:
+    #         self.logger.warning(f"⚠️ Failed to fetch profitable symbols: {e}", exc_info=True)
+    #         return set()
 
     async def live_performance_tracker(self, interval: int = 300, lookback_days: int = 7):
         """
