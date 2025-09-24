@@ -26,11 +26,13 @@ import copy
 import time
 import  json
 import pandas as pd
+from collections.abc import Mapping
+from Shared_Utils.enum import ExitCondition
+from typing import Any, Tuple, Optional, Dict
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
-from Shared_Utils.enum import ExitCondition
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
-from typing import Any, Mapping, Tuple, Optional, Dict
+
 
 
 # ---------------------------------------------------------------------------
@@ -384,16 +386,6 @@ class PassiveOrderManager:
                 return
             mid = (best_bid + best_ask) / Decimal("2")
             spread_pct = (best_ask - best_bid) / mid
-            min_spread_req = self._min_spread_pct + self._edge_buffer_pct
-            # Always show the computed spread and requirement
-            if spread_pct < min_spread_req:
-                self.logger.info(
-                    f"⛔ PassiveMM:spread_too_tight {trading_pair} "
-                    f"spread={(spread_pct * 100):.3f}% req={(min_spread_req * 100):.3f}% "
-                    f"(bid={best_bid}, ask={best_ask})"
-                    )
-                return
-            self.logger.info(f"🧭 PassiveMM:spread_ok {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
 
             # -------- 5) steps / mins --------
             q_dec = int(od.quote_decimal)
@@ -401,12 +393,40 @@ class PassiveOrderManager:
             price_step = Decimal("1").scaleb(-q_dec)
             size_step = Decimal("1").scaleb(-b_dec)
 
-            min_base_size = getattr(od, "min_base_size", None) or Decimal("0")
-            min_quote_notional = getattr(od, "min_quote_notional", None) or Decimal("0")
+            min_base_size = Decimal(str(getattr(od, "min_base_size", "0") or "0"))
+            min_quote_notional = Decimal(str(getattr(od, "min_quote_notional", "0") or "0"))
+
+            # Adaptive requirement: max(global floor, 2*maker fee + buffer, 2*tick width)
+            maker_fee = Decimal(str(getattr(od, "maker", "0") or "0"))
+            tick_spread = (Decimal("2") * price_step) / mid
+            fee_spread = (maker_fee * Decimal("2")) + self._edge_buffer_pct
+            floor_spread = self._min_spread_pct
+            min_spread_req = max(floor_spread, fee_spread, tick_spread)
+            self.logger.info(
+                f"🧭 PassiveMM:spread_req {product_id} floor={(floor_spread * 100):.3f}% "
+                f"fees={(fee_spread * 100):.3f}% ticks={(tick_spread * 100):.3f}% → req={(min_spread_req * 100):.3f}%"
+            )
+            # Always show the computed spread and requirement
+            if spread_pct < min_spread_req:
+                self.logger.info(
+                    f"⛔ PassiveMM:spread_too_tight {trading_pair} "
+                    f"spread={(spread_pct * 100):.3f}% req={(min_spread_req * 100):.3f}% "
+                    f"(bid={best_bid}, ask={best_ask})"
+                )
+                return
+            self.logger.info(f"🧭 PassiveMM:spread_ok {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
 
             # -------- 6) compute maker quotes --------
             buy_px = _to_step(best_bid + price_step, price_step, ROUND_DOWN)
             sell_px = _to_step(best_ask - price_step, price_step, ROUND_DOWN)
+            realized_spread = (sell_px - buy_px) / mid
+            if realized_spread < min_spread_req:
+                self.logger.info(
+                    f"⛔ PassiveMM:realized_spread_too_tight {product_id} "
+                    f"realized={(realized_spread * 100):.3f}% req={(min_spread_req * 100):.3f}% "
+                    f"(buy_px={buy_px}, sell_px={sell_px})"
+                )
+                return
 
             # Base sizes implied by your min fiat floor (used for initial suggestion only)
             min_fiat = Decimal(self._min_order_amount_fiat)  # e.g., $10 or $60
@@ -424,7 +444,10 @@ class PassiveOrderManager:
                 self.logger.info(f"⛔ PassiveMM:sell_below_min {trading_pair} size={sell_sz} min={min_base_size}")
                 sell_sz = Decimal("0")
             self.logger.info(
-                f"🧭 PassiveMM:sizing {product_id} buy_notional_pre=${min_fiat} usd_bal=${usd_bal} -> BUY=${min(min_fiat, usd_bal * Decimal('0.95')):.2f}; SELL={sell_sz} base (avail={base_bal})")
+                f"🧭 PassiveMM:sizing {trading_pair} "
+                f"min_fiat=${min_fiat} usd_bal=${usd_bal} "
+                f"→ BUY=${(min(min_fiat, usd_bal * Decimal('0.95'))).quantize(Decimal('0.01'), rounding=ROUND_DOWN)}; "
+                f"SELL={sell_sz} base (avail={base_bal})")
 
             # -------- 8) BUY notional (Option A via order_amount_fiat) --------
             # leave 5% buffer to avoid insuff-funds on fees/rounding
@@ -454,8 +477,8 @@ class PassiveOrderManager:
                     buy_od = copy.deepcopy(od)
                     buy_od.side = "buy"
                     buy_od.type = "limit"
-                    buy_od.price = str(buy_px)  # adapter expects strings fine
-                    buy_od.order_amount_fiat = str(buy_notional)  # <-- key for your handle_order()
+                    buy_od.price = buy_px  # adapter expects strings fine
+                    buy_od.order_amount_fiat = buy_notional  # <-- key for your handle_order()
                     # make sure these exist for the adjust functions:
                     buy_od.base_avail_balance = getattr(buy_od, "base_avail_balance", Decimal("0"))
 
@@ -497,11 +520,11 @@ class PassiveOrderManager:
                     sell_od = copy.deepcopy(od)
                     sell_od.side = "sell"
                     sell_od.type = "limit"
-                    sell_od.price = str(sell_px)
+                    sell_od.price = sell_px
                     # drive sizing through base_avail_balance for handle_order()
-                    sell_od.base_avail_balance = str(sell_sz)
+                    sell_od.base_avail_balance = sell_sz
                     # if your adjust functions also consult order_amount_fiat on SELL, keep it empty/zero
-                    sell_od.order_amount_fiat = str(Decimal("0"))
+                    sell_od.order_amount_fiat = Decimal("0")
 
                     sell_od.post_only = True
                     sell_od.time_in_force = "GTC"
