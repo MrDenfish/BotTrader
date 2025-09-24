@@ -380,17 +380,20 @@ class PassiveOrderManager:
             best_bid = Decimal(od.highest_bid)
             best_ask = Decimal(od.lowest_ask)
             if best_ask <= best_bid:
-                self.logger.debug(f"⛔ Crossed/locked book on {trading_pair}")
+                self.logger.info(f"⛔ PassiveMM:crossed_or_locked {trading_pair} bid={best_bid} ask={best_ask}")
                 return
             mid = (best_bid + best_ask) / Decimal("2")
             spread_pct = (best_ask - best_bid) / mid
             min_spread_req = self._min_spread_pct + self._edge_buffer_pct
+            # Always show the computed spread and requirement
             if spread_pct < min_spread_req:
-                self.logger.debug(
-                    f"⛔ {trading_pair} spread too tight ({(spread_pct * 100):.2f}% < {(min_spread_req * 100):.2f}%)"
-                )
+                self.logger.info(
+                    f"⛔ PassiveMM:spread_too_tight {trading_pair} "
+                    f"spread={(spread_pct * 100):.3f}% req={(min_spread_req * 100):.3f}% "
+                    f"(bid={best_bid}, ask={best_ask})"
+                    )
                 return
-            self.logger.info(f"🧭 PassiveMM:spread {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
+            self.logger.info(f"🧭 PassiveMM:spread_ok {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
 
             # -------- 5) steps / mins --------
             q_dec = int(od.quote_decimal)
@@ -418,7 +421,7 @@ class PassiveOrderManager:
             sell_sz = min(implied_sell_base, base_bal)
             sell_sz = _to_step(sell_sz, size_step, ROUND_DOWN)
             if min_base_size and sell_sz < min_base_size:
-                self.logger.debug(f"⛔ Sell size {sell_sz} < min {min_base_size} for {trading_pair}")
+                self.logger.info(f"⛔ PassiveMM:sell_below_min {trading_pair} size={sell_sz} min={min_base_size}")
                 sell_sz = Decimal("0")
             self.logger.info(
                 f"🧭 PassiveMM:sizing {product_id} buy_notional_pre=${min_fiat} usd_bal=${usd_bal} -> BUY=${min(min_fiat, usd_bal * Decimal('0.95')):.2f}; SELL={sell_sz} base (avail={base_bal})")
@@ -428,14 +431,20 @@ class PassiveOrderManager:
             buy_notional = min(min_fiat, usd_bal * Decimal("0.95"))
             # honor min notional if present
             if min_quote_notional and buy_notional < min_quote_notional:
-                self.logger.debug(f"⛔ Notional ${buy_notional} below min ${min_quote_notional} for {trading_pair}")
+                self.logger.info(f"⛔ PassiveMM:buy_below_min_notional {trading_pair} notional=${buy_notional} min=${min_quote_notional}")
                 buy_notional = Decimal("0")
             buy_notional = buy_notional.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
 
             place_buy = buy_notional > 0
             place_sell = sell_sz > 0
             if not place_buy and not place_sell:
-                self.logger.debug(f"⛔ Both legs not placeable for {trading_pair} (buy_notional={buy_notional}, sell_sz={sell_sz})")
+                self.logger.info(
+                    f"⛔ PassiveMM:both_legs_blocked {trading_pair} "
+                    f"buy_notional=${buy_notional} "
+                    f"sell_sz={sell_sz} "
+                    f"(usd_bal=${usd_bal}, base_bal={base_bal}, "
+                    f"min_quote_notional=${min_quote_notional}, min_base_size={min_base_size})"
+                    )
                 return
             self.logger.info(f"🧭 PassiveMM:place? {product_id} BUY={place_buy} (${buy_notional}) SELL={place_sell} ({sell_sz})")
 
