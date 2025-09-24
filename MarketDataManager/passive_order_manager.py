@@ -249,7 +249,12 @@ class PassiveOrderManager:
           5) BUY via quote notional (order_amount_fiat); SELL via base_avail_balance
           6) Robust result normalization + 'validated-only' detection
         """
+
+
         trading_pair = product_id
+
+        self.logger.info(f"🧭 PassiveMM:start {product_id} asset={asset}") # debug
+
 
         # ---------- helpers ----------
         def _to_step(value: Decimal, step: Decimal, rounding=ROUND_DOWN) -> Decimal:
@@ -340,6 +345,8 @@ class PassiveOrderManager:
                 min_trades=5, min_pnl_usd=Decimal("0.0"), lookback_days=7,
                 source_filter=None, min_24h_volume=Decimal(self._min_volume), refresh_interval=300
             )
+            self.logger.info(f"🧭 PassiveMM:profitable? {product_id}={trading_pair in profitable} (min_vol={self._min_volume})")
+
             if trading_pair not in profitable:
                 self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
                 return
@@ -353,6 +360,8 @@ class PassiveOrderManager:
             if trading_pair not in active_syms:
                 self.logger.debug(f"⛔ Skipping {trading_pair} — not in active_symbols (leaderboard filter)")
                 return
+            self.logger.info(f"🧭 PassiveMM:active? {product_id}={trading_pair in active_syms} (fresh<=6h)")
+
 
             # -------- 3) build OrderData --------
             try:
@@ -365,6 +374,7 @@ class PassiveOrderManager:
             if not od or not od.highest_bid or not od.lowest_ask:
                 self.logger.debug(f"⛔ No viable book for {trading_pair}")
                 return
+            self.logger.info(f"🧭 PassiveMM:book {product_id} bid={od.highest_bid} ask={od.lowest_ask}")
 
             # -------- 4) spread/edge checks --------
             best_bid = Decimal(od.highest_bid)
@@ -380,6 +390,7 @@ class PassiveOrderManager:
                     f"⛔ {trading_pair} spread too tight ({(spread_pct * 100):.2f}% < {(min_spread_req * 100):.2f}%)"
                 )
                 return
+            self.logger.info(f"🧭 PassiveMM:spread {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
 
             # -------- 5) steps / mins --------
             q_dec = int(od.quote_decimal)
@@ -409,6 +420,8 @@ class PassiveOrderManager:
             if min_base_size and sell_sz < min_base_size:
                 self.logger.debug(f"⛔ Sell size {sell_sz} < min {min_base_size} for {trading_pair}")
                 sell_sz = Decimal("0")
+            self.logger.info(
+                f"🧭 PassiveMM:sizing {product_id} buy_notional_pre=${min_fiat} usd_bal=${usd_bal} -> BUY=${min(min_fiat, usd_bal * Decimal('0.95')):.2f}; SELL={sell_sz} base (avail={base_bal})")
 
             # -------- 8) BUY notional (Option A via order_amount_fiat) --------
             # leave 5% buffer to avoid insuff-funds on fees/rounding
@@ -424,6 +437,7 @@ class PassiveOrderManager:
             if not place_buy and not place_sell:
                 self.logger.debug(f"⛔ Both legs not placeable for {trading_pair} (buy_notional={buy_notional}, sell_sz={sell_sz})")
                 return
+            self.logger.info(f"🧭 PassiveMM:place? {product_id} BUY={place_buy} (${buy_notional}) SELL={place_sell} ({sell_sz})")
 
             # -------- 9) submit BUY first (via order_amount_fiat) --------
             if place_buy:
@@ -441,6 +455,7 @@ class PassiveOrderManager:
                     buy_od.strategy_tag = "PassiveMM"
                     buy_od.source = "PassiveMM"
 
+                    self.logger.info(f"🧭 PassiveMM:BUY submit {product_id} notional=${buy_notional} px={buy_px}")
                     res_buy = await self.tom.place_order(buy_od)
                     ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
                     v_only, reason = _validated_only(raw_buy)
@@ -484,6 +499,7 @@ class PassiveOrderManager:
                     sell_od.strategy_tag = "PassiveMM"
                     sell_od.source = "PassiveMM"
 
+                    self.logger.info(f"🧭 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px}")
                     res_sell = await self.tom.place_order(sell_od)
                     ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
                     v_only, reason = _validated_only(raw_sell)
