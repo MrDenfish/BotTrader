@@ -164,37 +164,78 @@ class OrderTypeManager:
             base_quant = Decimal(f"1e-{order_data.base_decimal}")
             quote_quant = Decimal(f"1e-{order_data.quote_decimal}")
 
-            adjusted_size = Decimal(order_data.adjusted_size).quantize(base_quant, rounding=ROUND_DOWN)
-            adjusted_price = Decimal(order_data.adjusted_price).quantize(quote_quant, rounding=ROUND_DOWN)
+            # ✅ Precision-Safe Adjustments (robust to None/str)
+            def _D(x):
+                try:
+                    return Decimal(str(x))
+                except Exception:
+                    return None
+
+            base_quant = Decimal("1").scaleb(-int(order_data.base_decimal))
+            quote_quant = Decimal("1").scaleb(-int(order_data.quote_decimal))
+
+            px = _D(getattr(order_data, "adjusted_price", None) or getattr(order_data, "price", None))
+            sz = _D(getattr(order_data, "adjusted_size", None) or getattr(order_data, "size", None))
+            notional = _D(getattr(order_data, "order_amount_fiat", None))
+
+            # Derive size from notional/price if needed
+            if (sz is None or sz <= 0) and px is not None and px > 0 and notional is not None and notional > 0:
+                sz = (notional / px)
+
+            if px is None or px <= 0 or sz is None or sz <= 0:
+                self.logger.error(f"❌ SIZE/PRICE missing or invalid: px={px} sz={sz} notional={notional}")
+                return {
+                    "success": False,
+                    "status": "rejected",
+                    "reason": "PRICE_OR_SIZE_INVALID",
+                    "message": f"Invalid price/size: px={px} sz={sz} notional={notional}",
+                    "order_id": None,
+                    "error_response": {"message": "Invalid price/size"}
+                }
+
+            adjusted_price = px.quantize(quote_quant, rounding=ROUND_DOWN)
+            adjusted_size = sz.quantize(base_quant, rounding=ROUND_DOWN)
 
             # ✅ TP/SL from upstream (or override if passed explicitly)
-            tp_price = Decimal(take_profit or order_data.take_profit_price or 0).quantize(quote_quant, rounding=ROUND_DOWN)
-            sl_price = Decimal(stop_loss or order_data.stop_loss_price or 0).quantize(quote_quant, rounding=ROUND_DOWN)
+            tp_price = _D(take_profit or getattr(order_data, "take_profit_price", None) or 0) or Decimal("0")
+            sl_price = _D(stop_loss or getattr(order_data, "stop_loss_price", None) or 0) or Decimal("0")
+            tp_price = tp_price.quantize(quote_quant, rounding=ROUND_DOWN)
+            sl_price = sl_price.quantize(quote_quant, rounding=ROUND_DOWN)
 
             # ✅ Basic balance checks (especially for BUYs)
             if order_data.side.upper() == "BUY":
-                usd_required = adjusted_size * adjusted_price * (1 + order_data.maker)
-                if usd_required > Decimal(order_data.usd_balance):
+                maker_fee = _D(getattr(order_data, "maker", 0)) or Decimal("0")
+                usd_bal = _D(getattr(order_data, "usd_balance", 0)) or Decimal("0")
+                usd_required = adjusted_size * adjusted_price * (Decimal("1") + maker_fee)
+                if usd_required > usd_bal:
                     return {
-                        "error": "Insufficient_USD",
+                        "success": False,
                         "code": 402,
+                        "error": "Insufficient_USD",
                         "message": (
-                            f"⚠️ Order Blocked - Insufficient USD (${order_data.usd_balance}) "
+                            f"⚠️ Order Blocked - Insufficient USD (${usd_bal}) "
                             f"for {asset} BUY. Required: ${usd_required}"
-                        )
+                        ),
+                        "order_id": None
                     }
                 if adjusted_size <= 0:
                     return {
+                        "success": False,
                         "error": "Zero_Size",
                         "code": 700,
-                        "message": f"⚠️ Order Blocked - Zero Size for {asset} BUY."
+                        "message": f"⚠️ Order Blocked - Zero Size for {asset} BUY.",
+                        "order_id": None
                     }
-            elif order_data.side.upper() == "SELL" and adjusted_size > Decimal(order_data.available_to_trade_crypto):
-                return {
-                    "error": "Insufficient_crypto",
-                    "code": 614,
-                    "message": f"⚠️ Order Blocked - Insufficient Crypto to sell {asset}."
-                }
+            elif order_data.side.upper() == "SELL":
+                avail = _D(getattr(order_data, "available_to_trade_crypto", 0)) or Decimal("0")
+                if adjusted_size > avail:
+                    return {
+                        "success": False,
+                        "error": "Insufficient_Crypto",
+                        "code": 614,
+                        "message": f"⚠️ Order Blocked - Insufficient Crypto to sell {asset}.",
+                        "order_id": None
+                    }
 
             # ✅ Coinbase Order Payload (TP/SL attached)
             client_order_id = str(uuid.uuid4())
@@ -222,7 +263,7 @@ class OrderTypeManager:
             # ✅ Submit to Coinbase API
             response = await self.coinbase_api.create_order(order_payload)
 
-            if response.get("success") and response.get("success_response", {}).get("order_id"):
+            if isinstance(response, dict) and response.get("success") and response.get("success_response", {}).get("order_id"):
                 order_id = response["success_response"]["order_id"]
                 print(f"✅ TP/SL Order Placed Successfully → {order_id}")
                 return {
@@ -235,12 +276,32 @@ class OrderTypeManager:
                     "sl": float(sl_price)
                 }
 
+            # Ensure we always return a dict
+            if not isinstance(response, dict):
+                self.logger.error("❌ create_order returned non-dict/None; coercing to failure")
+                return {
+                    "success": False,
+                    "status": "rejected",
+                    "reason": "ADAPTER_RETURNED_NONE",
+                    "message": "Adapter returned None/invalid",
+                    "order_id": None,
+                    "error_response": {"message": "Adapter returned None/invalid"}
+                }
             print(f"❗️ TP/SL Order Rejected → {response.get('error_response', {}).get('message')}")
+            response.setdefault("success", False)
+            response.setdefault("order_id", None)
             return response
 
         except Exception as e:
             self.logger.error(f"❌ Error in process_limit_and_tp_sl_orders: {e}", exc_info=True)
-            return None
+            return {
+                "success": False,
+                "status": "rejected",
+                "reason": "PROCESS_LIMIT_TP_SL_EXCEPTION",
+                "message": str(e),
+                "order_id": None,
+                "error_response": {"message": str(e)}
+            }
 
     async def place_limit_order(self, source, order_data: OrderData):
         """
