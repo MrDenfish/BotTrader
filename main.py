@@ -2,7 +2,7 @@
 import argparse
 import asyncio
 import logging
-import os, pathlib
+import os
 import signal
 import time
 
@@ -44,7 +44,7 @@ from webhook.websocket_helper import WebSocketHelper
 from webhook.websocket_market_manager import WebSocketMarketManager
 from database_manager.database_session_manager import DatabaseSessionManager
 from SharedDataManager.shared_data_manager import SharedDataManager, CustomJSONDecoder
-
+from SharedDataManager.leader_board import (LeaderboardConfig, recompute_and_upsert_active_symbols)
 shutdown_event = asyncio.Event()
 
 # sighook_logger = logger_manager.get_logger("sighook")
@@ -481,7 +481,11 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, market
         asyncio.create_task(periodic_runner(listener.reconcile_with_rest_api, interval=300)),  # 5 minutes
         asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
         asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
-    ]
+        asyncio.create_task(leaderboard_job(shared_data_manager,interval_sec=600,
+                # loosen for bring-up; tighten later
+                lb_cfg=LeaderboardConfig(lookback_hours=24, min_n_24h=1, win_rate_min=0.0, pf_min=0.0),
+            ),name="Leaderboard Recompute")
+        ]
 
     try:
         await shutdown_event.wait()
@@ -520,6 +524,24 @@ async def monitor_db_connections(shared_data_manager, interval=10, threshold=10)
         except Exception as e:
             logger.error(f"💥 monitor_db_connections error: {e} 💥", exc_info=True)
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Periodic Leaderboard Task (Option B: run inside webhook process)
+# ──────────────────────────────────────────────────────────────────────────────
+async def leaderboard_job(shared_data_manager, interval_sec=600, lb_cfg=None):
+    import logging, asyncio
+    from SharedDataManager.leader_board import recompute_and_upsert_active_symbols, LeaderboardConfig
+    log = logging.getLogger("leaderboard")
+    if lb_cfg is None:
+        lb_cfg = LeaderboardConfig(lookback_hours=24, min_n_24h=3, win_rate_min=0.35, pf_min=1.30)
+    while True:
+        try:
+            async with shared_data_manager.async_session() as session:
+                upserted = await recompute_and_upsert_active_symbols(session, lb_cfg)
+                log.info("leaderboard upserted=%s (lookback=%sh, n≥%s, win≥%.2f, pf≥%.2f)",
+                         upserted, lb_cfg.lookback_hours, lb_cfg.min_n_24h, lb_cfg.win_rate_min, lb_cfg.pf_min)
+        except Exception:
+            log.exception("leaderboard recompute failed")
+        await asyncio.sleep(interval_sec)
 
 async def main():
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
@@ -730,7 +752,7 @@ async def main():
                     asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
                     asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
                     asyncio.create_task(websocket_manager.start_websockets()),
-                    asyncio.create_task(accumulation_manager.start_daily_runner())
+                    asyncio.create_task(accumulation_manager.start_daily_runner()),
                 ]
 
                 monitor_interval = int(config.db_monitor_interval or 10)
