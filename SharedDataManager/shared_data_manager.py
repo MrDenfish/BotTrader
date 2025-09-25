@@ -640,13 +640,18 @@ class SharedDataManager:
     # PASSIVE ORDER METHODS
     import json
 
+
+    async def add_passive_order(self, order_id: str, symbol: str, side: str, order_data: dict):
+        # Back-compat alias
+        return await self.save_passive_order(order_id, symbol, side, order_data)
+
+
     async def save_passive_order(self, order_id: str, symbol: str, side: str, order_data: dict):
         try:
             # Step 1: Convert to JSON-safe types
             json_safe = self.shared_utils_utility.convert_json_safe(order_data)
 
             # Step 2: Serialize to string
-            json_string = json.dumps(json_safe)
 
             async with self.database_session_manager.async_session() as session:
                 async with session.begin():
@@ -655,7 +660,7 @@ class SharedDataManager:
                         symbol=symbol,
                         side=side,
                         timestamp=datetime.now(timezone.utc),
-                        order_data=json_string  # ✅ Explicit string
+                        order_data=json_safe    # ✅ JSON object (so ->> works in SQL)
                     )
                     session.add(po)
 
