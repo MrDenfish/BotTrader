@@ -493,6 +493,7 @@ class PassiveOrderManager:
                     self.logger.info(f"🧭 PassiveMM:BUY submit {product_id} notional=${buy_notional} px={buy_px}")
                     res_buy = await self.tom.place_order(buy_od)
                     ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
+
                     v_only, reason = _validated_only(raw_buy)
 
                     if v_only:
@@ -534,7 +535,8 @@ class PassiveOrderManager:
                     sell_od.strategy_tag = "PassiveMM"
                     sell_od.source = "PassiveMM"
 
-                    self.logger.info(f"🧭 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px}")
+                    self.logger.info(f"🚀🚀 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px} 🚀🚀")
+
                     res_sell = await self.tom.place_order(sell_od)
                     ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
                     v_only, reason = _validated_only(raw_sell)
