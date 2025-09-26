@@ -20,7 +20,7 @@ It expects the surrounding code‑base to provide:
 Drop‑in defaults are provided for things like `min_spread_pct`, but tune
 these at runtime based on your exchange tier and risk appetite.
 """
-
+import os
 import asyncio
 import copy
 import time
@@ -87,8 +87,8 @@ class PassiveOrderManager:
         self._min_buy_value = Decimal(config.min_buy_value)
 
         # Passive order parameters
-        self._min_spread_pct = Decimal(config.min_spread_pct)
-        self._edge_buffer_pct = Decimal(config.edge_buffer_pct)
+        self._min_spread_pct = Decimal(os.getenv("MIN_SPREAD_PCT", str(config.min_spread_pct)))
+        self._edge_buffer_pct = Decimal(os.getenv("EDGE_BUFFER_PCT", str(config.edge_buffer_pct)))
         self._inventory_bias_factor = Decimal(config.inventory_bias_factor)
         self._max_lifetime = int(config.max_lifetime)
 
@@ -397,11 +397,14 @@ class PassiveOrderManager:
             min_quote_notional = Decimal(str(getattr(od, "min_quote_notional", "0") or "0"))
 
             # Adaptive requirement: max(global floor, 2*maker fee + buffer, 2*tick width)
+            ignore_fees = os.getenv("PASSIVE_IGNORE_FEES_FOR_SPREAD", "false").lower() in ("1", "true", "yes")
+
             maker_fee = Decimal(str(getattr(od, "maker", "0") or "0"))
             tick_spread = (Decimal("2") * price_step) / mid
             fee_spread = (maker_fee * Decimal("2")) + self._edge_buffer_pct
             floor_spread = self._min_spread_pct
-            min_spread_req = max(floor_spread, fee_spread, tick_spread)
+            min_spread_req = max(floor_spread, tick_spread) if ignore_fees else max(floor_spread, fee_spread, tick_spread)
+
             self.logger.info(
                 f"🧭 PassiveMM:spread_req {product_id} floor={(floor_spread * 100):.3f}% "
                 f"fees={(fee_spread * 100):.3f}% ticks={(tick_spread * 100):.3f}% → req={(min_spread_req * 100):.3f}%"
@@ -498,7 +501,7 @@ class PassiveOrderManager:
                             f"order_amount_fiat=${buy_notional} @ {buy_px}"
                         )
                     elif ok_buy and order_id_buy:
-                        await self.shared_data_manager.add_passive_order(
+                        await self.shared_data_manager.save_passive_order(
                             order_id=order_id_buy, symbol=trading_pair, side="buy",
                             order_data=getattr(buy_od, "to_dict", lambda: {
                                 "price": str(buy_px), "order_amount_fiat": str(buy_notional),
@@ -542,7 +545,7 @@ class PassiveOrderManager:
                             f"size={sell_sz} @ {sell_px}"
                         )
                     elif ok_sell and order_id_sell:
-                        await self.shared_data_manager.add_passive_order(
+                        await self.shared_data_manager.save_passive_order(
                             order_id=order_id_sell, symbol=trading_pair, side="sell",
                             order_data=getattr(sell_od, "to_dict", lambda: {
                                 "price": str(sell_px), "size": str(sell_sz),
