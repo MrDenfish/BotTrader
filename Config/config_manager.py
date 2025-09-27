@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 from typing import Any, Optional
 from coinbase import rest as coinbase
 from Shared_Utils.runtime_env import running_in_docker as running_in_docker
-
+from Shared_Utils.url_helper import build_asyncpg_url_from_env
 
 class CentralConfig:
     """Centralized configuration manager shared across all modules."""
@@ -210,43 +210,52 @@ class CentralConfig:
             else:
                 self._json_config[key] = value
 
+    # def _generate_database_url(self):
+    #     """Generate the database URL from env/SSM with sensible precedence.
+    #     Precedence:
+    #   1) DATABASE_URL (complete URL, includes driver)
+    #   2) DB_* pieces (DB_HOST/DB_USER/DB_PASSWORD/DB_NAME/DB_PORT)"""
+    #     try:
+    #         def pick(*vals):
+    #             for v in vals:
+    #                 if v not in (None, "", "None"):
+    #                     return v
+    #             return None
+    #
+    #         # 1) Honor DATABASE_URL if provided (let it include driver like postgresql+asyncpg://)
+    #         url = os.getenv("DATABASE_URL")
+    #         if url:
+    #             self.db_url = url
+    #             print(f"Configured PostgreSQL (from DATABASE_URL): {url}")
+    #             print(f" ❇️  web_url: {self.web_url}  ❇️ ")
+    #             return
+    #
+    #         # 2) Build from canonical DB_* (no docker-specific vars)
+    #         db_host = pick(os.getenv("DB_HOST"))
+    #         db_user = pick(os.getenv("DB_USER"))
+    #         db_pass = pick(os.getenv("DB_PASSWORD"))
+    #         db_name = pick(os.getenv("DB_NAME"))
+    #         db_port = pick(os.getenv("DB_PORT"), "5432")
+    #
+    #         missing = [k for k, v in dict(DB_HOST=db_host, DB_USER=db_user,
+    #                                       DB_PASSWORD=db_pass, DB_NAME=db_name).items() if not v]
+    #         if missing:
+    #             raise ValueError(f"Missing DB settings: {', '.join(missing)}")
+    #
+    #         # Use async driver by default for SQLAlchemy async engines
+    #         self.db_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
+    #         print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{db_port}/{db_name}")
+    #         print(f" ❇️  web_url: {self.web_url}  ❇️ ")
+    #
+    #     except Exception as e:
+    #         print(f"Error configuring database URL: {e}")
+    #         raise
     def _generate_database_url(self):
-        """Generate the database URL from env/SSM with sensible precedence.
-        Precedence:
-      1) DATABASE_URL (complete URL, includes driver)
-      2) DB_* pieces (DB_HOST/DB_USER/DB_PASSWORD/DB_NAME/DB_PORT)"""
         try:
-            def pick(*vals):
-                for v in vals:
-                    if v not in (None, "", "None"):
-                        return v
-                return None
-
-            # 1) Honor DATABASE_URL if provided (let it include driver like postgresql+asyncpg://)
-            url = os.getenv("DATABASE_URL")
-            if url:
-                self.db_url = url
-                print(f"Configured PostgreSQL (from DATABASE_URL): {url}")
-                print(f" ❇️  web_url: {self.web_url}  ❇️ ")
-                return
-
-            # 2) Build from canonical DB_* (no docker-specific vars)
-            db_host = pick(os.getenv("DB_HOST"))
-            db_user = pick(os.getenv("DB_USER"))
-            db_pass = pick(os.getenv("DB_PASSWORD"))
-            db_name = pick(os.getenv("DB_NAME"))
-            db_port = pick(os.getenv("DB_PORT"), "5432")
-
-            missing = [k for k, v in dict(DB_HOST=db_host, DB_USER=db_user,
-                                          DB_PASSWORD=db_pass, DB_NAME=db_name).items() if not v]
-            if missing:
-                raise ValueError(f"Missing DB settings: {', '.join(missing)}")
-
-            # Use async driver by default for SQLAlchemy async engines
-            self.db_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-            print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{db_port}/{db_name}")
+            self.db_url = build_asyncpg_url_from_env()
+            masked = self.db_url.replace(self.db_url.split("://", 1)[1].split("@", 1)[0], "****:****")
+            print(f"Configured PostgreSQL database at: {masked}")
             print(f" ❇️  web_url: {self.web_url}  ❇️ ")
-
         except Exception as e:
             print(f"Error configuring database URL: {e}")
             raise

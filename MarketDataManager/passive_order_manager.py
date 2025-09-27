@@ -535,7 +535,7 @@ class PassiveOrderManager:
                     sell_od.strategy_tag = "PassiveMM"
                     sell_od.source = "PassiveMM"
 
-                    self.logger.info(f"🚀🚀 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px} 🚀🚀")
+                    print(f"🚀🚀 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px} 🚀🚀",self.shared_utils_color.BRIGHT_GREEN)
 
                     res_sell = await self.tom.place_order(sell_od)
                     ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
@@ -554,7 +554,8 @@ class PassiveOrderManager:
                                 "post_only": True, "tif": "GTC", "source": "PassiveMM"
                             })()
                         )
-                        self.logger.info(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})")
+                        print(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})",
+                              self.shared_utils_color.BRIGHT_GREEN)
                     else:
                         self.logger.error(
                             f"❌ Failed to place PASSIVE SELL for {trading_pair} — "
@@ -884,83 +885,6 @@ class PassiveOrderManager:
             self.logger.error(f"❌ Error in _monitor_active_symbol for {symbol}: {e}", exc_info=True)
         finally:
             entry["monitor_task"] = None
-
-    # async def get_profitable_symbols(
-    #         self,
-    #         min_trades: int = 5,
-    #         min_pnl_usd: Decimal = Decimal("0.0"),
-    #         lookback_days: int = 7,
-    #         source_filter: str | None = None,
-    #         min_24h_volume: Decimal = Decimal("750000"),  # 750k USD
-    #         refresh_interval: int = 300  # 5 minutes
-    # ) -> set:
-    #     """
-    #     Returns profitable & liquid symbols based on recent trades.
-    #
-    #     ✅ Uses caching to avoid DB overload (refresh every `refresh_interval` seconds).
-    #     ✅ Fetches only trades in the last `lookback_days` (not the entire table).
-    #     ✅ Includes all trade sources by default (PassiveMM + others).
-    #     ✅ Filters by technical liquidity (24h volume > threshold).
-    #     """
-    #     try:
-    #         now = time.time()
-    #         # ✅ Return cached results if refresh interval not exceeded
-    #         if now - self._profitable_symbols_cache["last_update"] < refresh_interval:
-    #             return self._profitable_symbols_cache["symbols"]
-    #
-    #         cutoff_time = datetime.now(timezone.utc) - timedelta(days=lookback_days)
-    #
-    #         # ✅ Fetch only recent trades instead of full-table
-    #         trades = await self.shared_data_manager.trade_recorder.fetch_recent_trades(
-    #             days=lookback_days
-    #         )
-    #
-    #         if not trades:
-    #             return set()
-    #
-    #         df = pd.DataFrame([t.__dict__ for t in trades])
-    #         df = df[pd.to_datetime(df['order_time']) >= cutoff_time]
-    #
-    #         if source_filter:
-    #             df = df[df['source'] == source_filter]
-    #
-    #         grouped = df.groupby('symbol').agg(
-    #             trade_count=('order_id', 'count'),
-    #             total_profit=('realized_profit', 'sum')
-    #         )
-    #
-    #         filtered = grouped[
-    #             (grouped['trade_count'] >= min_trades) &
-    #             (grouped['total_profit'] >= float(min_pnl_usd))
-    #             ]
-    #
-    #         profitable_symbols = set(filtered.index)
-    #
-    #         # ✅ Cross-check with liquidity filter (24h volume > threshold)
-    #         try:
-    #             usd_pairs = self.shared_data_manager.market_data.get("usd_pairs_cache", pd.DataFrame())
-    #             if not usd_pairs.empty and 'volume_24h' in usd_pairs.columns:
-    #                 liquid_symbols = set(
-    #                     usd_pairs[usd_pairs['volume_24h'] >= float(min_24h_volume)]['symbol']
-    #                 )
-    #                 profitable_symbols = profitable_symbols.intersection(liquid_symbols)
-    #         except Exception as e:
-    #             self.logger.warning(f"⚠️ 24h volume filter failed: {e}")
-    #
-    #         # ✅ Cache results for next call
-    #         self._profitable_symbols_cache.update({
-    #             "last_update": now,
-    #             "symbols": profitable_symbols
-    #         })
-    #
-    #         self.logger.info(
-    #             f"✅ Profitable & Liquid symbols (cached for {refresh_interval}s): {profitable_symbols}"
-    #         )
-    #         return profitable_symbols
-    #
-    #     except Exception as e:
-    #         self.logger.warning(f"⚠️ Failed to fetch profitable symbols: {e}", exc_info=True)
-    #         return set()
 
     async def live_performance_tracker(self, interval: int = 300, lookback_days: int = 7):
         """

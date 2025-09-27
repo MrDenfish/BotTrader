@@ -2,21 +2,20 @@ import os
 import ssl
 import json
 import asyncio
+import asyncpg
 import TableModels
 
 from sqlalchemy import text
 from sqlalchemy import select
+from TableModels.base import Base
 from urllib.parse import urlparse
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-
-from TableModels.base import Base
 from contextlib import asynccontextmanager
 from TableModels.shared_data import SharedData
-from Config.config_manager import CentralConfig
 from TableModels.passive_orders import PassiveOrder
-
+from sqlalchemy.exc import OperationalError, DBAPIError
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 class DatabaseSessionManager:
     """Handles the creation and management of database sessions."""
@@ -52,16 +51,31 @@ class DatabaseSessionManager:
         # Initialize the SQLAlchemy async engine
         def _should_use_ssl(db_url: str) -> bool:
             """Use SSL for RDS by default; allow env overrides."""
-            # explicit on/off
-            if os.getenv("DB_REQUIRE_SSL", "").lower() in ("1","true","yes","on"):
+            if os.getenv("DB_REQUIRE_SSL", "").lower() in ("1", "true", "yes", "on"):
                 return True
-            if os.getenv("DB_DISABLE_SSL", "").lower() in ("1","true","yes","on"):
+            if os.getenv("DB_DISABLE_SSL", "").lower() in ("1", "true", "yes", "on"):
                 return False
-            # heuristic by host
             host = urlparse(db_url.replace("+asyncpg", "")).hostname or ""
             return host.endswith(".rds.amazonaws.com") or "amazonaws.com" in host
 
-        connect_args = {}
+        # --- Build connect_args (ssl + timeouts + app_name) ---
+        app_name = os.getenv("DB_APP_NAME", "bottrader")
+        statement_timeout_ms = os.getenv("DB_STATEMENT_TIMEOUT_MS", "60000")  # 60s default
+        connect_timeout = float(os.getenv("DB_CONNECT_TIMEOUT", "5"))  # seconds
+
+        connect_args: dict = {
+            "timeout": connect_timeout,
+            "server_settings": {
+                "application_name": app_name,
+                # per-connection GUCs (optional but handy)
+                "statement_timeout": statement_timeout_ms,  # ms
+                # keepalives help server notice dead clients sooner
+                "tcp_keepalives_idle": os.getenv("DB_TCP_KEEPALIVES_IDLE", "60"),
+                "tcp_keepalives_interval": os.getenv("DB_TCP_KEEPALIVES_INTERVAL", "20"),
+                "tcp_keepalives_count": os.getenv("DB_TCP_KEEPALIVES_COUNT", "3"),
+            },
+        }
+
         if _should_use_ssl(self.config.database_url):
             try:
                 cafile = "/etc/ssl/certs/rds-global-bundle.pem"
@@ -69,26 +83,46 @@ class DatabaseSessionManager:
                     ssl_ctx = ssl.create_default_context(cafile=cafile)
                     connect_args["ssl"] = ssl_ctx
                 else:
-                    # still request SSL even without CA file (works locally if server supports SSL)
                     connect_args["ssl"] = True
             except Exception:
                 connect_args["ssl"] = True
-        # else: no SSL param for localhost/dev
 
+        # --- Engine with modest pool + quick recycle ---
         self.engine = create_async_engine(
             self.config.database_url,
             echo=False,
-            pool_size=10,
-            max_overflow=20,
-            pool_timeout=60,
-            pool_recycle=1800,
+            pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
+            pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5 min
             pool_pre_ping=True,
             future=True,
-            connect_args=connect_args,   # <— now conditional
+            connect_args=connect_args,
         )
 
+        self._async_session_factory = sessionmaker(
+            bind=self.engine, expire_on_commit=False, class_=AsyncSession
+        )
 
-        self._async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
+        # --- Optional: a tiny, safe initialize() with one retry ---
+        async def initialize(self) -> None:
+            """Warm up the pool and verify connectivity, with a single fast retry."""
+            last_exc = None
+            for attempt in (1, 2):
+                try:
+                    async with self._async_session_factory() as s:
+                        await s.execute(text("SELECT 1"))
+                    return
+                except (OSError, ConnectionError, OperationalError, DBAPIError, asyncpg.PostgresError) as e:
+                    last_exc = e
+                    # If this was a transient tunnel flap, dispose and try once more.
+                    await self.engine.dispose()
+                    if attempt == 1:
+                        await asyncio.sleep(0.75)
+                        continue
+                    break
+            # give original error after retries
+            raise last_exc
 
     def _connect_args_for_ssl(self, database_url: str) -> dict:
         """

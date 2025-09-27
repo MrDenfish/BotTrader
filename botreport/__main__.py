@@ -14,7 +14,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import create_async_engine
 import sqlalchemy
-
+from Shared_Utils.url_helper import build_asyncpg_url_from_env
 from .metrics_compute import (
     fetch_trade_stats,
     fetch_sharpe_trade,
@@ -41,17 +41,7 @@ def send_email_html(*, html: str, subject: str, sender: str, recipients: list[st
 
 
 def build_db_url_from_env() -> str:
-    db_url = _env("DATABASE_URL")
-    if db_url:
-        if db_url.startswith("postgresql://"):
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return db_url
-    host = _env("DB_HOST", "db")
-    port = _env("DB_PORT", "5432")
-    name = _env("DB_NAME", "bot_trader_db")
-    user = _env("DB_USER", "bot_user")
-    pwd  = _env("DB_PASSWORD", "")
-    return f"postgresql+asyncpg://{user}:{pwd}@{host}:{port}/{name}"
+    return build_asyncpg_url_from_env()
 
 
 def parse_args() -> argparse.Namespace:
