@@ -5,6 +5,8 @@ services:
     image: postgres:16
     container_name: db
     restart: unless-stopped
+    env_file:
+      - /opt/bot/.env_runtime
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: bot_user
@@ -36,6 +38,8 @@ services:
         condition: service_healthy
     entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
     # (if entrypoint uses python, PYTHONUNBUFFERED makes it unbuffered even without -u)
+    ports:
+      - "127.0.0.1:5003:5003"
     expose:
       - "5003"
     healthcheck:
