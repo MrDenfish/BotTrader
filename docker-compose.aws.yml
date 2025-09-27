@@ -12,6 +12,8 @@ services:
       TZ: ${TZ}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bot_user -d ${DB_NAME} -h 127.0.0.1 -p ${DB_PORT:-5432}"]
       interval: 5s

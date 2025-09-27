@@ -607,7 +607,7 @@ class WebhookListener:
         """
         print(f"Processing order fill: {order_data.side}:{order_data.trading_pair}")
         try:
-            if order_data.open_orders:
+            if order_data.open_orders is not None:
                 if order_data.open_orders.get('open_order'):
                     return
 
