@@ -432,7 +432,7 @@ class PassiveOrderManager:
                 return
 
             # Base sizes implied by your min fiat floor (used for initial suggestion only)
-            min_fiat = Decimal(self._min_order_amount_fiat)  # e.g., $10 or $60
+            min_fiat = Decimal(self._min_order_amount_fiat + 5)  # e.g., $10 or $60 add 5 for debugging passive order placement
             implied_buy_base = _to_step(min_fiat / buy_px, size_step, ROUND_DOWN)
             implied_sell_base = _to_step(min_fiat / sell_px, size_step, ROUND_DOWN)
 
