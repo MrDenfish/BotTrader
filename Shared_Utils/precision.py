@@ -4,7 +4,7 @@ from inspect import stack  # debugging
 
 import pandas as pd
 from typing import Optional
-from decimal import localcontext, Decimal, ROUND_DOWN, InvalidOperation
+from decimal import Decimal, ROUND_DOWN, InvalidOperation, localcontext, getcontext
 
 
 class PrecisionUtils:
@@ -60,38 +60,49 @@ class PrecisionUtils:
         except (TypeError, ValueError, InvalidOperation):
             return Decimal(default)
 
-    def safe_convert(self, val, decimal_places: int = 1) -> Decimal:
-        """
-        Safely convert a value to Decimal and quantize it using the given number of decimal places.
-        If decimal_places is invalid, defaults to 4.
-        """
-        try:
-            self.logger.debug(f"🔍 Converting val={val} with decimal_places={decimal_places}")
-            if not isinstance(decimal_places, int) or decimal_places < 0:
-                self.logger.warning(f"⚠️ safe_convert: Invalid decimal_places={decimal_places}. Defaulting to 1.")
-                decimal_places = 1
-
-            quantize_format = Decimal('1').scaleb(-decimal_places)
-            return Decimal(str(val)).quantize(quantize_format, rounding=ROUND_DOWN)
-
-        except (InvalidOperation, ValueError, TypeError) as e:
-            self.logger.warning(f"⚠️ safe_convert: Could not convert value={val} with decimal_places={decimal_places}: {e}")
-            fallback_format = Decimal('1').scaleb(-decimal_places if isinstance(decimal_places, int) and decimal_places >= 0 else -1)
-            return Decimal('0').quantize(fallback_format)
+    def quant_from_places(self, decimal_places: int) -> Decimal:
+        """Return a quantizer Decimal like 1e-5 for decimal_places=5."""
+        if not isinstance(decimal_places, int) or decimal_places < 0:
+            self.logger.warning(f"⚠️ quant_from_places: invalid decimal_places={decimal_places}; defaulting to 4.")
+            decimal_places = 4
+        return Decimal('1').scaleb(-decimal_places)
 
     def safe_quantize(self, value: Decimal, precision: Decimal, rounding=ROUND_DOWN) -> Decimal:
         try:
             if not isinstance(value, Decimal):
                 value = Decimal(str(value))
+            # Handle non-finite cleanly (NaN/Inf)
+            if not value.is_finite():
+                self.logger.warning(f"⚠️ safe_quantize: non-finite value {value}; returning 0 at requested scale.")
+                return Decimal(0).quantize(precision, rounding=rounding)
             return value.quantize(precision, rounding=rounding)
         except InvalidOperation:
             try:
+                # Bump context precision enough for integer digits + scale (more predictable than len(str(...)))
                 with localcontext() as ctx:
-                    ctx.prec = max(len(str(value).replace('.', '').replace('-', '')), 28)  # generous precision
+                    int_part = abs(value).to_integral_value(rounding=ROUND_DOWN)
+                    int_digits = len(int_part.as_tuple().digits) or 1
+                    # precision exponent is negative: e.g., precision=Decimal('1E-5') -> scale 5
+                    scale = -precision.as_tuple().exponent
+                    ctx.prec = max(int_digits + scale, getcontext().prec, 28)
                     return value.quantize(precision, rounding=rounding)
             except Exception as fallback_error:
                 self.logger.error(f"❌ safe_quantize failed for value={value}, precision={precision}: {fallback_error}")
-                return Decimal(0)  # Or raise, depending on your policy
+                return Decimal(0)  # or raise, per your policy
+
+    def safe_convert(self, val, decimal_places: int = 4, *, rounding=ROUND_DOWN) -> Decimal:
+        """
+        Safely convert a value to Decimal and quantize to `decimal_places`.
+        Defaults to 4 places. Truncates by default (ROUND_DOWN).
+        """
+        quant = self.quant_from_places(decimal_places)
+        try:
+            d = val if isinstance(val, Decimal) else Decimal(str(val))
+        except Exception as e:
+            self.logger.warning(f"⚠️ safe_convert: bad input {val!r}; returning 0 at scale {decimal_places}: {e}")
+            d = Decimal(0)
+        # Delegate all heavy lifting to unified quantizer
+        return self.safe_quantize(d, quant, rounding=rounding)
 
     def fetch_precision(self, symbol: str, *, usd_pairs_override: Optional[pd.DataFrame] = None) -> tuple:
         """

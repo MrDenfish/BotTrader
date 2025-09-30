@@ -42,7 +42,7 @@ class TradeBot:
     _exchange_instance_count = 0
 
     def __init__(self, coinbase_api, shared_data_mgr, shutdown_event: asyncio.Event,trade_recorder, market_data_updater,rest_client, portfolio_uuid, exchange, order_book_manager,
-                 logger_manager=None, websocket_helper=None, shared_utils_debugger=None, shared_utils_print=None, shared_utils_color=None):
+                 logger_manager=None, websocket_helper=None, test_debug_maint=None, shared_utils_print=None, shared_utils_color=None):
         self.coinbase_api = coinbase_api
         self.shared_data_manager = shared_data_mgr
         self.shutdown_event = shutdown_event
@@ -97,15 +97,15 @@ class TradeBot:
         return self.shared_data_manager.market_data.get('ticker_cache')
 
     @property
-    def min_volume_new(self):
+    def min_quote_volume(self):
         return round(Decimal(self.shared_data_manager.market_data.get('avg_quote_volume', 0)), 0)
 
-    async def async_init(self, validate_startup_data: bool = False, shared_utils_debugger=None, shared_utils_print=None, shared_utils_color=None):
+    async def async_init(self, validate_startup_data: bool = False, test_debug_maint=None, shared_utils_print=None, shared_utils_color=None):
         """Initialize bot components asynchronously.
 
         Args:
             validate_startup_data (bool): If True, validate and attempt to recover startup snapshot data.
-            shared_utils_debugger: Debugging utility instance.
+            test_debug_maint: Debugging utility instance.
             shared_utils_print: Print utility instance.
         """
 
@@ -113,13 +113,13 @@ class TradeBot:
         self.snapshots_manager = SnapshotsManager.get_instance(self.shared_data_manager, self.logger_manager)
 
         # ✅ Assign shared_utils if provided
-        self.shared_utils_debugger = shared_utils_debugger or getattr(self, 'shared_utils_debugger', None)
+        self.test_debug_maint = test_debug_maint or getattr(self, 'test_debug_maint', None)
         self.shared_utils_print = shared_utils_print or getattr(self, 'shared_utils_print', None)
         self.shared_utils_color = shared_utils_color or getattr(self, 'shared_utils_color', None)
 
         # ✅ Ensure shared_utils are defined before using them
-        if not self.shared_utils_debugger or not self.shared_utils_print:
-            raise AttributeError("TradeBot is missing shared_utils_debugger or shared_utils_print. Please provide them during initialization.")
+        if not self.test_debug_maint or not self.shared_utils_print:
+            raise AttributeError("TradeBot is missing test_debug_maint or shared_utils_print. Please provide them during initialization.")
 
         # ✅ Then load components that might use this data
         await self.load_bot_components()
@@ -127,7 +127,7 @@ class TradeBot:
         self.ticker_manager = await TickerManager.get_instance(
             self.app_config,
             self.coinbase_api,
-            self.shared_utils_debugger,
+            self.test_debug_maint,
             self.shared_utils_print,
             self.shared_utils_color,
             self.logger_manager,
@@ -214,7 +214,7 @@ class TradeBot:
         # Core Utilities
         self.alerts = AlertSystem.get_instance(self.logger_manager)
         self.ccxt_api = ApiManager.get_instance(self.exchange, self.logger_manager, self.alerts)
-        self.shared_utils_debugger = Debugging()
+        self.test_debug_maint = Debugging()
         self.shared_utils_precision = PrecisionUtils.get_instance(self.logger_manager, self.shared_data_manager)
         self.shared_utils_datas_and_times = DatesAndTimes.get_instance(self.logger_manager)
         self.shared_utils_utility = SharedUtility.get_instance(self.logger_manager)
@@ -239,7 +239,7 @@ class TradeBot:
         )
 
         self.ticker_manager = await TickerManager.get_instance(
-            self.app_config, self.coinbase_api, self.shared_utils_debugger,
+            self.app_config, self.coinbase_api, self.test_debug_maint,
             self.shared_utils_print, self.shared_utils_color, self.logger_manager,
             self.order_book_manager, self.rest_client, self.portfolio_uuid, self.exchange,
             self.ccxt_api, self.shared_data_manager, self.shared_utils_precision
@@ -403,7 +403,7 @@ class TradeBot:
                 if open_orders is None or open_orders.empty:  # debug
                     print("No open orders found.")
 
-                self.shared_utils_print.print_data(self.min_volume_new, open_orders, buy_sell_matrix, submitted_orders,
+                self.shared_utils_print.print_data(self.min_quote_volume, open_orders, buy_sell_matrix, submitted_orders,
                                                    aggregated_df)
 
                 total_time = self.shared_utils_print.print_elapsed_time(self.start_time, 'load bot components')

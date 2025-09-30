@@ -24,6 +24,8 @@ class CoinbaseAPI:
     _active_ohlcv_tasks = 0  # tracking active tasks
 
     def __init__(self, session, shared_utils_utility, logger_manager, shared_utils_precision):
+        self.session: aiohttp.ClientSession | None = None
+        self.session = session
         self.config = Config()
         self._reload_credentials_from_config()
 
@@ -40,7 +42,6 @@ class CoinbaseAPI:
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
 
-        self.session = session
 
         self.api_algo = self.config.load_websocket_api_key().get('algorithm')
 
@@ -335,7 +336,7 @@ class CoinbaseAPI:
         timeout_seconds = 15  # ⏱ To catch long stalls
         async with aiohttp.ClientSession() as session:
             resp = await asyncio.wait_for(
-                self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
+            session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
                 timeout=timeout_seconds
             )
             async with resp:
@@ -661,7 +662,7 @@ class CoinbaseAPI:
 
                     try:
                         resp = await asyncio.wait_for(
-                            self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
+                            session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
                             timeout=timeout_seconds
                         )
                         async with resp:

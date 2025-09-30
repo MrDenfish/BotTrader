@@ -184,6 +184,8 @@ class TradeRecorder:
             status = trade_data.get("status")
             trigger = trade_data.get("trigger")
             source = trade_data.get("source")
+            if source == 'unknown':
+                pass # debug
 
             # -----------------------------
             # ✅ Normalize Basic Fields

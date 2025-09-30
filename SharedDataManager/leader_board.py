@@ -1,13 +1,25 @@
 # SharedDataManager/leader_board.py
+
 from __future__ import annotations
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+
 import math
+
+from typing import Callable, Any, Optional
+from dataclasses import dataclass
+
+from piptools.writer import strip_comes_from_line_re
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from Shared_Utils.logging_manager import LoggerManager
+from TableModels.trade_record import TradeRecord
+from sqlalchemy.dialects.postgresql import insert
+from datetime import datetime, timedelta, timezone
 from TableModels.active_symbols import ActiveSymbol
-from TableModels.trade_record import TradeRecord  # if you have a model; else we’ll query table via text()
+from Shared_Utils.logging_manager import LoggerManager
+
+# Add type for clarity: fetch_precision takes symbol -> tuple[base_deci, quote_deci, base_quant, quote_quant]
+FetchPrecisionFn = Callable[[str], tuple[int, int, object, object]]
+
+AdjustPrecisionFn = Callable[[int, int, Any, str], Any]
 
 # ---- Tunables (same defaults we tested) ----
 WIN_RATE_MIN = 0.35
@@ -86,7 +98,8 @@ def _fold_metrics(rows):
         })
     return out
 
-async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: LeaderboardConfig = LeaderboardConfig()):
+async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: LeaderboardConfig, logger_manager: LoggerManager,
+                                              fetch_precision: FetchPrecisionFn, adjust_precision: Optional[AdjustPrecisionFn] = None) -> None:
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=cfg.lookback_hours)
@@ -95,23 +108,30 @@ async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: Leader
     metrics = _fold_metrics(rows)
 
     # Upsert into active_symbols
-    from sqlalchemy.dialects.postgresql import insert
+
     upserts = []
     for m in metrics:
+        base_deci, quote_deci, _, _ = fetch_precision(m["symbol"])
+        mean_pnl = adjust_precision(base_deci, quote_deci, m["mean_pnl"], "quote")
+        gross_loss = adjust_precision(base_deci, quote_deci, m["gross_loss"], "quote")
+        gross_profit = adjust_precision(base_deci, quote_deci, m["gross_profit"], "quote")
+        profit_factor = adjust_precision(base_deci, quote_deci, m["profit_factor"], "quote")
+        score = adjust_precision(base_deci, quote_deci, m["score"], "base")
         eligible = (
             m["n"] >= cfg.min_n_24h and
             m["win_rate"] >= cfg.win_rate_min and
-            m["mean_pnl"] > 0 and
-            (m["profit_factor"] or 0.0) >= cfg.pf_min
+            mean_pnl > 0 and
+            (profit_factor or 0.0) >= cfg.pf_min
         )
+
         stmt = insert(ActiveSymbol).values(
             symbol=m["symbol"],
             as_of=now,
             window_hours=cfg.lookback_hours,
             n=m["n"], wins=m["wins"], losses=m["losses"],
-            win_rate=m["win_rate"], mean_pnl=m["mean_pnl"],
-            gross_profit=m["gross_profit"], gross_loss=m["gross_loss"],
-            profit_factor=m["profit_factor"], score=m["score"],
+            win_rate=m["win_rate"], mean_pnl=mean_pnl,
+            gross_profit=gross_profit, gross_loss=gross_loss,
+            profit_factor=profit_factor, score=score,
             eligible=eligible
         ).on_conflict_do_update(
             index_elements=[ActiveSymbol.symbol],
@@ -119,9 +139,9 @@ async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: Leader
                 "as_of": now,
                 "window_hours": cfg.lookback_hours,
                 "n": m["n"], "wins": m["wins"], "losses": m["losses"],
-                "win_rate": m["win_rate"], "mean_pnl": m["mean_pnl"],
-                "gross_profit": m["gross_profit"], "gross_loss": m["gross_loss"],
-                "profit_factor": m["profit_factor"], "score": m["score"],
+                "win_rate": m["win_rate"], "mean_pnl": mean_pnl,
+                "gross_profit": gross_profit, "gross_loss": gross_loss,
+                "profit_factor": profit_factor, "score": score,
                 "eligible": eligible
             }
         )

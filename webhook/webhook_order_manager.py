@@ -200,6 +200,7 @@ class TradeOrderManager:
             current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
             current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
             spread = Decimal(bid_ask.get("spread", 0))
+            spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
             price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
 
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))

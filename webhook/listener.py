@@ -7,6 +7,7 @@ import random
 import socket
 import asyncio
 import websockets
+import contextlib
 import datetime as dt
 
 from aiohttp import web
@@ -44,6 +45,7 @@ from Shared_Utils.snapshots_manager import SnapshotsManager
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from webhook.websocket_market_manager import WebSocketMarketManager
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK, InvalidStatusCode
 
 
 
@@ -75,6 +77,10 @@ class WebSocketManager:
 
         # ✅ Phase 1: Graceful shutdown event
         self.shutdown_event = asyncio.Event()
+
+        # Single-flight reconnect locks
+        self._market_reconnect_lock = asyncio.Lock()
+        self._user_reconnect_lock = asyncio.Lock()
 
     # ===============================================================
     # PUBLIC METHODS
@@ -114,132 +120,186 @@ class WebSocketManager:
 
     async def connect_market_stream(self):
         """Reconnect the market WebSocket."""
-        if self.market_ws_task:
-            self.logger.warning("🔄 Cancelling old market_ws_task...")
-            self.market_ws_task.cancel()
-            try:
-                await self.market_ws_task
-            except asyncio.CancelledError:
-                self.logger.info("🧹 Previous market_ws_task cancelled cleanly.")
-        self.market_ws_task = asyncio.create_task(
-            self.connect_websocket(self.market_ws_url, is_user_ws=False)
-        )
+        async with self._market_reconnect_lock:
+            if self.market_ws_task and not self.market_ws_task.done():
+                self.logger.warning("🔄 Cancelling old market_ws_task...")
+                self.market_ws_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.market_ws_task
+                self.logger.info("🧹 Previous market_ws_task closed cleanly.")
+            self.market_ws_task = asyncio.create_task(
+                self.connect_websocket(self.market_ws_url, is_user_ws=False)
+            )
 
     async def connect_user_stream(self):
         """Reconnect the user WebSocket."""
-        if self.user_ws_task:
-            self.logger.warning("🔄 Cancelling old user_ws_task...")
-            self.user_ws_task.cancel()
-            try:
-                await self.user_ws_task
-            except asyncio.CancelledError:
-                self.logger.info("🧹 Previous user_ws_task cancelled cleanly.")
-        self.user_ws_task = asyncio.create_task(
-            self.connect_websocket(self.user_ws_url, is_user_ws=True)
-        )
+        async with self._user_reconnect_lock:
+            if self.user_ws_task and not self.user_ws_task.done():
+                self.logger.warning("🔄 Cancelling old user_ws_task...")
+                self.user_ws_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.user_ws_task
+                self.logger.info("🧹 Previous user_ws_task closed cleanly.")
+            self.user_ws_task = asyncio.create_task(
+                self.connect_websocket(self.user_ws_url, is_user_ws=True)
+            )
 
-    async def connect_websocket(self, ws_url, is_user_ws=False):
+    async def connect_websocket(self, ws_url: str, is_user_ws: bool = False):
         """
-        Establish and manage a WebSocket connection.
-        Includes heartbeat, DNS refresh, auto-reset subscriptions, and alerting after repeated failures.
+        Establish and manage a WebSocket connection with:
+          - DNS refresh before each attempt
+          - quick first-frame/ACK gate (8s)
+          - idle watchdog (90s) that forces reconnect
+          - jittered exponential backoff
+          - clean logging for ConnectionResetError and WS closes
         """
+        stream = "USER" if is_user_ws else "MARKET"
         last_message_time = time.time()
-        stream_name = "USER" if is_user_ws else "MARKET"
-        MAX_ALERT_ATTEMPTS = 10  # 🔔 After 10 failed reconnects, send an alert
+        MAX_ALERT_ATTEMPTS = 10
+        BACKOFF_CAP = 60  # seconds
 
         while not self.shutdown_event.is_set():
+            ws = None
             try:
-                # ✅ Phase 0: Force DNS refresh before each attempt
+                # ---- DNS refresh (helps with LB changes) ----
                 try:
-                    host = ws_url.replace("wss://", "").split("/")[0]
-                    await asyncio.get_running_loop().getaddrinfo(host, 443)
-                    self.logger.debug(f"🌐 Refreshed DNS for {stream_name} WebSocket → {host}")
-                except socket.gaierror as dns_error:
-                    self.logger.warning(f"⚠️ DNS refresh failed for {stream_name} WebSocket: {dns_error}")
+                    host = ws_url.split("://", 1)[-1].split("/", 1)[0]
+                    port = 443 if ws_url.startswith("wss://") else 80
+                    await asyncio.get_running_loop().getaddrinfo(host, port)
+                    self.logger.debug(f"🌐 {stream}: DNS OK for {host}")
+                except socket.gaierror as e:
+                    self.logger.warning(f"⚠️ {stream}: DNS resolution failed for {ws_url}: {e}")
+
+                if not ws_url.startswith("wss://"):
+                    self.logger.warning(f"⚠️ {stream} WS URL is not secure (wss): {ws_url}")
 
                 async with websockets.connect(
                         ws_url,
-                        ping_interval=30,
-                        ping_timeout=30,
-                        open_timeout=30,
+                        ping_interval=20,
+                        ping_timeout=20,
+                        open_timeout=10,
+                        close_timeout=5,
+                        max_queue=2048,
                         max_size=2 ** 24,
+                        compression=None,  # some feeds dislike permessage-deflate
                 ) as ws:
-                    # ✅ Reset reconnect attempts for the specific stream
+                    # ---- mark ws + reset attempt counters ----
                     if is_user_ws:
-                        self.reconnect_attempts_user = 0
                         self.websocket_helper.user_ws = ws
+                        self.reconnect_attempts_user = 0
+                    else:
+                        self.websocket_helper.market_ws = ws
+                        self.reconnect_attempts_market = 0
 
-                        # ✅ A: Always clear & reset subscriptions after reconnect
+                    # ---- (re)subscribe cleanly ----
+                    if hasattr(self.websocket_helper, "subscribed_channels"):
                         self.websocket_helper.subscribed_channels.clear()
-                        await self.websocket_helper.subscribe_user()
+
+                    if is_user_ws:
+                        ok = await self.websocket_helper.subscribe_user()
+                        if not ok:
+                            self.logger.warning("⚠️ USER subscription failed; forcing reconnect.")
+                            continue
                         self.logger.info(f"✅ Connected & subscribed to USER WebSocket: {ws_url}")
                     else:
-                        self.reconnect_attempts_market = 0
-                        self.websocket_helper.market_ws = ws
+                        ok = await self.websocket_helper.subscribe_market()
+                        if not ok:
+                            self.logger.warning("⚠️ MARKET subscription failed; forcing reconnect.")
+                            continue
+                        self.logger.info(f"✅ Connected & subscribed to MARKET WebSocket: {ws_url}")
 
-                        # ✅ A: Always clear & reset subscriptions after reconnect
-                        self.websocket_helper.subscribed_channels.clear()
-                        await self.websocket_helper.subscribe_market()
-                        self.logger.info(f"✅ Connected to MARKET WebSocket: {ws_url}")
-                        self.logger.info("📡 Market WebSocket subscription complete.")
+                    # ---- quick handshake sanity: wait for first frame/ACK ----
+                    try:
+                        first = await asyncio.wait_for(ws.recv(), timeout=8)
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"⏱️ {stream}: no first frame within 8s; reconnecting…")
+                        continue  # exit context and retry
 
-                    self.logger.info(f"🎧 Listening on {stream_name} WebSocket: {ws_url}")
                     last_message_time = time.time()
+                    try:
+                        if is_user_ws:
+                            await self.websocket_helper._on_user_message_wrapper(first)
+                        else:
+                            await self.websocket_helper._on_market_message_wrapper(first)
+                    except Exception as msg_err:
+                        self.logger.error(f"❌ {stream}: error processing initial message: {msg_err}", exc_info=True)
 
-                    async for message in ws:
+                    self.logger.info(f"🎧 Listening on {stream} WebSocket…")
+
+                    # ---- main receive loop with idle watchdog ----
+                    while True:
+                        try:
+                            message = await asyncio.wait_for(ws.recv(), timeout=90)
+                        except asyncio.TimeoutError:
+                            self.logger.warning(f"⚠️ {stream}: no messages in 90s — forcing reconnect…")
+                            break
+
                         last_message_time = time.time()
                         try:
                             if is_user_ws:
                                 await self.websocket_helper._on_user_message_wrapper(message)
                             else:
                                 await self.websocket_helper._on_market_message_wrapper(message)
-                        except Exception as msg_error:
-                            self.logger.error(f"❌ Error processing {stream_name} message: {msg_error}", exc_info=True)
+                        except Exception as msg_err:
+                            self.logger.error(f"❌ {stream}: error processing message: {msg_err}", exc_info=True)
 
-                        # ✅ Heartbeat: Force reconnect if no message in 90 seconds
-                        if time.time() - last_message_time > 90:
-                            self.logger.warning(f"⚠️ No {stream_name} messages in 90s — forcing reconnect...")
-                            break
 
             except asyncio.CancelledError:
-                self.logger.info(f"⚠️ {stream_name} WebSocket task cancelled (shutdown or restart).")
+                # Distinguish shutdown vs reconnect if you like:
+                if self.shutdown_event.is_set():
+                    self.logger.info(f"🛑 {stream} WS cancelled due to shutdown.")
+                else:
+                    self.logger.info(f"🔁 {stream} WS cancelled due to reconnect.")
                 return
-            except websockets.exceptions.ConnectionClosed as e:
-                self.logger.warning(
-                    f"🔌 {stream_name} WebSocket closed unexpectedly: "
-                    f"Code={getattr(e, 'code', 'N/A')}, Reason={getattr(e, 'reason', 'No close frame received')}"
-                )
-            except Exception as general_error:
-                self.logger.error(f"🔥 Unexpected {stream_name} WebSocket error: {general_error}", exc_info=True)
+            except (ConnectionResetError, ConnectionClosed, ConnectionClosedError, ConnectionClosedOK, InvalidStatusCode) as e:
+                self.logger.error(f"🔥 {stream} WebSocket connection error: {e}", exc_info=True)
+            except Exception as e:
+                self.logger.error(f"🔥 Unexpected {stream} WebSocket error: {e}", exc_info=True)
+            finally:
+                # Clear stale pointers on exit from the 'with' block
+                if is_user_ws and getattr(self.websocket_helper, "user_ws", None) is ws:
+                    self.websocket_helper.user_ws = None
+                if not is_user_ws and getattr(self.websocket_helper, "market_ws", None) is ws:
+                    self.websocket_helper.market_ws = None
 
-            # ✅ Phase 1: Per-stream exponential backoff with jitter
+            # ---- backoff + alerting ----
             attempts = self.reconnect_attempts_user if is_user_ws else self.reconnect_attempts_market
-            delay = min(2 ** attempts, 60)
+            delay = min(2 ** attempts, BACKOFF_CAP) + random.uniform(0, 5)
             self.logger.warning(
-                f"🔁 Reconnecting {stream_name} WebSocket in {delay}s (Attempt {attempts + 1}, Total downtime ~{int(time.time() - last_message_time)}s)..."
+                f"🔁 Reconnecting {stream} WebSocket in {delay:.1f}s "
+                f"(Attempt {attempts + 1}, Total downtime ~{int(time.time() - last_message_time)}s)…"
             )
 
-            # ✅ B: Alert after repeated failures
-            if attempts + 1 >= MAX_ALERT_ATTEMPTS:
-                if hasattr(self.listener, "alert") and self.listener.alert:
+            if attempts + 1 >= MAX_ALERT_ATTEMPTS and getattr(getattr(self, "listener", None), "alert", None):
+                try:
                     self.listener.alert.callhome(
-                        f"{stream_name} WebSocket Down",
-                        f"{stream_name} WebSocket failed to reconnect after {attempts + 1} attempts (~{int(time.time() - last_message_time)}s downtime).",
-                        mode="email"
+                        f"{stream} WebSocket Down",
+                        f"{stream} WebSocket failed to reconnect after {attempts + 1} attempts "
+                        f"(~{int(time.time() - last_message_time)}s downtime).",
+                        mode="email",
                     )
-                self.logger.error(
-                    f"🚨 {stream_name} WebSocket has failed to reconnect after {attempts + 1} attempts — Alert sent!"
-                )
+                    self.logger.error(f"🚨 {stream} WS alert sent (attempt {attempts + 1}).")
+                except Exception:
+                    self.logger.exception("🔥 Failed to send WS alert")
 
-            await asyncio.sleep(delay + random.uniform(0, 5))
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                self.logger.info(f"⚠️ {stream} WebSocket reconnect sleep cancelled.")
+                return
 
+            # bump attempt counter for this stream
             if is_user_ws:
                 self.reconnect_attempts_user += 1
             else:
                 self.reconnect_attempts_market += 1
 
-            # ✅ Phase 4: Post-reconnect REST sync
-            await self.post_reconnect_sync()
+            # optional: post-reconnect REST sync (run after a failed attempt; consider moving this to the success path if you prefer)
+            if hasattr(self, "post_reconnect_sync") and asyncio.iscoroutinefunction(self.post_reconnect_sync):
+                try:
+                    await self.post_reconnect_sync()
+                except Exception:
+                    self.logger.exception(f"🔥 {stream}: post_reconnect_sync failed.")
 
     # ===============================================================
     # HEALTH CHECK & POST-RECONNECT SYNC
@@ -323,7 +383,7 @@ class WebhookListener:
         self.shared_utils_print = PrintData.get_instance(self.logger_manager, self.shared_utils_utility)
         self.shared_utils_color = ColorCodes.get_instance()
 
-        self.shared_utils_debugger = Debugging()
+        self.test_debug_maint = Debugging()
 
 
         self.alerts = AlertSystem(self.logger_manager)
@@ -348,7 +408,7 @@ class WebhookListener:
             shared_utils_color=self.shared_utils_color,
             shared_utils_precision=self.shared_utils_precision,
             shared_utils_utility=self.shared_utils_utility, # Placeholder
-            shared_utils_debugger=self.shared_utils_debugger, # Placeholder
+            test_debug_maint=self.test_debug_maint, # Placeholder
             order_book_manager=None,  # Placeholder
             snapshot_manager=None,  # Placeholder
             trade_order_manager=None,
@@ -437,7 +497,7 @@ class WebhookListener:
             self,  self.exchange, self.ccxt_api, self.logger, self.coinbase_api,
             self.profit_data_manager, self.order_type_manager, self.shared_utils_print,
             self.shared_utils_color, self.shared_utils_precision, self.shared_utils_utility,
-            self.shared_utils_debugger, self.order_book_manager,
+            self.test_debug_maint, self.order_book_manager,
             self.snapshot_manager, self.trade_order_manager, self.ohlcv_manager,
             self.shared_data_manager, self.database_session_manager
         )
@@ -447,7 +507,7 @@ class WebhookListener:
             self.coinbase_api, self.profit_data_manager, self.order_type_manager,
              self.shared_utils_date_time, self.shared_utils_print,
             self.shared_utils_color, self.shared_utils_precision, self.shared_utils_utility,
-            self.shared_utils_debugger,  self.order_book_manager,
+            self.test_debug_maint,  self.order_book_manager,
             self.snapshot_manager, self.trade_order_manager, self.shared_data_manager,
             self.market_ws_manager, None, None
 
@@ -460,7 +520,7 @@ class WebhookListener:
                                                              self.market_manager,
                                                              self.database_session_manager)
         self.ticker_manager = await TickerManager.get_instance(self.bot_config, self.coinbase_api,
-                                                               self.shared_utils_debugger,self.shared_utils_print,
+                                                               self.test_debug_maint,self.shared_utils_print,
                                                                self.shared_utils_color,self.logger_manager,
                                                                self.order_book_manager,self.rest_client,
                                                                self.portfolio_uuid, self.exchange,self.ccxt_api,
@@ -1058,12 +1118,15 @@ class WebhookListener:
                     if not filled_size or not gross_override:
                         logger.warning(f"⚠️ Skipping SELL {order_id}: missing filled_size/filled_value for cost-basis/PnL.")
                         continue
-
+                if existing_trade is None:
+                    _source = "reconciled"  # new row, inserted by reconcile
+                else:
+                    _source = existing_trade.source or "reconciled"  # preserve origin
                 trade_data = {
                     "order_id": order_id,
                     "parent_id": parent_id,
                     "parent_ids": parent_ids,
-                    "preferred_parent_id": preferred_parent_id,  # recorder may use this to seed chain
+                    "preferred_parent_id": preferred_parent_id,
                     "symbol": symbol,
                     "side": side,
                     "price": str(avg_price) if avg_price is not None else "",
@@ -1071,12 +1134,10 @@ class WebhookListener:
                     "status": "filled",
                     "order_time": order_time,
                     "trigger": {"trigger": order.get("order_type", "market")},
-                    "source": "reconciled",
-                    # Per-order fees (may be empty string for buys if API omits; recorder should handle)
+                    "source": _source,
                     "total_fees": order.get("total_fees"),
-                    # Batch overrides used by recorder to compute cost_basis/sale_proceeds precisely
-                    "gross_override": gross_override,  # order['filled_value'] (SELL proceeds or BUY notional)
-                    "fees_override": fees_override,  # order['total_fees']
+                    "gross_override": gross_override,
+                    "fees_override": fees_override,
                 }
 
                 reconciled_trades.append(trade_data)
@@ -1433,14 +1494,19 @@ class WebhookListener:
                         updated_total, len(open_orders), len(recent_orders)
                     )
 
+                except asyncio.CancelledError:
+                    # Propagate cancellation cleanly (don’t log as an error)
+                    self.logger.info("🛑 sync_open_orders cancelled during cycle.")
+                    raise
                 except Exception as exc:
+                    # Real operational error
                     self.logger.error("❌ sync_open_orders failed: %s", exc, exc_info=True)
-
-                # Always sleep, even after failures, unless cancelled
+                    # Always sleep, even after failures, unless cancelled
                 await asyncio.sleep(interval)
 
         except asyncio.CancelledError:
             self.logger.info("🛑 sync_open_orders cancelled cleanly.")
+            return
 
     async def sync_order_tracker_from_exchange(self):
         """Fetch open orders from Coinbase and inject them into order_tracker + persist to DB."""

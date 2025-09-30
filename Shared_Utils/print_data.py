@@ -177,7 +177,7 @@ class PrintData:
 
         return final_matrix
 
-    def print_data(self, min_volume=None, open_orders=None, buy_sell_matrix=None, submitted_orders=None, aggregated_df=None):
+    def print_data(self, min_quote_volume=None, open_orders=None, buy_sell_matrix=None, submitted_orders=None, aggregated_df=None):
         try:
             print("\n" + "<><><><<><>" * 20 + "\n")
 
@@ -243,7 +243,7 @@ class PrintData:
                         ].shape[0]
 
                     minvol = self.format_large_number(
-                        Decimal(min_volume.quantize(Decimal('0.01'), ROUND_UP))) if min_volume else "N/A"
+                        Decimal(min_quote_volume.quantize(Decimal('0.01'), ROUND_UP))) if min_quote_volume else "N/A"
                     volume_text = f"{num_signaled} Currencies trading with a Buy/Sell signal (Min Vol: {minvol})"
                     print(f"\n� {volume_text}\n")
 

@@ -4,6 +4,7 @@ from typing import Optional
 import pandas as pd
 import decimal
 import random
+from http.client import RemoteDisconnected
 from requests.exceptions import HTTPError
 from ccxt.base.errors import BadSymbol
 
@@ -22,19 +23,19 @@ class TickerManager:
     _lock = asyncio.Lock()  # Ensures thread-safety in an async environment
 
     @classmethod
-    async def get_instance(cls, config, coinbase_api, shared_utils_debugger, shared_utils_print, shared_utils_color, logger_manager,
+    async def get_instance(cls, config, coinbase_api, test_debug_maint, shared_utils_print, shared_utils_color, logger_manager,
                            order_book_manager, rest_client, portfolio_uuid, exchange, ccxt_api, shared_data_manager, shared_utils_precision):
         """Ensures only one instance of TickerManager is created."""
         if cls._instance is None:
             async with cls._lock:
                 if cls._instance is None:  # Double-check after acquiring the lock
-                    cls._instance = cls(config, coinbase_api, shared_utils_debugger,
+                    cls._instance = cls(config, coinbase_api, test_debug_maint,
                                         shared_utils_print, shared_utils_color,logger_manager,
                                         order_book_manager, rest_client, portfolio_uuid, exchange,
                                         ccxt_api,shared_data_manager, shared_utils_precision)
         return cls._instance
 
-    def __init__(self, config, coinbase_api, shared_utils_debugger, shared_utils_print, shared_utils_color, logger_manager, order_book_manager,
+    def __init__(self, config, coinbase_api, test_debug_maint, shared_utils_print, shared_utils_color, logger_manager, order_book_manager,
                  rest_client, portfolio_uuid, exchange, ccxt_api, shared_data_manager, shared_utils_precision):
         if TickerManager._instance is not None:
             raise Exception("TickerManager is a singleton and has already been initialized!")
@@ -42,7 +43,7 @@ class TickerManager:
         self.exchange = exchange
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
-        self.min_volume = None
+        self.min_quote_volume = None
         self.last_ticker_update = None
         self.shill_coins = self.bot_config._shill_coins
         self._min_value_to_monitor = self.bot_config.min_value_to_monitor
@@ -54,7 +55,7 @@ class TickerManager:
         self.order_book_manager = order_book_manager
         self.shared_data_manager = shared_data_manager
         self.shared_utils_print = shared_utils_print
-        self.shared_utils_debugger = shared_utils_debugger
+        self.test_debug_maint = test_debug_maint
         self.shared_utils_precision = shared_utils_precision
         self.start_time = None
 
@@ -125,14 +126,14 @@ class TickerManager:
 
 
             # Calculate average quote volume
-            min_volume = tickers_cache['24h_quote_volume'].min()
+            min_quote_volume = tickers_cache['24h_quote_volume'].min()
 
             return {
                 "ticker_cache": tickers_cache,
                 "filtered_vol": supported_vol_markets,
                 "usd_pairs_cache": usd_pairs_cache,
                 "bid_ask_spread": bid_ask_spread,
-                "avg_quote_volume": Decimal(min_volume).quantize(Decimal('0')),
+                "avg_quote_volume": Decimal(min_quote_volume).quantize(Decimal('0')),
                 "spot_positions": spot_positions
             }, {"non_zero_balances": non_zero_balances, 'order_tracker': open_orders_dict}
 
@@ -386,7 +387,7 @@ class TickerManager:
             tuple: Filtered markets based on volume and USD pairs.
         """
         try:
-            # msg = self.shared_utils_debugger.debug_code(os.path.abspath(__file__),stack()) #debugging
+            # msg = self.test_debug_maint.debug_code(os.path.abspath(__file__),stack()) #debugging
             # Filter markets by 24-hour quote volume
             supported_markets_vol = [
                 market for market in minimum_volume_market_data
@@ -580,14 +581,16 @@ class TickerManager:
         """
         max_retries = 3
         retry_delay = 2  # Seconds
+        wait = 0
 
         for attempt in range(1, max_retries + 1):
             try:
                 self.logger.debug(f"🔁 Attempt {attempt} to fetch portfolio breakdown.")
+                wait = min(2 ** attempt, 60) + random.uniform(0, 1)
                 return self.rest_client.get_portfolio_breakdown(portfolio_uuid, currency)
+
             except HTTPError as e:
                 if "429" in str(e):
-                    wait = min(2 ** attempt, 60) + random.uniform(0, 1)
                     self.logger.warning(f"⏳ Rate limit hit. Sleeping for {wait:.2f}s...")
                     await asyncio.sleep(wait)
                 elif "401" in str(e):
@@ -596,6 +599,9 @@ class TickerManager:
                 else:
                     self.logger.error(f"❌ HTTP error during get_portfolio_breakdown: {e}")
                     break
+            except RemoteDisconnected as rd:
+                self.logger.info(f"Network error on attempt {attempt}: {rd}, retrying in {wait}s")
+                await asyncio.sleep(wait)
             except Exception as e:
                 self.logger.error(f"❌ Unexpected error: {e}", exc_info=True)
                 break

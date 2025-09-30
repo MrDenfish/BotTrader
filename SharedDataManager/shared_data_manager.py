@@ -741,7 +741,7 @@ class SharedDataManager:
             min_pnl_usd: Decimal = Decimal("0.0"),
             lookback_days: int = 7,
             source_filter: str | None = None,
-            min_24h_volume: Decimal = Decimal("750000"),
+            min_quote_volume: Decimal = Decimal("750000"),
             refresh_interval: int = 300
     ) -> set[str]:
         """
@@ -814,7 +814,7 @@ class SharedDataManager:
                 usd_pairs = self.market_data.get("usd_pairs_cache", pd.DataFrame())
                 if not usd_pairs.empty and "volume_24h" in usd_pairs.columns:
                     liquid_symbols = set(
-                        usd_pairs[usd_pairs["volume_24h"] >= float(min_24h_volume)]["symbol"]
+                        usd_pairs[usd_pairs["volume_24h"] >= float(min_quote_volume)]["symbol"]
                     )
                     profitable_symbols = profitable_symbols.intersection(liquid_symbols)
                 else:

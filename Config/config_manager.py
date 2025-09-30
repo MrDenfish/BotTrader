@@ -52,7 +52,7 @@ class CentralConfig:
         self._webhook_api_key_path = self._api_key = self._api_secret = None
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
         self._assets_ignored = self._buy_target = self._sell_target = self._min_value_to_monitor = None
-        self._quote_currency = self._trailing_percentage = self._min_volume = self._min_cooldown = None
+        self._quote_currency = self._trailing_percentage = self._min_quote_volume = self._min_cooldown = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
         self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = None
@@ -107,7 +107,7 @@ class CentralConfig:
             "_min_buy_value": "MIN_BUY_VALUE",
             "_min_sell_value": "MIN_SELL_VALUE",
             "_max_value_of_crypto_to_buy_more":"MAX_VALUE_TO_BUY", # max value of crypto in USD in order to buy more
-            "_min_volume": "MIN_VOLUME", # min daily volume strategies use to evaluate ovhlc data
+            "_min_quote_volume": "MIN_QUOTE_VOLUME", # min daily volume strategies use to evaluate ovhlc data
             "_max_ohlcv_rows": "MAX_OHLCV_ROWS",
             "_hodl": "HODL",
             "_take_profit": "TAKE_PROFIT",
@@ -474,8 +474,8 @@ class CentralConfig:
         return self._taker_fee
 
     @property
-    def min_volume(self):
-        return self._min_volume
+    def min_quote_volume(self):
+        return self._min_quote_volume
 
     @property
     def min_cooldown(self):

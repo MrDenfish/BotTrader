@@ -79,7 +79,7 @@ class PassiveOrderManager:
 
         # Trading parameters
         self._stop_loss = Decimal(config.stop_loss)
-        self._min_volume = Decimal(config.min_volume)
+        self._min_quote_volume = Decimal(config.min_quote_volume)
         self._take_profit = Decimal(config.take_profit)
         self._trailing_percentage = Decimal(config.trailing_percentage)
         self._trailing_stop = Decimal(config.trailing_stop)
@@ -344,13 +344,12 @@ class PassiveOrderManager:
 
             # -------- 1) profitability/liquidity gate --------
             profitable = await self.shared_data_manager.fetch_profitable_symbols(
-                min_trades=5, min_pnl_usd=Decimal("0.0"), lookback_days=7,
-                source_filter=None, min_24h_volume=Decimal(self._min_volume), refresh_interval=300
+                min_trades=3, min_pnl_usd=Decimal("0.0"), lookback_days=7,
+                source_filter=None, min_quote_volume=Decimal(self._min_quote_volume), refresh_interval=300
             )
-            self.logger.info(f"🧭 PassiveMM:profitable? {product_id}={trading_pair in profitable} (min_vol={self._min_volume})")
-
-            if trading_pair not in profitable:
-                self.logger.debug(f"⛔ Skipping {trading_pair} — not profitable/liquid recently")
+            if trading_pair in profitable:
+                print(f"🧭 PassiveMM:profitable? {product_id}={trading_pair in profitable} (min_vol={self._min_quote_volume})",self.shared_utils_color.YELLOW)
+            else:
                 return
 
             # -------- 2) active_symbols gate --------
@@ -481,7 +480,7 @@ class PassiveOrderManager:
                     buy_od.side = "buy"
                     buy_od.type = "limit"
                     buy_od.price = buy_px  # adapter expects strings fine
-                    buy_od.order_amount_fiat = buy_notional  # <-- key for your handle_order()
+                    buy_od.order_amount_fiat = buy_notional  # <-- key for  handle_order()
                     # make sure these exist for the adjust functions:
                     buy_od.base_avail_balance = getattr(buy_od, "base_avail_balance", Decimal("0"))
 
@@ -490,8 +489,9 @@ class PassiveOrderManager:
                     buy_od.strategy_tag = "PassiveMM"
                     buy_od.source = "PassiveMM"
 
-                    self.logger.info(f"🧭 PassiveMM:BUY submit {product_id} notional=${buy_notional} px={buy_px}")
+                    print(f"🧭 PassiveMM:BUY submit {product_id} notional=${buy_notional} px={buy_px}",self.shared_utils_color.BRIGHT_GREEN)
                     res_buy = await self.tom.place_order(buy_od)
+                    print(f"🧭 PassiveMM:BUY submit {product_id} buy order response {res_buy}", self.shared_utils_color.BRIGHT_GREEN)
                     ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
 
                     v_only, reason = _validated_only(raw_buy)

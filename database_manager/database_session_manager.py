@@ -5,6 +5,7 @@ import asyncio
 import asyncpg
 import TableModels
 
+from functools import wraps
 from sqlalchemy import text
 from sqlalchemy import select
 from TableModels.base import Base
@@ -47,6 +48,41 @@ class DatabaseSessionManager:
             self.logger.error("Database URL is not configured properly.")
             raise ValueError("Database URL is not configured. Please check your configuration.")
 
+        RETRYABLE_SNIPPETS = (
+            "ConnectionDoesNotExistError",
+            "connection was closed",
+            "server closed the connection",
+            "could not receive data from server",
+            "terminating connection due to administrator command",
+            "Connection reset by peer",
+            "transport closed",
+        )
+
+        def is_retryable_db_error(e: Exception) -> bool:
+            s = str(e)
+            if isinstance(e, (ConnectionError, OSError, OperationalError, DBAPIError, asyncpg.PostgresError)):
+                return any(sn in s for sn in RETRYABLE_SNIPPETS)
+            return False
+
+        def db_retry_once(method):
+            """Retry the whole method once if a transient DB connection error occurs."""
+
+            @wraps(method)
+            async def wrapper(self, *args, **kwargs):
+                try:
+                    return await method(self, *args, **kwargs)
+                except Exception as e:
+                    if not is_retryable_db_error(e):
+                        raise
+                    # drop the pool and give it one more shot
+                    try:
+                        await self.db.engine.dispose() if hasattr(self, "db") else await self.engine.dispose()
+                    except Exception:
+                        pass
+                    await asyncio.sleep(float(os.getenv("DB_RETRY_BACKOFF_SEC", "0.5")))
+                    return await method(self, *args, **kwargs)
+
+            return wrapper
 
         # Initialize the SQLAlchemy async engine
         def _should_use_ssl(db_url: str) -> bool:
@@ -63,13 +99,12 @@ class DatabaseSessionManager:
         statement_timeout_ms = os.getenv("DB_STATEMENT_TIMEOUT_MS", "60000")  # 60s default
         connect_timeout = float(os.getenv("DB_CONNECT_TIMEOUT", "5"))  # seconds
 
-        connect_args: dict = {
-            "timeout": connect_timeout,
+        connect_args = {
+            "timeout": float(os.getenv("DB_CONNECT_TIMEOUT", "5")),  # fast connect fail
+            "command_timeout": float(os.getenv("DB_COMMAND_TIMEOUT", "30")),  # per-command
             "server_settings": {
-                "application_name": app_name,
-                # per-connection GUCs (optional but handy)
-                "statement_timeout": statement_timeout_ms,  # ms
-                # keepalives help server notice dead clients sooner
+                "application_name": os.getenv("DB_APP_NAME", "bottrader_desktop"),
+                "statement_timeout": os.getenv("DB_STATEMENT_TIMEOUT_MS", "60000"),
                 "tcp_keepalives_idle": os.getenv("DB_TCP_KEEPALIVES_IDLE", "60"),
                 "tcp_keepalives_interval": os.getenv("DB_TCP_KEEPALIVES_INTERVAL", "20"),
                 "tcp_keepalives_count": os.getenv("DB_TCP_KEEPALIVES_COUNT", "3"),
@@ -94,7 +129,7 @@ class DatabaseSessionManager:
             pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
             max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
             pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
-            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5 min
+            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5m to avoid stale sockets
             pool_pre_ping=True,
             future=True,
             connect_args=connect_args,

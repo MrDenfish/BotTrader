@@ -1107,6 +1107,7 @@ def derive_extra_metrics(win_rate_pct: float | None,
 
     if pnl_list:
         mean_pnl = mean(pnl_list)
+
         # population stdev (pstdev) to be stable with small N; switch to stdev if you prefer sample stdev
         sd_pnl = pstdev(pnl_list)
         if sd_pnl and sd_pnl > 0:

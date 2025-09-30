@@ -94,9 +94,9 @@ class OrderManager:
     def open_orders(self):
         return self.shared_data_manager.order_management.get('order_tracker', {})
 
-    @property
-    def min_volume(self):
-        return Decimal(self.shared_data_manager.market_data['avg_quote_volume'])
+    # @property
+    # def min_quote_volume(self):
+    #     return Decimal(self.shared_data_manager.market_data['avg_quote_volume'])
 
 
     @property
@@ -388,10 +388,10 @@ class OrderManager:
             return None
 
     def render_usd_info(self, info):
-        asset = info.get("asset", "")
-        total = float(info.get("total_balance_fiat", 0))
-        avail = float(info.get("available_to_trade_fiat", 0))
-        alloc = float(info.get("allocation", 0)) * 100
+        asset = info['asset']
+        total = float(info["total_balance_fiat"])
+        avail = float(info["available_to_trade_fiat"])
+        alloc = float(info["allocation"]) * 100
         return f"{asset} | total=${total:.2f} | avail=${avail:.2f} | alloc={alloc:.2f}% "
 
     async def handle_actions(self, order, holdings):

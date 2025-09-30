@@ -15,7 +15,7 @@ getcontext().prec = 10
 class WebSocketMarketManager:
     def __init__(self, listener, exchange, ccxt_api, logger_manager, coinbase_api, profit_data_manager,
                  order_type_manager, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
-                 shared_utils_debugger, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager, shared_data_manager,
+                 test_debug_maint, order_book_manager, snapshot_manager, trade_order_manager, ohlcv_manager, shared_data_manager,
                  database_session_manager=None):
 
         self.config = Config()
@@ -87,7 +87,7 @@ class WebSocketMarketManager:
         self.shared_utils_print = shared_utils_print
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
-        self.shared_utils_debugger = shared_utils_debugger
+        self.test_debug_maint = test_debug_maint
 
         # Subscription settings
         # self.api_channels = self.config.load_channels()
@@ -198,6 +198,7 @@ class WebSocketMarketManager:
                     if status == "FILLED":
                         fills = order.get("fills", [])
                         base_id = order_id
+
 
                         async with self.db_session_manager.async_session() as session:
                             existing = await session.get(TradeRecord, base_id)

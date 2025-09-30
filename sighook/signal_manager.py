@@ -228,9 +228,6 @@ class SignalManager:
             return (0, 0.0, 0.0, "error"), (0, 0.0, 0.0, "error")
 
 
-        except Exception as e:
-            self.logger.error(f"❌ Error evaluating matrix signals for {asset}: {e}", exc_info=True)
-            return (0, 0.0, 0.0), (0, 0.0, 0.0)
 
 
 

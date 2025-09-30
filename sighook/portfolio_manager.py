@@ -37,7 +37,7 @@ class PortfolioManager:
         self._sell_rsi = self.app_config.rsi_sell
         self._buy_ratio = self.app_config.buy_ratio
         self._sell_ratio = self.app_config.sell_ratio
-        self._min_volume = Decimal(self.app_config.min_volume)
+        self._min_quote_volume = Decimal(self.app_config.min_quote_volume)
         self._roc_buy_24h = Decimal(self.app_config.roc_buy_24h)
         self._roc_sell_24h = Decimal(self.app_config.roc_sell_24h)
         self.shill_coins = self.app_config.shill_coins
@@ -101,7 +101,7 @@ class PortfolioManager:
         return self.shared_data_manager.market_data.get('usd_pairs_cache')
 
     @property
-    def min_volume(self):
+    def min_quote_volume(self):
         return Decimal(self.shared_data_manager.market_data.get('avg_quote_volume', 0))
 
     @property
@@ -220,7 +220,7 @@ class PortfolioManager:
                 # Fix: Apply absolute value only to 'price change %' and correctly structure conditions
                 filtered_df = rows_to_add[
                     (abs(rows_to_add['price change %']) >= self.roc_sell_24h) &  # use the lowest  roc 24h value
-                    (rows_to_add['quote volume'] >= self.min_volume/2)
+                    (rows_to_add['quote volume'] >= self.min_quote_volume/2)
                     ]
 
                 return filtered_df  # Return filtered DataFrame

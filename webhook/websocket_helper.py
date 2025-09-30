@@ -3,9 +3,11 @@ import json
 import time
 import random
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+
 from decimal import Decimal
 from coinbase import jwt_generator
+from datetime import datetime, timedelta, timezone
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
 
 BATCH_SIZE = 10
 TASK_TIMEOUT = 10  # per asset
@@ -19,7 +21,7 @@ class WebSocketHelper:
     def __init__(
             self, listener, websocket_manager, logger_manager, coinbase_api, profit_data_manager,
             order_type_manager, shared_utils_date_time, shared_utils_print, shared_utils_color, shared_utils_precision, shared_utils_utility,
-            shared_utils_debugger, order_book_manager, snapshot_manager, trade_order_manager, shared_data_manager,
+            test_debug_maint, order_book_manager, snapshot_manager, trade_order_manager, shared_data_manager,
             market_ws_manager, database_session_manager, passive_order_manager=None, asset_monitor=None
             ):
 
@@ -92,7 +94,7 @@ class WebSocketHelper:
         self.shared_utils_color = shared_utils_color
         self.shared_utils_precision = shared_utils_precision
         self.shared_utils_utility = shared_utils_utility
-        self.shared_utils_debugger = shared_utils_debugger
+        self.test_debug_maint = test_debug_maint
 
         # Subscription settings
         self.api_channels = self.config.load_channels()
@@ -430,49 +432,87 @@ class WebSocketHelper:
         except Exception as e:
             self.logger.error(f"❌ Error processing market WebSocket message: {e}", exc_info=True)
 
-    async def subscribe_market(self):
-        """Subscribe to the ticker_batch market channel for all product IDs."""
+    async def subscribe_market(self) -> bool:
+        """
+        Subscribe to market channels. Returns True if at least one subscription
+        was sent successfully; False if the WS wasn't open or every send failed.
+        """
         try:
-            async with (self.subscription_lock):
+            async with self.subscription_lock:
+                # ensure JWT freshness if you need it
                 self.coinbase_api.refresh_jwt_if_needed()
-                if not self.market_ws:
+
+                ws = getattr(self, "market_ws", None)
+                if ws is None:
                     self.logger.error("❌ Market WebSocket is None! Subscription aborted.")
-                    return
+                    return False
+                if getattr(ws, "closed", True):
+                    self.logger.warning("⚠️ Market WebSocket is closed; deferring subscription.")
+                    return False
 
-                self.logger.info(f"� Subscribing to Market Channels: {list(self.market_channels)}")
-
+                # build product_ids (or reuse cached if you keep it fresh elsewhere)
+                if not self.product_ids:
+                    snapshot = await self.snapshot_manager.get_market_data_snapshot()
+                    md = snapshot.get("market_data", {})
+                    self.product_ids = (
+                        md.get("usd_pairs_cache", {}).get("symbol", pd.Series())
+                        .str.replace("/", "-", regex=False)
+                        .tolist()
+                    )
                 if not self.product_ids:
                     self.logger.warning("⚠️ No valid product IDs found. Subscription aborted.")
-                    return
+                    return False
 
+                self.logger.info(f"📡 Subscribing to market channels: {list(self.market_channels)}")
+
+                successes, failures = set(), set()
 
                 for channel in self.market_channels:
-                    subscription_message = {
-                        "type": "subscribe",
-                        "product_ids": self.product_ids,
-                        "channel": channel
-                    }
-                    # Inject JWT ONLY for level2
-                    if channel == "level2_batch":
-                        # ✅ Refresh JWT before subscribing
-                        jwt_token = await self.generate_jwt()
-                        subscription_message["jwt"] = jwt_token
+                    msg = {"type": "subscribe", "product_ids": self.product_ids, "channel": channel}
+
+                    # JWT only if your provider requires it for specific channels
+                    if channel in {"level2_batch", "level2"}:
+                        try:
+                            jwt_token = await self.generate_jwt()
+                            msg["jwt"] = jwt_token
+                        except Exception as e:
+                            self.logger.error(f"❌ JWT generation failed for {channel}: {e}", exc_info=True)
+                            failures.add(channel)
+                            continue
+
+                    # re-check right before send to avoid TOCTOU on ws state
+                    if getattr(ws, "closed", True):
+                        self.logger.warning(f"⚠️ WS closed before subscribing to {channel}; will retry on reconnect.")
+                        failures.add(channel)
+                        continue
+
                     try:
-                        await self.market_ws.send(json.dumps(subscription_message))
-                        self.logger.debug(f"✅ Sent subscription for {channel} with: {self.product_ids}")
+                        await ws.send(json.dumps(msg))
+                        self.logger.debug(f"✅ Sent subscription for {channel} ({len(self.product_ids)} products).")
+                        successes.add(channel)
                     except asyncio.CancelledError:
-                        self.logger.warning(f"⚠️ Subscription to {channel} cancelled (reconnect or shutdown).")
+                        self.logger.warning(f"⚠️ Subscription to {channel} cancelled (reconnect/shutdown).")
                         raise
+                    except (ConnectionClosed, ConnectionClosedError, ConnectionClosedOK) as e:
+                        # This is your exact "no close frame received or sent" class of error
+                        self.logger.error(f"❌ Failed to subscribe to {channel}: {e}")
+                        failures.add(channel)
+                        # let the connect loop handle reconnection
+                        return False
                     except Exception as e:
-                        if "sent 1000 (OK)" in str(e):
-                            self.logger.warning(f"⚠️ Clean close during subscription to {channel} (normal reconnect).")
-                        else:
-                            self.logger.error(f"❌ Failed to subscribe to {channel}: {e}", exc_info=True)
-                #self.product_ids.update(product_ids)
-                self.subscribed_channels.update(self.market_channels)
+                        self.logger.error(f"❌ Failed to subscribe to {channel}: {e}", exc_info=True)
+                        failures.add(channel)
+
+                # only mark channels that actually sent OK
+                if successes:
+                    self.subscribed_channels.update(successes)
+
+                self.logger.info(f"📣 Market subscribe summary → ok={sorted(successes)} fail={sorted(failures)}")
+                return bool(successes)
 
         except Exception as e:
             self.logger.error(f"❌ Market subscription error: {e}", exc_info=True)
+            return False
 
     async def subscribe_user(self):
         """Subscribe to User WebSocket channels with proper JWT authentication."""
