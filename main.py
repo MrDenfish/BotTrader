@@ -93,43 +93,92 @@ async def graceful_shutdown(listener, runner):
     await runner.cleanup()
     shutdown_event.set()
 
+
 async def init_shared_data(config, logger_manager, shared_logger, coinbase_api):
     shared_data_manager = SharedDataManager.__new__(SharedDataManager)
-    custom_json_decoder = CustomJSONDecoder
+
+    # DSN (from config or env)
+    dsn = getattr(config, "database_url", None) \
+          or os.getenv("DATABASE_URL") \
+          or os.getenv("TRADEBOT_DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("Set config.database_url or DATABASE_URL")
+
+    # normalize to async driver
+    if dsn.startswith("postgres://"):
+        dsn = dsn.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif dsn.startswith("postgresql://"):
+        dsn = dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    # your original pool & recycle knobs (no SSL / no connect_args)
+    engine_kw = dict(
+        echo=False,
+        pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+        pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5m
+        pool_pre_ping=True,
+        future=True,
+        # ← no connect_args here
+    )
+
     database_session_manager = DatabaseSessionManager(
-        config=config,
-        profit_extras=None,
-        logger_manager=shared_logger,
-        shared_data_manager=shared_data_manager,
-        custom_json_decoder=custom_json_decoder,
+        dsn,  # already normalized to +asyncpg earlier
+        logger=shared_logger,  # optional
+        echo=False,
+        pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+        pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),
+        pool_pre_ping=True,
+        future=True,
+        # connect_args=...  # only if you want to override the defaults above
     )
 
 
-
-    # Initialize utilities
-
+    # --- rest unchanged ---
     test_debug_maint = Debugging()
     shared_utils_precision = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
-    snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, shared_utils_precision,
-                                                     shared_logger)
+    snapshot_manager = SnapshotsManager.get_instance(shared_data_manager, shared_utils_precision, shared_logger)
     shared_utils_utility = SharedUtility.get_instance(logger_manager)
     shared_utils_print = PrintData.get_instance(logger_manager, shared_utils_utility)
     shared_utils_color = ColorCodes.get_instance()
-    shared_data_manager.__init__(shared_logger, database_session_manager,
-                                 shared_utils_utility, shared_utils_precision, coinbase_api=coinbase_api)
 
+    custom_json_decoder = CustomJSONDecoder
+    shared_data_manager.__init__(
+        shared_logger,
+        database_session_manager,
+        shared_utils_utility,
+        shared_utils_precision,
+        coinbase_api=coinbase_api,
+    )
+    shared_data_manager.custom_json_decoder = custom_json_decoder
     shared_data_manager.inject_maintenance_callback()
 
-    # Set attributes on the shared data manager
     shared_data_manager.snapshot_manager = snapshot_manager
     shared_data_manager.test_debug_maint = test_debug_maint
     shared_data_manager.shared_utils_print = shared_utils_print
     shared_data_manager.shared_utils_color = shared_utils_color
     shared_data_manager.shared_utils_precision = shared_utils_precision
 
-    await shared_data_manager.initialize()
+    # Warm up the DB connection (optional, but nice)
+    try:
+        await database_session_manager.initialize()
+    except Exception:
+        raise
+    await shared_data_manager.initialize_schema()
+    await shared_data_manager.populate_initial_data()
 
-    return shared_data_manager, test_debug_maint, shared_utils_print, shared_utils_color, shared_utils_utility, shared_utils_precision
+    await shared_data_manager.initialize()
+    return (
+        shared_data_manager,
+        test_debug_maint,
+        shared_utils_print,
+        shared_utils_color,
+        shared_utils_utility,
+        shared_utils_precision,
+    )
+
 
 def _normalize_fees(fees_like: dict) -> dict:
     # make sure everything is Decimal and present

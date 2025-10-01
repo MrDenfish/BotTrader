@@ -164,43 +164,61 @@ class TradeRecorder:
         """
         Records a trade (BUY or SELL) into the database.
 
-        ✅ Single-session flow:
-            - FIFO PnL calculation (SELL)
-            - Insert/Update SELL or BUY trade
-            - Update parent BUYs' remaining_size & realized_profit (SELL only)
+        Invariants:
+          - `source` represents the origin-of-intent (webhook | websocket | passivemm | manual | unknown).
+          - `source` is set on INSERT only and is immutable thereafter.
+          - For SELLs with missing/unknown/reconciled source, inherit the parent BUY's source.
+
+        Flow:
+          - Normalize inputs and precision.
+          - For SELL: compute FIFO cost basis & PnL (if enough parent liquidity).
+          - Build row and UPSERT with `source` excluded from UPDATE set.
+          - For SELL: update parent BUYs' remaining_size (and optionally realized_profit).
         """
-
-
         try:
             fills_in = trade_data.get("fills")
             gross_override_raw = trade_data.get("gross_override")
             fees_override_raw = trade_data.get("fees_override")
             gross_override = Decimal(gross_override_raw) if gross_override_raw not in (None, "") else None
             fees_override = Decimal(fees_override_raw) if fees_override_raw not in (None, "") else None
+
             symbol = trade_data["symbol"]
-            side = trade_data["side"].lower()
+            side = (trade_data["side"] or "").lower()
             order_id = trade_data["order_id"]
             preferred_parent_id = trade_data.get("preferred_parent_id")
             status = trade_data.get("status")
             trigger = trade_data.get("trigger")
-            source = trade_data.get("source")
-            if source == 'unknown':
-                pass # debug
+            # incoming source (may be unknown)
+            source_in = (trade_data.get("source") or "").lower()
+
+            ingest_via = trade_data.get("ingest_via")  # 'websocket' | 'rest' | 'manual' | 'import' (optional)
+
+            last_recon_raw = trade_data.get("last_reconciled_at")
+            last_reconciled_at = None
+            if last_recon_raw:
+                if isinstance(last_recon_raw, str):
+                    last_reconciled_at = datetime.fromisoformat(last_recon_raw.replace("Z", "+00:00"))
+                else:
+                    last_reconciled_at = last_recon_raw
+
+            last_reconciled_via = trade_data.get("last_reconciled_via")  # e.g., 'rest_api'
 
             # -----------------------------
-            # ✅ Normalize Basic Fields
+            # Normalize order_time -> UTC aware
             # -----------------------------
             order_time_raw = trade_data.get("order_time", datetime.now(timezone.utc))
             if isinstance(order_time_raw, str):
                 parsed_time = datetime.fromisoformat(order_time_raw.replace("Z", "+00:00"))
             else:
                 parsed_time = order_time_raw
-
             order_time_utc = (
                 parsed_time.astimezone(timezone.utc)
                 if parsed_time.tzinfo else parsed_time.replace(tzinfo=timezone.utc)
             )
 
+            # -----------------------------
+            # Precision & safe conversions
+            # -----------------------------
             base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
             base_q = Decimal("1").scaleb(-base_deci)
             quote_q = Decimal("1").scaleb(-quote_deci)
@@ -212,21 +230,22 @@ class TradeRecorder:
             total_fees = Decimal(total_fees_raw) if total_fees_raw not in (None, "") else Decimal("0")
 
             parent_id = trade_data.get("parent_id")
-            parent_ids, pnl_usd, cost_basis_usd, sale_proceeds_usd, net_sale_proceeds_usd = [], None, None, None, None
+            parent_ids: list[str] | None = None
+            pnl_usd = cost_basis_usd = sale_proceeds_usd = net_sale_proceeds_usd = None
             update_instructions = []
-            print(f"[record_trade] order_time type={type(order_time_utc)} value={order_time_utc.isoformat()}") #debug
 
             async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     self.active_session = session
 
+                    # -----------------------------
+                    # SELL: compute FIFO if possible
+                    # -----------------------------
                     if side == "sell":
-                        # Prefer batch overrides for exact proceeds/fees
                         if fees_override is not None:
                             total_fees = fees_override
 
-                        # BEFORE calling compute_cost_basis_and_sale_proceeds(...)
-                        # Verify there are enough unlinked BUYs to cover the SELL size
+                        # Ensure there are enough eligible BUYs to cover SELL
                         total_rem = Decimal("0")
                         tolerance = timedelta(seconds=1)
                         stmt = (
@@ -234,7 +253,7 @@ class TradeRecorder:
                             .where(
                                 TradeRecord.symbol == symbol,
                                 TradeRecord.side == "buy",
-                                TradeRecord.order_time <= order_time_utc + tolerance,  # space
+                                TradeRecord.order_time <= order_time_utc + tolerance,
                                 or_(TradeRecord.remaining_size.is_(None), TradeRecord.remaining_size > 0),
                                 not_(TradeRecord.order_id.like('%-FILL-%')),
                                 not_(TradeRecord.order_id.like('%-FALLBACK'))
@@ -247,13 +266,12 @@ class TradeRecorder:
                             total_rem += Decimal(str(pt.remaining_size or pt.size or 0))
 
                         if total_rem < amount:
-                            # Not enough parent liquidity — defer/skip to avoid bogus PnL.
+                            # Not enough inventory — save SELL without pnl/cost; maintenance will fix later
                             self.logger.warning(
                                 f"[FIFO] Insufficient BUY liquidity for SELL {order_id} {symbol}. "
                                 f"Need {amount}, have {total_rem}. Deferring PnL computation."
                             )
-                            # Option A (recommended): save the SELL without pnl/cost fields; a later maintenance pass resolves it
-                            pnl_usd = cost_basis_usd = sale_proceeds_usd = net_sale_proceeds_usd = None
+                            parent_ids = None  # unknown yet
                             update_instructions = []
                         else:
                             fifo_result = await self.compute_cost_basis_and_sale_proceeds(
@@ -276,8 +294,10 @@ class TradeRecorder:
                             net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
                             pnl_usd = fifo_result["pnl_usd"]
                             update_instructions = fifo_result["update_instructions"]
-                            parent_id = parent_ids[0] if parent_ids else parent_id
-                            # --- Breakeven tolerance clamp ---
+                            # pick a canonical parent_id for the SELL row
+                            parent_id = (parent_ids[0] if parent_ids else parent_id)
+
+                            # Breakeven clamp
                             BE_TOL_ABS = Decimal("0.01")  # $0.01
                             BE_TOL_PCT = Decimal("0.0002")  # 0.02%
                             if pnl_usd is not None and cost_basis_usd:
@@ -285,23 +305,21 @@ class TradeRecorder:
                                 cb_d = Decimal(str(cost_basis_usd))
                                 if pnl_d.copy_abs() < BE_TOL_ABS or (cb_d > 0 and (pnl_d.copy_abs() / cb_d) < BE_TOL_PCT):
                                     pnl_usd = Decimal("0")
-                            # ---------------------------------
 
                         self.logger.info(
                             f"[RECORD_TRADE DEBUG] SELL PnL={pnl_usd}, Parents={parent_ids}, "
                             f"UpdateInstructions={update_instructions}"
                         )
 
-
-                        # -----------------------------
-                        # ✅ BUY Logic (Initial Baseline)
-                        # -----------------------------
                     else:
-                        # For buys, let recorder assign chain id via parent_ids only
-                        parent_id = trade_data.get("parent_id")  # leave as provided if any, else None
-                        parent_ids = [order_id]  # anchor chain to this buy
+                        # -----------------------------
+                        # BUY: baseline fields
+                        # -----------------------------
+                        # For buys, anchor chain to this buy
+                        parent_id = trade_data.get("parent_id")  # keep if provided
+                        parent_ids = [order_id]
 
-                        # If no fees provided in trade_data, but we have fills, sum the actual USD fees
+                        # If no fees provided but we have fills, sum USD fees
                         if (total_fees is None or total_fees == 0) and fills_in:
                             try:
                                 total_fees = sum((Decimal(f["fee_usd"]) for f in fills_in), Decimal("0"))
@@ -309,13 +327,33 @@ class TradeRecorder:
                                 self.logger.warning(f"Failed to compute buy fees from fills: {e}")
 
                     # -----------------------------
-                    # ✅ Normalize parent_id
+                    # Normalize parent_id
                     # -----------------------------
                     if isinstance(parent_id, list):
                         parent_id = parent_id[0] if parent_id else None
                     elif parent_id is not None and not isinstance(parent_id, str):
                         parent_id = str(parent_id)
 
+                    # -----------------------------
+                    # Decide final `source` for this row
+                    # -----------------------------
+                    source_final = source_in
+                    unknownish = {"", "unknown", "reconciled"}
+
+                    if side == "sell" and (source_final in unknownish):
+                        # Try explicit parent in input first
+                        parent_candidate = trade_data.get("parent_id")
+                        # Else try FIFO-derived parent_ids
+                        if not parent_candidate and parent_ids:
+                            parent_candidate = parent_ids[0]
+                        if parent_candidate:
+                            parent_row = await session.get(TradeRecord, parent_candidate)
+                            if parent_row and (parent_row.source or "") not in unknownish:
+                                source_final = parent_row.source
+
+                    # -----------------------------
+                    # Build row
+                    # -----------------------------
                     trade_dict = {
                         "order_id": order_id,
                         "parent_id": parent_id,
@@ -330,24 +368,49 @@ class TradeRecorder:
                         "trigger": trigger,
                         "order_type": trade_data.get("order_type"),
                         "status": status,
-                        "source": source,
+                        # 🔒 origin-of-intent (immutable after insert)
+                        "source": source_final,
+                        # Derived SELL fields
                         "cost_basis_usd": float(cost_basis_usd) if cost_basis_usd is not None else None,
                         "sale_proceeds_usd": float(sale_proceeds_usd) if sale_proceeds_usd is not None else None,
                         "net_sale_proceeds_usd": float(net_sale_proceeds_usd) if net_sale_proceeds_usd is not None else None,
+                        # BUY remaining_size initialized to full amount; SELL None
                         "remaining_size": float(amount) if side == "buy" else None,
-                        # SELL row's realized_profit equals pnl_usd; BUY has None
+                        # SELL realized_profit equals pnl_usd; BUY has None
                         "realized_profit": float(pnl_usd) if side == "sell" and pnl_usd is not None else None,
                     }
 
+                    if ingest_via:
+                        trade_dict["ingest_via"] = ingest_via
+                    if last_reconciled_at:
+                        trade_dict["last_reconciled_at"] = last_reconciled_at
+                    if last_reconciled_via:
+                        trade_dict["last_reconciled_via"] = last_reconciled_via
+
+
+                    # -----------------------------
+                    # UPSERT (preserving `source`)
+                    # -----------------------------
                     insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
+
+                    # Base exclusions: never update 'source'
+                    exclude_keys = {"source"}
+
+                    # For BUY updates, never touch derived/linkage fields
+                    if side == "buy":
+                        # never touch linkage/derived fields on update for buys
+                        exclude_keys.update({"remaining_size", "realized_profit", "pnl_usd", "parent_id", "parent_ids"})
+
+                    update_cols = {k: insert_stmt.excluded[k] for k in trade_dict.keys() if k not in exclude_keys}
+
                     update_stmt = insert_stmt.on_conflict_do_update(
                         index_elements=["order_id"],
-                        set_={key: insert_stmt.excluded[key] for key in trade_dict}
+                        set_=update_cols,
                     )
                     await session.execute(update_stmt)
 
                     # -----------------------------
-                    # ✅ Update Parent BUYs (remaining_size + realized_profit)
+                    # Update Parent BUYs (remaining_size + realized_profit)
                     # -----------------------------
                     for instruction in update_instructions:
                         parent_record = await session.get(TradeRecord, instruction["order_id"])
@@ -355,7 +418,8 @@ class TradeRecorder:
                             self.logger.warning(f"⚠️ Parent BUY not found for update: {instruction['order_id']}")
                             continue
                         parent_record.remaining_size = instruction["remaining_size"]
-                        # parent_record.realized_profit = instruction["realized_profit"]  # ← skip if you don't want this on BUYs
+                        # If you want BUY realized P&L accumulation, uncomment next line:
+                        # parent_record.realized_profit = instruction["realized_profit"]
 
                 self.logger.info(
                     f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | "
@@ -365,7 +429,7 @@ class TradeRecorder:
 
         except asyncio.CancelledError:
             self.active_session = None
-            self.logger.warning("🛑 record_trade was cancelled.", exc_info=True)
+            self.logger.info("🛑 record_trade cancelled cleanly.")
             raise
         except Exception as e:
             self.active_session = None

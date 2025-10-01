@@ -10,11 +10,16 @@ from inspect import stack  # debugging
 from asyncio import Event
 from decimal import Decimal
 from sqlalchemy.sql import text
+from TableModels.base import Base
 from sqlalchemy import select, delete
-from datetime import datetime, date, timezone, timedelta
+from contextlib import asynccontextmanager
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from TableModels.ohlcv_data import OHLCVData
+from TableModels.shared_data import SharedData
 from TableModels.passive_orders import PassiveOrder
 from TableModels.active_symbols import ActiveSymbol
+from datetime import datetime, date, timezone, timedelta
 from SharedDataManager.trade_recorder import TradeRecorder
 from SharedDataManager.leader_board import recompute_and_upsert_active_symbols, LeaderboardConfig
 
@@ -138,15 +143,61 @@ class SharedDataManager:
             "symbols": set()
         }
 
+    @asynccontextmanager
+    async def db_session(self):
+        """App-level wrapper around DatabaseSessionManager.async_session()."""
+        async with self.database_session_manager.async_session() as sess:
+            yield sess
+
+    async def initialize_schema(self) -> None:
+        """Create tables if they don't exist."""
+        try:
+            # use the engine that lives in the DB session manager
+            async with self.database_session_manager.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            self.logger.info("✅ Database schema initialized.")
+        except Exception as e:
+            self.logger.error("❌ Failed to initialize schema: %s", e, exc_info=True)
+            raise
+
+    async def populate_initial_data(self) -> None:
+        """
+        Seed default rows if needed.
+        Currently ensures a 'market_data' row exists in shared_data.
+        """
+        try:
+            async with self.db_session() as session:
+                async with session.begin():
+                    # market_data (existing)
+                    md = await session.execute(
+                        select(SharedData).where(SharedData.data_type == "market_data")
+                    )
+                    if md.scalar_one_or_none() is None:
+                        session.add(SharedData(data_type="market_data", data="{}"))
+                        self.logger.info("✅ Inserted initial market_data row.")
+
+                    # order_management (new)
+                    om = await session.execute(
+                        select(SharedData).where(SharedData.data_type == "order_management")
+                    )
+                    if om.scalar_one_or_none() is None:
+                        session.add(SharedData(data_type="order_management", data="{}"))
+                        self.logger.info("✅ Inserted initial order_management row.")
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 populate_initial_data was cancelled.")
+            raise
+        except SQLAlchemyError as e:
+            self.logger.error(f"❌ Failed to populate initial shared_data: {e}", exc_info=True)
+
     def inject_maintenance_callback(self):
         from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
         self.trade_recorder.run_maintenance_if_needed = lambda: run_maintenance_if_needed(self, self.trade_recorder)
 
     async def validate_startup_state(self, market_data_manager,ticker_manager):
         """Ensure required shared data exists, or initialize it if missing."""
-        raw_market_data = await self.database_session_manager.fetch_market_data()
-        raw_order_mgmt = await self.database_session_manager.fetch_order_management()
-        raw_order_mgmt["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
+        raw_market_data = await self.fetch_market_data()
+        raw_order_mgmt = await self.fetch_order_management()
+        raw_order_mgmt["passive_orders"] = await self.fetch_passive_orders()
 
         market_data = None
         order_mgmt = None
@@ -162,7 +213,7 @@ class SharedDataManager:
 
             if raw_om and raw_om.strip().lower() != "null":
                 order_mgmt = json.loads(raw_om, cls=CustomJSONDecoder)
-                order_mgmt["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
+                order_mgmt["passive_orders"] = await self.fetch_passive_orders()
 
         except Exception as e:
             self.logger.error(f"❌ Error decoding startup data: {e}", exc_info=True)
@@ -260,7 +311,7 @@ class SharedDataManager:
                     self.market_data = await self.fetch_order_management()
                 else:
                     print("✅ Skipping fetch_order_management(): order_management is already populated")
-                self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
+                self.order_management["passive_orders"] = await self.fetch_passive_orders()
                 print("✅ SharedDataManager:initialized successfully.")
 
                 if not self._initialized_event.is_set():
@@ -291,13 +342,13 @@ class SharedDataManager:
         """Refresh shared data periodically."""
         async with (self.lock):
             try:
-                market_result = await self.database_session_manager.fetch_market_data()
+                market_result = await self.fetch_market_data()
                 self.market_data = market_result if market_result else {}
                 self.market_data = self.validate_market_data(self.market_data)
-                order_management_result = await self.database_session_manager.fetch_order_management()
+                order_management_result = await self.fetch_order_management()
                 self.order_management = order_management_result if order_management_result else {}
                 self.order_management = self.validate_order_management_data(self.order_management)
-                self.order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
+                self.order_management["passive_orders"] = await self.fetch_passive_orders()
 
                 print("Shared data refreshed successfully.")
                 return self.market_data, self.order_management
@@ -345,44 +396,127 @@ class SharedDataManager:
                 self.logger.warning(f"⚠️ order_management missing keys: {missing_keys}")
             self.logger.debug(f"✅ set_order_management updated with {len(self.order_management.get('order_tracker', {}))} open orders")
 
-    async def fetch_market_data(self):
-        """Fetch market_data from the database via DatabaseSessionManager."""
+    async def fetch_market_data(self) -> dict:
+        """
+        Load the 'market_data' blob from shared_data.
+        Uses self.custom_json_decoder if provided; falls back to json.JSONDecoder.
+        """
         try:
-            result = await self.database_session_manager.fetch_market_data()
+            async with self.db_session() as session:
+                result = await session.execute(
+                    select(SharedData).where(SharedData.data_type == "market_data")
+                )
+                row = result.scalar_one_or_none()
+                if not row:
+                    self.logger.warning("No market_data found.")
+                    return {}
 
-            if result is None:
-                return {}
-
-            # Convert Record to native dict
-            result_dict = dict(result)
-
-            # Parse the JSON stored in the 'data' field
-            raw_data = result_dict.get("data")
-            market_data = json.loads(raw_data, cls=CustomJSONDecoder) if raw_data else {}
-
-            return self.validate_market_data(market_data)
-
+                decoder_cls = getattr(self, "custom_json_decoder", json.JSONDecoder)
+                try:
+                    return json.loads(row.data, cls=decoder_cls)
+                except Exception as parse_err:
+                    self.logger.error(
+                        f"❌ Failed to decode market_data JSON: {parse_err}", exc_info=True
+                    )
+                    return {}
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fetch_market_data was cancelled.")
+            raise
+        except SQLAlchemyError as e:
+            self.logger.error(f"❌ DB error fetching market_data: {e}", exc_info=True)
+            return {}
         except Exception as e:
-            if self.logger:
-                self.logger.error(f"❌ Error fetching market data: {e}", exc_info=True)
-            else:
-                print(f"❌ Error fetching market data: {e}")
+            self.logger.error(f"❌ Unexpected error fetching market_data: {e}", exc_info=True)
             return {}
 
-    async def fetch_order_management(self):
-        """Fetch order_management and merge passive_orders."""
+    async def fetch_order_management(self) -> dict:
+        """
+        Load the 'order_management' blob from shared_data.
+        Uses self.custom_json_decoder if provided; falls back to json.JSONDecoder.
+        """
         try:
-            result = await self.database_session_manager.fetch_order_management()
-            order_management = json.loads(result["data"], cls=CustomJSONDecoder) if result else {}
+            async with self.db_session() as session:
+                result = await session.execute(
+                    select(SharedData).where(SharedData.data_type == "order_management")
+                )
+                row = result.scalar_one_or_none()
+                if not row:
+                    self.logger.warning("No data found for order_management.")
+                    return {}
 
-            # ✅ Fetch passive orders separately
-            passive_orders = await self.database_session_manager.fetch_passive_orders()
-            order_management["passive_orders"] = passive_orders  # ⬅️ Merge
-
-            return order_management
-        except Exception as e:
-            self.logger.error(f"❌ Error fetching order management data: {e}", exc_info=True)
+                decoder_cls = getattr(self, "custom_json_decoder", json.JSONDecoder)
+                try:
+                    return json.loads(row.data, cls=decoder_cls)
+                except Exception as parse_err:
+                    self.logger.error(
+                        f"❌ Failed to decode order_management JSON: {parse_err}",
+                        exc_info=True,
+                    )
+                    return {}
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fetch_order_management was cancelled.")
+            raise
+        except SQLAlchemyError as e:
+            self.logger.error(f"❌ DB error fetching order_management: {e}", exc_info=True)
             return {}
+        except Exception as e:
+            self.logger.error(f"❌ Unexpected error fetching order_management: {e}", exc_info=True)
+            return {}
+
+    async def fetch_passive_orders(self) -> dict:
+        """
+        Fetch PassiveOrder rows and return them keyed by symbol.
+
+        NOTE: if multiple passive orders exist for the same symbol, later rows will
+        overwrite earlier ones. If you need ALL per-symbol, see the alternative below.
+        """
+        try:
+            async with self.db_session() as session:
+                result = await session.execute(select(PassiveOrder))
+                rows = result.scalars().all()
+
+                passive_orders: dict[str, list[dict]] = {}
+                for row in rows:
+                    d = {
+                        "order_id": row.order_id,
+                        "symbol": row.symbol,
+                        "side": row.side,
+                        "timestamp": row.timestamp,
+                        "order_data": row.order_data,
+                    }
+                    if row.symbol:
+                        passive_orders.setdefault(row.symbol, []).append(d)
+                return passive_orders
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 fetch_passive_orders was cancelled.")
+            raise
+        except SQLAlchemyError as e:
+            self.logger.error("❌ DB error fetching passive_orders: %s", e, exc_info=True)
+            return {}
+        except Exception as e:
+            self.logger.error("❌ Unexpected error fetching passive_orders: %s", e, exc_info=True)
+            return {}
+
+    async def check_ohlcv_initialized(self) -> bool:
+        """
+        Return True if any OHLCVData row exists.
+        """
+        try:
+            async with self.db_session() as session:
+                result = await session.execute(select(OHLCVData).limit(1))
+                row = result.scalar_one_or_none()
+                return row is not None
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 check_ohlcv_initialized was cancelled.")
+            raise
+        except SQLAlchemyError as e:
+            self.logger.error(f"❌ DB error checking OHLCV initialization: {e}", exc_info=True)
+            return False
+        except Exception as e:
+            self.logger.error(f"❌ Unexpected error checking OHLCV initialization: {e}", exc_info=True)
+            return False
 
     async def get_snapshots(self):
         async with self.lock:

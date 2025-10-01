@@ -92,7 +92,7 @@ class OHLCVManager:
                 if cached_data["timestamp"] >= five_min_ago:
                     self.logger.debug(f"✅ Using cached OHLCV data for {symbol}")
                     df = cached_data['data']
-                    return df.iloc[0]['close'], df.iloc[-1]['close'], df['close'].mean()
+                    return df, df.iloc[0]['close'], df.iloc[-1]['close'], df['close'].mean()
 
             # ✅ Step 2: Prepare timestamp range
             safe_since = int((five_min_ago - timedelta(seconds=10)).timestamp())
@@ -125,49 +125,39 @@ class OHLCVManager:
                 newest_close = df.iloc[-1]['close']
                 average_close = df['close'].mean()
 
-                return oldest_close, newest_close, average_close
+                return df, oldest_close, newest_close, average_close
             else:
-                return None, None, None
+                return None, None, None, None
 
         except Exception as e:
             self.logger.error(f"❌ Error fetching last 5-minute OHLCV for {symbol}: {e}", exc_info=True)
             return None, None, None
 
     async def fetch_volatility_5min(self, symbol, threshold_multiplier=1.1):
-        """
-        Computes short-term volatility using standard deviation of log returns and returns both the current and dynamic threshold.
-
-        Args:
-            symbol (str): Trading pair (e.g., 'BTC-USD')
-            timeframe (str): Resolution of OHLCV data
-            limit (int): Number of recent candles to consider (default: 5)
-            threshold_multiplier (float): Multiplier for adaptive threshold (default: 1.1)
-
-        Returns:
-            Tuple[float, float] | Tuple[None, None]: (volatility_5m, adaptive_threshold)
-        """
         try:
-            # Use existing cache if available, otherwise fetch
-            limit = 5  # Default to last 5 minutes
-            if symbol in self.ohlcv_cache:
-                df = self.ohlcv_cache[symbol]['data']
-            else:
-                _, _, _ = await self.fetch_last_5min_ohlcv(symbol)
-                df = self.ohlcv_cache[symbol]['data'] if symbol in self.ohlcv_cache else None
+            # Always ensure cache is fresh; function will reuse cache if valid
+            await self.fetch_last_5min_ohlcv(symbol)
 
-            if df is None or df.empty or len(df) < limit:
+            df = self.ohlcv_cache.get(symbol, {}).get('data')
+            if df is None or df.empty or len(df) < 5:
                 return None, None
 
-            df = df.tail(limit).copy()
-            df['log_return'] = np.log(df['close'] / df['close'].shift(1))
-            volatility_5m = df['log_return'].std()
+            df = df.tail(5).copy()
+            # guard against divide-by-zero or NaNs
+            prev = df['close'].shift(1)
+            valid = (prev > 0) & (df['close'] > 0)
+            if valid.sum() < 2:
+                return None, None
 
-            adaptive_threshold = round(volatility_5m * threshold_multiplier, 6)
-            return round(volatility_5m, 6), adaptive_threshold
+            df['log_return'] = np.log(df['close'][valid] / prev[valid])
+            vol_5m = float(df['log_return'].std())
+            thr = round(vol_5m * threshold_multiplier, 6)
+            return round(vol_5m, 6), thr
 
         except Exception as e:
             self.logger.error(f"❌ Error in fetch_volatility_5min for {symbol}: {e}", exc_info=True)
             return None, None
+
 
 
 

@@ -363,7 +363,7 @@ class TradeBot:
                         symbols = filtered_ticker_cache['symbol'].unique().tolist()
 
                         # Check if OHLCV data is initialized
-                        if not await self.database_session_mngr.check_ohlcv_initialized():
+                        if not await self.shared_data_manager.check_ohlcv_initialized():
                             await self.market_manager.fetch_and_store_ohlcv_data(symbols, mode='initialize')
                         else:
                             await self.market_manager.fetch_and_store_ohlcv_data(symbols, mode='update')

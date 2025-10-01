@@ -15,7 +15,7 @@ from decimal import Decimal
 
 from numpy.f2py.crackfortran import sourcecodeform
 from sqlalchemy.sql import text
-from sqlalchemy import case, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.exc import DBAPIError
 from datetime import datetime, timezone
 from typing import Optional, Any, Sequence
@@ -253,6 +253,9 @@ class WebSocketManager:
                 return
             except (ConnectionResetError, ConnectionClosed, ConnectionClosedError, ConnectionClosedOK, InvalidStatusCode) as e:
                 self.logger.error(f"🔥 {stream} WebSocket connection error: {e}", exc_info=True)
+            except asyncio.TimeoutError:
+                self.logger.warning(f"⏱️ {stream}: no first frame within 8s; reconnecting…")
+                continue  # exit context and retry
             except Exception as e:
                 self.logger.error(f"🔥 Unexpected {stream} WebSocket error: {e}", exc_info=True)
             finally:
@@ -1019,7 +1022,14 @@ class WebhookListener:
         except asyncio.CancelledError:
             self.logger.info("🛑 periodic_save cancelled cleanly.")
 
-    async def reconcile_with_rest_api(self, limit: int = 100):
+    def _infer_origin_from_client_order_id(self, coid: str | None) -> str | None:
+        s = (coid or "").lower()
+        if s.startswith("passivemm-"): return "passivemm"
+        if s.startswith("webhook-"):   return "webhook"
+        if s.startswith("websocket-"): return "websocket"
+        return None
+
+    async def reconcile_with_rest_api(self, limit: int = 500):
         logger = self.logger
         coinbase_api = self.coinbase_api
         shared_data_manager = self.shared_data_manager
@@ -1118,10 +1128,12 @@ class WebhookListener:
                     if not filled_size or not gross_override:
                         logger.warning(f"⚠️ Skipping SELL {order_id}: missing filled_size/filled_value for cost-basis/PnL.")
                         continue
-                if existing_trade is None:
-                    _source = "reconciled"  # new row, inserted by reconcile
+                # Preserve origin or infer for brand-new rows
+                if existing_trade and existing_trade.source:
+                    _source = existing_trade.source
                 else:
-                    _source = existing_trade.source or "reconciled"  # preserve origin
+                    _source = self._infer_origin_from_client_order_id(order.get("client_order_id")) or "unknown"
+
                 trade_data = {
                     "order_id": order_id,
                     "parent_id": parent_id,
@@ -1138,6 +1150,10 @@ class WebhookListener:
                     "total_fees": order.get("total_fees"),
                     "gross_override": gross_override,
                     "fees_override": fees_override,
+                    # ingestion provenance
+                    "ingest_via": "rest",
+                    "last_reconciled_at": datetime.now(timezone.utc).isoformat(),
+                    "last_reconciled_via": "rest_api",
                 }
 
                 reconciled_trades.append(trade_data)
@@ -1201,7 +1217,6 @@ class WebhookListener:
           - Never update: pnl_usd, remaining_size, realized_profit, parent_id, parent_ids
           - Optional WHERE to avoid touching rows that are already finalized (pnl_usd IS NOT NULL).
         """
-        CHUNK = 200
         LOOKBACK_FIRST_RUN_HOURS = SYNC_LOOKBACK  # keep your existing constant
         LOOKBACK_SUBSEQUENT_HOURS = 1
         GLOBAL_LOCK_KEY = 0x54524144 # same as what is used in trade_record_maintenance.py
@@ -1244,15 +1259,13 @@ class WebhookListener:
 
         def _infer_source(client_order_id: str, order_source: str) -> str:
             coid = (client_order_id or "").lower()
-            src = (order_source or "").lower()
             if "passivemm" in coid:
-                return "PassiveMM"
+                return "passivemm"
             if "webhook" in coid:
                 return "webhook"
             if "websocket" in coid:
                 return "websocket"
-            # preserve reconciled if present; else unknown
-            return "reconciled" if "reconciled" in src else "unknown"
+            return "unknown"
 
         def _derive_trigger(trigger_status: str, order_type: str) -> str | None:
             ts = (trigger_status or "").lower()
@@ -1315,7 +1328,7 @@ class WebhookListener:
 
                     # 3) Transform into rows (raw facts only)
                     rows: list[dict] = []
-                    rows.sort(key=lambda r: (r["order_id"] or ""))
+
                     CHUNK = 50  # smaller batches reduce lock hold time
                     for o in orders_to_process:
                         try:
@@ -1369,7 +1382,8 @@ class WebhookListener:
                                 "total_fees_usd": float(fee) if fee is not None else None,
                                 "trigger": trigger,
                                 "status": status,
-                                "source": source,
+                                "source": source,  # INSERT: best-guess origin
+                                "ingest_via": "rest",  # ← how we saw it this time
                             }
                             # DO NOT include: parent_id, parent_ids, pnl_usd, remaining_size, realized_profit
                             rows.append(row)
@@ -1379,7 +1393,7 @@ class WebhookListener:
                                 "⚠️ Skipping order_id=%s due to transform error: %s",
                                 o.get("order_id"), e, exc_info=True
                             )
-
+                    rows.sort(key=lambda r: (r["order_id"] or ""))
                     # 4) Upsert in chunks — non-destructive policy
                     if not rows:
                         self.logger.debug("ℹ️ sync_open_orders → nothing to upsert.")
@@ -1459,7 +1473,8 @@ class WebhookListener:
                                         else_=literal_column("trade_records.trigger"),
                                     ),
                                     "source": case(
-                                        (insert_stmt.excluded.source != literal("unknown"), insert_stmt.excluded.source),
+                                        (literal_column("trade_records.source").is_(None), insert_stmt.excluded.source),
+                                                (literal_column("trade_records.source") == literal("unknown"), insert_stmt.excluded.source),
                                         else_=literal_column("trade_records.source"),
                                     ),
                                     "total_fees_usd": case(
@@ -1471,6 +1486,10 @@ class WebhookListener:
                                          )),
                                         else_=literal_column("trade_records.total_fees_usd"),
                                     ),
+                                    # ✅ Always update ingestion provenance for this write
+                                    "ingest_via": literal("rest"),
+                                    "last_reconciled_at": func.now(),
+                                    "last_reconciled_via": literal("rest_api"),
                                 }
 
                                 stmt = insert_stmt.on_conflict_do_update(
