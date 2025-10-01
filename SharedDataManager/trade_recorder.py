@@ -391,18 +391,32 @@ class TradeRecorder:
                     # -----------------------------
                     # UPSERT (preserving `source`)
                     # -----------------------------
-                    insert_stmt = pg_insert(TradeRecord).values(**trade_dict)
 
-                    # Base exclusions: never update 'source'
-                    exclude_keys = {"source"}
+                    # 1) Limit to real table columns
+                    table_cols = set(TradeRecord.__table__.columns.keys())
+
+                    # keys you NEVER want to update once set (e.g., origin-of-intent)
+                    exclude_from_update = {"source"}
 
                     # For BUY updates, never touch derived/linkage fields
                     if side == "buy":
                         # never touch linkage/derived fields on update for buys
-                        exclude_keys.update({"remaining_size", "realized_profit", "pnl_usd", "parent_id", "parent_ids"})
+                        exclude_from_update.update({"remaining_size", "realized_profit", "pnl_usd", "parent_id", "parent_ids"})
 
-                    update_cols = {k: insert_stmt.excluded[k] for k in trade_dict.keys() if k not in exclude_keys}
+                    # 2) Filter insert dict to known columns only
+                    insert_values = {k: v for k, v in trade_dict.items() if k in table_cols}
 
+                    # 3) Build insert
+                    insert_stmt = pg_insert(TradeRecord).values(**insert_values)
+
+                    # 4) Build update set from known columns only, excluding immutable ones
+                    update_cols = {
+                        k: getattr(insert_stmt.excluded, k)
+                        for k in insert_values.keys()
+                        if k not in exclude_from_update
+                    }
+
+                    # 5) Final upsert
                     update_stmt = insert_stmt.on_conflict_do_update(
                         index_elements=["order_id"],
                         set_=update_cols,

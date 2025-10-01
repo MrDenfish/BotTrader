@@ -28,6 +28,9 @@ class TradeRecord(Base):
     net_sale_proceeds_usd = Column(Float, nullable=True)  # NEW: for performance tracking
     remaining_size = Column(Float, nullable=True)
     realized_profit = Column(Float, nullable=True)  # NEW: for performance tracking
+    ingest_via = Column(String)
+    last_reconciled_at = Column(DateTime(timezone=True))
+    last_reconciled_via = Column(String)
 
 
     __table_args__ = (
