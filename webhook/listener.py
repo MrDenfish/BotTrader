@@ -576,7 +576,7 @@ class WebhookListener:
 
             # Merge passive orders
             try:
-                new_order_management["passive_orders"] = await self.database_session_manager.fetch_passive_orders()
+                new_order_management["passive_orders"] = await self.shared_data_manager.fetch_passive_orders()
             except Exception:
                 self.logger.error("❌ Failed to fetch passive_orders", exc_info=True)
 

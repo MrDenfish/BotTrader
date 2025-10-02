@@ -423,7 +423,7 @@ class OrderTypeManager:
                     f"{order_data.source.upper()} ORDER ({order_data.trigger.get('trigger')}): {symbol} — {response}",
                     {
                         "websocket": self.shared_utils_color.CYAN,
-                        "PassiveMM": self.shared_utils_color.BLUE,
+                        "passivemm": self.shared_utils_color.BLUE,
                         "webhook": self.shared_utils_color.YELLOW
                     }.get(order_data.source, self.shared_utils_color.MAGENTA)
                 ))

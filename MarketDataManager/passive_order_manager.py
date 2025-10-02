@@ -40,18 +40,6 @@ from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 # ---------------------------------------------------------------------------
 
 class PassiveOrderManager:
-    EDGE_BUFFER = Decimal("0.0005")  # 5 bps extra to clear slippage/queue risk
-    """A lightweight maker‑side quoting engine."""
-
-    #: How wide the spread must be *before* we even attempt to quote.
-    DEFAULT_MIN_SPREAD_PCT = Decimal("0.0025")  # 0.25%  # 0.20 %
-
-    #: Cancel & refresh resting orders after this many seconds.
-    DEFAULT_MAX_LIFETIME = 600 # 10 minutes
-
-    #: How aggressively to bias quotes when inventory is skewed.
-    INVENTORY_BIAS_FACTOR = Decimal("0.10")  # ≤ 25 % of current spread Lower inventory skew
-
     def __init__(self, config, ccxt_api, coinbase_api, exchange, ohlcv_manager, shared_data_manager, shared_utils_color, shared_utils_utility,
                  shared_utils_precision, trade_order_manager, order_manager, logger_manager, edge_buffer_pct, min_spread_pct,
                  max_lifetime, inventory_bias_factor, fee_cache: Dict[str, Decimal]) -> None:
@@ -67,11 +55,7 @@ class PassiveOrderManager:
             self.logger = self.logger_manager.loggers['shared_logger']  # ✅ this is the actual logger being used
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
-        self.min_spread_pct = min_spread_pct or self.DEFAULT_MIN_SPREAD_PCT
-        self.max_lifetime = max_lifetime or self.DEFAULT_MAX_LIFETIME
 
-        # {symbol: {"buy": order_id, "sell": order_id, "timestamp": float}}
-        self.passive_order_tracker: Dict[str, Dict[str, Any]] = {}
 
         self.ccxt_api = ccxt_api
         self.exchange = exchange
@@ -86,12 +70,19 @@ class PassiveOrderManager:
         self._min_order_amount_fiat = Decimal(config.min_order_amount_fiat)
         self._min_buy_value = Decimal(config.min_buy_value)
 
-        # Passive order parameters
-        self._min_spread_pct = Decimal(os.getenv("MIN_SPREAD_PCT", str(config.min_spread_pct)))
-        self._edge_buffer_pct = Decimal(os.getenv("EDGE_BUFFER_PCT", str(config.edge_buffer_pct)))
-        self._inventory_bias_factor = Decimal(config.inventory_bias_factor)
-        self._max_lifetime = int(config.max_lifetime)
 
+
+        def _as_dec(v: Any) -> Decimal:
+            return v if isinstance(v, Decimal) else Decimal(str(v))
+
+        # Passive order parameters
+        self._min_spread_pct = config.min_spread_pct # Decimal
+        self._edge_buffer_pct = config.edge_buffer_pct # Decimal
+        self._max_lifetime   = int(config.max_lifetime) # int (cast to be safe)
+        self._inventory_bias_factor = Decimal(config.inventory_bias_factor)  # str -> Decimal
+
+        # {symbol: {"buy": orde_id, "sell": order_id, "timestamp": float}}
+        self.passive_order_tracker: Dict[str, Dict[str, Any]] = {}
 
         # Data managers
         self.ohlcv_manager = ohlcv_manager
@@ -107,7 +98,9 @@ class PassiveOrderManager:
         asyncio.create_task(self.live_performance_tracker(interval=300, lookback_days=7))
     _fee_lock: asyncio.Lock = asyncio.Lock()
 
-
+    @property
+    def bid_ask_spread(self):
+        return self.shared_data_manager.market_data.get('bid_ask_spread', {})
 
     async def update_fee_cache(self, new_fee: Dict[str, Decimal]) -> None:
         """Hot-swap maker/taker fees atomically."""
@@ -255,6 +248,17 @@ class PassiveOrderManager:
 
         trading_pair = product_id
 
+        base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
+        quote_quantizer = Decimal("1").scaleb(-quote_deci)
+        bid_ask = self.bid_ask_spread.get(trading_pair, {})
+        print(f"{bid_ask}")
+        bid = bid_ask.get('bid')
+        ask = bid_ask.get('ask')
+
+        current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
+        current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
+        print(f"bid:{current_bid} ask:{current_ask}")
+
         self.logger.info(f"🧭 PassiveMM:start {product_id} asset={asset}") # debug
 
 
@@ -344,18 +348,21 @@ class PassiveOrderManager:
 
             # -------- 1) profitability/liquidity gate --------
             profitable = await self.shared_data_manager.fetch_profitable_symbols(
-                min_trades=3, min_pnl_usd=Decimal("0.0"), lookback_days=7,
-                source_filter=None, min_quote_volume=Decimal(self._min_quote_volume), refresh_interval=300
+                min_trades=2, min_pnl_usd=Decimal("0.0"), lookback_days=7,
+                source_filter=None, min_quote_volume=Decimal(self._min_quote_volume), refresh_interval=60
             )
-            if trading_pair in profitable:
-                print(f"🧭 PassiveMM:profitable? {product_id}={trading_pair in profitable} (min_vol={self._min_quote_volume})",self.shared_utils_color.YELLOW)
+
+            if trading_pair in profitable: # Breakpoint set here for debugging
+                print(f"🧭 PassiveMM:profitable? {product_id}={trading_pair in profitable} (min_vol={self._min_quote_volume})",self.shared_utils_color.MAGENTA)
             else:
+                print(f"⛔ Skipping {trading_pair} — not profitable/liquid enough (min_vol={self._min_quote_volume})",self.shared_utils_color.CYAN) # Breakpoint set here for debugging
                 return
 
             # -------- 2) active_symbols gate --------
             try:
                 active_syms = await self.shared_data_manager.fetch_active_symbols(as_of_max_age_sec=6 * 3600)
             except Exception as e:
+
                 self.logger.error(f"⚠️ fetch_active_symbols failed; skipping {trading_pair}: {e}", exc_info=True)
                 return
             if trading_pair not in active_syms:
@@ -367,9 +374,10 @@ class PassiveOrderManager:
             # -------- 3) build OrderData --------
             try:
                 od = await self.tom.build_order_data(
-                    source="PassiveMM", trigger="market_making", asset=asset, product_id=product_id
+                    source="passivemm", trigger="market_making", asset=asset, product_id=product_id
                 )
             except Exception as exc:
+
                 self.logger.error(f"❌ build_order_data failed for {trading_pair}: {exc}", exc_info=True)
                 return
             if not od or not od.highest_bid or not od.lowest_ask:
@@ -405,16 +413,17 @@ class PassiveOrderManager:
             min_spread_req = max(floor_spread, tick_spread) if ignore_fees else max(floor_spread, fee_spread, tick_spread)
 
             self.logger.info(
-                f"🧭 PassiveMM:spread_req {product_id} floor={(floor_spread * 100):.3f}% "
+                f"🧭 passivemm:spread_req {product_id} floor={(floor_spread * 100):.3f}% "
                 f"fees={(fee_spread * 100):.3f}% ticks={(tick_spread * 100):.3f}% → req={(min_spread_req * 100):.3f}%"
             )
             # Always show the computed spread and requirement
             if spread_pct < min_spread_req:
                 self.logger.info(
-                    f"⛔ PassiveMM:spread_too_tight {trading_pair} "
+                    f"⛔ passivemm:spread_too_tight {trading_pair} "
                     f"spread={(spread_pct * 100):.3f}% req={(min_spread_req * 100):.3f}% "
                     f"(bid={best_bid}, ask={best_ask})"
                 )
+
                 return
             self.logger.info(f"🧭 PassiveMM:spread_ok {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
 
@@ -486,8 +495,8 @@ class PassiveOrderManager:
 
                     buy_od.post_only = True
                     buy_od.time_in_force = "GTC"
-                    buy_od.strategy_tag = "PassiveMM"
-                    buy_od.source = "PassiveMM"
+                    buy_od.strategy_tag = "passivemm"
+                    buy_od.source = "passivemm"
 
                     print(f"🧭 PassiveMM:BUY submit {product_id} notional=${buy_notional} px={buy_px}",self.shared_utils_color.BRIGHT_GREEN)
                     res_buy = await self.tom.place_order(buy_od)
@@ -506,7 +515,7 @@ class PassiveOrderManager:
                             order_id=order_id_buy, symbol=trading_pair, side="buy",
                             order_data=getattr(buy_od, "to_dict", lambda: {
                                 "price": str(buy_px), "order_amount_fiat": str(buy_notional),
-                                "post_only": True, "tif": "GTC", "source": "PassiveMM"
+                                "post_only": True, "tif": "GTC", "source": "passivemm"
                             })()
                         )
                         self.logger.info(f"✅ Placed PASSIVE BUY {trading_pair} ${buy_notional} @ {buy_px} (order_id={order_id_buy})")
@@ -532,8 +541,8 @@ class PassiveOrderManager:
 
                     sell_od.post_only = True
                     sell_od.time_in_force = "GTC"
-                    sell_od.strategy_tag = "PassiveMM"
-                    sell_od.source = "PassiveMM"
+                    sell_od.strategy_tag = "passivemm"
+                    sell_od.source = "passivemm"
 
                     print(f"🚀🚀 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px} 🚀🚀",self.shared_utils_color.BRIGHT_GREEN)
 
@@ -551,7 +560,7 @@ class PassiveOrderManager:
                             order_id=order_id_sell, symbol=trading_pair, side="sell",
                             order_data=getattr(sell_od, "to_dict", lambda: {
                                 "price": str(sell_px), "size": str(sell_sz),
-                                "post_only": True, "tif": "GTC", "source": "PassiveMM"
+                                "post_only": True, "tif": "GTC", "source": "passivemm"
                             })()
                         )
                         print(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})",
@@ -576,7 +585,7 @@ class PassiveOrderManager:
             if buy_id:
                 await self.order_manager.cancel_order(buy_id, symbol)
 
-            sell_od = self._clone_order_data(od, side="sell", trigger=f"passive_{reason}", source="PassiveMM")
+            sell_od = self._clone_order_data(od, side="sell", trigger=f"passive_{reason}", source="passivemm")
             sell_od.type = "limit"
             sell_od.adjusted_price = price.quantize(Decimal(f'1e-{od.quote_decimal}'))
             sell_od.adjusted_size = od.available_to_trade_crypto
@@ -630,7 +639,7 @@ class PassiveOrderManager:
             quote_od = self._clone_order_data(od, side="buy", post_only=True)
 
             # ✅ Step 3: Dynamic size scaling based on spread quality
-            min_required_spread = max(self.fee["maker"] * Decimal("2.0"), self.min_spread_pct)
+            min_required_spread = max(self.fee["maker"] * Decimal("2.0"), self._min_spread_pct)
             spread_factor = max(Decimal("1.0"), (od.spread / (od.limit_price * min_required_spread)))
 
             # Cap size increase to avoid overexposure (e.g., max 3x baseline)
@@ -664,7 +673,7 @@ class PassiveOrderManager:
                 return
 
             # ✅ Step 3: Dynamic size scaling based on spread quality
-            min_required_spread = max(self.fee["maker"] * Decimal("2.0"), self.min_spread_pct)
+            min_required_spread = max(self.fee["maker"] * Decimal("2.0"), self._min_spread_pct)
             spread_factor = max(Decimal("1.0"), (od.spread / (od.limit_price * min_required_spread)))
             spread_factor = min(spread_factor, Decimal("3.0"))
 
@@ -705,7 +714,7 @@ class PassiveOrderManager:
         spread = Decimal(quote_od.spread)
         quote_od.spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
         quote_od.trigger = {"trigger": f"passive_{quote_od.side}", "trigger_note": f"price:{price}"}
-        quote_od.source = 'PassiveMM'
+        quote_od.source = 'passivemm'
 
         if not self._passes_balance_check(quote_od):
             return
@@ -757,7 +766,7 @@ class PassiveOrderManager:
         if total == 0:
             return Decimal("0")
         imbalance = (usd_value - asset_value) / total  # +ve => long USD
-        return imbalance * self.INVENTORY_BIAS_FACTOR * spread
+        return imbalance * self._inventory_bias_factor * spread
 
     def _passes_balance_check(self, od: OrderData) -> bool:
         """Ensure affordability of the order about to placed."""
@@ -817,7 +826,7 @@ class PassiveOrderManager:
 
                 # 🔁 Periodic cleanup of expired orders
                 for symbol, entry in list(self.passive_order_tracker.items()):
-                    if now - entry.get("timestamp", 0) >= self.max_lifetime:
+                    if now - entry.get("timestamp", 0) >= self._max_lifetime:
                         # Cancel & cleanup expired orders
                         for side in ("buy", "sell"):
                             old_id = entry.get(side)
@@ -906,7 +915,7 @@ class PassiveOrderManager:
                 df = df[df['order_time'] >= cutoff_time].copy()
 
                 # ✅ Step 1: Get all PassiveMM BUY order IDs
-                passive_buy_ids = set(df[(df['side'] == 'buy') & (df['source'] == "PassiveMM")]['order_id'])
+                passive_buy_ids = set(df[(df['side'] == 'buy') & (df['source'] == "passivemm")]['order_id'])
 
                 # ✅ Step 2: Filter SELLs whose parent_ids contain any PassiveMM BUY order_id
                 def is_passive_sell(row):
@@ -933,7 +942,7 @@ class PassiveOrderManager:
                 )
                 if total_trades >0:
                     print(self.shared_utils_color.format(
-                        "\n[PassiveMM Live Performance Tracker]\n"
+                        "\n[passivemm Live Performance Tracker]\n"
                         "-------------------------------------\n"
                         f"Total Trades (last {lookback_days}d): {total_trades}\n"
                         f"Win Rate: {win_rate:.2f}%\n"

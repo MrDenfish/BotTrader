@@ -2,7 +2,7 @@
 import argparse
 import asyncio
 import logging
-import os
+import sys, os
 import signal
 import time
 
@@ -879,6 +879,9 @@ if __name__ == "__main__":
     os.environ['PYTHONASYNCIODEBUG'] = '0'
     logger = logging.getLogger('asyncio')
     logger.setLevel(logging.ERROR)
+    print("Interpreter:", sys.executable)
+    print("File:", __file__)
+    print("CWD:", os.getcwd())
     asyncio.run(main())
 
 

@@ -1,7 +1,7 @@
-
+import os
 import asyncio, time
-
 from decimal import Decimal
+from typing import List, Set
 from datetime import timedelta
 from sqlalchemy import update, text
 from sqlalchemy import or_, and_, select, func
@@ -15,6 +15,163 @@ from TableModels.trade_record import TradeRecord
 BATCH_LIMIT = 5000                 # rows per batch
 MAX_BATCH_LOOPS = 200              # safety ceiling on total batches
 GLOBAL_LOCK_KEY = 0x54524144       # same key you already use (decimal 1414676804)
+
+# --- FIFO maintenance helpers -----------------------------------------------
+
+async def recompute_fifo_for_symbol(shared_data_manager, symbol: str) -> None:
+    """
+    Idempotent FIFO rebuild for a single symbol.
+    Replays SELLs in chronological order against BUYs.
+    Resets/rewrites: buy.remaining_size; sell.parent_id/parent_ids, cost/proceeds/net/pnl.
+    """
+    logger = getattr(shared_data_manager, "logger", None) or getattr(shared_data_manager, "shared_logger", None)
+    logpfx = f"[FIFO:{symbol}]"
+
+    async with shared_data_manager.database_session_manager.async_session() as session:
+        async with session.begin():
+            buys = (await session.execute(
+                select(TradeRecord)
+                .where(
+                    TradeRecord.symbol == symbol,
+                    TradeRecord.side == "buy",
+                    TradeRecord.status == "filled",
+                )
+                .order_by(TradeRecord.order_time.asc(), TradeRecord.order_id.asc())
+            )).scalars().all()
+
+            sells = (await session.execute(
+                select(TradeRecord)
+                .where(
+                    TradeRecord.symbol == symbol,
+                    TradeRecord.side == "sell",
+                    TradeRecord.status == "filled",
+                )
+                .order_by(TradeRecord.order_time.asc(), TradeRecord.order_id.asc())
+            )).scalars().all()
+
+            if not buys and not sells:
+                if logger: logger.info(f"{logpfx} No trades; nothing to do.")
+                return
+
+            # Reset BUY buckets; clear SELL allocation fields
+            for b in buys:
+                b.remaining_size = Decimal(str(b.size or 0))
+
+            for s in sells:
+                s.parent_id = None
+                s.parent_ids = []
+                s.cost_basis_usd = None
+                s.sale_proceeds_usd = None
+                s.net_sale_proceeds_usd = None
+                s.pnl_usd = None
+
+            # In-memory FIFO
+            fifo = [{
+                "order_id": b.order_id,
+                "price": Decimal(str(b.price or 0)),
+                "size": Decimal(str(b.size or 0)),
+                "fees_usd": Decimal(str(b.total_fees_usd or 0)),
+                "remaining": Decimal(str(b.size or 0)),
+            } for b in buys]
+
+            repaired = 0
+            partials = 0
+
+            def q(x: Decimal) -> Decimal:
+                # If you have precision helpers, apply them here.
+                return x
+
+            for s in sells:
+                need = Decimal(str(s.size or 0))
+                if need <= 0:
+                    continue
+
+                sell_price = Decimal(str(s.price or 0))
+                gross = sell_price * need
+                sell_fees = Decimal(str(s.total_fees_usd or 0))
+
+                parent_ids: List[str] = []
+                total_cost_basis = Decimal("0")
+                remaining_to_fill = need
+
+                for bucket in fifo:
+                    if remaining_to_fill <= 0:
+                        break
+                    if bucket["remaining"] <= 0:
+                        continue
+                    take = bucket["remaining"] if bucket["remaining"] <= remaining_to_fill else remaining_to_fill
+                    if take <= 0:
+                        continue
+
+                    # Fee-inclusive buy-side cost basis allocation
+                    parent_total_cost = (bucket["price"] * bucket["size"]) + bucket["fees_usd"]
+                    ratio = (take / bucket["size"]) if bucket["size"] > 0 else Decimal("0")
+                    alloc_cost = parent_total_cost * ratio
+
+                    total_cost_basis += alloc_cost
+                    bucket["remaining"] -= take
+                    remaining_to_fill -= take
+                    parent_ids.append(bucket["order_id"])
+
+                if remaining_to_fill > 0:
+                    # Not fully covered; leave this SELL unassigned (or log)
+                    partials += 1
+                    continue
+
+                sale_proceeds_usd = q(gross)
+                net_sale_proceeds_usd = q(gross - sell_fees)
+                cost_basis_usd = q(total_cost_basis)
+                pnl_usd = q(net_sale_proceeds_usd - cost_basis_usd)
+
+                s.parent_ids = parent_ids
+                s.parent_id = parent_ids[0] if parent_ids else None
+                s.cost_basis_usd = cost_basis_usd
+                s.sale_proceeds_usd = sale_proceeds_usd
+                s.net_sale_proceeds_usd = net_sale_proceeds_usd
+                s.pnl_usd = pnl_usd
+                repaired += 1
+
+            if logger:
+                logger.info(f"{logpfx} Replayed {repaired} SELLs; partial/uncovered SELLs: {partials}")
+
+async def detect_symbols_needing_fifo_repair(shared_data_manager, limit: int = 100) -> Set[str]:
+    """
+    Heuristics:
+      • SELLs with no parents even though prior BUYs exist (classic out-of-order)
+      • BUYs with negative remaining_size
+    Returns a set of symbols; capped by `limit` per query.
+    """
+    symbols: Set[str] = set()
+    async with shared_data_manager.database_session_manager.async_session() as session:
+        # SELLs without parents but with prior BUYs
+        rows1 = (await session.execute(text(f"""
+            SELECT DISTINCT s.symbol
+            FROM {TradeRecord.__tablename__} s
+            WHERE s.side='sell'
+              AND (s.parent_id IS NULL AND (s.parent_ids IS NULL OR array_length(s.parent_ids,1)=0))
+              AND EXISTS (
+                  SELECT 1 FROM {TradeRecord.__tablename__} b
+                  WHERE b.symbol = s.symbol
+                    AND b.side = 'buy'
+                    AND b.status = 'filled'
+                    AND b.order_time <= s.order_time
+              )
+            LIMIT :lim
+        """), {"lim": limit})).all()
+        symbols |= {r[0] for r in rows1}
+
+        # BUYs with negative remaining_size
+        rows2 = (await session.execute(text(f"""
+            SELECT DISTINCT symbol
+            FROM {TradeRecord.__tablename__}
+            WHERE side='buy' AND remaining_size < 0
+            LIMIT :lim
+        """), {"lim": limit})).all()
+        symbols |= {r[0] for r in rows2}
+
+    return symbols
+# -------------------------------------------------------------------------------
+
 
 async def _timed(label, coro, timeout=300):
     t0 = time.monotonic()
@@ -175,17 +332,42 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                 await _batch(session, BUY_REMAINING_FIX, "Fixed remaining_size for BUY trades")
                 await _batch(session, SELL_RESET_FIX,    "Reset incomplete SELL trades for backfill")
 
+
             finally:
                 await session.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": GLOBAL_LOCK_KEY})
 
-    # 4) Backfills — bounded & logged
+        # >>> NEW: Deterministic FIFO rebuild BEFORE backfills <<<
+
+        # 3.5) Recompute FIFO for forced and auto-detected symbols (idempotent, quick exit if none)
+
+    # 4) Backfills — bounded & logged (run these BEFORE recompute)
     print("🔁 Running backfill now...")
     await _timed("backfill_trade_metrics", trade_recorder.backfill_trade_metrics(), timeout=300)
-    await _timed("fix_unlinked_sells",     trade_recorder.fix_unlinked_sells(),     timeout=300)
+    await _timed("fix_unlinked_sells", trade_recorder.fix_unlinked_sells(), timeout=300)
+
+    # 5) FINAL: Deterministic FIFO rebuild — the LAST writer wins
+    logger = getattr(shared_data_manager, "logger", None) or getattr(shared_data_manager, "shared_logger", None)
+    force = os.getenv("FIFO_FORCE_SYMBOLS", "") or ""
+    forced_symbols = {s.strip() for s in force.replace(" ", ",").split(",") if s.strip()}
+
+    # Re-detect *now*, in case backfills changed anything
+    detected_symbols = await detect_symbols_needing_fifo_repair(shared_data_manager)
+
+    symbols_to_fix = set(forced_symbols) | set(detected_symbols)
+    if symbols_to_fix:
+        if logger: logger.info(f"[FIFO] Recompute targets → {sorted(symbols_to_fix)}")
+        for sym in sorted(symbols_to_fix):
+            try:
+                await recompute_fifo_for_symbol(shared_data_manager, sym)
+            except Exception:
+                if logger: logger.exception(f"[FIFO] Recompute failed for {sym}")
+    else:
+        if logger: logger.info("[FIFO] No symbols require recompute.")
+
+    # Optional: quick audit of a canary symbol
     await audit_fifo(trade_recorder, symbol="ELA-USD")
 
     print("✅ Maintenance completed.")
-
 
 
 ALLOCATION_EPS_BASE = Decimal("1e-8")  # tune based on base precision

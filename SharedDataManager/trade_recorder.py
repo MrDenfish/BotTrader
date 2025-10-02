@@ -5,11 +5,13 @@ from decimal import Decimal, ROUND_DOWN, InvalidOperation
 
 import asyncio
 from TableModels.trade_record import TradeRecord
+from TestDebugMaintenance.trade_record_maintenance import recompute_fifo_for_symbol
+
 # from TableModels.trade_record_debug import TradeRecordDebug
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from asyncio import Queue
 from typing import Optional
-from sqlalchemy import func, and_, or_, not_
+from sqlalchemy import text, func, and_, or_, not_
 from sqlalchemy.future import select
 
 from datetime import datetime, timezone, timedelta
@@ -19,12 +21,13 @@ class TradeRecorder:
     Handles recording of trades into the trade_records table.
     """
 
-    def __init__(self, database_session_manager, logger, shared_utils_precision, coinbase_api, maintenance_callback=None):
+    def __init__(self, database_session_manager, logger, shared_utils_precision, coinbase_api, maintenance_callback=None, shared_data_manager=None):
         self.db_session_manager = database_session_manager
         self.logger = logger
         self.shared_utils_precision = shared_utils_precision
         self.coinbase_api = coinbase_api
         self.run_maintenance_if_needed = maintenance_callback
+        self.shared_data_manager = shared_data_manager
 
         self.trade_queue: Queue = Queue()
         self.worker_task: Optional[asyncio.Task] = None
@@ -746,82 +749,61 @@ class TradeRecorder:
             return []
 
     async def fix_unlinked_sells(self):
-        """Recomputes PnL and parent linkage for unmatched SELL trades."""
-
+        """
+        Repair SELL trades that are missing parent linkage and/or PnL by delegating to the
+        authoritative FIFO recompute per symbol. This avoids partial, out-of-order allocations
+        and prevents stomping on already-correct rows.
+        """
         self.logger.info("🔧 Running fix_unlinked_sells()...")
         try:
+            # 1) Find symbols that actually need fixing (unlinked sells or missing PnL),
+            #    but DO NOT include sells that are already linked – we won't overwrite those.
+            symbols_to_fix: set[str] = set()
+
             async with self.db_session_manager.async_session() as session:
                 async with session.begin():
                     self.active_session = session
 
-                    stmt = select(TradeRecord).where(
-                        TradeRecord.side == "sell",
-                        TradeRecord.pnl_usd.is_(None),
-                        TradeRecord.source != "reconciled"
+                    rows = await session.execute(
+                        text(f"""
+                            SELECT DISTINCT symbol
+                            FROM {TradeRecord.__tablename__}
+                            WHERE side = 'sell'
+                              AND source != 'reconciled'
+                              AND (
+                                    -- unlinked sells
+                                    parent_id IS NULL
+                                    OR parent_ids IS NULL
+                                    -- or sells that never had PnL computed
+                                    OR pnl_usd IS NULL
+                                  )
+                        """)
                     )
-                    result = await session.execute(stmt)
-                    sell_trades = result.scalars().all()
+                    symbols_to_fix |= {r[0] for r in rows.all()}
 
-                    if not sell_trades:
-                        self.logger.info("✅ No unmatched SELL trades found.")
-                        return
+            if not symbols_to_fix:
+                self.logger.info("✅ No unmatched SELL trades found.")
+                return
 
-                    for trade in sell_trades:
-                        symbol = trade.symbol
-                        amount = Decimal(trade.size)
-                        price = Decimal(trade.price)
-                        total_fees = Decimal(trade.total_fees_usd or 0)
+            # 2) Run authoritative recompute per symbol (does full, chronological replay).
+            #    This ensures consistent, FIFO-correct parent linkage & PnL.
+            fixed = 0
+            for symbol in sorted(symbols_to_fix):
+                try:
+                    await recompute_fifo_for_symbol(self.shared_data_manager, symbol)
+                    fixed += 1
+                    self.logger.info(f"✅ FIFO recompute completed for {symbol}")
+                except Exception:
+                    self.logger.exception(f"❌ FIFO recompute failed for {symbol}")
 
-                        base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(symbol)
-                        base_q = Decimal("1").scaleb(-base_deci)
-                        quote_q = Decimal("1").scaleb(-quote_deci)
-
-                        # 🧮 Run FIFO matching
-                        fifo_result = await self.compute_cost_basis_and_sale_proceeds(
-                            symbol=symbol,
-                            size=amount,
-                            sell_price=price,
-                            total_fees=total_fees,
-                            quote_q=quote_q,
-                            base_q=base_q,
-                            sell_time=trade.order_time
-                        )
-
-                        parent_ids = fifo_result["parent_ids"]
-                        if not parent_ids and amount > 0:
-                            self.logger.warning(
-                                f"❌ Unlinked SELL {trade.order_id} {amount} {symbol} — "
-                                f"no BUY match found. Review fill timing or data integrity."
-                            )
-
-                        trade.parent_id = parent_ids[0] if parent_ids else None
-                        trade.parent_ids = parent_ids or None
-                        trade.cost_basis_usd = float(fifo_result["cost_basis_usd"])
-                        trade.sale_proceeds_usd = float(fifo_result["sale_proceeds_usd"])
-                        trade.net_sale_proceeds_usd = float(fifo_result["net_sale_proceeds_usd"])
-                        trade.pnl_usd = float(fifo_result["pnl_usd"])
-
-                        trade.realized_profit = float(sum(
-                            Decimal(instr["realized_profit"])
-                            for instr in fifo_result["update_instructions"]
-                        ))
-
-                        # 🔁 Update parent BUYs
-                        for instr in fifo_result["update_instructions"]:
-                            parent = await session.get(TradeRecord, instr["order_id"])
-                            if parent:
-                                parent.remaining_size = instr["remaining_size"]
-                                parent.realized_profit = instr["realized_profit"]
-
-                    self.logger.info(f"✅ Fixed {len(sell_trades)} unmatched SELL trades.")
+            self.logger.info(f"✅ fix_unlinked_sells(): repaired {fixed} symbols "
+                             f"({len(symbols_to_fix)} targeted).")
 
         except asyncio.CancelledError:
             self.logger.warning("🛑 fix_unlinked_sells was cancelled.")
             raise
-
         except Exception as e:
             self.logger.error(f"❌ Error in fix_unlinked_sells: {e}", exc_info=True)
-
         finally:
             self.active_session = None  # ✅ Clean up even if exception occurs
 

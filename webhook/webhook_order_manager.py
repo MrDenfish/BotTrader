@@ -233,14 +233,14 @@ class TradeOrderManager:
                     self.build_failure_reason = f"Skipping {asset} — no wallet, no passive order, and USD < {min_order_threshold}"
                     return None
 
-            if source == "PassiveMM" and not passive_order_data:
+            if source == "passivemm" and not passive_order_data:
                 if usd_avail >= min_order_threshold or test_mode:
                     self.logger.info(
-                        f"💡 {'[TEST MODE] ' if test_mode else ''}PassiveMM initializing first-time quote for {asset}"
+                        f"💡 {'[TEST MODE] ' if test_mode else ''}passivemm initializing first-time quote for {asset}"
                     )
                     passive_order_data = {}
                 else:
-                    self.build_failure_reason = f"PassiveMM skipping {asset} — no passive data and insufficient USD."
+                    self.build_failure_reason = f"passivemm skipping {asset} — no passive data and insufficient USD."
                     return None
                 self.shared_utils_utility.get_passive_order_data(passive_order_data)
 

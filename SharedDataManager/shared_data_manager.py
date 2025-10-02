@@ -108,14 +108,14 @@ class SharedDataManager:
     _instance = None  # Singleton instance
 
     @classmethod
-    def get_instance(cls, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision, coinbase_api=None):
+    def get_instance(cls, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision, coinbase_api=None,):
         """Ensures only one instance of SharedDataManager is created."""
         if cls._instance is None:
             cls._instance = cls(logger_manager, database_session_manager,
-                                shared_utils_utility,shared_utils_precision, coinbase_api=None)
+                                shared_utils_utility,shared_utils_precision, coinbase_api=coinbase_api,)
         return cls._instance
 
-    def __init__(self, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision, coinbase_api=None):
+    def __init__(self, logger_manager, database_session_manager, shared_utils_utility, shared_utils_precision, coinbase_api=None,):
         if SharedDataManager._instance is not None:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
@@ -127,7 +127,7 @@ class SharedDataManager:
         self.shared_utils_precision = shared_utils_precision
         self.coinbase_api = coinbase_api
         self.trade_recorder = TradeRecorder(self.database_session_manager, logger_manager,
-                                            shared_utils_precision, coinbase_api)
+                                            shared_utils_precision, coinbase_api, shared_data_manager=self)
         self.market_data = {}
         self.order_management = {}
 
@@ -876,7 +876,7 @@ class SharedDataManager:
             lookback_days: int = 7,
             source_filter: str | None = None,
             min_quote_volume: Decimal = Decimal("750000"),
-            refresh_interval: int = 300
+            refresh_interval: int = 60
     ) -> set[str]:
         """
         Returns symbols that are (a) recently profitable by realized SELL PnL and
