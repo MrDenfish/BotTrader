@@ -121,6 +121,7 @@ services:
     volumes:
       - /opt/bot/.env_runtime:/app/.env_runtime:ro
       - ./logs:/app/logs
+      - /opt/bot/logs:/app/logs
     entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
     # Add a simple healthcheck that requires no extra packages:
     healthcheck:
@@ -143,6 +144,7 @@ services:
         condition: service_healthy
     volumes:
       - ./logs:/app/logs
+      - /opt/bot/logs:/app/logs
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
@@ -174,6 +176,7 @@ services:
       - /opt/bot/.env_runtime
     volumes:
       - ./logs:/app/logs
+      - /opt/bot/logs:/app/logs
     entrypoint: [ "python", "-u", "-m", "SharedDataManager.leaderboard_runner" ]
     restart: "no"
 
