@@ -37,7 +37,10 @@ class PortfolioManager:
         self._sell_rsi = self.app_config.rsi_sell
         self._buy_ratio = self.app_config.buy_ratio
         self._sell_ratio = self.app_config.sell_ratio
-        self._min_quote_volume = Decimal(self.app_config.min_quote_volume)
+        val = self.app_config.min_quote_volume
+        if val in (None, ""):
+            raise ValueError("min_quote_volume is required; set MIN_QUOTE_VOLUME in your runtime env")
+        self._min_quote_volume = Decimal(str(val))
         self._roc_buy_24h = Decimal(self.app_config.roc_buy_24h)
         self._roc_sell_24h = Decimal(self.app_config.roc_sell_24h)
         self.shill_coins = self.app_config.shill_coins
