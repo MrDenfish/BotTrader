@@ -33,6 +33,30 @@ services:
       PYTHONUNBUFFERED: "1"        # NEW: live stdout
       PYTHONFAULTHANDLER: "1"      # NEW: better crash dumps
       LOG_LEVEL: "INFO"            # optional if your app reads it
+      # 🔧 Debug toggles (safe defaults for prod; flip in .env_runtime if needed)
+      BT_WATCHDOG: "1"
+      BT_WATCHDOG_INTERVAL: "1.0"
+      BT_WATCHDOG_THRESHOLD_MS: "300"
+      BT_WATCHDOG_DUMP_ON_STALL: "1"
+      BT_TASK_CENSUS: "0"
+      BT_TASK_CENSUS_INTERVAL: "120"
+      BT_TASK_CENSUS_STACKS: "0"
+      BT_DEBUG_AIO: "0"
+      BT_AUTO_DUMP_SECS: "0"
+      BT_STACK_LOG: "/app/logs/py-stacks.log"
+
+      # DB guardrails (your DatabaseSessionManager already reads these names)
+      DB_POOL_TIMEOUT: "10"
+      DB_STATEMENT_TIMEOUT_MS: "60000"
+      DB_CONNECT_TIMEOUT: "5"
+      DB_COMMAND_TIMEOUT: "30"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      DB_POOL_RECYCLE: "300"
+      DB_APP_NAME: "bottrader"
+      DB_TCP_KEEPALIVES_IDLE: "60"
+      DB_TCP_KEEPALIVES_INTERVAL: "20"
+      DB_TCP_KEEPALIVES_COUNT: "3"
     depends_on:
       db:
         condition: service_healthy
@@ -65,6 +89,30 @@ services:
       PYTHONUNBUFFERED: "1"        # NEW: live stdout
       PYTHONFAULTHANDLER: "1"      # NEW
       LOG_LEVEL: "INFO"            # optional
+      # 🔧 Debug toggles (safe defaults for prod; flip in .env_runtime if needed)
+      BT_WATCHDOG: "1"
+      BT_WATCHDOG_INTERVAL: "1.0"
+      BT_WATCHDOG_THRESHOLD_MS: "300"
+      BT_WATCHDOG_DUMP_ON_STALL: "1"
+      BT_TASK_CENSUS: "0"
+      BT_TASK_CENSUS_INTERVAL: "120"
+      BT_TASK_CENSUS_STACKS: "0"
+      BT_DEBUG_AIO: "0"
+      BT_AUTO_DUMP_SECS: "0"
+      BT_STACK_LOG: "/app/logs/py-stacks.log"
+
+      # DB guardrails (your DatabaseSessionManager already reads these names)
+      DB_POOL_TIMEOUT: "10"
+      DB_STATEMENT_TIMEOUT_MS: "60000"
+      DB_CONNECT_TIMEOUT: "5"
+      DB_COMMAND_TIMEOUT: "30"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      DB_POOL_RECYCLE: "300"
+      DB_APP_NAME: "bottrader"
+      DB_TCP_KEEPALIVES_IDLE: "60"
+      DB_TCP_KEEPALIVES_INTERVAL: "20"
+      DB_TCP_KEEPALIVES_COUNT: "3"
     depends_on:
       db:
         condition: service_healthy

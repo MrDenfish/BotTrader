@@ -193,8 +193,16 @@ class TradeRecorder:
             trigger = trade_data.get("trigger")
             # incoming source (may be unknown)
             source_in = (trade_data.get("source") or "").lower()
-
             ingest_via = trade_data.get("ingest_via")  # 'websocket' | 'rest' | 'manual' | 'import' (optional)
+            # sensible default if caller didn’t supply a source
+            source_final = source_in
+            if not source_final:
+                if ingest_via in ("websocket",):
+                    source_final = "websocket"
+                elif ingest_via in ("rest", "import"):
+                    source_final = "reconciled"  # marked as “unknownish” so we can upgrade later
+                elif ingest_via in ("manual",):
+                    source_final = "manual"
 
             last_recon_raw = trade_data.get("last_reconciled_at")
             last_reconciled_at = None
@@ -398,8 +406,25 @@ class TradeRecorder:
                     # 1) Limit to real table columns
                     table_cols = set(TradeRecord.__table__.columns.keys())
 
-                    # keys you NEVER want to update once set (e.g., origin-of-intent)
-                    exclude_from_update = {"source"}
+                    existing_source = await session.scalar(
+                        select(TradeRecord.source).where(TradeRecord.order_id == order_id)
+                    )
+
+                    exclude_from_update = set()
+
+                    def is_unknownish(s):
+                        return (s or "").lower() in {"", "unknown", "reconciled", "none", "null"}
+
+                    if existing_source is None:
+                        # brand new insert; exclude list only affects updates
+                        exclude_from_update.add("source")
+                    else:
+                        if is_unknownish(existing_source) and not is_unknownish(source_final):
+                            # allow upgrade: do NOT add 'source' to exclude_from_update
+                            pass
+                        else:
+                            # keep existing non-unknown source immutable
+                            exclude_from_update.add("source")
 
                     # For BUY updates, never touch derived/linkage fields
                     if side == "buy":

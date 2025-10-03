@@ -93,7 +93,7 @@ class MarketDataUpdater:
         """One-time version of refresh_market_data() for manual use."""
         try:
             new_market_data, new_order_management = await self.update_market_data(time.time())
-            new_order_management["passive_orders"] = await self.shared_data_manager.database_session_manager.fetch_passive_orders()
+            new_order_management["passive_orders"] = await self.shared_data_manager.fetch_passive_orders()
             if not new_market_data or not new_order_management:
                 self.logger.error("⚠️ One-time refresh failed — no market or order data.")
                 return

@@ -41,19 +41,32 @@ class DatabaseSessionManager:
         # (json.loads accepts a Decoder CLASS via the "cls=" parameter)
         self.custom_json_decoder = custom_json_decoder or json.JSONDecoder
 
-        # Normalize DSN to async driver if needed
+        def parse_echo_pool(val: str | None, default="debug"):
+            v = (val or "").split("#", 1)[0].strip().lower()
+            if v == "debug":
+                return "debug"
+            if v in {"1", "true", "on", "yes"}:
+                return True
+            if v in {"0", "false", "off", "no", ""}:
+                return False
+            return default
+
+        # Normalize DSN...
         if dsn.startswith("postgres://"):
             dsn = dsn.replace("postgres://", "postgresql+asyncpg://", 1)
         elif dsn.startswith("postgresql://") and "+asyncpg" not in dsn:
             dsn = dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-        # Defaults (caller can override via **engine_kw)
+        # ✅ Parse the ENV VALUE once; do NOT call getenv on the parsed result
+        parsed_echo_pool = parse_echo_pool(os.getenv("DB_ECHO_POOL"))
+
         defaults = dict(
             echo=False,
+            echo_pool=parsed_echo_pool,  # ✅ pass the parsed tri-state directly
             pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
             max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
             pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
-            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5m
+            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),
             pool_pre_ping=True,
             future=True,
             connect_args={
@@ -71,11 +84,9 @@ class DatabaseSessionManager:
         for k, v in defaults.items():
             engine_kw.setdefault(k, v)
 
-        # Engine + session factory
+            # Build engine
         self.engine = create_async_engine(dsn, **engine_kw)
-        self._async_session_factory = sessionmaker(
-            bind=self.engine, expire_on_commit=False, class_=AsyncSession
-        )
+        self._async_session_factory = sessionmaker(bind=self.engine, expire_on_commit=False, class_=AsyncSession)
 
         # One-time bootstrap guards
         self._schema_lock = asyncio.Lock()

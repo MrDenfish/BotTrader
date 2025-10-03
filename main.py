@@ -2,11 +2,12 @@
 import argparse
 import asyncio
 import logging
-import sys, os
+import os
 import signal
 import time
 
 import aiohttp
+import faulthandler
 from decimal import Decimal
 from aiohttp import web
 from Shared_Utils.scheduler import periodic_runner
@@ -14,7 +15,8 @@ from Shared_Utils.runtime_env import running_in_docker as running_in_docker
 
 from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
 from TestDebugMaintenance.debugger import Debugging
-
+from TestDebugMaintenance.debug_config import DebugToggles, setup_logging, setup_stack_logging
+from TestDebugMaintenance.debug_sos import install_signal_handlers,loop_watchdog, task_census
 from AccumulationManager.accumulation_manager import AccumulationManager
 
 from Config.config_manager import CentralConfig as Config
@@ -67,10 +69,10 @@ async def load_config():
 
 
 async def preload_market_data(logger_manager, shared_data_manager, market_data_updater, ticker_manager ):
-    logger = logger_manager.get_logger("shared_logger")
+    shared_logger = logger_manager.get_logger("shared_logger")
     try:
 
-        logger.info("⏳ Checking startup snapshot state...")
+        shared_logger.info("⏳ Checking startup snapshot state...")
 
         market_data, order_mgmt = await shared_data_manager.validate_startup_state(market_data_updater,ticker_manager)
         # ✅ Explicitly assign to shared_data_manager
@@ -79,7 +81,7 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
         print(f"✅ Market data preloaded successfully with data from the database. preload:{list(shared_data_manager.market_data.keys())}")
         return market_data, order_mgmt
     except Exception as e:
-        logger.error(f"❌ Failed to preload market/order data: {e}", exc_info=True)
+        shared_logger.error(f"❌ Failed to preload market/order data: {e}", exc_info=True)
         raise
 
 
@@ -91,6 +93,8 @@ async def graceful_shutdown(listener, runner):
         if hasattr(market_ws_manager, 'shutdown'):
             await market_ws_manager.shutdown()
     await runner.cleanup()
+
+    faulthandler.cancel_dump_traceback_later()
     shutdown_event.set()
 
 
@@ -115,7 +119,7 @@ async def init_shared_data(config, logger_manager, shared_logger, coinbase_api):
         echo=False,
         pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
         max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
-        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")), # debugging safe to keep on in production
         pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),  # 5m
         pool_pre_ping=True,
         future=True,
@@ -128,7 +132,7 @@ async def init_shared_data(config, logger_manager, shared_logger, coinbase_api):
         echo=False,
         pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
         max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
-        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")), # debugging safe to keep on in production
         pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),
         pool_pre_ping=True,
         future=True,
@@ -532,7 +536,7 @@ async def run_webhook(config, session, coinbase_api, shared_data_manager, market
         websocket_manager=websocket_manager,
         shared_data_manager=shared_data_manager,
         enable_accumulation=False,  # ❌ not required in webhook
-        accumulation_manager=None,
+        accumulation_manager=None
     )
 
     try:
@@ -595,20 +599,22 @@ async def leaderboard_job(shared_data_manager, logger_manager, interval_sec=600,
         await asyncio.sleep(interval_sec)
 
 def make_webhook_tasks(*, listener, logger_manager, websocket_manager, shared_data_manager, enable_accumulation: bool, accumulation_manager=None,) -> list[asyncio.Task]:
+    t_watchdog = asyncio.create_task(loop_watchdog(threshold_ms=300), name="loop_watchdog") # debugging safe to keep on in production
+    t_leaderboard_job = asyncio.create_task(
+            leaderboard_job(shared_data_manager, logger_manager,
+                interval_sec=600, lb_cfg=LeaderboardConfig(lookback_hours=24, min_n_24h=1, win_rate_min=0.0, pf_min=0.0),),
+            name="Leaderboard Recompute",
+        )
     tasks: list[asyncio.Task] = [
         asyncio.create_task(periodic_runner(listener.refresh_market_data, 30, name="Market Data Refresher")),
         asyncio.create_task(periodic_runner(listener.reconcile_with_rest_api, interval=300)),
         asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
         asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
         asyncio.create_task(websocket_manager.start_websockets(), name="Websocket Manager"),
-        asyncio.create_task(
-            leaderboard_job(
-                shared_data_manager, logger_manager,
-                interval_sec=600,
-                lb_cfg=LeaderboardConfig(lookback_hours=24, min_n_24h=1, win_rate_min=0.0, pf_min=0.0),
-            ),
-            name="Leaderboard Recompute",
-        ),
+        t_leaderboard_job,
+        t_watchdog, # debugging
+        asyncio.create_task(task_census(120)), # debugging
+
     ]
 
     # 🔇 Optional: only add accumulation in non-webhook modes (or if explicitly enabled)
@@ -619,7 +625,26 @@ def make_webhook_tasks(*, listener, logger_manager, websocket_manager, shared_da
 
     return tasks
 
-async def main():
+async def app_boot():
+    # Start optional helpers as named tasks
+    if DebugToggles.WATCHDOG_ENABLED:
+        asyncio.create_task(
+            loop_watchdog(
+                threshold_ms=DebugToggles.WATCHDOG_THRESHOLD,
+                interval=DebugToggles.WATCHDOG_INTERVAL,
+                dump_on_stall=DebugToggles.WATCHDOG_DUMP_ON_STALL,
+            ),
+            name="watchdog",
+        )
+    if DebugToggles.CENSUS_ENABLED:
+        asyncio.create_task(
+            task_census(
+                interval=DebugToggles.CENSUS_INTERVAL,
+                include_stacks=DebugToggles.CENSUS_STACKS,
+            ),
+            name="task_census",
+        )
+
     parser = argparse.ArgumentParser(description="Run the crypto trading bot components.")
     parser.add_argument('--run', choices=['sighook', 'webhook', 'both'], default=default_run_mode())
     parser.add_argument(
@@ -677,8 +702,6 @@ async def main():
             coinbase_api.shared_utils_precision = shared_utils_precision
 
             await shared_data_manager.trade_recorder.start_worker()
-
-
 
             accumulation_manager = AccumulationManager(
                 exchange=config.exchange,  # or coinbase_api if preferred
@@ -752,12 +775,10 @@ async def main():
 
             shared_utils_precision.set_trade_parameters()
             # ✅ One-time FIFO Debugging
-            #await shared_data_manager.trade_recorder.test_performance_tracker()
-            #await shared_data_manager.trade_recorder.test_fifo_prod("SPK-USD")
+            # await shared_data_manager.trade_recorder.test_performance_tracker()
+            # await shared_data_manager.trade_recorder.test_fifo_prod("SPK-USD")
 
             await run_maintenance_if_needed(shared_data_manager, shared_data_manager.trade_recorder)
-
-
 
             if args.run == 'webhook':
                 await run_webhook(
@@ -773,7 +794,7 @@ async def main():
                     shared_utils_color=shared_utils_color,
                     order_book_manager=order_book_manager
                 )
-            elif   args.run == 'sighook':
+            elif args.run == 'sighook':
                 await run_sighook(
                     config=config,
                     shared_data_manager=shared_data_manager,
@@ -831,14 +852,14 @@ async def main():
                     websocket_manager=websocket_manager,
                     shared_data_manager=shared_data_manager,
                     enable_accumulation=True,
-                    accumulation_manager=accumulation_manager,
+                    accumulation_manager=accumulation_manager
                 )
                 monitor_interval = int(config.db_monitor_interval or 10)
                 threshold = int(config.db_connection_threshold or 10)
                 db_monitor_task = asyncio.create_task(monitor_db_connections(shared_data_manager,
-                                                                             interval=monitor_interval, threshold=threshold), name="DB Connection Monitor")
+                                                                             interval=monitor_interval, threshold=threshold),
+                                                      name="DB Connection Monitor")
                 background_tasks.append(db_monitor_task)
-
 
                 # ✅ Step 4: Wait for shutdown signal
                 try:
@@ -871,18 +892,24 @@ async def main():
             alert.callhome("Bot main process crashed", str(e), mode="email")
         raise
 
+async def main():
+    await app_boot()
+    await asyncio.Event().wait()
+
+
 
 
 
 
 if __name__ == "__main__":
-    os.environ['PYTHONASYNCIODEBUG'] = '0'
+
+    setup_logging()
+    _fh = setup_stack_logging()  # keep a reference
+
+    os.environ['PYTHONASYNCIODEBUG'] = '1' # debugging turn off in production
     logger = logging.getLogger('asyncio')
     logger.setLevel(logging.ERROR)
-    print("Interpreter:", sys.executable)
-    print("File:", __file__)
-    print("CWD:", os.getcwd())
-    asyncio.run(main())
+    asyncio.run(main(), debug=DebugToggles.AIO_DEBUG)
 
 
 

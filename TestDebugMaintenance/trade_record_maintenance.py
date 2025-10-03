@@ -16,6 +16,33 @@ BATCH_LIMIT = 5000                 # rows per batch
 MAX_BATCH_LOOPS = 200              # safety ceiling on total batches
 GLOBAL_LOCK_KEY = 0x54524144       # same key you already use (decimal 1414676804)
 
+
+async def normalize_sources(shared_data_manager):
+    """Fill in sensible source values without stomping known ones."""
+    async with shared_data_manager.database_session_manager.async_session() as session:
+        async with session.begin():
+            # A) Buys/sells ingested via REST/IMPORT but with unknown source -> 'reconciled'
+            await session.execute(text(f"""
+                UPDATE {TradeRecord.__tablename__}
+                SET source = 'reconciled'
+                WHERE (source IS NULL OR lower(source) IN ('', 'unknown'))
+                  AND ingest_via IN ('rest','import')
+            """))
+
+            # B) Sells with unknownish source but parent has a known source -> inherit it
+            await session.execute(text(f"""
+                UPDATE {TradeRecord.__tablename__} s
+                SET source = b.source
+                FROM {TradeRecord.__tablename__} b
+                WHERE s.side='sell'
+                  AND (s.source IS NULL OR lower(s.source) IN ('', 'unknown', 'reconciled'))
+                  AND s.parent_id IS NOT NULL
+                  AND b.order_id = s.parent_id
+                  AND b.source IS NOT NULL
+                  AND lower(b.source) NOT IN ('', 'unknown', 'reconciled')
+            """))
+
+
 # --- FIFO maintenance helpers -----------------------------------------------
 
 async def recompute_fifo_for_symbol(shared_data_manager, symbol: str) -> None:
@@ -270,7 +297,7 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
         async with session.begin():
             # Safety timeouts so we never hang in a tx
             await session.execute(text("SET LOCAL lock_timeout = '5s'"))
-            await session.execute(text("SET LOCAL statement_timeout = '60s'"))
+            await session.execute(text("SET LOCAL statement_timeout = '60s'")) # debugging safe to keep on in production
             await session.execute(text("SET LOCAL idle_in_transaction_session_timeout = '60s'"))
 
             got_lock = (await session.execute(
@@ -366,6 +393,8 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
 
     # Optional: quick audit of a canary symbol
     await audit_fifo(trade_recorder, symbol="ELA-USD")
+    # Normalize legacy/missing sources last
+    await normalize_sources(shared_data_manager)
 
     print("✅ Maintenance completed.")
 

@@ -38,7 +38,7 @@ async def run_leaderboard():
     shared_logger.info("✅ Leaderboard recomputed.")
 
 def main():
-    os.environ.setdefault("PYTHONASYNCIODEBUG", "0")
+    os.environ.setdefault("PYTHONASYNCIODEBUG", "1")
     asyncio.run(run_leaderboard())
 
 if __name__ == "__main__":
