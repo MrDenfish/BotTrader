@@ -128,6 +128,11 @@ class Indicators:
             # === 4. ROC ===
             df['ROC'] = df['close'].pct_change(periods=self.roc_window) * 100
             df['ROC_Diff'] = df['ROC'].diff().fillna(0)
+            df['ROC_Diff_STD20'] = (
+                df['ROC_Diff'].rolling(20, min_periods=5).std()
+                .fillna(df['ROC_Diff'].abs().rolling(5).mean())
+                .fillna(0.3)
+            )
             df['Buy ROC'] = df['ROC'].apply(
                 lambda r: self.normalize_tuple(r > roc_buy_threshold, round(r, 2), roc_buy_threshold)
             )

@@ -56,6 +56,8 @@ class CentralConfig:
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
         self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = None
+        self._score_buy_target = self._score_sell_target = self._allow_buys_on_red_day = None
+        self._flip_hysteresis_pct = self._cooldown_bars = None
         self.exchange: Optional[Any] = None
 
         # Default values
@@ -123,6 +125,11 @@ class CentralConfig:
             "_max_lifetime":"MAX_LIFETIME",
             "_inventory_bias_factor":"INVENTORY_BIAS_FACTOR",
             "_coin_whitelist": "COIN_WHITELIST",
+            "_score_buy_target": "SCORE_BUY_TARGET",
+            "_score_sell_target": "SCORE_SELL_TARGET",
+            "_allow_buys_on_red_day": "ALLOW_BUYS_ON_RED_DAY",
+            "_flip_hysteresis_pct": "FLIP_HYSTERESIS_PCT",
+            "_cooldown_bars": "COOLDOWN_BARS",
             "_version": "VERSION",
             "_bb_window": "BB_WINDOW",
             "_bb_std": "BB_STD",
@@ -210,46 +217,6 @@ class CentralConfig:
             else:
                 self._json_config[key] = value
 
-    # def _generate_database_url(self):
-    #     """Generate the database URL from env/SSM with sensible precedence.
-    #     Precedence:
-    #   1) DATABASE_URL (complete URL, includes driver)
-    #   2) DB_* pieces (DB_HOST/DB_USER/DB_PASSWORD/DB_NAME/DB_PORT)"""
-    #     try:
-    #         def pick(*vals):
-    #             for v in vals:
-    #                 if v not in (None, "", "None"):
-    #                     return v
-    #             return None
-    #
-    #         # 1) Honor DATABASE_URL if provided (let it include driver like postgresql+asyncpg://)
-    #         url = os.getenv("DATABASE_URL")
-    #         if url:
-    #             self.db_url = url
-    #             print(f"Configured PostgreSQL (from DATABASE_URL): {url}")
-    #             print(f" ❇️  web_url: {self.web_url}  ❇️ ")
-    #             return
-    #
-    #         # 2) Build from canonical DB_* (no docker-specific vars)
-    #         db_host = pick(os.getenv("DB_HOST"))
-    #         db_user = pick(os.getenv("DB_USER"))
-    #         db_pass = pick(os.getenv("DB_PASSWORD"))
-    #         db_name = pick(os.getenv("DB_NAME"))
-    #         db_port = pick(os.getenv("DB_PORT"), "5432")
-    #
-    #         missing = [k for k, v in dict(DB_HOST=db_host, DB_USER=db_user,
-    #                                       DB_PASSWORD=db_pass, DB_NAME=db_name).items() if not v]
-    #         if missing:
-    #             raise ValueError(f"Missing DB settings: {', '.join(missing)}")
-    #
-    #         # Use async driver by default for SQLAlchemy async engines
-    #         self.db_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
-    #         print(f"Configured PostgreSQL database at: //{db_user}:******@{db_host}:{db_port}/{db_name}")
-    #         print(f" ❇️  web_url: {self.web_url}  ❇️ ")
-    #
-    #     except Exception as e:
-    #         print(f"Error configuring database URL: {e}")
-    #         raise
     def _generate_database_url(self):
         try:
             self.db_url = build_asyncpg_url_from_env()
@@ -404,10 +371,6 @@ class CentralConfig:
     @property
     def db_connection_threshold(self):
         return self._db_connection_threshold
-
-    # @property
-    # def db_max_overflow(self):
-    #     return self._db_max_overflow
 
     @property
     def log_level(self):
@@ -643,6 +606,44 @@ class CentralConfig:
     @property
     def is_loaded(self):
         return self._is_loaded
+
+    @property
+    def score_buy_target(self) -> float:
+        try:
+            return float(self._score_buy_target) if self._score_buy_target is not None else 5.5
+        except Exception:
+            return 5.5
+
+    @property
+    def score_sell_target(self) -> float:
+        try:
+            return float(self._score_sell_target) if self._score_sell_target is not None else 5.5
+        except Exception:
+            return 5.5
+
+    @property
+    def allow_buys_on_red_day(self) -> bool:
+        v = self._allow_buys_on_red_day
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return True
+        return str(v).strip().lower() in ("1","true","yes","y","on")
+
+    @property
+    def flip_hysteresis_pct(self) -> float:
+        try:
+            return float(self._flip_hysteresis_pct) if self._flip_hysteresis_pct is not None else 0.10
+        except Exception:
+            return 0.10
+
+    @property
+    def cooldown_bars(self) -> int:
+        try:
+            return int(self._cooldown_bars) if self._cooldown_bars is not None else 7
+        except Exception:
+            return 7
+
 
     def _strip_path(self, url: str) -> str:
         from urllib.parse import urlparse
