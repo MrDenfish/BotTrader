@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import os
+import json
 import sqlalchemy
+import pandas as pd
+
+from pathlib import Path
 from decimal import Decimal
-from datetime import datetime
 from sqlalchemy.sql import text
 from sqlalchemy import bindparam, Numeric
 from sqlalchemy.engine import Engine, Connection
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncConnection
 from typing import Dict, Any, Optional, Union, Tuple, List
 
@@ -119,6 +123,165 @@ def query_trade_pnls(engine_or_conn: Engine | Connection, start: datetime, end: 
 
     return closed, wins, losses, breakevens
 
+# --------------------------------------------
+# Score Snapshot from JSONL log (if available)
+# --------------------------------------------
+def load_score_jsonl(path: str | None = None, since_hours: int = 24):
+    """Reads SCORE_JSONL_PATH and normalizes the JSON lines.
+         Single source of truth for score data."""
+    path = path or os.getenv("SCORE_JSONL_PATH", "/app/logs/score_log.jsonl")
+    base = Path(path)
+    if not base.parent.exists():
+
+        return pd.DataFrame() if "pd" in globals() else []
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+
+    # collect current file + any rotated siblings (… .YYYY-MM-DD)
+    candidates = [p for p in [base] + sorted(base.parent.glob(base.name + ".*")) if p.exists()]
+
+    rows = []
+    for fp in candidates:
+        try:
+            # skip files clearly older than the window based on mtime
+            mtime = datetime.fromtimestamp(fp.stat().st_mtime, tz=timezone.utc)
+            if mtime < cutoff - timedelta(hours=1):
+                continue
+            with fp.open("r") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s:
+                        continue
+                    try:
+                        if not s.startswith("{"):
+                            jstart = s.find("{")
+                            if jstart == -1:
+                                continue
+                            s = s[jstart:]
+                        obj = json.loads(s)
+                    except Exception:
+                        continue
+                    ts = obj.get("ts")
+                    if ts:
+                        try:
+                            t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                            if t.tzinfo is None:
+                                t = t.replace(tzinfo=timezone.utc)
+                            if t < cutoff:
+                                continue
+                        except Exception:
+                            pass
+                    rows.append(obj)
+        except Exception:
+            continue
+
+    # return DataFrame if you're already using pandas downstream; otherwise list
+    try:
+        import pandas as pd
+        return pd.json_normalize(rows)
+    except Exception:
+        return rows
+def load_score_jsonl(path: str | None = None, since_hours: int = 24) -> pd.DataFrame:
+    """Reads SCORE_JSONL_PATH and normalizes the JSON lines.
+     Single source of truth for score data."""
+
+    path = path or os.getenv("SCORE_JSONL_PATH", "logs/score_log.jsonl")
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    rows = []
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                # also support lines that look like: "📊 score_snapshot {...}"
+                try:
+                    jstart = line.index("{")
+                    obj = json.loads(line[jstart:])
+                except Exception:
+                    continue
+            rows.append(obj)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.json_normalize(rows)
+    if "ts" in df.columns:
+        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=True)
+        cutoff = pd.Timestamp.utcnow() - pd.Timedelta(hours=since_hours)
+        df = df[df["ts"] >= cutoff]
+    return df
+
+def score_snapshot_metrics_from_jsonl(df: pd.DataFrame) -> dict:
+    """Aggregates contributions (top buy/sell indicators) and recent buy/sell entries.
+    This is the metrics payload the email renderer will consume."""
+
+    if df.empty:
+        return {"empty": True}
+
+    # Build contributions table from top components
+    contrib_rows = []
+    for _, r in df.iterrows():
+        for side, col in (("buy", "top_buy_components"), ("sell", "top_sell_components")):
+            comps = r.get(col, []) or []
+            for c in comps:
+                contrib_rows.append({
+                    "side": side,
+                    "indicator": c.get("indicator"),
+                    "contribution": float(c.get("contribution", 0.0))
+                })
+    contrib = pd.DataFrame(contrib_rows)
+    top_buy = pd.DataFrame()
+    top_sell = pd.DataFrame()
+    if not contrib.empty:
+        g = contrib.groupby(["side", "indicator"], dropna=False)["contribution"].sum().reset_index()
+        top_buy  = g[g["side"]=="buy"].nlargest(10, "contribution")[["indicator","contribution"]]
+        top_sell = g[g["side"]=="sell"].nlargest(10, "contribution")[["indicator","contribution"]]
+
+    # Recent entries (one per (ts,symbol))
+    have_cols = [c for c in ["ts","symbol","action","trigger","buy_score","sell_score"] if c in df.columns]
+    entries = df[have_cols].drop_duplicates(subset=["ts","symbol"]) if {"ts","symbol"}.issubset(df.columns) else pd.DataFrame()
+    entries = entries[entries["action"].isin(["buy","sell"])] if not entries.empty else entries
+
+    return {
+        "empty": False,
+        "rows": int(len(df)),
+        "symbols": int(df["symbol"].nunique()) if "symbol" in df else 0,
+        "top_buy": top_buy,
+        "top_sell": top_sell,
+        "entries": entries,
+    }
+
+def render_score_section_jsonl(metrics) -> str:
+    """Produces a small HTML block with tables that stylistically match the current report
+       (bordered tables, simple headings)."""
+
+    if metrics.get("empty"):
+        return "<h2>Signal Score Snapshot (last 24h)</h2><p>No score data found.</p>"
+
+    def _to_html(df):
+        try:
+            return df.to_html(index=False, border=0, classes="table table-sm", float_format=lambda x: f"{x:.4g}")
+        except Exception:
+            return "<p>(table render error)</p>"
+
+    parts = []
+    parts.append("<h2>Signal Score Snapshot (last 24h)</h2>")
+    parts.append(f"<p>Symbols: <b>{metrics['symbols']}</b> &nbsp; Rows: <b>{metrics['rows']}</b></p>")
+    parts.append("<h3>Top contributing indicators (Buy)</h3>")
+    parts.append(_to_html(metrics["top_buy"]))
+    parts.append("<h3>Top contributing indicators (Sell)</h3>")
+    parts.append(_to_html(metrics["top_sell"]))
+    if "entries" in metrics and not metrics["entries"].empty:
+        tail = metrics["entries"].sort_values("ts").tail(20)
+        cols = [c for c in ["ts","symbol","action","trigger","buy_score","sell_score"] if c in tail.columns]
+        parts.append("<h3>Most recent entries</h3>")
+        parts.append(_to_html(tail[cols]))
+    return "\n".join(parts)
+
+
+# -------------------------
 def query_open_positions(engine_or_conn: Engine | Connection, as_of: datetime) -> List[dict]:
     """
     Return list of open positions with schema:

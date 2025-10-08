@@ -12,22 +12,29 @@ import os
 import io
 import csv
 import ssl
+import json
 import boto3
 import pandas as pd
 import pg8000.native as pg
+
+
 
 from pathlib import Path
 from decimal import Decimal
 from email.mime.text import MIMEText
 from email.utils import getaddresses
 from statistics import mean, pstdev
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import text, create_engine
 from urllib.parse import urlparse, parse_qs
+from collections import defaultdict, Counter
 from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email_report_print_format import build_console_report
+from metrics_compute import load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl
+
+
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
 
 # -------------------------
@@ -41,6 +48,8 @@ except Exception:
     load_dotenv = None
 
 REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
+# Where SignalManager writes JSONL; can override via env
+SCORE_JSONL_PATH = os.getenv("SCORE_JSONL_PATH", os.path.join("logs", "score_log.jsonl"))
 
 def load_report_dotenv():
     """
@@ -266,6 +275,147 @@ def _time_window_sql(ts_expr: str):
 # -------------------------
 # Core Queries (schema-aware)
 # -------------------------
+
+# -------------------------
+# Score JSONL Parsing & Summary
+# -------------------------
+
+# def _read_score_jsonl(path: str, since_hours: int = 24) -> list[dict]:
+#     """Read JSONL score snapshots (robust to '📊 score_snapshot ...' prefix)."""
+#     if not os.path.exists(path):
+#         return []
+#     rows = []
+#     cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+#     with open(path, "r") as f:
+#         for line in f:
+#             s = line.strip()
+#             if not s:
+#                 continue
+#             try:
+#                 if s[0] != "{":
+#                     # handle lines like: "📊 score_snapshot {...}"
+#                     jstart = s.find("{")
+#                     if jstart == -1:
+#                         continue
+#                     s = s[jstart:]
+#                 obj = json.loads(s)
+#             except Exception:
+#                 continue
+#             # filter by ts if present
+#             ts = obj.get("ts")
+#             try:
+#                 if ts:
+#                     # supports ISO with or without Z
+#                     t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+#                     if t.tzinfo is None:
+#                         t = t.replace(tzinfo=timezone.utc)
+#                     if t < cutoff:
+#                         continue
+#             except Exception:
+#                 pass
+#             rows.append(obj)
+#     return rows
+
+# def summarize_score_jsonl(events: list[dict]) -> dict:
+#     """Aggregate top contributing indicators and recent BUY/SELL entries."""
+#     if not events:
+#         return {"empty": True}
+#
+#     # Aggregate contributions from the 'top_*_components' arrays
+#     contrib = {"buy": Counter(), "sell": Counter()}
+#     symbols = set()
+#     entries = []  # most recent BUY/SELL actions
+#
+#     for e in events:
+#         symbol = e.get("symbol")
+#         if symbol: symbols.add(symbol)
+#
+#         # collect recent entries (one per event)
+#         action = e.get("action")
+#         if action in ("buy", "sell"):
+#             entries.append({
+#                 "ts": e.get("ts"),
+#                 "symbol": symbol,
+#                 "action": action,
+#                 "trigger": e.get("trigger"),
+#                 "buy_score": e.get("buy_score"),
+#                 "sell_score": e.get("sell_score"),
+#             })
+#
+#         for side, key in (("buy", "top_buy_components"), ("sell", "top_sell_components")):
+#             comps = e.get(key) or []
+#             for c in comps:
+#                 ind = c.get("indicator")
+#                 contrib_val = float(c.get("contribution", 0.0) or 0.0)
+#                 if ind:
+#                     contrib[side][ind] += contrib_val
+#
+#     # top 10 by side
+#     top_buy = contrib["buy"].most_common(10)
+#     top_sell = contrib["sell"].most_common(10)
+#
+#     # keep last 20 entries by ts
+#     def _dt(s):
+#         try:
+#             return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+#         except Exception:
+#             return datetime.min.replace(tzinfo=timezone.utc)
+#     entries = sorted(entries, key=lambda r: _dt(r["ts"]))[-20:]
+#
+#     return {
+#         "empty": False,
+#         "rows": len(events),
+#         "symbols": len(symbols),
+#         "top_buy": top_buy,
+#         "top_sell": top_sell,
+#         "entries": entries,
+#     }
+
+def render_score_section_html(metrics: dict) -> str:
+    """Return a small HTML section matching your report’s table style."""
+    if metrics.get("empty"):
+        return "<h3>Signal Score Snapshot (last 24h)</h3><p>No score data found.</p>"
+
+    def _table(headers: list[str], rows: list[list[str]]) -> str:
+        head = "<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>"
+        body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows) or \
+               "<tr><td colspan='99'>None</td></tr>"
+        return f"<table border='1' cellpadding='6' cellspacing='0'>{head}{body}</table>"
+
+    # Top contributors
+    buy_rows = [[ind, f"{val:.3f}"] for ind, val in (metrics.get("top_buy") or [])]
+    sell_rows = [[ind, f"{val:.3f}"] for ind, val in (metrics.get("top_sell") or [])]
+
+    # Recent entries
+    ent = metrics.get("entries") or []
+    entry_rows = [[
+        e.get("ts",""),
+        e.get("symbol",""),
+        e.get("action",""),
+        e.get("trigger",""),
+        f"{(e.get('buy_score') or 0):.3f}",
+        f"{(e.get('sell_score') or 0):.3f}",
+    ] for e in ent]
+
+    html = []
+    html.append("<h3>Signal Score Snapshot (last 24h)</h3>")
+    html.append(f"<p>Symbols: <b>{metrics.get('symbols',0)}</b> &nbsp; Rows: <b>{metrics.get('rows',0)}</b></p>")
+
+    html.append("<h4>Top contributing indicators (Buy)</h4>")
+    html.append(_table(["Indicator","Contribution"], buy_rows))
+
+    html.append("<h4>Top contributing indicators (Sell)</h4>")
+    html.append(_table(["Indicator","Contribution"], sell_rows))
+
+    if entry_rows:
+        html.append("<h4>Most recent entries</h4>")
+        html.append(_table(["Time (UTC)","Symbol","Action","Trigger","Buy Score","Sell Score"], entry_rows))
+
+    return "\n".join(html)
+
+
+
+
 
 def run_queries(conn):
     errors = []
@@ -820,7 +970,10 @@ def build_html(total_pnl,
                invested_usd: float = 0.0,
                invested_pct: float = 0.0,
                strat_rows: Optional[list] = None,
-               show_details: bool = False):
+               show_details: bool = False,
+               *,
+               score_section_html: str = ""
+               ):
     def rows(rows_):
         if not rows_:
             return "<tr><td colspan='99'>None</td></tr>"
@@ -940,6 +1093,7 @@ def build_html(total_pnl,
     {key_metrics_html}
     {trade_stats_html}
     {risk_cap_html}
+    {score_section_html}
     {exposure_html}
     {strat_html}
     {details_html}
@@ -1187,7 +1341,14 @@ def main():
     # Respect local vs Docker detail verbosity
     open_pos_out = open_pos if REPORT_SHOW_DETAILS else []
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
+    # 1) Load JSONL (last 24h)
+    score_df = load_score_jsonl(since_hours=24)
 
+    # 2) Summarize
+    score_metrics = score_snapshot_metrics_from_jsonl(score_df)
+
+    # 3) Render HTML snippet
+    score_html = render_score_section_jsonl(score_metrics)
     # Build HTML body
     html = build_html(
         total_pnl,
@@ -1209,6 +1370,7 @@ def main():
         invested_pct=invested_pct,
         strat_rows=strat_rows,
         show_details=REPORT_SHOW_DETAILS,
+        score_section_html=score_html,
     )
 
     # Near-instant roundtrips (≤60s) + CSV saved server-side when available

@@ -57,6 +57,9 @@ services:
       DB_TCP_KEEPALIVES_IDLE: "60"
       DB_TCP_KEEPALIVES_INTERVAL: "20"
       DB_TCP_KEEPALIVES_COUNT: "3"
+      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+      SCORE_BACKUP_COUNT: "7"
+      SCORE_LOG_PATH: "/dev/null"
     depends_on:
       db:
         condition: service_healthy
@@ -113,6 +116,8 @@ services:
       DB_TCP_KEEPALIVES_IDLE: "60"
       DB_TCP_KEEPALIVES_INTERVAL: "20"
       DB_TCP_KEEPALIVES_COUNT: "3"
+      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+      SCORE_LOG_PATH: "/dev/null"
     depends_on:
       db:
         condition: service_healthy
@@ -129,10 +134,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
-
     user: "1000:1000"
     restart: unless-stopped
-
   report-job:
     build:
       context: .
@@ -142,11 +145,12 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - /opt/bot/logs:/app/logs
+      - /opt/bot/logs:/app/logs:ro #read only for safety
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
-      PYTHONPATH: /app          # <— add this
+      PYTHONPATH: /app
+      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
     env_file:
       - /opt/bot/.env_runtime
     # Optional: send daily email reports
@@ -165,19 +169,24 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      webhook:
+        condition: service_healthy
+      sighook:
+        condition: service_healthy
     working_dir: /app
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
       PYTHONPATH: /app
+      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+
     env_file:
       - /opt/bot/.env_runtime
     volumes:
       - ./logs:/app/logs
-      - /opt/bot/logs:/app/logs
+      - /opt/bot/logs:/app/logs:ro #read only for safety
     entrypoint: [ "python", "-u", "-m", "SharedDataManager.leaderboard_runner" ]
     restart: "no"
-
 volumes:
   pg_data:
     external: true

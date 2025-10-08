@@ -1,8 +1,9 @@
-
+from logging.handlers import TimedRotatingFileHandler
 from decimal import Decimal, ROUND_HALF_UP
 from Config.config_manager import CentralConfig
 from sighook.indicators import Indicators
 from typing import Optional, Tuple, Dict, Any
+import logging
 import pandas as pd
 import json
 import csv
@@ -60,6 +61,23 @@ class SignalManager:
             'Sell Ratio': 1.2, 'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5,
             'Sell ROC': 2.0, 'Sell MACD': 1.8, 'Sell Swing': 2.2
         }
+
+        self.score_jsonl_path = os.getenv("SCORE_JSONL_PATH", "/app/logs/score_log.jsonl")
+        os.makedirs(os.path.dirname(self.score_jsonl_path), exist_ok=True)
+        # dedicated logger for score snapshots
+        self.score_logger = logging.getLogger("score_jsonl")
+        self.score_logger.propagate = False
+        if not self.score_logger.handlers:
+            handler = TimedRotatingFileHandler(
+                filename=self.score_jsonl_path,
+                when="midnight",  # rotate once per day
+                interval=1,
+                backupCount=int(os.getenv("SCORE_BACKUP_COUNT", "7")),
+                utc=True  # align with your report timestamps
+            )
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            self.score_logger.addHandler(handler)
+            self.score_logger.setLevel(logging.INFO)
 
     @property
     def usd_pairs(self):
@@ -197,6 +215,7 @@ class SignalManager:
         # JSON line to your logger
         try:
             self.logger.info(f"📊 score_snapshot {json.dumps(payload, default=str)}")
+            self._append_score_jsonl(payload)
         except Exception:
             # never break trading on logging
             pass
@@ -250,7 +269,11 @@ class SignalManager:
             # don't interrupt trading if the file is locked or path is invalid
             pass
 
-
+    def _append_score_jsonl(self, payload: dict):
+        try:
+            self.score_logger.info(json.dumps(payload, default=str))
+        except Exception:
+            pass
 
     # =========================================================
     # ✅ Core Buy/Sell Scoring
