@@ -175,7 +175,7 @@ sanity_print
 check_required
 
 # 6) Ensure log directories exist (avoid handler crashes if paths missing)
-mkdir -p /app/logs/webhook /app/logs/sighook /app/logs/leaderboard /app/logs/trading_reeports
+mkdir -p /app/logs/webhook /app/logs/sighook /app/logs/leaderboard
 chmod -R 0775 /app/logs || true
 
 # 7) Launch
