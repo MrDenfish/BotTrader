@@ -1267,10 +1267,9 @@ def main():
         score_metrics = score_snapshot_metrics_from_jsonl(score_df)
 
         # 3) Render HTML snippet
-        score_html = render_score_section_jsonl(score_metrics)
-        score_section_html = score_html
+        score_section_html = render_score_section_jsonl(score_metrics)
     except Exception as e:
-        score_section_html = "<!-- score section unavailable: {} -->".format(e)
+        score_section_html = f"<!-- score section unavailable: {e} -->"
 
     # Build HTML body
     html = build_html(
