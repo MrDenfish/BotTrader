@@ -63,7 +63,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
+    entrypoint: [ "/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.bot.sh" ]
+
     # (if entrypoint uses python, PYTHONUNBUFFERED makes it unbuffered even without -u)
     ports:
       - "127.0.0.1:5003:5003"
@@ -77,7 +78,6 @@ services:
     volumes:
       - /opt/bot/.env_tradebot:/app/.env_tradebot:ro
       - /opt/bot/logs:/app/logs
-    user: "1000:1000"
     restart: unless-stopped
 
   sighook:
@@ -126,7 +126,8 @@ services:
     volumes:
       - /opt/bot/.env_runtime:/app/.env_runtime:ro
       - /opt/bot/logs:/app/logs
-    entrypoint: [ "/app/docker/entrypoint/entrypoint.bot.sh" ]
+    entrypoint: [ "/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.bot.sh" ]
+
     # Add a simple healthcheck that requires no extra packages:
     healthcheck:
       test: [ "CMD-SHELL", "grep -qi python /proc/1/comm && grep -qi sighook /proc/1/cmdline" ]
@@ -134,7 +135,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
-    user: "1000:1000"
     restart: unless-stopped
   report-job:
     build:
@@ -183,8 +183,7 @@ services:
     env_file:
       - /opt/bot/.env_runtime
     volumes:
-      - ./logs:/app/logs
-      - /opt/bot/logs:/app/logs:ro #read only for safety
+      - /opt/bot/logs:/app/logs:rw
     entrypoint: [ "python", "-u", "-m", "SharedDataManager.leaderboard_runner" ]
     restart: "no"
 volumes:

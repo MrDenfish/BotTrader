@@ -174,8 +174,12 @@ sanity_print
 # 5) Optionally fail fast if required keys are missing
 check_required
 
-# 6) Launch
-start_app
+# 6) Ensure log directories exist (avoid handler crashes if paths missing)
+mkdir -p /app/logs/webhook /app/logs/sighook /app/logs/leaderboard /app/logs/trading_reeports
+chmod -R 0775 /app/logs || true
+
+# 7) Launch
+ start_app
 
 
 
