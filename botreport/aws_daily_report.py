@@ -13,15 +13,11 @@ import io
 import csv
 import ssl
 import json
-import boto3
 import pandas as pd
 import pg8000.native as pg
 
-
-
 from pathlib import Path
 from decimal import Decimal
-from email.mime.text import MIMEText
 from email.utils import getaddresses
 from statistics import mean, pstdev
 from datetime import datetime, timezone, timedelta
@@ -30,17 +26,19 @@ from urllib.parse import urlparse, parse_qs
 from collections import defaultdict, Counter
 from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from email_report_print_format import build_console_report
-from metrics_compute import load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl
+from .emailer import send_email as send_email_via_ses  # uses lazy boto3
+from .email_report_print_format import build_console_report
+from .metrics_compute import load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl
 
 
-from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
+# (no-op) from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
 
 # -------------------------
 # Config / Environment
 # -------------------------
-SENDER = RECIPIENTS= REGION=None
+SENDER = RECIPIENTS = REGION = None
 
 try:
     from dotenv import load_dotenv
@@ -48,8 +46,6 @@ except Exception:
     load_dotenv = None
 
 REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
-# Where SignalManager writes JSONL; can override via env
-SCORE_JSONL_PATH = os.getenv("SCORE_JSONL_PATH", os.path.join("logs", "score_log.jsonl"))
 
 def load_report_dotenv():
     """
@@ -78,10 +74,16 @@ def load_report_dotenv():
     fallback = (project_root / ".env_tradebot")
     if fallback.exists():
         load_dotenv(dotenv_path=fallback, override=False)
+# Ensure env is loaded BEFORE we snapshot env variables below.
+load_report_dotenv()
 IN_DOCKER = os.getenv("IN_DOCKER", "false").lower() == "true"
 REGION = os.getenv("AWS_REGION", "us-west-2")
-SENDER = os.getenv("REPORT_SENDER", "reports@a1zoobies.com").strip()
+SENDER = (os.getenv("REPORT_SENDER", "reports@a1zoobies.com") or "").strip()
 RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS", "dennfish@gmail.com")]) if addr]
+# Where SignalManager writes JSONL; can override via env
+SCORE_JSONL_PATH = os.getenv("SCORE_JSONL_PATH", os.path.join("logs", "score_log.jsonl"))
+
+
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
@@ -126,16 +128,34 @@ REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "24"))
 # Overview vs Details
 REPORT_SHOW_DETAILS = os.getenv("REPORT_SHOW_DETAILS", "0").strip() in {"1","true","TRUE","yes","Yes"}
 
-# Clients
-ssm = boto3.client("ssm", region_name=REGION)
-ses = boto3.client("ses", region_name=REGION)
+ssm = None
+ses = None
 
+def _get_ssm():
+    global ssm
+    if ssm is None:
+        try:
+            import boto3
+        except Exception as e:
+            raise RuntimeError("SSM requested but boto3 is not available") from e
+        ssm = boto3.client("ssm", region_name=REGION)
+    return ssm
+
+def _get_ses():
+    global ses
+    if ses is None:
+        try:
+            import boto3
+        except Exception as e:
+            raise RuntimeError("SES requested but boto3 is not available") from e
+        ses = boto3.client("ses", region_name=REGION)
+    return ses
 # -------------------------
 # DB Connection Helpers
 # -------------------------
 
 def get_param(name: str) -> str:
-    return ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
+    return _get_ssm().get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
 
 def _maybe_ssl_context(require_ssl: bool):
     if not require_ssl:
@@ -272,104 +292,6 @@ def _time_window_sql(ts_expr: str):
     upper_bound_sql = f"AND {ts_expr} < (NOW() AT TIME ZONE 'UTC')"
     return time_window_sql, upper_bound_sql
 
-# -------------------------
-# Core Queries (schema-aware)
-# -------------------------
-
-# -------------------------
-# Score JSONL Parsing & Summary
-# -------------------------
-
-# def _read_score_jsonl(path: str, since_hours: int = 24) -> list[dict]:
-#     """Read JSONL score snapshots (robust to '📊 score_snapshot ...' prefix)."""
-#     if not os.path.exists(path):
-#         return []
-#     rows = []
-#     cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-#     with open(path, "r") as f:
-#         for line in f:
-#             s = line.strip()
-#             if not s:
-#                 continue
-#             try:
-#                 if s[0] != "{":
-#                     # handle lines like: "📊 score_snapshot {...}"
-#                     jstart = s.find("{")
-#                     if jstart == -1:
-#                         continue
-#                     s = s[jstart:]
-#                 obj = json.loads(s)
-#             except Exception:
-#                 continue
-#             # filter by ts if present
-#             ts = obj.get("ts")
-#             try:
-#                 if ts:
-#                     # supports ISO with or without Z
-#                     t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-#                     if t.tzinfo is None:
-#                         t = t.replace(tzinfo=timezone.utc)
-#                     if t < cutoff:
-#                         continue
-#             except Exception:
-#                 pass
-#             rows.append(obj)
-#     return rows
-
-# def summarize_score_jsonl(events: list[dict]) -> dict:
-#     """Aggregate top contributing indicators and recent BUY/SELL entries."""
-#     if not events:
-#         return {"empty": True}
-#
-#     # Aggregate contributions from the 'top_*_components' arrays
-#     contrib = {"buy": Counter(), "sell": Counter()}
-#     symbols = set()
-#     entries = []  # most recent BUY/SELL actions
-#
-#     for e in events:
-#         symbol = e.get("symbol")
-#         if symbol: symbols.add(symbol)
-#
-#         # collect recent entries (one per event)
-#         action = e.get("action")
-#         if action in ("buy", "sell"):
-#             entries.append({
-#                 "ts": e.get("ts"),
-#                 "symbol": symbol,
-#                 "action": action,
-#                 "trigger": e.get("trigger"),
-#                 "buy_score": e.get("buy_score"),
-#                 "sell_score": e.get("sell_score"),
-#             })
-#
-#         for side, key in (("buy", "top_buy_components"), ("sell", "top_sell_components")):
-#             comps = e.get(key) or []
-#             for c in comps:
-#                 ind = c.get("indicator")
-#                 contrib_val = float(c.get("contribution", 0.0) or 0.0)
-#                 if ind:
-#                     contrib[side][ind] += contrib_val
-#
-#     # top 10 by side
-#     top_buy = contrib["buy"].most_common(10)
-#     top_sell = contrib["sell"].most_common(10)
-#
-#     # keep last 20 entries by ts
-#     def _dt(s):
-#         try:
-#             return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
-#         except Exception:
-#             return datetime.min.replace(tzinfo=timezone.utc)
-#     entries = sorted(entries, key=lambda r: _dt(r["ts"]))[-20:]
-#
-#     return {
-#         "empty": False,
-#         "rows": len(events),
-#         "symbols": len(symbols),
-#         "top_buy": top_buy,
-#         "top_sell": top_sell,
-#         "entries": entries,
-#     }
 
 def render_score_section_html(metrics: dict) -> str:
     """Return a small HTML section matching your report’s table style."""
@@ -413,9 +335,9 @@ def render_score_section_html(metrics: dict) -> str:
 
     return "\n".join(html)
 
-
-
-
+# -------------------------
+# Core Queries (schema-aware)
+# -------------------------
 
 def run_queries(conn):
     errors = []
@@ -1285,19 +1207,15 @@ def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
         f.write(csv_bytes)
 
 def send_email(html, csv_bytes):
-    msg = MIMEMultipart("mixed")
-    msg["Subject"]="Daily Trading Bot Report"
-    msg["From"]=SENDER
-    msg["To"]=",".join(RECIPIENTS) if RECIPIENTS else SENDER
-    alt = MIMEMultipart("alternative")
-    alt.attach(MIMEText("Your client does not support HTML.", "plain"))
-    alt.attach(MIMEText(html, "html"))
-    msg.attach(alt)
-    part = MIMEApplication(csv_bytes, Name="trading_report.csv")
-    part.add_header("Content-Disposition", 'attachment; filename="trading_report.csv"')
-    msg.attach(part)
-    ses.send_raw_email(Source=SENDER, Destinations=RECIPIENTS or [SENDER], RawMessage={"Data": msg.as_string().encode("utf-8")})
-
+    # Delegate to emailer (lazy boto3). Falls back to SMTP if you add that path there.
+    send_email_via_ses(
+        subject="Daily Trading Bot Report",
+        html_body=html,
+        csv_bytes=csv_bytes,
+        sender=SENDER,
+        recipients=RECIPIENTS,
+        region=REGION,
+    )
 
 
 
@@ -1341,14 +1259,19 @@ def main():
     # Respect local vs Docker detail verbosity
     open_pos_out = open_pos if REPORT_SHOW_DETAILS else []
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
-    # 1) Load JSONL (last 24h)
-    score_df = load_score_jsonl(since_hours=24)
+    try:
+        # 1) Load JSONL (last 24h)
+        score_df = load_score_jsonl(SCORE_JSONL_PATH, since_hours=24)
 
-    # 2) Summarize
-    score_metrics = score_snapshot_metrics_from_jsonl(score_df)
+        # 2) Summarize
+        score_metrics = score_snapshot_metrics_from_jsonl(score_df)
 
-    # 3) Render HTML snippet
-    score_html = render_score_section_jsonl(score_metrics)
+        # 3) Render HTML snippet
+        score_html = render_score_section_jsonl(score_metrics)
+        score_section_html = score_html
+    except Exception as e:
+        score_section_html = "<!-- score section unavailable: {} -->".format(e)
+
     # Build HTML body
     html = build_html(
         total_pnl,
@@ -1369,8 +1292,8 @@ def main():
         invested_usd=invested_usd,
         invested_pct=invested_pct,
         strat_rows=strat_rows,
-        show_details=REPORT_SHOW_DETAILS,
-        score_section_html=score_html,
+        show_details=False,
+        score_section_html=score_section_html,
     )
 
     # Near-instant roundtrips (≤60s) + CSV saved server-side when available
@@ -1423,7 +1346,7 @@ def main():
         source_label = "report_trades"
 
         console_text = build_console_report(
-            as_of_utc=as_of_utc,
+            as_of_utc=str(as_of_utc),
             window_label=window_label,
             source_label=source_label,
             total_pnl=total_pnl,
@@ -1453,6 +1376,5 @@ def main():
 
 
 if __name__ == "__main__":
-    load_report_dotenv()
     main()
 

@@ -57,7 +57,8 @@ def send_email(subject: str,
                html_body: Optional[str] = None,
                csv_bytes: Optional[bytes] = None,
                sender: Optional[str] = None,
-               recipients: Optional[Sequence[str]] = None) -> None:
+               recipients: Optional[Sequence[str]] = None,
+               ) -> None:
     """
     Uses legacy env keys:
       REPORT_SENDER / REPORT_RECIPIENTS / AWS_REGION (or SES_REGION),

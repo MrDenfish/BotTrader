@@ -4,14 +4,17 @@ from __future__ import annotations
 import os
 import re
 import logging
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
 import asyncio
 import argparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
-
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+except Exception:
+    boto3 = None
+    BotoCoreError = ClientError = Exception
 from sqlalchemy.ext.asyncio import create_async_engine
 import sqlalchemy
 from Shared_Utils.url_helper import build_asyncpg_url_from_env
