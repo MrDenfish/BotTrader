@@ -126,61 +126,49 @@ def query_trade_pnls(engine_or_conn: Engine | Connection, start: datetime, end: 
 # --------------------------------------------
 # Score Snapshot from JSONL log (if available)
 # --------------------------------------------
-def load_score_jsonl(path: str | None = None, since_hours: int = 24):
-    """Reads SCORE_JSONL_PATH and normalizes the JSON lines.
-         Single source of truth for score data."""
+def load_score_jsonl(path: str = None, since_hours: int = 24) -> pd.DataFrame:
+    """
+    Read score JSONL and return a pandas DataFrame filtered to the last `since_hours`.
+    Returns an empty DataFrame if the file doesn't exist or is unreadable.
+    """
     path = path or os.getenv("SCORE_JSONL_PATH", "/app/logs/score_log.jsonl")
     base = Path(path)
-    if not base.parent.exists():
 
-        return pd.DataFrame() if "pd" in globals() else []
-
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-
-    # collect current file + any rotated siblings (… .YYYY-MM-DD)
-    candidates = [p for p in [base] + sorted(base.parent.glob(base.name + ".*")) if p.exists()]
+    # If directory or file is missing, just return empty DF
+    if not base.exists():
+        return pd.DataFrame()
 
     rows = []
-    for fp in candidates:
-        try:
-            # skip files clearly older than the window based on mtime
-            mtime = datetime.fromtimestamp(fp.stat().st_mtime, tz=timezone.utc)
-            if mtime < cutoff - timedelta(hours=1):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    with base.open("r", encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if not s:
                 continue
-            with fp.open("r") as f:
-                for line in f:
-                    s = line.strip()
-                    if not s:
-                        continue
-                    try:
-                        if not s.startswith("{"):
-                            jstart = s.find("{")
-                            if jstart == -1:
-                                continue
-                            s = s[jstart:]
-                        obj = json.loads(s)
-                    except Exception:
-                        continue
-                    ts = obj.get("ts")
-                    if ts:
-                        try:
-                            t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                            if t.tzinfo is None:
-                                t = t.replace(tzinfo=timezone.utc)
-                            if t < cutoff:
-                                continue
-                        except Exception:
-                            pass
-                    rows.append(obj)
-        except Exception:
-            continue
+            # handle optional prefix like "📊 score_snapshot {...}"
+            if s and s[0] != "{":
+                jstart = s.find("{")
+                if jstart == -1:
+                    continue
+                s = s[jstart:]
+            try:
+                obj = json.loads(s)
+            except Exception:
+                continue
 
-    # return DataFrame if you're already using pandas downstream; otherwise list
-    try:
-        import pandas as pd
-        return pd.json_normalize(rows)
-    except Exception:
-        return rows
+            ts = obj.get("ts")
+            try:
+                if ts:
+                    t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                    if t.tzinfo is None:
+                        t = t.replace(tzinfo=timezone.utc)
+                    if t < cutoff:
+                        continue
+            except Exception:
+                pass
+            rows.append(obj)
+
+    return pd.DataFrame(rows)
 def load_score_jsonl(path: str | None = None, since_hours: int = 24) -> pd.DataFrame:
     """Reads SCORE_JSONL_PATH and normalizes the JSON lines.
      Single source of truth for score data."""
