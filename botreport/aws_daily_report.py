@@ -28,9 +28,9 @@ from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from .emailer import send_email as send_email_via_ses  # uses lazy boto3
-from .email_report_print_format import build_console_report
-from .metrics_compute import load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl
+from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl)
+from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
+from botreport.email_report_print_format import build_console_report
 
 
 # (no-op) from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
@@ -1011,17 +1011,17 @@ def build_html(total_pnl,
         """
 
     return f"""<html><body style="font-family:Arial,Helvetica,sans-serif">
-    <h2>Daily Trading Bot Report</h2><p><b>As of:</b> {now_utc}</p>
-    {key_metrics_html}
-    {trade_stats_html}
-    {risk_cap_html}
-    {score_section_html}
-    {exposure_html}
-    {strat_html}
-    {details_html}
-    {notes_html}
-    <p style="color:#666">CSV attachment includes these tables.</p>
-    </body></html>"""
+        <h2>Daily Trading Bot Report</h2><p><b>As of:</b> {now_utc}</p>
+        {key_metrics_html}
+        {trade_stats_html}
+        {risk_cap_html}
+        {score_section_html}   <!-- insert the score section here -->
+        {exposure_html}
+        {strat_html}
+        {details_html}
+        {notes_html}
+        <p style="color:#666">CSV attachment includes these tables.</p>
+        </body></html>"""
 
 def build_csv(total_pnl,
               open_pos,
@@ -1223,6 +1223,8 @@ def main():
     conn = get_db_conn()
     detect_notes = []
     fast_html = ""
+    score_section_html = ""
+
     try:
         # Core queries (windowed where possible)
         total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
@@ -1260,15 +1262,10 @@ def main():
     open_pos_out = open_pos if REPORT_SHOW_DETAILS else []
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
     try:
-        # 1) Load JSONL (last 24h)
-        score_df = load_score_jsonl(since_hours=24)
-
-        # 2) Summarize
-        score_metrics = score_snapshot_metrics_from_jsonl(score_df)
-
-        # 3) Render HTML snippet
-        score_html = render_score_section_jsonl(score_metrics)
-        score_section_html = score_html
+        score_path = os.getenv("SCORE_JSONL_PATH", "/app/logs/score_log.jsonl")
+        df = load_score_jsonl(score_path, since_hours=24)
+        metrics = score_snapshot_metrics_from_jsonl(df)
+        score_section_html = render_score_section_jsonl(metrics)
     except Exception as e:
         score_section_html = f"<!-- score section unavailable: {e} -->"
 
