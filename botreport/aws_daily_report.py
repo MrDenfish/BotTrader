@@ -1261,13 +1261,14 @@ def main():
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
     try:
         # 1) Load JSONL (last 24h)
-        score_df = load_score_jsonl(SCORE_JSONL_PATH, since_hours=24)
+        score_df = load_score_jsonl(since_hours=24)
 
         # 2) Summarize
         score_metrics = score_snapshot_metrics_from_jsonl(score_df)
 
         # 3) Render HTML snippet
-        score_section_html = render_score_section_jsonl(score_metrics)
+        score_html = render_score_section_jsonl(score_metrics)
+        score_section_html = score_html
     except Exception as e:
         score_section_html = f"<!-- score section unavailable: {e} -->"
 
