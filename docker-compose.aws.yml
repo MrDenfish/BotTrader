@@ -57,7 +57,7 @@ services:
       DB_TCP_KEEPALIVES_IDLE: "60"
       DB_TCP_KEEPALIVES_INTERVAL: "20"
       DB_TCP_KEEPALIVES_COUNT: "3"
-      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+      SCORE_JSONL_PATH: "/app/logs/scores_log.jsonl"
       SCORE_BACKUP_COUNT: "7"
       SCORE_LOG_PATH: "/dev/null"
     depends_on:
@@ -116,7 +116,7 @@ services:
       DB_TCP_KEEPALIVES_IDLE: "60"
       DB_TCP_KEEPALIVES_INTERVAL: "20"
       DB_TCP_KEEPALIVES_COUNT: "3"
-      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+      SCORE_JSONL_PATH: "/app/logs/scores_log.jsonl"
       SCORE_LOG_PATH: "/dev/null"
     depends_on:
       db:
@@ -155,7 +155,7 @@ services:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
       PYTHONPATH: /app
-      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+      SCORE_JSONL_PATH: "/app/logs/scores_log.jsonl"
     env_file:
       - /opt/bot/.env_runtime
     # Optional: send daily email reports
@@ -183,7 +183,7 @@ services:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
       PYTHONPATH: /app
-      SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
+      SCORE_JSONL_PATH: "/app/logs/scores_log.jsonl"
 
     env_file:
       - /opt/bot/.env_runtime

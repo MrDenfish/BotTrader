@@ -131,75 +131,50 @@ def load_score_jsonl(path: str = None, since_hours: int = 24) -> pd.DataFrame:
     Read score JSONL and return a pandas DataFrame filtered to the last `since_hours`.
     Returns an empty DataFrame if the file doesn't exist or is unreadable.
     """
-    path = path or os.getenv("SCORE_JSONL_PATH", "/app/logs/score_log.jsonl")
-    base = Path(path)
+    base = Path(path or os.getenv("SCORE_JSONL_PATH") or "/app/logs/score_log.jsonl")
 
     # If directory or file is missing, just return empty DF
-    if not base.exists():
-        return pd.DataFrame()
+    if not base.parent.exists():
+        return pd.DataFrame() if "pd" in globals() else []
 
+    candidates = [base] + sorted(base.parent.glob(base.name + ".*"))
     rows = []
     cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
-    with base.open("r", encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if not s:
-                continue
-            # handle optional prefix like "📊 score_snapshot {...}"
-            if s and s[0] != "{":
-                jstart = s.find("{")
-                if jstart == -1:
-                    continue
-                s = s[jstart:]
-            try:
-                obj = json.loads(s)
-            except Exception:
-                continue
-
-            ts = obj.get("ts")
-            try:
-                if ts:
-                    t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-                    if t.tzinfo is None:
-                        t = t.replace(tzinfo=timezone.utc)
-                    if t < cutoff:
+    for fp in candidates:
+        if not fp.exists():
+            continue
+        try:
+            with fp.open("r") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s:
                         continue
-            except Exception:
-                pass
-            rows.append(obj)
+                    if s[0] != "{":
+                        j = s.find("{")
+                        if j < 0:
+                            continue
+                        s = s[j:]
+                    try:
+                        obj = json.loads(s)
+                    except Exception:
+                        continue
+                    ts = obj.get("ts")
+                    if ts:
+                        try:
+                            t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                            if t.tzinfo is None:
+                                t = t.replace(tzinfo=timezone.utc)
+                            if t < cutoff:
+                                continue
+                        except Exception:
+                            pass
+                    rows.append(obj)
+        except Exception:
+            continue
+    if "pd" in globals():
+        return pd.DataFrame(rows)
 
-    return pd.DataFrame(rows)
-def load_score_jsonl(path: str | None = None, since_hours: int = 24) -> pd.DataFrame:
-    """Reads SCORE_JSONL_PATH and normalizes the JSON lines.
-     Single source of truth for score data."""
-
-    path = path or os.getenv("SCORE_JSONL_PATH", "logs/score_log.jsonl")
-    if not os.path.exists(path):
-        return pd.DataFrame()
-    rows = []
-    with open(path, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except Exception:
-                # also support lines that look like: "📊 score_snapshot {...}"
-                try:
-                    jstart = line.index("{")
-                    obj = json.loads(line[jstart:])
-                except Exception:
-                    continue
-            rows.append(obj)
-    if not rows:
-        return pd.DataFrame()
-    df = pd.json_normalize(rows)
-    if "ts" in df.columns:
-        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=True)
-        cutoff = pd.Timestamp.utcnow() - pd.Timedelta(hours=since_hours)
-        df = df[df["ts"] >= cutoff]
-    return df
+    return rows
 
 def score_snapshot_metrics_from_jsonl(df: pd.DataFrame) -> dict:
     """Aggregates contributions (top buy/sell indicators) and recent buy/sell entries.

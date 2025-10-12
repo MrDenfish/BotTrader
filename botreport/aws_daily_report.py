@@ -28,9 +28,9 @@ from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl)
-from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
-from botreport.email_report_print_format import build_console_report
+from .metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl)
+from .emailer import send_email as send_email_via_ses  # uses lazy boto3
+from .email_report_print_format import build_console_report
 
 
 # (no-op) from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
@@ -1200,7 +1200,7 @@ def derive_extra_metrics(win_rate_pct: float | None,
         "sharpe_like": sharpe_like,
     }
 
-def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
+def save_report_copy(csv_bytes: bytes, out_dir="/tmp"):  # was "/app/logs"
     os.makedirs(out_dir, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S_UTC")
     with open(os.path.join(out_dir, f"trading_report_{ts}.csv"), "wb") as f:
