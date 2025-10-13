@@ -1266,8 +1266,10 @@ def main():
         df = load_score_jsonl(score_path, since_hours=24)
         metrics = score_snapshot_metrics_from_jsonl(df)
         score_section_html = render_score_section_jsonl(metrics)
+        detect_notes.append(f"Score section: {len(df)} rows from {score_path}")
     except Exception as e:
         score_section_html = f"<!-- score section unavailable: {e} -->"
+        detect_notes.append(f"Score section error: {e}")
 
     # Build HTML body
     html = build_html(
