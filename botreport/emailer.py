@@ -1,6 +1,7 @@
 # botreport/emailer.py
 from __future__ import annotations
 import os, smtplib
+import boto3
 from typing import Optional, Sequence
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,7 +27,6 @@ def _build_mime(subject: str, sender: str, recipients: Sequence[str],
 
 def _send_via_ses(subject: str, text_body: str, *, html_body: Optional[str],
                   csv_bytes: Optional[bytes], sender: str, recipients: Sequence[str], region: str) -> None:
-    import boto3
     ses = boto3.client("ses", region_name=region)
     msg = _build_mime(subject, sender, recipients, text_body, html_body, csv_bytes)
     ses.send_raw_email(Source=sender, Destinations=list(recipients),

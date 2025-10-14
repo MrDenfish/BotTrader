@@ -9,6 +9,7 @@ Scheduling is managed externally
 
  """
 import os
+import re
 import io
 import csv
 import ssl
@@ -17,6 +18,7 @@ import pandas as pd
 import pg8000.native as pg
 
 from pathlib import Path
+from html import unescape
 from decimal import Decimal
 from email.utils import getaddresses
 from statistics import mean, pstdev
@@ -46,6 +48,13 @@ except Exception:
     load_dotenv = None
 
 REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
+
+def _html_to_text(s: str) -> str:
+    if not s:
+        return ""
+    # super basic fallback: strip tags + collapse whitespace
+    s = unescape(re.sub(r"<[^>]+>", " ", s))
+    return re.sub(r"\s+", " ", s).strip()
 
 def load_report_dotenv():
     """
@@ -1207,14 +1216,13 @@ def save_report_copy(csv_bytes: bytes, out_dir="/tmp"):  # was "/app/logs"
         f.write(csv_bytes)
 
 def send_email(html, csv_bytes):
-    # Delegate to emailer (lazy boto3). Falls back to SMTP if you add that path there.
     send_email_via_ses(
         subject="Daily Trading Bot Report",
+        text_body=_html_to_text(html),          # <-- add this line
         html_body=html,
         csv_bytes=csv_bytes,
         sender=SENDER,
         recipients=RECIPIENTS,
-        region=REGION,
     )
 
 
