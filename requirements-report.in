@@ -1,4 +1,4 @@
-boto3
+boto3==1.40.11
 pg8000>=1.30  # for pg8000.native
 numpy==2.2.6
 pandas==2.2.3

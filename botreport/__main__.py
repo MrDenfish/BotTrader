@@ -188,7 +188,7 @@ def render_tiny_html(
 </table>
     
     <div class="note">
-      Notes: Win rate includes breakevens in the denominator. Profit Factor = gross profits / gross losses.
+      Notes: Win rate includes break-evens in the denominator. Profit Factor = gross profits / gross losses.
       Starting equity for drawdown: {fmt_money(starting_equity)}.
     </div>
   </body>

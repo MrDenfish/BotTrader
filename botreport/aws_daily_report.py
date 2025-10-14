@@ -183,8 +183,8 @@ def get_db_conn():
     try:
         url = os.getenv("DATABASE_URL")
 
-        def _log_conn_plan(source, host, port, user, name, ssl):
-            print(f"[DB] source={source} host={host} port={port} user={user} db={name} ssl={'on' if ssl else 'off'}")
+        def _log_conn_plan(source, _host, _port, _user, _name, _ssl):
+            print(f"[DB] source={source} host={_host} port={_port} user={_user} db={_name} ssl={'on' if _ssl else 'off'}")
 
         if url:
             u = urlparse(url)
@@ -443,11 +443,11 @@ def run_queries(conn):
                   pick_first_available(cols_tr, ["qty_signed","amount","size","executed_size","filled_size","base_amount","remaining_size"])
         amt_expr = qident(amt_col) if amt_col else "NULL::numeric"
 
-        ts_col = REPORT_COL_TIME if (use_mappings and REPORT_COL_TIME in cols_tr) else \
+        _ts_col = REPORT_COL_TIME if (use_mappings and REPORT_COL_TIME in cols_tr) else \
                  pick_first_available(cols_tr, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
-        if not ts_col:
+        if not _ts_col:
             raise RuntimeError(f"No time-like column on {table_name}")
-        ts_expr = qident(ts_col)
+        ts_expr = qident(_ts_col)
 
         time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
 
@@ -455,7 +455,7 @@ def run_queries(conn):
         if "status" in cols_tr:
             status_filter = "AND COALESCE(status,'filled') IN ('filled','done')"
 
-        q = f"""
+        _q = f"""
             SELECT {qident(sym_col)} AS symbol,
                    {side_expr} AS side,
                    {price_expr} AS price,
@@ -468,7 +468,7 @@ def run_queries(conn):
             ORDER BY {ts_expr} DESC
             LIMIT 1000
         """
-        return conn.run(q)
+        return conn.run(_q)
 
     recent_trades = []
     try:
@@ -1015,7 +1015,7 @@ def build_html(total_pnl,
         {key_metrics_html}
         {trade_stats_html}
         {risk_cap_html}
-        {score_section_html}   <!-- insert the score section here -->
+        {score_section_html}  
         {exposure_html}
         {strat_html}
         {details_html}
@@ -1224,6 +1224,7 @@ def main():
     detect_notes = []
     fast_html = ""
     score_section_html = ""
+
 
     try:
         # Core queries (windowed where possible)

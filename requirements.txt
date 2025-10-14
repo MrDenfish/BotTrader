@@ -30,6 +30,8 @@ backoff==2.2.1
     # via coinbase-advanced-py
 backports-tarfile==1.2.0
     # via jaraco-context
+boto3==1.40.11
+    # via -r requirements.in
 bottleneck==1.4.2
     # via -r requirements.in
 brotli==1.0.9
