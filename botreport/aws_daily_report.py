@@ -1218,7 +1218,7 @@ def save_report_copy(csv_bytes: bytes, out_dir="/tmp"):  # was "/app/logs"
 def send_email(html, csv_bytes):
     send_email_via_ses(
         subject="Daily Trading Bot Report",
-        text_body=_html_to_text(html),          # <-- add this line
+        text_body=_html_to_text(html),
         html_body=html,
         csv_bytes=csv_bytes,
         sender=SENDER,
