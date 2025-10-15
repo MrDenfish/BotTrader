@@ -59,7 +59,7 @@ services:
       DB_TCP_KEEPALIVES_COUNT: "3"
       SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
       SCORE_BACKUP_COUNT: "7"
-      SCORE_LOG_PATH: "/dev/null"
+      SCORE_LOG_PATH: "/app/logs/score_log.jsonl"
     depends_on:
       db:
         condition: service_healthy
@@ -117,7 +117,7 @@ services:
       DB_TCP_KEEPALIVES_INTERVAL: "20"
       DB_TCP_KEEPALIVES_COUNT: "3"
       SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
-      SCORE_LOG_PATH: "/dev/null"
+      SCORE_LOG_PATH: "/app/logs/score_log.jsonl"
     depends_on:
       db:
         condition: service_healthy
