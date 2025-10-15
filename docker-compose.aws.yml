@@ -130,12 +130,7 @@ services:
 
     # Add a simple healthcheck that requires no extra packages:
     healthcheck:
-      test:
-        - CMD-SHELL
-        - >
-          python -c "import os,time,sys;
-          p='/app/logs/sighook/sighook_logger.log';
-          sys.exit(0) if (os.path.exists(p) and (time.time()-os.path.getmtime(p)<300)) else sys.exit(1)"
+      test: [ "CMD-SHELL", "python -c \"import os,time,sys;p='/app/logs/sighook/sighook_logger.log';sys.exit(0) if (os.path.exists(p) and (time.time()-os.path.getmtime(p)<300)) else sys.exit(1)\"" ]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -150,22 +145,17 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - /opt/bot/logs:/app/logs:ro #read only for safety
+      - /opt/bot/logs:/app/logs:rw
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
       PYTHONPATH: /app
+      IN_DOCKER: "true"
       SCORE_JSONL_PATH: "/app/logs/score_log.jsonl"
     env_file:
       - /opt/bot/.env_runtime
     # Optional: send daily email reports
-    command: >-
-      python -u -m botreport
-        --hours ${REPORT_LOOKBACK_HOURS:-24}
-        --use-report-trades
-        --starting-equity ${REPORT_STARTING_EQUITY:-3000}
-        --equity-usd ${REPORT_EQUITY_USD:-3000}
-        --send
+    command: python -m botreport --hours 24 --send
     restart: "no"
   leaderboard-job:
     build:
