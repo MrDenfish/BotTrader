@@ -8,8 +8,10 @@ import pandas as pd
 
 from pathlib import Path
 from decimal import Decimal
+from statistics import median
 from sqlalchemy.sql import text
 from sqlalchemy import bindparam, Numeric
+from collections import Counter, defaultdict
 from sqlalchemy.engine import Engine, Connection
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -45,6 +47,20 @@ CASH_SYMBOLS        = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMBOLS
 # -------------------------
 # Helpers
 # -------------------------
+
+def _parse_ts(s):
+    try:
+        dt = datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+def _is_df(obj):
+    try:
+        import pandas as pd  # noqa
+        return hasattr(obj, "to_dict")
+    except Exception:
+        return False
 
 def _ensure_conn(engine_or_conn: Engine | Connection) -> Tuple[Connection, bool]:
     """Return (conn, own_conn) where own_conn indicates we opened it."""
@@ -176,72 +192,223 @@ def load_score_jsonl(path: str = None, since_hours: int = 24) -> pd.DataFrame:
 
     return rows
 
-def score_snapshot_metrics_from_jsonl(df: pd.DataFrame) -> dict:
-    """Aggregates contributions (top buy/sell indicators) and recent buy/sell entries.
-    This is the metrics payload the email renderer will consume."""
+def score_snapshot_metrics_from_jsonl(df_or_rows):
+    """
+    INPUT: pandas.DataFrame or list[dict] of score events with schema like:
+      {
+        "ts": "...",
+        "symbol": "BTC-USD",
+        "action": "buy|sell|hold",
+        "trigger": "score|...",
 
-    if df.empty:
+        "buy_score": float,
+        "sell_score": float,
+        "top_buy_components": [{"indicator","decision","value","threshold","weight","contribution"}, ...],
+        "top_sell_components": [{"indicator","decision","value","threshold","weight","contribution"}, ...],
+        ...
+      }
+
+    OUTPUT (extends prior keys without breaking them):
+      {
+        "empty": bool,
+        "rows": int,
+        "symbols": int,
+        "top_buy": list[(indicator, total_contribution)],
+        "top_sell": list[(indicator, total_contribution)],
+        "entries": list[...],  # unchanged if present
+        # NEW:
+        "buy_table": list[dict],  # for HTML rendering
+        "sell_table": list[dict],
+      }
+    """
+    # Normalize to a list[dict]
+    if df_or_rows is None:
+        rows = []
+    elif _is_df(df_or_rows):
+        rows = [r for r in df_or_rows.to_dict(orient="records")]
+    else:
+        rows = list(df_or_rows)
+
+    if not rows:
         return {"empty": True}
 
-    # Build contributions table from top components
-    contrib_rows = []
-    for _, r in df.iterrows():
-        for side, col in (("buy", "top_buy_components"), ("sell", "top_sell_components")):
-            comps = r.get(col, []) or []
-            for c in comps:
-                contrib_rows.append({
-                    "side": side,
-                    "indicator": c.get("indicator"),
-                    "contribution": float(c.get("contribution", 0.0))
-                })
-    contrib = pd.DataFrame(contrib_rows)
-    top_buy = pd.DataFrame()
-    top_sell = pd.DataFrame()
-    if not contrib.empty:
-        g = contrib.groupby(["side", "indicator"], dropna=False)["contribution"].sum().reset_index()
-        top_buy  = g[g["side"]=="buy"].nlargest(10, "contribution")[["indicator","contribution"]]
-        top_sell = g[g["side"]=="sell"].nlargest(10, "contribution")[["indicator","contribution"]]
+    # Aggregate contributions, "fires", weights, thresholds (by side/indicator)
+    contrib = {"buy": Counter(), "sell": Counter()}
+    fires   = {"buy": Counter(), "sell": Counter()}  # decision==1 count
+    weights = {"buy": defaultdict(list), "sell": defaultdict(list)}
+    thresh  = {"buy": defaultdict(list), "sell": defaultdict(list)}
 
-    # Recent entries (one per (ts,symbol))
-    have_cols = [c for c in ["ts","symbol","action","trigger","buy_score","sell_score"] if c in df.columns]
-    entries = df[have_cols].drop_duplicates(subset=["ts","symbol"]) if {"ts","symbol"}.issubset(df.columns) else pd.DataFrame()
-    entries = entries[entries["action"].isin(["buy","sell"])] if not entries.empty else entries
+    symbols = set()
+    # keep your "entries" concept (recent action rows) but don't rely on it
+    entries = []
+
+    for e in rows:
+        sym = e.get("symbol")
+        if sym: symbols.add(sym)
+
+        # keep recent entries if you'd like (buy/sell actions)
+        act = (e.get("action") or "").lower()
+        if act in ("buy","sell"):
+            entries.append({
+                "ts": e.get("ts"),
+                "symbol": sym,
+                "action": act,
+                "trigger": e.get("trigger"),
+                "buy_score": e.get("buy_score"),
+                "sell_score": e.get("sell_score"),
+            })
+
+        for side, key in (("buy","top_buy_components"),("sell","top_sell_components")):
+            comps = e.get(key) or []
+            for c in comps:
+                ind = c.get("indicator")
+                if not ind:
+                    continue
+                contrib_val = float(c.get("contribution", 0.0) or 0.0)
+                contrib[side][ind] += contrib_val
+
+                # decision==1 means the indicator "fired"
+                try:
+                    if int(c.get("decision", 0) or 0) == 1:
+                        fires[side][ind] += 1
+                except Exception:
+                    pass
+                # collect medians for config sanity
+                w = c.get("weight")
+                t = c.get("threshold")
+                try:
+                    if w is not None:
+                        weights[side][ind].append(float(w))
+                except Exception:
+                    pass
+                try:
+                    if t is not None:
+                        thresh[side][ind].append(float(t))
+                except Exception:
+                    pass
+
+    # old outputs (preserved)
+    top_buy  = contrib["buy"].most_common(10)
+    top_sell = contrib["sell"].most_common(10)
+
+    # NEW: normalized tables for HTML
+    def _table_for(side):
+        total = sum(abs(v) for v in contrib[side].values()) or 1.0
+        rows_ = []
+        for ind, tot_c in contrib[side].most_common():
+            r = {
+                "indicator": ind,
+                "fires": int(fires[side][ind] or 0),
+                "total_contrib": float(tot_c),
+                "contrib_pct": (abs(tot_c)/total*100.0),
+                "median_weight": (median(weights[side][ind]) if weights[side][ind] else None),
+                "median_threshold": (median(thresh[side][ind]) if thresh[side][ind] else None),
+            }
+            rows_.append(r)
+        return rows_
+
+    buy_table  = _table_for("buy")
+    sell_table = _table_for("sell")
+
+    # Trim "entries" to the last 20 chronologically
+    def _dt(row):
+        return _parse_ts(row.get("ts")) or datetime.min.replace(tzinfo=timezone.utc)
+    entries = sorted(entries, key=_dt)[-20:]
 
     return {
         "empty": False,
-        "rows": int(len(df)),
-        "symbols": int(df["symbol"].nunique()) if "symbol" in df else 0,
+        "rows": len(rows),
+        "symbols": len(symbols),
         "top_buy": top_buy,
         "top_sell": top_sell,
         "entries": entries,
+        # NEW enriched tables:
+        "buy_table": buy_table,
+        "sell_table": sell_table,
     }
 
-def render_score_section_jsonl(metrics) -> str:
-    """Produces a small HTML block with tables that stylistically match the current report
-       (bordered tables, simple headings)."""
 
-    if metrics.get("empty"):
+def render_score_section_jsonl(metrics: dict) -> str:
+    """Enriched HTML for the Signal Score Snapshot (non-breaking)."""
+    if not metrics or metrics.get("empty"):
         return "<h2>Signal Score Snapshot (last 24h)</h2><p>No score data found.</p>"
 
-    def _to_html(df):
-        try:
-            return df.to_html(index=False, border=0, classes="table table-sm", float_format=lambda x: f"{x:.4g}")
-        except Exception:
-            return "<p>(table render error)</p>"
+    def _fmt(x, nd=3):
+        if x is None: return "—"
+        try: return f"{float(x):.{nd}f}"
+        except Exception: return str(x)
 
-    parts = []
-    parts.append("<h2>Signal Score Snapshot (last 24h)</h2>")
-    parts.append(f"<p>Symbols: <b>{metrics['symbols']}</b> &nbsp; Rows: <b>{metrics['rows']}</b></p>")
-    parts.append("<h3>Top contributing indicators (Buy)</h3>")
-    parts.append(_to_html(metrics["top_buy"]))
-    parts.append("<h3>Top contributing indicators (Sell)</h3>")
-    parts.append(_to_html(metrics["top_sell"]))
-    if "entries" in metrics and not metrics["entries"].empty:
-        tail = metrics["entries"].sort_values("ts").tail(20)
-        cols = [c for c in ["ts","symbol","action","trigger","buy_score","sell_score"] if c in tail.columns]
-        parts.append("<h3>Most recent entries</h3>")
-        parts.append(_to_html(tail[cols]))
-    return "\n".join(parts)
+    def _tbl(title, rows):
+        head = (
+            "<tr>"
+            "<th>Indicator</th>"
+            "<th>Fires</th>"
+            "<th>Total<br/>Contribution</th>"
+            "<th>Contrib %</th>"
+            "<th>Median Weight</th>"
+            "<th>Median Threshold</th>"
+            "</tr>"
+        )
+        body = []
+        if not rows:
+            body.append("<tr><td colspan='99'>None</td></tr>")
+        else:
+            for r in rows[:12]:
+                body.append(
+                    "<tr>"
+                    f"<td>{r['indicator']}</td>"
+                    f"<td>{r['fires']}</td>"
+                    f"<td>{_fmt(r['total_contrib'])}</td>"
+                    f"<td>{_fmt(r['contrib_pct'],2)}%</td>"
+                    f"<td>{_fmt(r['median_weight'])}</td>"
+                    f"<td>{_fmt(r['median_threshold'])}</td>"
+                    "</tr>"
+                )
+        return (
+            f"<h4>{title}</h4>"
+            "<table border='1' cellpadding='6' cellspacing='0'>"
+            f"{head}{''.join(body)}"
+            "</table>"
+        )
+
+    html = []
+    html.append("<h2>Signal Score Snapshot (last 24h)</h2>")
+    html.append(f"<p>Symbols: <b>{metrics.get('symbols',0)}</b> &nbsp; Rows: <b>{metrics.get('rows',0)}</b></p>")
+
+    # explanatory legend
+    html.append(
+        "<p style='color:#555;font-size:90%'>"
+        "<b>Fires</b>: count of bars where the indicator's decision==1. "
+        "<b>Total Contribution</b>: sum of raw contributions used by your scorer (can be ±). "
+        "<b>Contrib %</b>: absolute contribution normalized within side. "
+        "Medians help sanity-check the configured <i>weight</i> and <i>threshold</i> actually observed in production."
+        "</p>"
+    )
+
+    html.append(_tbl("Top contributing indicators (Buy)",  metrics.get("buy_table")  or []))
+    html.append(_tbl("Top contributing indicators (Sell)", metrics.get("sell_table") or []))
+
+    # (optional) recent “entries” table if present
+    ent = metrics.get("entries") or []
+    if ent:
+        head = "<tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th><th>Trigger</th><th>Buy Score</th><th>Sell Score</th></tr>"
+        body = []
+        for e in ent[-10:]:
+            body.append(
+                "<tr>"
+                f"<td>{e.get('ts','')}</td>"
+                f"<td>{e.get('symbol','')}</td>"
+                f"<td>{e.get('action','')}</td>"
+                f"<td>{e.get('trigger','')}</td>"
+                f"<td>{_fmt(e.get('buy_score'))}</td>"
+                f"<td>{_fmt(e.get('sell_score'))}</td>"
+                "</tr>"
+            )
+        html.append("<h4>Most recent score entries</h4>")
+        html.append("<table border='1' cellpadding='6' cellspacing='0'>" + head + "".join(body) + "</table>")
+
+    return "\n".join(html)
+
 
 
 # -------------------------

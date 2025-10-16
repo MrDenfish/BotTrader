@@ -576,6 +576,21 @@ def _latest_price_map(conn, price_table: str):
             pass
     return out
 
+def compute_fee_break_even():
+    """
+    Returns a dict with approximate round-trip break-even moves for taker vs maker,
+    using env TAKER_FEE / MAKER_FEE (already loaded as Decimals).
+    """
+    taker = float(TAKER_FEE or 0.0)
+    maker = float(MAKER_FEE or 0.0)
+    # round-trip (enter+exit). This is a simple, readable approximation.
+    rt_taker = (taker * 2.0) * 100.0
+    rt_maker = (maker * 2.0) * 100.0
+    return {
+        "rt_taker_pct": rt_taker,   # e.g. 1.10 for 0.55% taker fee
+        "rt_maker_pct": rt_maker,   # e.g. 0.60 for 0.30% maker fee
+    }
+
 def compute_unrealized_pnl(conn, open_pos):
     notes = []
     price_map = _latest_price_map(conn, REPORT_PRICE_TABLE)
@@ -882,6 +897,19 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
 # -------------------------
 # Email / CSV Builders
 # -------------------------
+def render_fees_section_html(break_even: dict) -> str:
+    if not break_even:
+        return ""
+    t = break_even.get("rt_taker_pct", 0.0)
+    m = break_even.get("rt_maker_pct", 0.0)
+    return f"""
+    <h3>Costs &amp; Break-Even Move</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <tr><th>Round-trip taker break-even</th><th>Round-trip maker break-even</th></tr>
+      <tr><td>{t:.2f}%</td><td>{m:.2f}%</td></tr>
+    </table>
+    <p style="color:#666">Your average trade must exceed these percentages (before slippage) to be profitable.</p>
+    """
 
 def build_html(total_pnl,
                open_pos,
@@ -903,6 +931,7 @@ def build_html(total_pnl,
                strat_rows: Optional[list] = None,
                show_details: bool = False,
                *,
+               fees_html: str = "",
                score_section_html: str = ""
                ):
     def rows(rows_):
@@ -1022,6 +1051,7 @@ def build_html(total_pnl,
     return f"""<html><body style="font-family:Arial,Helvetica,sans-serif">
         <h2>Daily Trading Bot Report</h2><p><b>As of:</b> {now_utc}</p>
         {key_metrics_html}
+        {fees_html}
         {trade_stats_html}
         {risk_cap_html}
         {score_section_html}  
@@ -1280,6 +1310,10 @@ def main():
         score_section_html = f"<!-- score section unavailable: {e} -->"
         detect_notes.append(f"Score section error: {e}")
 
+    # fees break-even block
+    fee_info = compute_fee_break_even()
+    fees_html = render_fees_section_html(fee_info)
+
     # Build HTML body
     html = build_html(
         total_pnl,
@@ -1301,6 +1335,7 @@ def main():
         invested_pct=invested_pct,
         strat_rows=strat_rows,
         show_details=False,
+        fees_html=fees_html,
         score_section_html=score_section_html,
     )
 
