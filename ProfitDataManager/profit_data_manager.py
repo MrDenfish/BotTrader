@@ -4,6 +4,7 @@ import os
 import pandas as pd
 from inspect import stack  # debugging
 from decimal import Decimal
+from datetime import datetime, timezone
 from webhook.webhook_validate_orders import OrderData
 from Config.config_manager import CentralConfig as config
 
@@ -53,15 +54,15 @@ def _atr_pct_from_ohlcv(ohlcv: list | None, entry_price: Decimal, period: int = 
 class ProfitDataManager:
     _instance = None
     @classmethod
-    def get_instance(cls,  shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
+    def get_instance(cls, shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
         """
         Singleton method to ensure only one instance of ProfitDataManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls( shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager)
+            cls._instance = cls( shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager)
         return cls._instance
 
-    def __init__(self,  shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
+    def __init__(self, shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
         self.config = config()
         self._hodl = self.config.hodl
         self._stop_loss = Decimal(self.config.stop_loss)
@@ -72,6 +73,7 @@ class ProfitDataManager:
         if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
             self.logger = logger_manager.loggers['shared_logger']
         self.shared_data_manager = shared_data_manager
+        self.shared_utils_utility = shared_utils_utility
         self.shared_utils_print_data = shared_utils_print_data
         self.shared_utils_precision = shared_utils_precision
         self.start_time = None
@@ -238,6 +240,9 @@ class ProfitDataManager:
         TP uses your existing 'Option A' (apply fee on top).
         """
         try:
+            # --- email reports
+            TP_SL_LOG_PATH = os.getenv("TP_SL_LOG_PATH", "/app/logs/tpsl.jsonl")
+
             # ---- Inputs
             entry = order_data.adjusted_price                  # Decimal
             fee_pct = _fee_for_side(order_data)               # fraction (e.g., 0.0055)
@@ -299,6 +304,33 @@ class ProfitDataManager:
                 )
             except Exception:
                 pass
+
+            # recompute the components you use (or pass them in):
+            fee_side = "taker"  # or detect maker/taker used in calc
+            fee_pct = float(order_data.taker) if fee_side == "taker" else float(order_data.maker)
+            atr_pct = float(getattr(order_data, "atr_pct", 0) or 0.0)
+            spr_pct = float(getattr(order_data, "spread_pct", 0) or 0.0)
+
+
+            rr = float((tp_adj - entry) / max(Decimal("1e-12"), (entry - sl_adj)))  # avoid div-by-zero
+            stop_pct = float((entry - sl_adj) / entry) if entry else None
+            tp_pct = float((tp_adj - entry) / entry) if entry else None
+
+            self.shared_utils_utility.write_jsonl(TP_SL_LOG_PATH, {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "symbol": order_data.trading_pair,
+                "entry": float(entry),
+                "tp": float(tp_adj),
+                "sl": float(sl_adj),
+                "rr": rr,  # risk:reward at entry time
+                "tp_pct": tp_pct,  # +% target
+                "stop_pct": stop_pct,  # -% stop
+                "stop_mode": getattr(self, "stop_mode", "atr"),
+                "atr_pct": atr_pct,
+                "cushion_spread": spr_pct,
+                "cushion_fee": fee_pct,
+                "fee_side": fee_side
+            })
 
             return tp_adj, sl_adj
 

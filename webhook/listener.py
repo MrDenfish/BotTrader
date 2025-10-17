@@ -440,8 +440,11 @@ class WebhookListener:
 
         self.ticker_manager = None
 
-        self.profit_data_manager = ProfitDataManager.get_instance(self.shared_utils_precision, self.shared_utils_print,
-                                                                  self.shared_data_manager, self.logger_manager)
+        self.profit_data_manager = ProfitDataManager.get_instance(self.shared_utils_utility,
+                                                                  self.shared_utils_precision,
+                                                                  self.shared_utils_print,
+                                                                  self.shared_data_manager,
+                                                                  self.logger_manager)
 
         self.order_book_manager = order_book_manager
 

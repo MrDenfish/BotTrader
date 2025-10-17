@@ -50,6 +50,15 @@ class SharedUtility:
         except RuntimeError:  # No running loop found
             return asyncio.new_event_loop()
 
+    def write_jsonl(path: str, payload: Dict[str, Any]) -> None:
+        """Appends a JSON object as a new line per each TP/SL computed.
+        This will allow seeing the risk/reward, ATR-driven stop,
+        fee/spread cushions etc """
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, separators=(",", ":")) + "\n")
+
     def log_event_loop(self, name):
         """Logs the current event loop ID."""
         loop_id = id(asyncio.get_running_loop())

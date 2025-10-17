@@ -825,3 +825,155 @@ async def fetch_exposure_snapshot(
         "positions": positions[:top_n],
     }
 
+def load_tpsl_jsonl(path: str, since_hours: int = 24):
+    """
+    Read tpsl.jsonl and return list[dict] for the last `since_hours` hours.
+    Robust to garbage lines / partial writes.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
+    out = []
+    if not os.path.exists(path):
+        return out
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            # if the file sometimes has prefixes, try to find the JSON start:
+            if not line.startswith("{"):
+                j = line.find("{")
+                if j == -1:
+                    continue
+                line = line[j:]
+            try:
+                o = json.loads(line)
+                ts = o.get("ts")
+                if not ts:
+                    continue
+                t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                if t >= cutoff:
+                    out.append(o)
+            except Exception:
+                continue
+    return out
+
+def aggregate_tpsl(rows):
+    """
+    Returns per-symbol aggregates and global summaries.
+    """
+    per = defaultdict(lambda: {
+        "n": 0, "avg_rr": 0.0, "p50_rr": None, "p10_rr": None,
+        "avg_tp_pct": 0.0, "avg_stop_pct": 0.0,
+        "avg_atr_pct": 0.0, "avg_spread_pct": 0.0, "avg_fee_pct": 0.0
+    })
+    by_symbol_rr = defaultdict(list)
+
+    for r in rows:
+        sym = r.get("symbol", "?")
+        per[sym]["n"] += 1
+        for k_src, k_dst in [
+            ("rr", "avg_rr"),
+            ("tp_pct", "avg_tp_pct"),
+            ("stop_pct", "avg_stop_pct"),
+            ("atr_pct", "avg_atr_pct"),
+            ("cushion_spread", "avg_spread_pct"),
+            ("cushion_fee", "avg_fee_pct"),
+        ]:
+            v = r.get(k_src)
+            if isinstance(v, (int, float)) and v == v:
+                per[sym][k_dst] += v
+        if isinstance(r.get("rr"), (int, float)):
+            by_symbol_rr[sym].append(float(r["rr"]))
+
+    # finalize avgs & simple quantiles
+    for sym, agg in per.items():
+        n = agg["n"] or 1
+        agg["avg_rr"]        /= n
+        agg["avg_tp_pct"]    /= n
+        agg["avg_stop_pct"]  /= n
+        agg["avg_atr_pct"]   /= n
+        agg["avg_spread_pct"]/= n
+        agg["avg_fee_pct"]   /= n
+        if by_symbol_rr[sym]:
+            arr = sorted(by_symbol_rr[sym])
+            mid = len(arr)//2
+            agg["p50_rr"] = arr[mid] if len(arr)%2==1 else 0.5*(arr[mid-1]+arr[mid])
+            p10_idx = max(0, int(0.10*len(arr))-1)
+            agg["p10_rr"] = arr[p10_idx]
+
+    # global summary
+    total = sum(v["n"] for v in per.values())
+    global_rrs = [rr for lst in by_symbol_rr.values() for rr in lst]
+    global_summary = {
+        "n": total,
+        "avg_rr": (sum(global_rrs)/len(global_rrs)) if global_rrs else 0.0,
+        "p50_rr": (sorted(global_rrs)[len(global_rrs)//2] if global_rrs else None),
+        "bad_rr_share": (sum(1 for rr in global_rrs if rr < 1.0)/len(global_rrs)) if global_rrs else 0.0,
+    }
+    return per, global_summary
+
+def render_tpsl_section(per, global_summary, max_rows=10):
+    if global_summary["n"] == 0:
+        return "<h3>TP/SL (last 24h)</h3><p>No TP/SL decisions recorded.</p>"
+
+    rows = sorted(per.items(), key=lambda kv: kv[1]["avg_rr"])[:max_rows]
+
+    def pct(x):
+        return f"{x*100:.2f}%" if isinstance(x, (int, float)) else "—"
+
+    html = [
+        "<h3>TP/SL Decision Quality (last 24h)</h3>",
+        (
+            f"<p>Total: <b>{global_summary['n']}</b> | "
+            f"Avg R:R: <b>{global_summary['avg_rr']:.2f}</b> | "
+            f"Median R:R: <b>{(global_summary['p50_rr'] or 0):.2f}</b> | "
+            f"RR&lt;1.0 share: <b>{pct(global_summary['bad_rr_share'])}</b></p>"
+        ),
+        "<table border='1' cellspacing='0' cellpadding='4'>",
+        "<tr><th>Symbol</th><th>N</th><th>Avg R:R</th><th>P10 R:R</th>"
+        "<th>Avg TP%</th><th>Avg Stop%</th><th>ATR%</th><th>Spread%</th><th>Fee%</th></tr>"
+    ]
+
+    for sym, agg in rows:
+        p10_val = agg["p10_rr"]
+        p10_str = "-" if p10_val is None else f"{p10_val:.2f}"
+
+        html.append(
+            "<tr>"
+            f"<td>{sym}</td>"
+            f"<td>{agg['n']}</td>"
+            f"<td>{agg['avg_rr']:.2f}</td>"
+            f"<td>{p10_str}</td>"
+            f"<td>{pct(agg['avg_tp_pct'])}</td>"
+            f"<td>{pct(agg['avg_stop_pct'])}</td>"
+            f"<td>{pct(agg['avg_atr_pct'])}</td>"
+            f"<td>{pct(agg['avg_spread_pct'])}</td>"
+            f"<td>{pct(agg['avg_fee_pct'])}</td>"
+            "</tr>"
+        )
+    html.append("</table>")
+    html.append("<p style='font-size:12px;color:#666'>"
+                "ⓘ <b>ATR%</b> and <b>Spread%</b> are <i>tunable</i> inputs—exposing them here helps you adjust strategy thresholds."
+                "</p>")
+    return "\n".join(html)
+
+def render_tpsl_suggestions(per: dict, global_summary: dict) -> str:
+    notes = []
+    if not global_summary or not global_summary.get("n"):
+        return ""
+
+    # Example heuristics — tweak to taste
+    if global_summary.get("avg_rr", 0) < 1.10:
+        notes.append("Average R:R < 1.10 — consider raising TP or loosening SL (or both).")
+
+    high_spread = [s for s, a in per.items()
+                   if (a.get("avg_spread_pct") or 0) > 0.003]  # >0.3%
+    if high_spread:
+        notes.append(f"High spread on {', '.join(high_spread[:10])} — consider excluding or widening cushions.")
+
+    if not notes:
+        return ""
+
+    return "<h4>Suggested Tweaks</h4><ul>" + "".join(f"<li>{n}</li>" for n in notes) + "</ul>"

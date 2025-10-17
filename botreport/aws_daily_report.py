@@ -30,7 +30,8 @@ from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from .metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl)
+from .metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl,
+                              load_tpsl_jsonl, aggregate_tpsl, render_tpsl_section, render_tpsl_suggestions)
 from .emailer import send_email as send_email_via_ses  # uses lazy boto3
 from .email_report_print_format import build_console_report
 
@@ -932,6 +933,7 @@ def build_html(total_pnl,
                show_details: bool = False,
                *,
                fees_html: str = "",
+               tpsl_html: str = "",
                score_section_html: str = ""
                ):
     def rows(rows_):
@@ -1305,9 +1307,16 @@ def main():
         df = load_score_jsonl(score_path, since_hours=24)
         metrics = score_snapshot_metrics_from_jsonl(df)
         score_section_html = render_score_section_jsonl(metrics)
+        tpsl_path = os.getenv("TP_SL_LOG_PATH", "/app/logs/tpsl.jsonl")
+        tpsl_rows = load_tpsl_jsonl(tpsl_path, since_hours=24)
+        tpsl_per, tpsl_gsum = aggregate_tpsl(tpsl_rows)
+        tpsl_table_html = render_tpsl_section(tpsl_per, tpsl_gsum)
+        tpsl_suggest_html = render_tpsl_suggestions(tpsl_per, tpsl_gsum)
+        tpsl_html = tpsl_table_html + (tpsl_suggest_html or "")
         detect_notes.append(f"Score section: {len(df)} rows from {score_path}")
     except Exception as e:
         score_section_html = f"<!-- score section unavailable: {e} -->"
+        tpsl_html = f"<!-- tp/sl section unavailable: {e} -->"
         detect_notes.append(f"Score section error: {e}")
 
     # fees break-even block
@@ -1336,6 +1345,7 @@ def main():
         strat_rows=strat_rows,
         show_details=False,
         fees_html=fees_html,
+        tpsl_html=tpsl_html,
         score_section_html=score_section_html,
     )
 
@@ -1357,6 +1367,10 @@ def main():
                 html = html.replace("</body></html>", fast_html + "\n</body></html>")
             else:
                 html = html + "\n" + fast_html
+        if "</body></html>" in html:
+            html = html.replace("</body></html>", tpsl_html + "\n</body></html>")
+        else:
+            html += "\n" + tpsl_html
 
     # Build CSV attachment / local artifact
     csvb = build_csv(

@@ -285,9 +285,33 @@ class TradeOrderManager:
             ask = Decimal(bid_ask.get("ask", 0))
             current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
             current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
-            spread = Decimal(bid_ask.get("spread", 0))
+            spread = Decimal(bid_ask.get("spread", 0)) # value not percentage
             spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
             price = (current_bid + current_ask) / 2 if (current_bid and current_ask) else Decimal("0")
+
+            # --- Spread% ---
+            spread_abs = (current_ask - current_bid) if (current_bid and current_ask) else Decimal("0")
+            mid = ((current_bid + current_ask) / 2) if (current_bid and current_ask) else Decimal("0")
+            spread_pct = (spread_abs / mid) if mid else Decimal("0")
+            spread_pct_q = self.shared_utils_precision.safe_quantize(spread_pct, Decimal("1e-6"))
+
+            # --- ATR% (if available from shared state) ---
+            # Expect either an ATR in price terms + divide by price, or a precomputed pct (0.01 == 1%).
+            atr_pct_val = None
+            try:
+                # Example 1: a direct pct cache
+                atr_pct_cache = (self.shared_data_manager.market_data.get('atr_pct_cache') or {})
+                atr_pct_val = atr_pct_cache.get(trading_pair)
+
+                # Example 2: ATR in price units — convert to pct
+                if atr_pct_val is None:
+                    atr_price_cache = (self.shared_data_manager.market_data.get('atr_price_cache') or {})
+                    atr_price = atr_price_cache.get(trading_pair)
+                    if atr_price and price:
+                        atr_pct_val = (Decimal(atr_price) / price)
+            except Exception:
+                atr_pct_val = None
+
 
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
@@ -387,6 +411,8 @@ class TradeOrderManager:
                 maker=maker_fee,
                 taker=taker_fee,
                 spread=spread,
+                spread_pct=spread_pct_q,
+                atr_pct=atr_pct_val,
                 open_orders={},
                 status="UNKNOWN",
                 source=source,
@@ -668,6 +694,7 @@ class TradeOrderManager:
                     # Prefer centralized profit_manager if present
                     if self.profit_manager and hasattr(self.profit_manager, "calculate_tp_sl"):
                         try:
+
                             tp, sl = await self.profit_manager.calculate_tp_sl(order_data)
                         except Exception as e:
                             self.logger.warning(f"⚠️ profit_manager.calculate_tp_sl failed, falling back: {e}")

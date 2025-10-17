@@ -22,7 +22,6 @@ class OrderData:
     type: str
     order_id: str
     side: str
-    filled_price: Decimal
     base_currency: str
     quote_currency: str
     usd_balance: Decimal
@@ -47,6 +46,9 @@ class OrderData:
     price: Decimal = Decimal(0)
     cost_basis: Decimal = Decimal('0')  # spot_position
     limit_price: Decimal = Decimal('0')
+    filled_price: Optional[Decimal] = None
+    spread_pct: Optional[Decimal] = None
+    atr_pct: Optional[Decimal] = None
     average_price: Optional[Decimal] = None
     adjusted_price: Optional[Decimal] = None
     adjusted_size: Optional[Decimal] = None
