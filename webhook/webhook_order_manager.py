@@ -2,7 +2,9 @@
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Tuple, Dict, Union, Optional
 
+import os
 import pandas as pd
+from pandas.core.methods.describe import select_describe_func
 
 from Config.config_manager import CentralConfig as config
 from webhook.webhook_validate_orders import OrderData
@@ -153,6 +155,90 @@ class TradeOrderManager:
     @property
     def order_size(self):
         return float(self._order_size_fiat)
+
+    @staticmethod
+    def _get_env_pct(name: str, default: float) -> Decimal:
+        try:
+            return Decimal(os.getenv(name, str(default)))
+        except Exception:
+            return Decimal(str(default))
+
+    def _fee_pct_for_side(self) -> Decimal:
+        side = os.getenv("FEE_SIDE", "taker").lower()
+        taker = self._get_env_pct("TAKER_FEE", 0.0055)
+        maker = self._get_env_pct("MAKER_FEE", 0.0030)
+        return taker if side == "taker" else maker
+
+    def _read_stop_mode(self) -> str:
+        m = os.getenv("STOP_MODE", "atr").lower()
+        return m if m in ("atr", "fixed") else "atr"
+
+    def _infer_spread_pct_from_orderbook(self, order_book: Optional[dict]) -> Decimal:
+        """
+        Expects {'bid': <Decimal/float/str>, 'ask': <...>}
+        Returns spread% as a fraction (e.g., 0.0015 == 0.15%)
+        """
+        try:
+            if not order_book:
+                return self._get_env_pct("SPREAD_CUSHION_PCT", 0.0015)
+            bid = Decimal(str(order_book.get("bid")))
+            ask = Decimal(str(order_book.get("ask")))
+            if ask > 0:
+                return max((ask - bid) / ask, Decimal("0"))
+        except Exception:
+            pass
+        return self._get_env_pct("SPREAD_CUSHION_PCT", 0.0015)
+
+    def _compute_atr_pct_from_ohlcv(self, ohlcv: Optional[list], entry_price: Decimal, period: int = 14) -> Optional[Decimal]:
+        """
+        ohlcv rows: [ts, open, high, low, close, volume], newest last.
+        Returns ATR/entry as a fraction (e.g., 0.007 == 0.7%).
+        """
+        if not ohlcv or len(ohlcv) < period + 1 or entry_price <= 0:
+            return None
+        trs = []
+        prev_close = Decimal(str(ohlcv[0][4]))
+        for row in ohlcv[1:]:
+            high = Decimal(str(row[2]))
+            low = Decimal(str(row[3]))
+            close = Decimal(str(row[4]))
+            tr = max(high - low, abs(high - prev_close), abs(prev_close - low))
+            trs.append(tr)
+            prev_close = close
+            if len(trs) > period:
+                trs.pop(0)
+        if not trs:
+            return None
+        atr = sum(trs) / Decimal(len(trs))
+        return atr / entry_price
+
+    def _compute_stop_pct_long(self,entry_price: Decimal, ohlcv: Optional[list], order_book: Optional[dict]) -> Decimal:
+        """
+        Percent (fraction) below entry for a LONG stop, including cushions.
+        """
+        mode = self._read_stop_mode()
+        fee_pct = self._fee_pct_for_side()
+        spread_pct = self._infer_spread_pct_from_orderbook(order_book)
+
+        if mode == "atr":
+            atr_mult = self._get_env_pct("STOP_ATR_MULT", 1.8)
+            min_pct = self._get_env_pct("STOP_MIN_PCT", 0.012)
+            atr_pct = self._compute_atr_pct_from_ohlcv(ohlcv, entry_price) or Decimal("0")
+            base_pct = max(min_pct, atr_pct * atr_mult)
+        else:
+            # legacy fixed mode: STOP_LOSS might be negative in env; use abs()
+            fixed = abs(self._get_env_pct("STOP_LOSS", 0.01))
+            base_pct = fixed
+
+        # cushions: spread + one side fee (likely taker)
+        stop_pct = base_pct + spread_pct + fee_pct
+        return max(Decimal("0"), stop_pct)
+
+    def _compute_tp_price_long(self, entry_price: Decimal) -> Decimal:
+        # existing env TAKE_PROFIT used as (1 + TAKE_PROFIT)
+        tp = self._get_env_pct("TAKE_PROFIT", 0.025)
+        return entry_price * (Decimal("1") + tp)
+
 
     async def build_order_data(
             self,
@@ -490,19 +576,22 @@ class TradeOrderManager:
                     "response": {}
                 }
 
-            # Calculate TP/SL
-            take_profit_price = adjusted_price * (1 + self.take_profit)
-            stop_loss_price = adjusted_price * (1 + self.stop_loss)
-
-            # Apply precision
-            tp_adjusted = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, take_profit_price, convert="quote")
-            sl_adjusted = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, stop_loss_price, convert="quote")
-
-            # Update OrderData
+            # # Calculate TP/SL
+            # take_profit_price = adjusted_price * (1 + self.take_profit)
+            # stop_loss_price = adjusted_price * (1 + self.stop_loss)
+            #
+            # # Apply precision
+            # tp_adjusted = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, take_profit_price, convert="quote")
+            # sl_adjusted = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, stop_loss_price, convert="quote")
+            #
+            # # Update OrderData
+            # order_data.adjusted_price = adjusted_price
+            # order_data.adjusted_size = adjusted_size_of_order_qty
+            # order_data.take_profit_price = tp_adjusted
+            # order_data.stop_loss_price = sl_adjusted
+            # Update OrderData basics; TP/SL will be computed later (profit_manager or local fallback)
             order_data.adjusted_price = adjusted_price
             order_data.adjusted_size = adjusted_size_of_order_qty
-            order_data.take_profit_price = tp_adjusted
-            order_data.stop_loss_price = sl_adjusted
 
             # Choose order type
             order_type = self.order_type_to_use(side, order_data)
@@ -572,9 +661,49 @@ class TradeOrderManager:
                             'note': 'Post-only rule violation',
                         }
 
-                # TP/SL calc
+                # TP/SL calc (centralized)
                 if order_type in ['tp_sl', 'limit', 'bracket']:
-                    tp, sl = await self.profit_manager.calculate_tp_sl(order_data)
+                    tp = sl = None
+
+                    # Prefer centralized profit_manager if present
+                    if self.profit_manager and hasattr(self.profit_manager, "calculate_tp_sl"):
+                        try:
+                            tp, sl = await self.profit_manager.calculate_tp_sl(order_data)
+                        except Exception as e:
+                            self.logger.warning(f"⚠️ profit_manager.calculate_tp_sl failed, falling back: {e}")
+
+                    # Local ATR/fixed fallback
+                    if tp is None or sl is None:
+                        entry = order_data.adjusted_price
+                        # We already refreshed order_book above
+                        order_book = {'bid': highest_bid, 'ask': lowest_ask}
+
+                        # optional: pull small OHLCV window if your updater exposes it
+                        ohlcv = None
+                        if hasattr(self.market_data_updater, "get_recent_ohlcv"):
+                            try:
+                                # symbol may be e.g. 'ZKC-USD' in trading_pair, or base in base_currency
+                                base = order_data.base_currency
+                                ohlcv = self.market_data_updater.get_recent_ohlcv(base, window=200)  # newest last
+                            except Exception as e:
+                                self.logger.debug(f"OHLCV fetch failed for {order_data.trading_pair}: {e}")
+
+                        # Long-only here (if you support shorts, mirror the sign)
+                        tp_price = self._compute_tp_price_long(entry)
+                        stop_pct = self._compute_tp_price_long(entry, ohlcv, order_book)
+                        sl_price = entry * (Decimal("1") - stop_pct)
+
+                        # Precision
+                        tp = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, tp_price, convert="quote")
+                        sl = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, sl_price, convert="quote")
+
+                        self.logger.info(
+                            f"tp/sl calc {order_data.trading_pair} side={side} mode={self._read_stop_mode()} "
+                            f"entry={entry} tp={tp} sl={sl} "
+                            f"spread%={self._infer_spread_pct_from_orderbook(order_book):.5f} "
+                            f"fee%={self._fee_pct_for_side():.5f}"
+                        )
+
                     order_data.take_profit_price, order_data.stop_loss_price = tp, sl
 
                 # Balance check

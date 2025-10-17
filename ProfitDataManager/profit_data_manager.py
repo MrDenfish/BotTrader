@@ -1,25 +1,67 @@
 
 import re
+import os
 import pandas as pd
 from inspect import stack  # debugging
 from decimal import Decimal
 from webhook.webhook_validate_orders import OrderData
 from Config.config_manager import CentralConfig as config
 
+def _env_pct(name: str, default: float) -> Decimal:
+    try:
+        return Decimal(os.getenv(name, str(default)))
+    except Exception:
+        return Decimal(str(default))
 
+def _stop_mode() -> str:
+    m = os.getenv("STOP_MODE", "atr").lower()
+    return m if m in ("atr", "fixed") else "atr"
+
+def _fee_for_side(order_data) -> Decimal:
+    # if you prefer maker in some venues, switch here based on order type/flags
+    side = os.getenv("FEE_SIDE", "taker").lower()
+    return order_data.taker if side == "taker" else order_data.maker
+
+def _spread_pct(order_book: dict | None) -> Decimal:
+    try:
+        if not order_book:
+            return _env_pct("SPREAD_CUSHION_PCT", 0.0015)  # 0.15%
+        bid = Decimal(str(order_book["bid"]))
+        ask = Decimal(str(order_book["ask"]))
+        return max((ask - bid) / ask, Decimal("0")) if ask > 0 else _env_pct("SPREAD_CUSHION_PCT", 0.0015)
+    except Exception:
+        return _env_pct("SPREAD_CUSHION_PCT", 0.0015)
+
+def _atr_pct_from_ohlcv(ohlcv: list | None, entry_price: Decimal, period: int = 14) -> Decimal | None:
+    # ohlcv rows: [ts, open, high, low, close, volume], newest last
+    if not ohlcv or len(ohlcv) < period + 1 or entry_price <= 0:
+        return None
+    trs = []
+    prev_close = Decimal(str(ohlcv[0][4]))
+    for row in ohlcv[1:]:
+        high = Decimal(str(row[2])); low = Decimal(str(row[3])); close = Decimal(str(row[4]))
+        tr = max(high - low, abs(high - prev_close), abs(prev_close - low))
+        trs.append(tr)
+        prev_close = close
+        if len(trs) > period:
+            trs.pop(0)
+    if not trs:
+        return None
+    atr = sum(trs) / Decimal(len(trs))
+    return atr / entry_price
 
 class ProfitDataManager:
     _instance = None
     @classmethod
-    def get_instance(cls, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
+    def get_instance(cls,  shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
         """
         Singleton method to ensure only one instance of ProfitDataManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls(shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager)
+            cls._instance = cls( shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager)
         return cls._instance
 
-    def __init__(self, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
+    def __init__(self,  shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
         self.config = config()
         self._hodl = self.config.hodl
         self._stop_loss = Decimal(self.config.stop_loss)
@@ -192,47 +234,73 @@ class ProfitDataManager:
 
     async def calculate_tp_sl(self, order_data: OrderData):
         """
-        Calculate Take Profit (TP) and Stop Loss (SL) prices with proper precision.
-
-        Uses Option A strategy: applies fee after calculating price target,
-        avoiding over-tight stop losses.
-
-        Args:
-            order_data (OrderData): Contains order parameters like adjusted_price, fee, and precision info.
-
-        Returns:
-            tuple: (adjusted_take_profit, adjusted_stop_loss)
+        TP/SL with ATR-or-fixed stop + spread/fee cushions.
+        TP uses your existing 'Option A' (apply fee on top).
         """
         try:
-            # Base price to start from
-            entry_price = order_data.adjusted_price
-            fee = order_data.taker
+            # ---- Inputs
+            entry = order_data.adjusted_price                  # Decimal
+            fee_pct = _fee_for_side(order_data)               # fraction (e.g., 0.0055)
+            tp_pct  = getattr(self, "take_profit", None)
+            if tp_pct is None:
+                tp_pct = _env_pct("TAKE_PROFIT", 0.025)       # 2.5% default
+            else:
+                tp_pct = Decimal(str(tp_pct))
 
-            # --- Take Profit ---
-            # Target a % above entry price, then account for fee
-            tp = entry_price * (Decimal("1.0") + self.take_profit)
-            tp += tp * fee  # Add fee on top
-
-            # --- Stop Loss ---
-            # Target a % below entry price, then account for fee
-            sl = entry_price * (Decimal("1.0") + self.stop_loss)  # stop_loss is negative by default
-            sl -= sl * fee  # Deduct fee (optionally leave as sl = sl if you want to avoid extra tightening)
-
-            # Round to appropriate precision
-            adjusted_tp = self.shared_utils_precision.adjust_precision(
-                order_data.base_decimal,
-                order_data.quote_decimal,
-                tp,
-                convert='quote'
-            )
-            adjusted_sl = self.shared_utils_precision.adjust_precision(
-                order_data.base_decimal,
-                order_data.quote_decimal,
-                sl,
-                convert='quote'
+            # ---- TP (unchanged "Option A"): price target then add fee
+            tp_raw = entry * (Decimal("1") + tp_pct)
+            tp_raw += tp_raw * fee_pct  # add fee on top
+            tp_adj = self.shared_utils_precision.adjust_precision(
+                order_data.base_decimal, order_data.quote_decimal, tp_raw, convert="quote"
             )
 
-            return adjusted_tp, adjusted_sl
+            # ---- SL (ATR or Fixed) + cushions
+            mode = _stop_mode()  # 'atr' | 'fixed'
+
+            # pull a tiny OHLCV window if available (optional, safe if not)
+            ohlcv = None
+            if hasattr(self, "market_data_updater") and hasattr(self.market_data_updater, "get_recent_ohlcv"):
+                try:
+                    base = getattr(order_data, "base_currency", None) or order_data.trading_pair.split("-")[0]
+                    ohlcv = self.market_data_updater.get_recent_ohlcv(base, window=200)  # newest last
+                except Exception as e:
+                    self.logger.debug(f"OHLCV fetch failed for {order_data.trading_pair}: {e}")
+
+            # recent orderbook snapshot available in caller; if not, we still use cushion
+            order_book = {"bid": order_data.highest_bid, "ask": order_data.lowest_ask} \
+                if (getattr(order_data, "highest_bid", None) and getattr(order_data, "lowest_ask", None)) else None
+
+            spread_pct = _spread_pct(order_book)
+
+            if mode == "atr":
+                atr_mult = _env_pct("STOP_ATR_MULT", 1.8)
+                min_pct  = _env_pct("STOP_MIN_PCT", 0.012)  # 1.2% floor
+                atr_pct  = _atr_pct_from_ohlcv(ohlcv, entry) or Decimal("0")
+                base_pct = max(min_pct, atr_pct * atr_mult)
+            else:
+                # legacy fixed (use abs in case config is negative)
+                fixed = getattr(self, "stop_loss", None)
+                fixed = Decimal(str(fixed)) if fixed is not None else _env_pct("STOP_LOSS", 0.01)
+                base_pct = abs(fixed)
+
+            stop_pct = base_pct + spread_pct + fee_pct
+            sl_raw = entry * (Decimal("1") - stop_pct)
+
+            sl_adj = self.shared_utils_precision.adjust_precision(
+                order_data.base_decimal, order_data.quote_decimal, sl_raw, convert="quote"
+            )
+
+            # ---- Breadcrumb for logs
+            try:
+                self.logger.info(
+                    f"tp/sl {order_data.trading_pair} entry={entry} "
+                    f"tp={tp_adj} sl={sl_adj} mode={mode} "
+                    f"base_stop%={base_pct:.5f} spread%={spread_pct:.5f} fee%={fee_pct:.5f}"
+                )
+            except Exception:
+                pass
+
+            return tp_adj, sl_adj
 
         except Exception as e:
             self.logger.error(f"❌️ Error in calculate_tp_sl: {e}", exc_info=True)
