@@ -192,7 +192,7 @@ def load_score_jsonl(path: str = None, since_hours: int = 24) -> pd.DataFrame:
 
     return rows
 
-def score_snapshot_metrics_from_jsonl(df_or_rows):
+def score_snapshot_metrics_from_jsonl(df_or_rows, *, max_recent: int = 15):
     """
     INPUT: pandas.DataFrame or list[dict] of score events with schema like:
       {
@@ -241,10 +241,14 @@ def score_snapshot_metrics_from_jsonl(df_or_rows):
     symbols = set()
     # keep your "entries" concept (recent action rows) but don't rely on it
     entries = []
+    recent_all = []
+    trigger_counts = Counter()
 
     for e in rows:
         sym = e.get("symbol")
         if sym: symbols.add(sym)
+        trig = (e.get("trigger") or "").strip() or "<none>"
+        trigger_counts[trig] += 1
 
         # keep recent entries if you'd like (buy/sell actions)
         act = (e.get("action") or "").lower()
@@ -310,10 +314,18 @@ def score_snapshot_metrics_from_jsonl(df_or_rows):
     buy_table  = _table_for("buy")
     sell_table = _table_for("sell")
 
-    # Trim "entries" to the last 20 chronologically
+      # Build a truly “most recent” list (no action/trigger filter)
+      # Sort newest → oldest by ts
     def _dt(row):
         return _parse_ts(row.get("ts")) or datetime.min.replace(tzinfo=timezone.utc)
+
+  # keep your original buy/sell limited list
     entries = sorted(entries, key=_dt)[-20:]
+  # the unfiltered “recent” (max_recent newest rows)
+    recent_all = sorted(rows, key=_dt, reverse=True)[:max_recent]
+  # convenience split views (optional)
+    recent_overrides = [r for r in recent_all if (r.get("trigger") == "roc_momo_override")]
+    recent_weighted = [r for r in recent_all if str(r.get("trigger", "")).startswith("score")]
 
     return {
         "empty": False,
@@ -322,10 +334,45 @@ def score_snapshot_metrics_from_jsonl(df_or_rows):
         "top_buy": top_buy,
         "top_sell": top_sell,
         "entries": entries,
+        "recent": [
+                       {
+                               "ts": r.get("ts"),
+                               "symbol": r.get("symbol"),
+                               "action": r.get("action"),
+                               "trigger": r.get("trigger"),
+                               "price": r.get("price"),
+                               "buy_score": r.get("buy_score"),
+                               "sell_score": r.get("sell_score"),
+               } for r in recent_all
+                           ],
+               "recent_overrides": [
+                       {
+                               "ts": r.get("ts"),
+                               "symbol": r.get("symbol"),
+                               "action": r.get("action"),
+                               "trigger": r.get("trigger"),
+                               "price": r.get("price"),
+                               "buy_score": r.get("buy_score"),
+                               "sell_score": r.get("sell_score"),
+               } for r in recent_overrides
+                           ],
+               "recent_weighted": [
+                       {
+                               "ts": r.get("ts"),
+                               "symbol": r.get("symbol"),
+                               "action": r.get("action"),
+                               "trigger": r.get("trigger"),
+                               "price": r.get("price"),
+                               "buy_score": r.get("buy_score"),
+                               "sell_score": r.get("sell_score"),
+               } for r in recent_weighted
+                           ],
+               "trigger_mix": dict(sorted(trigger_counts.items(), key=lambda kv: -kv[1])),
         # NEW enriched tables:
         "buy_table": buy_table,
         "sell_table": sell_table,
     }
+
 
 
 def render_score_section_jsonl(metrics: dict) -> str:
@@ -388,24 +435,48 @@ def render_score_section_jsonl(metrics: dict) -> str:
     html.append(_tbl("Top contributing indicators (Buy)",  metrics.get("buy_table")  or []))
     html.append(_tbl("Top contributing indicators (Sell)", metrics.get("sell_table") or []))
 
-    # (optional) recent “entries” table if present
-    ent = metrics.get("entries") or []
-    if ent:
-        head = "<tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th><th>Trigger</th><th>Buy Score</th><th>Sell Score</th></tr>"
-        body = []
-        for e in ent[-10:]:
-            body.append(
-                "<tr>"
-                f"<td>{e.get('ts','')}</td>"
-                f"<td>{e.get('symbol','')}</td>"
-                f"<td>{e.get('action','')}</td>"
-                f"<td>{e.get('trigger','')}</td>"
-                f"<td>{_fmt(e.get('buy_score'))}</td>"
-                f"<td>{_fmt(e.get('sell_score'))}</td>"
-                "</tr>"
-            )
+    # ---- Most recent (unfiltered, truly recent) ----
+    recent = metrics.get("recent") or []
+
+    if recent:
+        head = ("<tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th>"
+                "<th>Trigger</th><th>Price</th><th>Buy</th><th>Sell</th></tr>")
+        body = "".join(
+            "<tr>"
+            f"<td>{r.get('ts', '')}</td>"
+            f"<td>{r.get('symbol', '')}</td>"
+            f"<td>{r.get('action', '')}</td>"
+            f"<td>{r.get('trigger', '')}</td>"
+            f"<td style='text-align:right'>{_fmt(r.get('price'))}</td>"
+            f"<td style='text-align:right'>{_fmt(r.get('buy_score'))}</td>"
+            f"<td style='text-align:right'>{_fmt(r.get('sell_score'))}</td>"
+            "</tr>"
+            for r in recent
+       )
         html.append("<h4>Most recent score entries</h4>")
-        html.append("<table border='1' cellpadding='6' cellspacing='0'>" + head + "".join(body) + "</table>")
+        html.append("<table border='1' cellpadding='6' cellspacing='0'>" + head + body + "</table>")
+
+    # (Optional) Splits to verify paths at a glance
+    ro = metrics.get("recent_overrides") or []
+    rw = metrics.get("recent_weighted") or []
+    def _sub(title, rows):
+        if not rows: return ""
+        body = "".join(
+            "<tr>"
+            f"<td>{r.get('ts', '')}</td><td>{r.get('symbol', '')}</td>"
+            f"<td>{r.get('action', '')}</td>"
+            f"<td style='text-align:right'>{_fmt(r.get('price'))}</td>"
+            f"<td style='text-align:right'>{_fmt(r.get('buy_score'))}</td>"
+            f"<td style='text-align:right'>{_fmt(r.get('sell_score'))}</td>"
+            "</tr>" for r in rows
+       )
+        return ("<h5 style='margin:8px 0 2px 0'>" + title + "</h5>"
+                "<table border='1' cellpadding='6' cellspacing='0'>"
+                "<tr><th>Time</th><th>Symbol</th><th>Action</th><th>Price</th><th>Buy</th><th>Sell</th></tr>"
+                + body + "</table>")
+    html.append(_sub("Overrides (roc_momo_override)", ro))
+    html.append(_sub("Weighted scorer (score*)", rw))
+
 
     return "\n".join(html)
 
