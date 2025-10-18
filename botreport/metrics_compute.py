@@ -616,7 +616,7 @@ def compute_windowed_metrics(engine_or_conn: Engine | Connection,
 
 TRADE_STATS_SQL_TR = sqlalchemy.text("""
 WITH trades AS (
-  SELECT realized_profit::numeric AS pnl
+  SELECT COALESCE(realized_profit, pnl_usd)::numeric AS pnl
   FROM public.trade_records
   WHERE order_time >= :start_ts AND order_time < :end_ts
 )
@@ -627,10 +627,17 @@ SELECT
   COUNT(*) FILTER (WHERE pnl = 0)                            AS n_breakeven,
   ROUND(AVG(pnl) FILTER (WHERE pnl > 0), 4)                  AS avg_win,
   ROUND(AVG(CASE WHEN pnl < 0 THEN -pnl END), 4)             AS avg_loss_abs,
+  PERCENTILE_DISC(0.50) WITHIN GROUP (ORDER BY pnl) 
+    FILTER (WHERE pnl > 0)                                   AS p50_win,
+  PERCENTILE_DISC(0.90) WITHIN GROUP (ORDER BY pnl) 
+    FILTER (WHERE pnl > 0)                                   AS p90_win,
+  PERCENTILE_DISC(0.50) WITHIN GROUP (ORDER BY -pnl) 
+    FILTER (WHERE pnl < 0)                                   AS p50_loss_abs,
   SUM(pnl) FILTER (WHERE pnl > 0)                            AS gross_profit,
   SUM(CASE WHEN pnl < 0 THEN -pnl END)                       AS gross_loss_abs
 FROM trades
 """)
+
 
 TRADE_STATS_SQL_RT = sqlalchemy.text("""
 WITH trades AS (
@@ -668,6 +675,7 @@ async def fetch_trade_stats(
     n_be    = int(row["n_breakeven"] or 0)
     avg_win = float(row["avg_win"] or 0.0)
     avg_loss_abs = float(row["avg_loss_abs"] or 0.0)
+
     gp = float(row["gross_profit"] or 0.0)
     gl = float(row["gross_loss_abs"] or 0.0)
 

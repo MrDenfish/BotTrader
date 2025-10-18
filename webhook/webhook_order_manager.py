@@ -50,6 +50,9 @@ class TradeOrderManager:
         self._hodl = self.config.hodl
         self._default_maker_fee = self.config.maker_fee
         self._default_taker_fee = self.config.taker_fee
+        # --- Guardrails (configurable) ---
+        self.allow_buys_on_red_day = bool(self.config.allow_buys_on_red_day)
+
         self.logger = logger_manager  # 🙂
 
         self.validate= validate
@@ -364,13 +367,36 @@ class TradeOrderManager:
                 side = "buy" if usd_avail >= self.order_size or test_mode else "sell"
 
             # ✅ Skip bad momentum for buys
+            # ✅ Skip bad momentum for buys (now honors allow_buys_on_red_day)
             if side == "buy" and not test_mode:
                 try:
                     usd_pairs = self.usd_pairs.set_index("asset")
                     price_change_24h = usd_pairs.loc[asset, 'price_percentage_change_24h'] if asset in usd_pairs.index else None
-                    if price_change_24h is None or Decimal(price_change_24h) <= 0:
-                        self.build_failure_reason = f"Skipping BUY for {asset} — 24h price change {price_change_24h}% not favorable"
+
+                    # If we can't read the signal, be conservative but don't crash
+                    if price_change_24h is None:
+                        self.build_failure_reason = f"Skipping BUY for {asset} — no 24h price data"
                         return None
+
+                    pc = Decimal(price_change_24h)
+
+                    if not self.allow_buys_on_red_day:
+                        # Original behavior: disallow on any red day
+                        if pc <= 0:
+                            self.build_failure_reason = f"Skipping BUY for {asset} — 24h change {pc}% and allow_buys_on_red_day=false"
+                            return None
+                    else:
+                        # Softer rule when allowed: only block if VERY red (tunable)
+                        red_floor = Decimal(str(getattr(self.config, "red_day_floor_pct", -2)))  # e.g. -2%
+                        if pc <= red_floor:
+                            self.build_failure_reason = f"Skipping BUY for {asset} — 24h change {pc}% below red_day_floor_pct={red_floor}%"
+                            return None
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 24h change check failed for {asset}: {e}")
+                    # Fail closed or open? Keep current conservative behavior:
+                    self.build_failure_reason = f"24h price change check failed for {asset}"
+                    return None
+
                 except Exception as e:
                     self.logger.warning(f"⚠️ Failed to check price change for {asset}: {e}")
                     self.build_failure_reason = f"24h price change check failed for {asset}"

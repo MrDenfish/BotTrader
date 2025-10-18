@@ -280,6 +280,7 @@ class SignalManager:
     # =========================================================
     def buy_sell_scoring(self, ohlcv_df: pd.DataFrame, symbol: str) -> Dict[str, Any]:
         try:
+            guardrail_note = None
             action = 'hold'
             last_row = ohlcv_df.iloc[-1]
 
@@ -353,8 +354,10 @@ class SignalManager:
 
             last_side = self._last_side.get(symbol)
             if last_side == "long" and sell_signal[0] == 1 and sell_score < (self.score_sell_target * hyst):
+                guardrail_note = "sell_suppressed_by_hysteresis"
                 sell_signal = (0, sell_signal[1], sell_signal[2])  # suppress marginal flip
             elif last_side == "short" and buy_signal[0] == 1 and buy_score < (self.score_buy_target * hyst):
+                guardrail_note = "buy_suppressed_by_hysteresis"
                 buy_signal = (0, buy_signal[1], buy_signal[2])
 
             # Cooldown: after a flip, ignore the opposite side until a future bar index
@@ -362,8 +365,10 @@ class SignalManager:
             if bar_idx < cd_until:
                 # If in cooldown, suppress the opposite of last_side
                 if last_side == "long":
+                    guardrail_note = "sell_suppressed_by_cooldown"
                     sell_signal = (0, sell_signal[1], sell_signal[2])
                 elif last_side == "short":
+                    guardrail_note = "buy_suppressed_by_cooldown"
                     buy_signal = (0, buy_signal[1], buy_signal[2])
 
             # ✅ Conflict resolution with guardrails applied
@@ -386,7 +391,7 @@ class SignalManager:
 
             _, _, comps = self._compute_score_components(last_row)
             self._log_score_snapshot(symbol, ohlcv_df, buy_score, sell_score, comps,
-                                     action=action, trigger='score')
+                                     action=action, trigger=guardrail_note or 'score')
             return {
                 'action': action,
                 'trigger': 'score',
