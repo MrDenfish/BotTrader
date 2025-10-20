@@ -11,6 +11,7 @@ import faulthandler
 from decimal import Decimal
 from aiohttp import web
 from Shared_Utils.scheduler import periodic_runner
+from Shared_Utils.paths import resolve_runtime_paths
 from Shared_Utils.runtime_env import running_in_docker as running_in_docker
 
 from TestDebugMaintenance.trade_record_maintenance import run_maintenance_if_needed
@@ -49,18 +50,22 @@ from SharedDataManager.shared_data_manager import SharedDataManager, CustomJSOND
 from SharedDataManager.leader_board import (LeaderboardConfig)
 shutdown_event = asyncio.Event()
 
-# sighook_logger = logger_manager.get_logger("sighook")
-# sighook_logger.info("sighook wiring: listener=%s coinbase_api=%s shared_mgr.cb=%s",
-#                     bool(listener), type(cb).__name__ if cb else None,
-#                     type(getattr(shared_data_manager, 'coinbase_api', None)).__name__ if getattr(shared_data_manager, 'coinbase_api', None) else None)
+IS_DOCKER = running_in_docker()
+# (for older modules that still read the env directly)
+os.environ["IN_DOCKER"] = "true" if IS_DOCKER else "false"
 
 def default_run_mode() -> str:
     # Desktop default = both (single process). Docker default = sighook (split).
-    return "both" if not running_in_docker() else os.getenv("RUN_MODE", "sighook")
+    return "both" if not IS_DOCKER else os.getenv("RUN_MODE", "sighook")
 # Force singleton initialization across all environments
 
 # Force singleton initialization across all environments
-_ = Config(is_docker=running_in_docker())
+_ = Config(is_docker=IS_DOCKER)
+# (optional) resolve dirs once and export for legacy call-sites
+# DATA_DIR, CACHE_DIR, LOG_DIR = resolve_runtime_paths(IS_DOCKER)
+# os.environ.setdefault("BOTTRADER_DATA_DIR", str(DATA_DIR))
+# os.environ.setdefault("BOTTRADER_CACHE_DIR", str(CACHE_DIR))
+# os.environ.setdefault("BOTTRADER_LOG_DIR", str(LOG_DIR))
 print("✅ CentralConfig preloaded:")
 print(f"   Machine Type:{_.machine_type} DB:{_.db_user}@{_.db_host}/{_.db_name}")
 

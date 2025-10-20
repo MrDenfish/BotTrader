@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from urllib.parse import urljoin
 from typing import Any, Optional
 from coinbase import rest as coinbase
+from Shared_Utils.paths import resolve_runtime_paths
 from Shared_Utils.runtime_env import running_in_docker as running_in_docker
 from Shared_Utils.url_helper import build_asyncpg_url_from_env
 
@@ -13,7 +14,7 @@ class CentralConfig:
     _instance = None  # Singleton instance
     _is_loaded = False
 
-    def __new__(cls, is_docker=True):
+    def __new__(cls, is_docker=None):
         if cls._instance is None:
             print("Creating Config Manager instance")
             cls._instance = super(CentralConfig, cls).__new__(cls)

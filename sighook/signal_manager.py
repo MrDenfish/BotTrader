@@ -4,6 +4,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from pandas.core.methods.describe import select_describe_func
 
 from Config.config_manager import CentralConfig
+from Shared_Utils.paths import resolve_runtime_paths
+from Shared_Utils.runtime_env import running_in_docker
 from sighook.indicators import Indicators
 from typing import Optional, Tuple, Dict, Any
 from pathlib import Path
@@ -40,10 +42,10 @@ class SignalManager:
         self.buy_target = float(self.config.buy_ratio or 0.0)
         self.sell_target = float(self.config.sell_ratio or 0.0)
 
-        # --- Score log output (CSV). Override via env SCORE_LOG_PATH if you like.
-        self.score_log_path = os.getenv("SCORE_LOG_PATH", os.path.join("logs", "score_log.csv"))
-        os.makedirs(os.path.dirname(self.score_log_path), exist_ok=True)
-        self._score_log_header_written = os.path.exists(self.score_log_path)
+        # # --- Score log output (CSV). Override via env SCORE_LOG_PATH if you like.
+        # self.score_log_path = os.getenv("SCORE_LOG_PATH", os.path.join("logs", "score_log.csv"))
+        # os.makedirs(os.path.dirname(self.score_log_path), exist_ok=True)
+        # self._score_log_header_written = os.path.exists(self.score_log_path)
 
         # --- Score targets (separate from band-ratio thresholds) ---
         self.score_buy_target = float(self.config.score_buy_target or 5.5)
@@ -66,76 +68,138 @@ class SignalManager:
             'Sell ROC': 2.0, 'Sell MACD': 1.8, 'Sell Swing': 2.2
         }
 
-        # -------> Discover docker via existing config, else env
-        cm = getattr(self, "config_manager", None)
-        is_docker = getattr(cm, "is_docker", None)
-        if is_docker is None:
-            is_docker = os.getenv("IN_DOCKER", "false").strip().lower() in {"1", "true", "yes", "on"}
+        # --- Runtime directories (single source of truth) -----------------
 
-        # -------> Choose a writable default path based on environment
-        if is_docker:
-            default_score = Path("/app/logs/score_log.jsonl")
-            self.score_jsonl_path = os.getenv("SCORE_JSONL_PATH", str(default_score))
-        else:
-            # Desktop-safe: repo-local hidden dir (overridable via BOTTRADER_CACHE_DIR)
-            cache_base = Path(os.getenv("BOTTRADER_CACHE_DIR", Path.cwd() / ".bottrader" / "cache"))
-            default_score = cache_base / "scores.jsonl"
-            self.score_jsonl_path = os.getenv("SCORE_JSONL_PATH", str(default_score))
+        # Prefer dirs exposed by SharedDataManager (set by CentralConfig)
+        data_dir = getattr(self.shared_data_manager, "data_dir", None)
+        cache_dir = getattr(self.shared_data_manager, "cache_dir", None)
+        log_dir = getattr(self.shared_data_manager, "log_dir", None)
 
-        # -------> Ensure parent exists
+        # If not provided, resolve via shared helpers
+        try:
+            from Shared_Utils.paths import resolve_runtime_paths
+            from Shared_Utils.runtime_env import running_in_docker
+            if any(d is None for d in (data_dir, cache_dir, log_dir)):
+                r_data, r_cache, r_logs = resolve_runtime_paths(running_in_docker())
+                data_dir = data_dir or r_data
+                cache_dir = cache_dir or r_cache
+                log_dir = log_dir or r_logs
+        except Exception:
+            # Conservative fallbacks (rarely used)
+            if any(d is None for d in (data_dir, cache_dir, log_dir)):
+                if os.getenv("IN_DOCKER", "false").strip().lower() in {"1", "true", "yes", "on"}:
+                    data_dir = Path("/app/data") if data_dir is None else Path(data_dir)
+                    cache_dir = Path("/app/cache") if cache_dir is None else Path(cache_dir)
+                    log_dir = Path("/app/logs") if log_dir is None else Path(log_dir)
+                else:
+                    base = Path.cwd() / ".bottrader"
+                    data_dir = base if data_dir is None else Path(data_dir)
+                    cache_dir = (base / "cache") if cache_dir is None else Path(cache_dir)
+                    log_dir = (base / "logs") if log_dir is None else Path(log_dir)
+
+        # Normalize and ensure they exist
+        self.data_dir = Path(str(data_dir))
+        self.cache_dir = Path(str(cache_dir))
+        self.log_dir = Path(str(log_dir))
+        for d in (self.data_dir, self.cache_dir, self.log_dir):
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                self.logger.warning(f"Could not create runtime dir {d}: {e}")
+
+        # --- Score JSONL path (env-overrideable) --------------------------
+        # Default to logs dir; allow SCORE_JSONL_PATH and SCORE_JSONL_FILENAME overrides
+        score_filename = os.getenv("SCORE_JSONL_FILENAME", "score_log.jsonl")
+        score_jsonl = os.getenv("SCORE_JSONL_PATH", str(self.log_dir / score_filename))
+        self.score_jsonl_path = str(Path(score_jsonl))
         Path(self.score_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
 
-
-        # dedicated logger for score snapshots
+        # --- Dedicated JSONL logger --------------------------------------
         self.score_logger = logging.getLogger("score_jsonl")
         self.score_logger.propagate = False
         if not self.score_logger.handlers:
             handler = TimedRotatingFileHandler(
                 filename=self.score_jsonl_path,
-                when="midnight",  # rotate once per day
+                when="midnight",
                 interval=1,
                 backupCount=int(os.getenv("SCORE_BACKUP_COUNT", "7")),
-                utc=True  # align with your report timestamps
+                utc=True
             )
             handler.setFormatter(logging.Formatter("%(message)s"))
             self.score_logger.addHandler(handler)
             self.score_logger.setLevel(logging.INFO)
 
-        def _bool_env(name: str, default: bool = False) -> bool:
-            return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
-        try:
-            is_docker = getattr(select_describe_func().config_manager, "is_docker", None)
-            if is_docker is None:
-                is_docker = _bool_env("IN_DOCKER", False)
-        except Exception:
-            is_docker = _bool_env("IN_DOCKER", False)
-
-        # Resolve writable base dirs with env overrides first
-        if is_docker:
-            # match your container layout
-            default_data = Path("/app/data")
-            default_cache = Path("/app/cache")
-            default_logs = Path("/app/logs")
-        else:
-            # desktop-safe defaults under the repo (or use Path.home()/".bottrader")
-            project_root = Path.cwd()
-            default_data = project_root / ".bottrader"
-            default_cache = default_data / "cache"
-            default_logs = default_data / "logs"
-
-        DATA_DIR = Path(os.getenv("BOTTRADER_DATA_DIR", default_data))
-        CACHE_DIR = Path(os.getenv("BOTTRADER_CACHE_DIR", default_cache))
-        LOG_DIR = Path(os.getenv("BOTTRADER_LOG_DIR", default_logs))
-
-        # Make sure they exist (no-ops if already there)
-        for d in (DATA_DIR, CACHE_DIR, LOG_DIR):
-            d.mkdir(parents=True, exist_ok=True)
-
-        # Score file path, still overridable via env
-        score_jsonl = os.getenv("SCORE_JSONL_PATH", str(CACHE_DIR / "scores.jsonl"))
-        self.score_jsonl_path = str(Path(score_jsonl))
-        Path(self.score_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
+        # # -------> Discover docker via existing config, else env
+        # cm = getattr(self, "config_manager", None)
+        # is_docker = getattr(cm, "is_docker", None)
+        # if is_docker is None:
+        #     is_docker = os.getenv("IN_DOCKER", "false").strip().lower() in {"1", "true", "yes", "on"}
+        #
+        # # -------> Choose a writable default path based on environment
+        # if is_docker:
+        #     default_score = Path("/app/logs/score_log.jsonl")
+        #     self.score_jsonl_path = os.getenv("SCORE_JSONL_PATH", str(default_score))
+        # else:
+        #     # Desktop-safe: repo-local hidden dir (overridable via BOTTRADER_CACHE_DIR)
+        #     cache_base = Path(os.getenv("BOTTRADER_CACHE_DIR", Path.cwd() / ".bottrader" / "cache"))
+        #     default_score = cache_base / "scores.jsonl"
+        #     self.score_jsonl_path = os.getenv("SCORE_JSONL_PATH", str(default_score))
+        #
+        # # -------> Ensure parent exists
+        # Path(self.score_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
+        #
+        #
+        # # --- Dedicated JSONL logger  for score snapshots--------------------------------------
+        # self.score_logger = logging.getLogger("score_jsonl")
+        # self.score_logger.propagate = False
+        # if not self.score_logger.handlers:
+        #     handler = TimedRotatingFileHandler(
+        #         filename=self.score_jsonl_path,
+        #         when="midnight",  # rotate once per day
+        #         interval=1,
+        #         backupCount=int(os.getenv("SCORE_BACKUP_COUNT", "7")),
+        #         utc=True  # align with your report timestamps
+        #     )
+        #     handler.setFormatter(logging.Formatter("%(message)s"))
+        #     self.score_logger.addHandler(handler)
+        #     self.score_logger.setLevel(logging.INFO)
+        #
+        # def _bool_env(name: str, default: bool = False) -> bool:
+        #     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+        #
+        # try:
+        #     is_docker = getattr(select_describe_func().config_manager, "is_docker", None)
+        #     if is_docker is None:
+        #         is_docker = _bool_env("IN_DOCKER", False)
+        # except Exception:
+        #     is_docker = _bool_env("IN_DOCKER", False)
+        #
+        # # Resolve writable base dirs with env overrides first
+        # if is_docker:
+        #     # match your container layout
+        #     default_data = Path("/app/data")
+        #     default_cache = Path("/app/cache")
+        #     default_logs = Path("/app/logs")
+        # else:
+        #     # desktop-safe defaults under the repo (or use Path.home()/".bottrader")
+        #     project_root = Path.cwd()
+        #     default_data = project_root / ".bottrader"
+        #     default_cache = default_data / "cache"
+        #     default_logs = default_data / "logs"
+        #
+        # DATA_DIR = Path(os.getenv("BOTTRADER_DATA_DIR", default_data))
+        # CACHE_DIR = Path(os.getenv("BOTTRADER_CACHE_DIR", default_cache))
+        # LOG_DIR = Path(os.getenv("BOTTRADER_LOG_DIR", default_logs))
+        #
+        # # Make sure they exist (no-ops if already there)
+        # for d in (DATA_DIR, CACHE_DIR, LOG_DIR):
+        #     d.mkdir(parents=True, exist_ok=True)
+        #
+        # # Score file path, still overridable via env
+        # score_jsonl = os.getenv("SCORE_JSONL_PATH", str(CACHE_DIR / "scores.jsonl"))
+        # self.score_jsonl_path = str(Path(score_jsonl))
+        # Path(self.score_jsonl_path).parent.mkdir(parents=True, exist_ok=True)
 
     @property
     def usd_pairs(self):
