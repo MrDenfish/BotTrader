@@ -251,7 +251,7 @@ class PassiveOrderManager:
         base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
         quote_quantizer = Decimal("1").scaleb(-quote_deci)
         bid_ask = self.bid_ask_spread.get(trading_pair, {})
-        print(f"{bid_ask}")
+        print(f"biDs and ask {bid_ask}")
         bid = bid_ask.get('bid')
         ask = bid_ask.get('ask')
 

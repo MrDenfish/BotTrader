@@ -4,6 +4,7 @@ import asyncio
 import logging
 import random
 import aiohttp
+import re, os
 import pandas as pd
 import hmac, hashlib, base64, time
 
@@ -28,6 +29,9 @@ class CoinbaseAPI:
         self.session = session
         self.config = Config()
         self._reload_credentials_from_config()
+        self._valid_products_cache: set[str] = set()
+        self._valid_cache_expiry: datetime | None = None
+        self._blocklist_bases: set[str] = self._load_blocklist_bases_from_env()
 
         log_config = {"log_level": logging.INFO}
         self.webhook_logger = LoggerManager(log_config)
@@ -37,6 +41,7 @@ class CoinbaseAPI:
 
         self.default_maker_fee = self.config.maker_fee
         self.default_taker_fee = self.config.taker_fee
+
 
         self.alerts = AlertSystem(logger_manager)
         self.shared_utils_precision = shared_utils_precision
@@ -50,6 +55,17 @@ class CoinbaseAPI:
 
         self.jwt_token = None
         self.jwt_expiry = None
+
+    def _load_blocklist_bases_from_env(self) -> set[str]:
+        """
+        Read SHILL_COINS from .env and return a set of BASE tickers (uppercased).
+        Example: SHILL_COINS=UNFI,TRUMP,MATIC
+        """
+        raw = os.getenv("SHILL_COINS", "")
+        if not raw:
+            return set()
+        tokens = [t.strip().upper() for t in raw.replace(";", ",").replace("|", ",").split(",") if t.strip()]
+        return set(tokens)
 
     def _reload_credentials_from_config(self):
         """Refresh API creds and base URLs from Config (idempotent)."""
@@ -72,20 +88,59 @@ class CoinbaseAPI:
             self.logger.warning("⚠️ Missing Coinbase creds/urls at call time — reloading.")
             self._reload_credentials_from_config()
 
-    def _get_auth_headers(self, method: str, request_path: str, body: str = "") -> dict:
-        timestamp = str(time.time())
-        message = f'{timestamp}{method}{request_path}{body}'
-        hmac_key = base64.b64decode(self.api_secret)
-        signature = hmac.new(hmac_key, message.encode(), hashlib.sha256)
-        signature_b64 = base64.b64encode(signature.digest()).decode()
+    # def _get_auth_headers(self, method: str, request_path: str, body: str = "") -> dict:
+    #     timestamp = str(time.time())
+    #     message = f'{timestamp}{method}{request_path}{body}'
+    #     hmac_key = base64.b64decode(self.api_secret)
+    #     signature = hmac.new(hmac_key, message.encode(), hashlib.sha256)
+    #     signature_b64 = base64.b64encode(signature.digest()).decode()
+    #
+    #     return {
+    #         "CB-ACCESS-KEY": self.api_key,
+    #         "CB-ACCESS-SIGN": signature_b64,
+    #         "CB-ACCESS-TIMESTAMP": timestamp,
+    #         "CB-ACCESS-PASSPHRASE": self.passphrase,
+    #         "Content-Type": "application/json"
+    #     }
 
-        return {
-            "CB-ACCESS-KEY": self.api_key,
-            "CB-ACCESS-SIGN": signature_b64,
-            "CB-ACCESS-TIMESTAMP": timestamp,
-            "CB-ACCESS-PASSPHRASE": self.passphrase,
-            "Content-Type": "application/json"
-        }
+    def _normalize_symbol(self, product_id: str) -> str:
+        """Apply local alias mapping, e.g. 'MATIC-USD' -> 'POL-USD'."""
+        return self._symbol_alias_map.get(product_id, product_id)
+
+    async def _filter_valid_product_ids(self, product_ids: list[str]) -> list[str]:
+        """
+        Drop blocklisted bases and keep only product_ids present in Coinbase /products.
+        """
+        valid = await self._refresh_valid_products()
+        out, dropped = [], []
+
+        for pid in product_ids or []:
+            base = (pid or "").split("-")[0].upper()
+            if base in self._blocklist_bases:
+                dropped.append(f"{pid} (blocked:{base})")
+                continue
+            if pid in valid:
+                out.append(pid)
+            else:
+                dropped.append(pid)
+
+        if dropped:
+            self.logger.info(f"🧹 Dropping unsupported/blocked symbols: {dropped}")
+        return out
+
+    async def _refresh_valid_products(self, *, force: bool = False) -> set[str]:
+        try:
+            now = datetime.now(timezone.utc)
+            if not force and self._valid_products_cache and self._valid_cache_expiry and now < self._valid_cache_expiry:
+                return self._valid_products_cache
+            products = await self.fetch_all_products()
+            valid = {p.get("product_id") for p in products if p.get("product_id")}
+            self._valid_products_cache = valid
+            self._valid_cache_expiry = now + timedelta(minutes=10)
+            return valid
+        except Exception as e:
+            self.logger.warning(f"Could not refresh valid products: {e}", exc_info=True)
+            return self._valid_products_cache or set()
 
     def clear_ohlcv_cache_if_stale(self):
         now = datetime.now(timezone.utc)
@@ -415,38 +470,182 @@ class CoinbaseAPI:
             self.logger.error("list_historical_orders exception", exc_info=True)
             return {"error": "Exception", "details": str(exc)}
 
-    async def get_best_bid_ask(self, product_ids: list[str]) -> dict:
+    # ---------- L1/L2 Product Book (price + size) ----------
+
+    async def get_product_book(
+            self,
+            product_id: str,
+            limit: int = 1,
+            aggregation_price_increment: str | None = None,
+    ) -> dict:
         """
-        Fetch best bid/ask for a list of products using Coinbase Advanced Trade API.
+        Coinbase Advanced: /api/v3/brokerage/product_book
+        Returns a normalized dict with Decimal prices/sizes:
+          {
+            "product_id": "BTC-USD",
+            "bids": [{"price": Decimal, "size": Decimal}, ...],
+            "asks": [{"price": Decimal, "size": Decimal}, ...],
+            "time": "RFC3339",
+            "last": Decimal|None,
+            "mid_market": Decimal|None,
+            "spread_bps": Decimal|None,
+            "spread_absolute": Decimal|None,
+          }
         """
         try:
-            request_path = '/api/v3/brokerage/best_bid_ask'
-            jwt_token = self.generate_rest_jwt('GET', request_path)
-            payload = {'product_ids': product_ids}
+            path = "/api/v3/brokerage/product_book"
+            jwt_token = self.generate_rest_jwt("GET", path)
+            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {jwt_token}"}
+            params = {"product_id": product_id, "limit": int(limit)}
+            if aggregation_price_increment:
+                params["aggregation_price_increment"] = aggregation_price_increment
+
+            if self.session is None or self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.get(f"{self.rest_url}{path}", params=params, headers=headers) as resp:
+                text = await resp.text()
+                if resp.status != 200:
+                    self.logger.warning(f"[product_book {product_id}] {resp.status} {text}")
+                    return {}
+
+                data = await resp.json()
+                pb = data.get("pricebook") or {}
+                bids = pb.get("bids") or []
+                asks = pb.get("asks") or []
+
+                from decimal import Decimal
+                def _D(x):
+                    try:
+                        return Decimal(str(x))
+                    except Exception:
+                        return None
+
+                def _levels(raw):
+                    out = []
+                    for lvl in raw[:limit]:
+                        p = _D(lvl.get("price"))
+                        s = _D(lvl.get("size"))
+                        if p is not None and s is not None:
+                            out.append({"price": p, "size": s})
+                    return out
+
+                return {
+                    "product_id": pb.get("product_id") or product_id,
+                    "bids": _levels(bids),
+                    "asks": _levels(asks),
+                    "time": pb.get("time"),
+                    "last": _D(data.get("last")),
+                    "mid_market": _D(data.get("mid_market")),
+                    "spread_bps": _D(data.get("spread_bps")),
+                    "spread_absolute": _D(data.get("spread_absolute")),
+                }
+
+        except Exception as e:
+            self.logger.error(f"get_product_book({product_id}) error: {e}", exc_info=True)
+            return {}
+
+    async def get_product_books(
+            self,
+            product_ids: list[str],
+            limit: int = 1,
+            max_concurrency: int = 8,
+    ) -> dict[str, dict]:
+        """
+        Convenience batch fetcher for a small set of active products.
+        Returns { product_id: normalized_book_dict, ... }
+        """
+        import asyncio
+        sem = asyncio.Semaphore(max_concurrency)
+        out: dict[str, dict] = {}
+
+        async def _one(pid: str):
+            async with sem:
+                out[pid] = await self.get_product_book(pid, limit=limit)
+
+        try:
+            await asyncio.gather(*[_one(pid) for pid in product_ids])
+        except Exception as e:
+            self.logger.error(f"get_product_books error: {e}", exc_info=True)
+        return out
+
+    async def get_best_bid_ask(self, product_ids: list[str]) -> dict:
+        try:
+            ids = await self._filter_valid_product_ids(product_ids)
+            if not ids:
+                self.logger.warning("best_bid_ask called with no valid product_ids after filtering.")
+                return {}
+
+            request_path = "/api/v3/brokerage/best_bid_ask"
             headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {jwt_token}'
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.generate_rest_jwt('GET', request_path)}",
             }
 
-            if self.session.closed:
-                self.session = aiohttp.ClientSession()
-            async with self.session.get(f"{self.rest_url}{request_path}",params=payload,headers=headers) as response:
-                text = await response.text()
-                status = response.status
+            async def _one_call(batch: list[str]) -> tuple[int, str, dict]:
+                params = {"product_ids": batch}
+                if self.session.closed:
+                    self.session = aiohttp.ClientSession()
+                async with self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers) as resp:
+                    text = await resp.text()
+                    if resp.status == 200:
+                        return 200, text, await resp.json()
+                    return resp.status, text, {}
 
-                if status == 200:
-                    return await response.json()
-                elif status == 401:
-                    self.logger.error(f"❌ [401] Unauthorized Best Bid/Ask: {text}")
-                elif status == 429:
-                    self.logger.warning(f"⏳ [429] Rate Limited on Best Bid/Ask: {text}")
-                elif status >= 500:
-                    self.logger.error(f"❌ [{status}] Server error fetching best bid/ask: {text}")
-                else:
-                    self.logger.error(f"❌ [{status}] Unexpected response from best_bid_ask: {text}")
-                return {}
+            CHUNK = 50
+            aggregate = {"pricebooks": []}
+
+            for i in range(0, len(ids), CHUNK):
+                batch = ids[i:i + CHUNK]
+                for _attempt in range(5):
+                    status, text, payload = await _one_call(batch)
+
+                    if status == 200:
+                        pbs = payload.get("pricebooks") or payload.get("pricebook") or []
+                        if isinstance(pbs, dict):
+                            pbs = [pbs]
+                        aggregate["pricebooks"].extend(pbs)
+                        break
+
+                    elif status == 400:
+                        # peel off offending id if error mentions one
+                        m = re.search(r'invalid product_id provided:\s*"?([A-Z0-9\-_/]+)"?', text)
+                        bad = m.group(1) if m else None
+                        if bad and bad in batch:
+                            self.logger.info(f"🧹 best_bid_ask dropping invalid id from batch: {bad}")
+                            batch = [x for x in batch if x != bad]
+                            if not batch:
+                                break
+                            continue
+                        # refresh valid set and hard-filter the batch once
+                        await self._refresh_valid_products(force=True)
+                        fresh_valid = await self._refresh_valid_products()
+                        batch = [x for x in batch if x in fresh_valid]
+                        if not batch:
+                            break
+                        continue
+
+                    elif status == 401:
+                        self.logger.error(f"[401] Unauthorized Best Bid/Ask: {text}")
+                        return {}
+
+                    elif status == 429:
+                        self.logger.warning(f"[429] Rate Limited on Best Bid/Ask: {text}")
+                        await asyncio.sleep(1.0)
+                        continue
+
+                    elif status >= 500:
+                        self.logger.error(f"[{status}] Server error fetching best bid/ask: {text}")
+                        break
+
+                    else:
+                        self.logger.error(f"[{status}] Unexpected response from best_bid_ask: {text}")
+                        break
+
+            return aggregate
+
         except Exception as e:
-            self.logger.error(f"❗ Exception in get_best_bid_ask: {e}", exc_info=True)
+            self.logger.error(f"Exception in get_best_bid_ask: {e}", exc_info=True)
             return {}
 
     async def fetch_all_products(self) -> list[dict]:
@@ -495,7 +694,7 @@ class CoinbaseAPI:
                 if response.status == 200:
                     data = await response.json()
                     products = data.get('products', [])
-                    usd_pairs = [p['product_id'] for p in products if p.get('quote_currency') == 'USD']
+                    usd_pairs = [p['product_id'] for p in products if p.get('quote_currency_id') == 'USD']
                     return usd_pairs
 
                 if response.status == 401:

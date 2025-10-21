@@ -628,19 +628,6 @@ class TradeOrderManager:
                     "response": {}
                 }
 
-            # # Calculate TP/SL
-            # take_profit_price = adjusted_price * (1 + self.take_profit)
-            # stop_loss_price = adjusted_price * (1 + self.stop_loss)
-            #
-            # # Apply precision
-            # tp_adjusted = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, take_profit_price, convert="quote")
-            # sl_adjusted = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, stop_loss_price, convert="quote")
-            #
-            # # Update OrderData
-            # order_data.adjusted_price = adjusted_price
-            # order_data.adjusted_size = adjusted_size_of_order_qty
-            # order_data.take_profit_price = tp_adjusted
-            # order_data.stop_loss_price = sl_adjusted
             # Update OrderData basics; TP/SL will be computed later (profit_manager or local fallback)
             order_data.adjusted_price = adjusted_price
             order_data.adjusted_size = adjusted_size_of_order_qty

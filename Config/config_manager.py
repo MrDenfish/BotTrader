@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from urllib.parse import urljoin
 from typing import Any, Optional
 from coinbase import rest as coinbase
-from Shared_Utils.paths import resolve_runtime_paths
+from pandas.core.methods.describe import select_describe_func
 from Shared_Utils.runtime_env import running_in_docker as running_in_docker
 from Shared_Utils.url_helper import build_asyncpg_url_from_env
 
@@ -56,9 +56,10 @@ class CentralConfig:
         self._quote_currency = self._trailing_percentage = self._min_quote_volume = self._min_cooldown = None
         self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
-        self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = None
-        self._score_buy_target = self._score_sell_target = self._allow_buys_on_red_day = None
-        self._flip_hysteresis_pct = self._cooldown_bars = None
+        self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = self._spread_to_fee_min =None
+        self._tp_min_ticks = self._sl_limit_offset_ticks = self._score_buy_target = self._score_sell_target =  None
+        self._allow_buys_on_red_day = self._flip_hysteresis_pct = self._cooldown_bars = self._enrich_limit =  None
+        self._sl_limit_offset_ticks = self._min_l1_notional_usd = self._pre_bracket_sigma_ratio = None
         self.exchange: Optional[Any] = None
 
         # Default values
@@ -122,6 +123,11 @@ class CentralConfig:
             "_roc_window": "ROC_WINDOW",
             "_roc_5min":"ROC_5MIN",
             "_min_spread_pct":"MIN_SPREAD_PCT",
+            "_spread_to_fee_min":"SPREAD_TO_FEE_MIN",
+            "_tp_min_ticks":"TP_MIN_TICKS",
+            "_sl_limit_offset_ticks":"SL_LIMIT_OFFSET_TICKS",
+            "_min_l1_notional_usd":"MIN_L1_NOTIONAL_USD",
+            "_pre_bracket_sigma_ratio":"PREBRACKET_SIGMA_RATIO",
             "_edge_buffer_pct":"EDGE_BUFFER_PCT",
             "_max_lifetime":"MAX_LIFETIME",
             "_inventory_bias_factor":"INVENTORY_BIAS_FACTOR",
@@ -152,6 +158,7 @@ class CentralConfig:
             "_sma_volatility": "SMA_VOLATILITY",
             "_trailing_stop": "TRAILING_STOP",
             "_trailing_limit": "TRAILING_LIMIT",
+            "_enrich_limit": "ENRICH_LIMIT",
             "_currency_pairs_ignored": "CURRENCY_PAIRS_IGNORED",
             "_shill_coins": "SHILL_COINS",
             "_sleep_time": 'SLEEP',
@@ -459,6 +466,10 @@ class CentralConfig:
         return self._trailing_limit
 
     @property
+    def enrich_limit(self):
+        return int(self._enrich_limit)
+
+    @property
     def phone(self):
         return self._phone
 
@@ -587,6 +598,26 @@ class CentralConfig:
     @property
     def min_spread_pct(self):
         return Decimal(self._min_spread_pct)
+
+    @property
+    def spread_to_fee_min(self):
+        return Decimal(self._spread_to_fee_min)
+
+    @property
+    def tp_min_ticks(self):
+        return Decimal(self._tp_min_ticks)
+
+    @property
+    def sl_limit_offset_ticks(self):
+        return Decimal(self._sl_limit_offset_ticks)
+
+    @property
+    def min_l1_notional_usd(self):
+        return Decimal(self._min_l1_notional_usd)
+
+    @property
+    def pre_bracket_sigma_ratio(self):
+        return Decimal(self._pre_bracket_sigma_ratio)
 
     @property
     def edge_buffer_pct(self):

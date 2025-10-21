@@ -1,13 +1,16 @@
 
-
+import os
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_DOWN, ROUND_UP
-from typing import Optional, Union
+from pathlib import Path
+from statistics import pstdev
 from cachetools import TTLCache
-from Config.config_manager import CentralConfig as Config
+from typing import Optional, Union
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
+from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
+from Config.config_manager import CentralConfig as Config
+
 
 # Define the OrderTypeManager class
 """This class  will manage the order types 
@@ -65,6 +68,11 @@ class OrderTypeManager:
         self._trailing_stop = Decimal(self.config.trailing_stop)
         self._trailing_limit = Decimal(self.config.trailing_limit)
         self._min_sell_value = Decimal(self.config.min_sell_value)
+        self.spread_to_fee_min = Decimal(self.config.spread_to_fee_min)
+        self.tp_min_ticks = int(self.config.tp_min_ticks)
+        self.sl_limit_offset_ticks = int(self.config.sl_limit_offset_ticks)
+        self.min_l1_notional_usd = self.config.min_l1_notional_usd
+        self.pre_bracket_sigma_ratio = Decimal(self.config.pre_bracket_sigma_ratio)
         self._hodl = Config.hodl
 
 
@@ -72,6 +80,9 @@ class OrderTypeManager:
     def hodl(self):
         return self._hodl
 
+    @property
+    def fee_info(self):
+        return self.shared_data_manager.market_data.get('fee_info', {})
     @property
     def open_orders(self):
         return self.shared_data_manager.order_management.get('order_tracker', {})
@@ -111,6 +122,238 @@ class OrderTypeManager:
     @property
     def min_sell_value(self):
         return self._min_sell_value
+
+    async def get_orderbook_snapshot(
+            self,
+            product_id: str,
+            quote_deci: int,
+            fetch_missing_sizes: bool = True
+    ) -> Optional[dict]:
+        """
+        Returns a merged L1 snapshot for `product_id`:
+          {
+            "bid": Decimal, "ask": Decimal, "spread": Decimal,
+            "bid_size_1": Decimal|None, "ask_size_1": Decimal|None,
+            "mid": Decimal
+          }
+        Uses self.bid_ask_spread (fast path). If sizes are missing and
+        fetch_missing_sizes=True, fetches /product_book(limit=1) and merges.
+        """
+        qquant = Decimal("1").scaleb(-int(quote_deci))
+
+        # --- 1) Fast path: read what we already have
+        book = (self.bid_ask_spread or {}).get(product_id) or {}
+        bid_raw = book.get("bid")
+        ask_raw = book.get("ask")
+        spread_raw = book.get("spread")
+
+        # If we don't even have prices, bail early
+        if bid_raw is None or ask_raw is None:
+            return None
+
+        # Quantize to quote precision
+        bid = self.shared_utils_precision.safe_quantize(Decimal(str(bid_raw)), qquant)
+        ask = self.shared_utils_precision.safe_quantize(Decimal(str(ask_raw)), qquant)
+        spread = self.shared_utils_precision.safe_quantize(Decimal(str(spread_raw)) if spread_raw is not None else (ask - bid), qquant)
+        mid = (bid + ask) / Decimal("2")
+
+        # Sizes may already be present if you enriched bid_ask_spread in step B
+        bid_sz = book.get("bid_size_1")
+        ask_sz = book.get("ask_size_1")
+        try:
+            bid_sz = Decimal(str(bid_sz)) if bid_sz is not None else None
+            ask_sz = Decimal(str(ask_sz)) if ask_sz is not None else None
+        except Exception:
+            bid_sz = ask_sz = None
+
+        # --- 2) If sizes missing and allowed, fetch product_book(limit=1)
+        if fetch_missing_sizes and (bid_sz is None or ask_sz is None):
+            try:
+                pb = await self.coinbase_api.get_product_book(product_id, limit=1)
+                if pb and pb.get("bids") and pb.get("asks"):
+                    b1 = pb["bids"][0]
+                    a1 = pb["asks"][0]
+                    # Validate price alignment (rarely, fast market might shift)
+                    # If price moved beyond 1 tick from our bid/ask, we still keep fast prices,
+                    # but accept sizes anyway—they’re close enough for risk checks.
+                    bid_sz = b1.get("size") if bid_sz is None else bid_sz
+                    ask_sz = a1.get("size") if ask_sz is None else ask_sz
+            except Exception as e:
+                self.logger.debug(f"product_book fetch failed for {product_id}: {e}")
+
+        # Normalize result
+        return {
+            "bid": bid,
+            "ask": ask,
+            "spread": spread,
+            "mid": mid,
+            "bid_size_1": bid_sz,
+            "ask_size_1": ask_sz,
+        }
+
+    def pre_bracket_filter(
+            self,
+            *,
+            side: str,
+            entry_price: Decimal,
+            tp_price: Decimal,
+            sl_price: Decimal,
+            order_book: dict,  # expects: {"bid": Decimal, "ask": Decimal}
+            fees: dict,  # {"maker": Decimal, "taker": Decimal}
+            tick_size: Decimal,  # quote tick increment
+            recent_mid_series: list[Decimal] | None = None,
+            depth_top: dict | None = None  # {"bid_1": Decimal, "ask_1": Decimal} optional
+    ) -> tuple[bool, dict]:
+        """
+        Returns (ok_to_place, info). If False, caller should delay/bracket-modify.
+        Adds:
+          - L1 far-side notional guard (requires depth_top).
+          - Stronger micro-volatility vs. TP distance gate (configurable).
+        """
+
+        reasons: list[str] = []
+        risk = 0
+
+        # --- config / tunables (env or attributes) --------------------------------
+        # spread / fee threshold (you already set self.spread_to_fee_min upstream)
+        try:
+            spread_to_fee_min = Decimal(str(getattr(self, "spread_to_fee_min", "2.0")))
+        except Exception:
+            spread_to_fee_min = Decimal("2.0")
+
+        # how strict the micro-vol vs TP check is; 1.0 = sigma must be <= TP distance
+        try:
+            sigma_vs_tp_ratio = Decimal(str(getattr(self, "sigma_vs_tp_ratio",str(self.pre_bracket_sigma_ratio))))
+        except Exception:
+            sigma_vs_tp_ratio = Decimal("1.0")
+
+        # minimum notional on the far side L1 (ask for buys, bid for sells)
+        try:
+            min_l1_notional_usd = Decimal(str(getattr(self, "min_l1_notional_usd",str(self.min_l1_notional_usd))))
+        except Exception:
+            min_l1_notional_usd = Decimal("250")
+
+        # --------------------------------------------------------------------------
+
+        bid = Decimal(str(order_book.get("bid", "0")))
+        ask = Decimal(str(order_book.get("ask", "0")))
+        if bid <= 0 or ask <= 0 or entry_price <= 0:
+            return False, {"risk": 10, "reasons": ["invalid_book_or_entry"]}
+
+        mid = (bid + ask) / Decimal("2")
+
+        # 1) Spread-to-fee screen
+        spread_pct = (ask - bid) / mid
+        maker = Decimal(str(fees.get("maker", "0")))
+        taker = Decimal(str(fees.get("taker", "0")))
+        fee_both_pct = maker + taker
+        spread_to_fee = (spread_pct / fee_both_pct) if fee_both_pct > 0 else Decimal("9999")
+        if spread_to_fee < spread_to_fee_min:
+            risk += 1
+            reasons.append(f"spread_to_fee_low={float(spread_to_fee):.3f}")
+
+        # 2) Marketable/near-touch TP/SL screen (within 1 tick)
+        one_tick = tick_size
+        if side.lower() == "buy":
+            if tp_price <= ask + one_tick:
+                risk += 1;
+                reasons.append("tp_near_or_inside_ask")
+            if sl_price >= bid - one_tick:
+                risk += 1;
+                reasons.append("sl_near_or_inside_bid")
+        else:  # sell
+            if tp_price >= bid - one_tick:
+                risk += 1;
+                reasons.append("tp_near_or_inside_bid")
+            if sl_price <= ask + one_tick:
+                risk += 1;
+                reasons.append("sl_near_or_inside_ask")
+
+        # 3) Micro-volatility vs TP distance (10–30s) — stricter using sigma_vs_tp_ratio
+        if recent_mid_series and len(recent_mid_series) >= 10:
+            try:
+                mids = [Decimal(str(x)) for x in recent_mid_series[-30:]]
+                sigma_abs = Decimal(str(pstdev([float(x) for x in mids])))
+                sigma_pct = sigma_abs / mid if mid > 0 else Decimal("0")
+                tp_dist_pct = abs(tp_price - entry_price) / entry_price
+                # If recent volatility approaches TP distance, likely chop → raise risk
+                if tp_dist_pct > 0 and sigma_pct > (tp_dist_pct * sigma_vs_tp_ratio):
+                    risk += 1;
+                    reasons.append("microvol_rel_high")
+            except Exception:
+                pass
+
+        # 4) Depth imbalance (optional)
+        l1_imbalance = None
+        if depth_top:
+            bid1 = Decimal(str(depth_top.get("bid_1", "0")))
+            ask1 = Decimal(str(depth_top.get("ask_1", "0")))
+            if bid1 > 0 and ask1 > 0:
+                l1_imbalance = (bid1 / ask1) if ask1 != 0 else Decimal("9999")
+                if l1_imbalance < Decimal("0.7") or l1_imbalance > Decimal("1.5"):
+                    risk += 1;
+                    reasons.append(f"depth_imbalance={float(l1_imbalance):.2f}")
+
+            # 5) NEW: far-side L1 notional guard (helps prevent “instant TP/SL swipes”)
+            try:
+                if side.lower() == "buy" and ask1 > 0:
+                    far_side_notional = ask1 * ask  # ask size * ask px
+                    if far_side_notional < min_l1_notional_usd:
+                        risk += 1;
+                        reasons.append(f"thin_far_side_ask_notional={float(far_side_notional):.2f}")
+                elif side.lower() == "sell" and bid1 > 0:
+                    far_side_notional = bid1 * bid  # bid size * bid px
+                    if far_side_notional < min_l1_notional_usd:
+                        risk += 1;
+                        reasons.append(f"thin_far_side_bid_notional={float(far_side_notional):.2f}")
+            except Exception:
+                pass
+
+        ok = (risk < 2)
+        info = {
+            "risk": int(risk),
+            "reasons": reasons,
+            "spread_to_fee": float(spread_to_fee),
+        }
+        if l1_imbalance is not None:
+            info["l1_imbalance"] = float(l1_imbalance)
+        return ok, info
+
+    def adjust_targets_for_resting(
+        self,
+        *,
+        side: str,
+        tp_price: Decimal,
+        sl_price: Decimal,
+        order_book: dict,
+        tick_size: Decimal,
+        min_tp_ticks: int = 2,
+        sl_limit_offset_ticks: int = 1,
+    ) -> dict:
+        """
+        Enforce 'resting' TP and a stop-limit with small offset to avoid instant swipes.
+        Returns dict with 'tp_price','sl_stop','sl_limit','post_only':True
+        """
+        bid = Decimal(str(order_book["bid"])); ask = Decimal(str(order_book["ask"]))
+        one = tick_size
+        # push TP at least N ticks outside touch
+        if side.lower() == "buy":
+            min_tp = ask + (one * min_tp_ticks)
+            tp_price = max(tp_price, min_tp)
+            sl_stop = sl_price
+            sl_limit = sl_price - (one * sl_limit_offset_ticks)
+        else:
+            min_tp = bid - (one * min_tp_ticks)
+            tp_price = min(tp_price, min_tp)
+            sl_stop = sl_price
+            sl_limit = sl_price + (one * sl_limit_offset_ticks)
+
+        return {
+            "tp_price": tp_price,
+            "sl_stop": sl_stop,
+            "sl_limit": sl_limit,
+            "post_only": True,
+        }
 
     async def process_limit_and_tp_sl_orders(
             self,
@@ -239,6 +482,71 @@ class OrderTypeManager:
 
             # ✅ Coinbase Order Payload (TP/SL attached)
             client_order_id = str(uuid.uuid4())
+
+            # === Rapid-fire pre-bracket screen ===
+            base_deci, quote_deci, base_increment, quote_increment = self.shared_utils_precision.fetch_precision(asset)
+            if not isinstance(quote_increment, Decimal):
+                quote_increment = Decimal(str(quote_increment)) if quote_increment is not None else Decimal("0")
+            quote_quantizer = Decimal("1").scaleb(-quote_deci)
+
+            bid_ask = self.bid_ask_spread.get(trading_pair, {})
+            spread = Decimal(bid_ask.get("spread", 0))  # value not percentage
+            spread = self.shared_utils_precision.safe_quantize(spread, quote_quantizer)
+            maker_fee = Decimal(str(self.fee_info.get(trading_pair, {}).get("maker", "0")))
+            taker_fee = Decimal(str(self.fee_info.get(trading_pair, {}).get("taker", "0")))
+            ob = await self.get_orderbook_snapshot(trading_pair, quote_deci, fetch_missing_sizes=True)
+            if not ob:
+                return {
+                    "success": False,
+                    "status": "rejected",
+                    "reason": "ORDERBOOK_UNAVAILABLE",
+                    "message": f"No orderbook available for {trading_pair}",
+                    "order_id": None,
+                    "error_response": {"message": "Orderbook unavailable"}
+                }
+
+            best_bid = ob["bid"]
+            best_ask = ob["ask"]
+            bid_sz_1 = ob["bid_size_1"]
+            ask_sz_1 = ob["ask_size_1"]
+
+            # recent mids (deque) if available
+            tp_id = trading_pair
+            hist_deque = getattr(self, "mid_history", {}).get(tp_id) if hasattr(self, "mid_history") else None
+            recent_mids_last_30 = list(hist_deque)[-30:] if hist_deque else None
+
+            ok, info = self.pre_bracket_filter(
+                side=order_data.side,
+                entry_price=adjusted_price,
+                tp_price=tp_price,
+                sl_price=sl_price,
+                order_book={"bid": best_bid, "ask": best_ask},
+                fees={"maker": maker_fee, "taker": taker_fee},
+                tick_size=(quote_increment if quote_increment and quote_increment > 0 else Decimal("1").scaleb(-quote_deci)),
+                recent_mid_series=recent_mids_last_30,
+                depth_top=({"bid_1": bid_sz_1, "ask_1": ask_sz_1} if (bid_sz_1 and ask_sz_1) else None),
+            )
+
+            if not ok:
+                self.logger.info(
+                    f"🛡 Bracket deferred for {order_data.trading_pair}: "
+                    f"risk={info['risk']} reasons={info['reasons']}"
+                )
+                # Mitigation B: force TP to rest ≥ 2 ticks and use stop-limit SL
+                adj = self.adjust_targets_for_resting(
+                    side=order_data.side,
+                    tp_price=tp_price,
+                    sl_price=sl_price,
+                    order_book={"bid": best_bid, "ask": best_ask},
+                    tick_size=quote_increment,
+                    min_tp_ticks=self.tp_min_ticks,
+                    sl_limit_offset_ticks=self.sl_limit_offset_ticks,
+                )
+                tp_price = self.shared_utils_precision.safe_quantize(adj["tp_price"], quote_quantizer)
+                sl_price = self.shared_utils_precision.safe_quantize(adj["sl_stop"], quote_quantizer)
+                sl_limit = self.shared_utils_precision.safe_quantize(adj["sl_limit"], quote_quantizer)
+                tp_post_only = adj["post_only"]
+
             order_payload = {
                 "client_order_id": client_order_id,
                 "product_id": trading_pair,
@@ -258,6 +566,7 @@ class OrderTypeManager:
             }
 
             self.logger.debug(f"📤 Submitting TP/SL Order → {order_payload}")
+
             order_data.time_order_placed = datetime.now()
 
             # ✅ Submit to Coinbase API

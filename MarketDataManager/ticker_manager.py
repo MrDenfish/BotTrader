@@ -1,12 +1,16 @@
 import asyncio
+import os
 from decimal import Decimal
 from typing import Optional
 import pandas as pd
 import decimal
 import random
+from collections import defaultdict, deque
 from http.client import RemoteDisconnected
+from pandas.core.methods.describe import select_describe_func
 from requests.exceptions import HTTPError
 from ccxt.base.errors import BadSymbol
+
 
 
 class MyPortfolioPosition:
@@ -57,6 +61,8 @@ class TickerManager:
         self.shared_utils_print = shared_utils_print
         self.test_debug_maint = test_debug_maint
         self.shared_utils_precision = shared_utils_precision
+        self.mid_history = defaultdict(lambda: deque(maxlen=120))
+        self.enrich_limit = self.bot_config.enrich_limit
         self.start_time = None
 
     # Potentially for future use
@@ -76,6 +82,35 @@ class TickerManager:
     def open_orders(self):
         return self.shared_data_manager.order_management.get('order_tracker', {})
     # <><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>
+
+    #--------------> Helper Methods <----------------
+
+    def _select_active_products_by_liquidity(self, df, formatted_tickers, limit: int = 20) -> set[str]:
+        # Guard against missing cols
+        try:
+            cols = df.columns
+            need = {"symbol", "24h_quote_volume", "type", "quote"}
+            if not need.issubset(set(cols)):
+                return set(list(formatted_tickers.keys())[:limit])
+
+            # Keep USD spot only (adjust if you also trade perps)
+            filt = (df["type"].astype(str).str.upper() == "SPOT") & (df["quote"].astype(str).str.upper() == "USD")
+
+            # Rank by 24h quote volume desc
+            ranked = (
+                df.loc[filt, ["symbol", "24h_quote_volume"]]
+                .dropna(subset=["symbol", "24h_quote_volume"])
+                .sort_values("24h_quote_volume", ascending=False)
+                .head(limit * 2)  # oversample a bit; we'll intersect next
+            )
+
+            # Intersect with what we actually have prices for this cycle
+            have_ticks = set(formatted_tickers.keys())
+            active = [sym for sym in ranked["symbol"].tolist() if sym in have_ticks]
+            return set(active[:limit])
+        except Exception as e:
+            self.logger.error(f"❌ Error in _select_active_products_by_liquidity: {e}", exc_info=True)
+            return set(list(formatted_tickers.keys())[:limit])
 
     async def update_ticker_cache(self, open_orders=None, start_time=None) -> tuple:
         """
@@ -455,117 +490,168 @@ class TickerManager:
             self.logger.error(f"❌ Error in prepare_dataframe: {e}", exc_info=True)
             return pd.DataFrame()
 
-    async def parallel_fetch_and_update(self, usd_pairs, df, update_type='current_price'):
-        """PART I: Data Gathering and Database Loading
-           PART VI: Profitability Analysis and Order Generation """
-        bid_ask_spread = {}
+    async def parallel_fetch_and_update(self, usd_pairs, df, update_type: str = "current_price"):
+        """
+        PART I: Data Gathering and Database Loading
+        PART VI: Profitability Analysis and Order Generation
+
+        - Fetch fast L1 prices via best_bid_ask (bulk).
+        - Normalize/quantize using analyze_spread.
+        - Maintain per-product mid history.
+        - Optionally enrich a small active set with L1 sizes via product_book(limit=1).
+        - Update 'df' (either current_price or bid/ask), and return (df, bid_ask_spread).
+        """
+        bid_ask_spread: dict[str, dict] = {}
+        formatted_tickers: dict[str, dict] = {}
+        active_products = set()
+
         try:
-            # tickers = await self.fetch_bids_asks()
-            product_ids = await self.coinbase_api.get_all_usd_pairs()
+            # --- 0) Fetch all USD product ids and their fast L1 prices --------------
+            product_ids_raw = await self.coinbase_api.get_all_usd_pairs()
+            product_ids = await self.coinbase_api._filter_valid_product_ids(product_ids_raw)
             tickers = await self.coinbase_api.get_best_bid_ask(product_ids)
+
             if not tickers:
                 self.logger.error("Failed to fetch bids and asks.")
                 return df, bid_ask_spread
 
-            formatted_tickers = {}
+            # Per Coinbase "best_bid_ask", expect: {"pricebooks": [{ "product_id": "...", "bid_price": "x", "ask_price": "y", ...}, ...]}
+            pricebooks = tickers.get("pricebooks", []) or []
+            formatted_tickers: dict[str, dict] = {}
 
-            for entry in tickers.get("pricebooks", []):
+            for entry in pricebooks:
                 product_id = entry.get("product_id")
                 if not product_id:
-                    self.logger.debug("Skipping pricebook with no product_id")
                     continue
 
-                # OLD (unsafe: can IndexError if list empty)
-                # bid = float(entry.get("bids", [{}])[0].get("price"))
-                # ask = float(entry.get("asks", [{}])[0].get("price"))
-
-                # NEW: guard against empty/malformed bids/asks
                 bids = entry.get("bids") or []
                 asks = entry.get("asks") or []
                 if not bids or not asks:
-                    # Quietly skip totally empty books (e.g., WELL-PERP-INTX showed this)
+                    # empty or malformed book
                     self.logger.debug(f"Skipping {product_id}: empty orderbook (bids={len(bids)}, asks={len(asks)})")
                     continue
 
+                # L1 prices/sizes from product_book
                 try:
-                    top_bid = bids[0].get("price")
-                    top_ask = asks[0].get("price")
-                    bid = float(top_bid) if top_bid is not None else None
-                    ask = float(top_ask) if top_ask is not None else None
+                    bid_p = bids[0].get("price")
+                    ask_p = asks[0].get("price")
+                    bid_s = bids[0].get("size")
+                    ask_s = asks[0].get("size")
+
+                    bid = float(bid_p) if bid_p is not None else None
+                    ask = float(ask_p) if ask_p is not None else None
+                    bid1_sz_dec = Decimal(str(bid_s)) if bid_s is not None else None
+                    ask1_sz_dec = Decimal(str(ask_s)) if ask_s is not None else None
                 except (TypeError, ValueError):
-                    self.logger.warning(
-                        f"⚠️ Malformed pricebook for {product_id}: non-numeric top of book "
-                        f"(bid0={bids[:1]}, ask0={asks[:1]})"
-                    )
+                    self.logger.warning(f"Malformed product_book for {product_id}: {entry}")
                     continue
 
                 if bid is None or ask is None:
-                    self.logger.debug(f"Skipping {product_id}: missing top-of-book price")
                     continue
 
-                # Precision lookup (keep as-is)
+                # Precision lookup
                 try:
                     asset = product_id.split("-")[0]
                     base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(
                         asset, usd_pairs_override=usd_pairs
                     )
                 except Exception as e:
-                    self.logger.warning(f"⚠️ Precision lookup failed for {product_id}: {e}")
+                    self.logger.warning(f"Precision lookup failed for {product_id}: {e}")
                     continue
 
-                # Compute spread using existing helper; skip if it returns None
+                # Normalize/quantize prices + compute spread
                 try:
-                    bid_ask = {'bid': bid, 'ask': ask}
-                    bid_adj, ask_adj, spread = self.order_book_manager.analyze_spread(quote_deci, bid_ask)
+                    ba = {"bid": bid, "ask": ask}
+                    bid_adj, ask_adj, spread = self.order_book_manager.analyze_spread(quote_deci, ba)
                     if bid_adj is None or ask_adj is None or spread is None:
-                        self.logger.debug(f"Skipping {product_id}: analyze_spread returned None")
                         continue
 
-                    formatted_tickers[product_id] = {"bid": bid_adj, "ask": ask_adj, "spread": spread}
-                    bid_ask_spread[product_id] = {"bid": float(bid_adj), "ask": float(ask_adj), "spread": float(spread)}
+                    # Internal map (Decimals) for strategy/risk
+                    formatted_tickers[product_id] = {
+                        "bid": bid_adj,
+                        "ask": ask_adj,
+                        "spread": spread,
+                        "bid_size_1": bid1_sz_dec,
+                        "ask_size_1": ask1_sz_dec,
+                    }
+
+                    # External/reporting map (floats)
+                    bid_ask_spread[product_id] = {
+                        "bid": float(bid_adj),
+                        "ask": float(ask_adj),
+                        "spread": float(spread),
+                        "bid_size_1": float(bid1_sz_dec) if bid1_sz_dec is not None else None,
+                        "ask_size_1": float(ask1_sz_dec) if ask1_sz_dec is not None else None,
+                    }
+
+                    # Mid history (cheap)
+                    try:
+                        mid_val = (Decimal(str(bid_adj)) + Decimal(str(ask_adj))) / Decimal("2")
+                        self.mid_history[product_id].append(mid_val)
+                    except Exception:
+                        pass
+
                 except Exception as e:
-                    self.logger.warning(f"⚠️ Could not analyze spread for {product_id}: {e}", exc_info=True)
+                    self.logger.warning(f"Could not analyze spread for {product_id}: {e}", exc_info=True)
                     continue
 
-            if not callable(self.logger.info):
+            # --- 1) Optional L1 size enrichment (small active set only) -------------
+            # Decide which products are "active" for this cycle (e.g., shortlist from your strategy)
+
+            active_products = self._select_active_products_by_liquidity(df, formatted_tickers, limit=self.enrich_limit)
+            to_enrich = list(active_products)  # already limited
+
+            if to_enrich:
+                books = await self.coinbase_api.get_product_books(to_enrich, limit=1, max_concurrency=8)
+                for pid, book in books.items():
+                    if not book:
+                        continue
+                    bid1 = book["bids"][0]["size"] if book.get("bids") else None
+                    ask1 = book["asks"][0]["size"] if book.get("asks") else None
+
+                    # Store Decimals in the internal map used for risk/filters
+                    formatted_tickers[pid]["bid_size_1"] = bid1
+                    formatted_tickers[pid]["ask_size_1"] = ask1
+
+                    # Store floats in the external reporting map
+                    if pid in bid_ask_spread:
+                        bid_ask_spread[pid]["bid_size_1"] = float(bid1) if bid1 is not None else None
+                        bid_ask_spread[pid]["ask_size_1"] = float(ask1) if ask1 is not None else None
+
+            # --- 2) Update df for symbols we care about -----------------------------
+            if not callable(getattr(self.logger, "info", None)):
                 self.logger.error("log_manager.info is not callable, check for possible overwriting.")
 
-            # Update df only for symbols we care about
-            # OLD:
-            # for symbol in df['symbol'].tolist():
-            for symbol in usd_pairs['symbol'].tolist():
+            # Expect usd_pairs to be a DataFrame with a 'symbol' column of product_ids, e.g., 'BTC-USD'
+            for symbol in usd_pairs["symbol"].tolist():
                 try:
                     ticker = formatted_tickers.get(symbol)
                     if not ticker:
-                        if symbol not in ['USD/USD', 'USD']:
+                        if symbol not in ["USD/USD", "USD"]:
                             self.logger.info(f"No ticker data for symbol: {symbol}")
                         continue
 
-                    bid = ticker.get('bid')
-                    ask = ticker.get('ask')
+                    bid = ticker.get("bid")
+                    ask = ticker.get("ask")
                     if bid is None or ask is None:
-                        self.logger.debug(f"Missing data for symbol {symbol}, skipping")
                         continue
 
-                    if symbol in df['symbol'].values:
-                        if update_type == 'bid_ask':
-                            df.loc[df['symbol'] == symbol, ['bid', 'ask']] = [bid, ask]
-                        elif update_type == 'current_price':
-                            df.loc[df['symbol'] == symbol, 'current_price'] = float(ask)
+                    if symbol in df["symbol"].values:
+                        if update_type == "bid_ask":
+                            df.loc[df["symbol"] == symbol, ["bid", "ask"]] = [bid, ask]
+                        elif update_type == "current_price":
+                            df.loc[df["symbol"] == symbol, "current_price"] = float(ask)
 
-                    # Already added to bid_ask_spread above when we built formatted_tickers
+                    # 'bid_ask_spread' already populated above
 
-                except BadSymbol as bs:
-                    self.logger.error(f"❌ Bad symbol: {bs}")
-                    continue
                 except Exception as e:
-                    self.logger.error(f"❌ Error processing symbol {symbol}: {e}", exc_info=True)
+                    self.logger.error(f"Error processing symbol {symbol}: {e}", exc_info=True)
                     continue
 
             return df, bid_ask_spread
 
         except Exception as e:
-            self.logger.error(f'❌ Error in parallel_fetch_and_update: {e}', exc_info=True)
+            self.logger.error(f"Error in parallel_fetch_and_update: {e}", exc_info=True)
             return df, bid_ask_spread
 
     async def get_portfolio_breakdown(self, portfolio_uuid: str, currency: str = "USD") -> object:
@@ -608,21 +694,4 @@ class TickerManager:
         self.logger.error("❌ All retry attempts failed for get_portfolio_breakdown.")
         return None
 
-    async def fetch_bids_asks(self):
-        try:
-            endpoint = 'public'
-            params = {
-                'paginate': False,
-                'paginationCalls': 10,
-                'limit': 300
-            }
-            tickers = await self.ccxt_api.ccxt_api_call(self.exchange.fetchTickers, endpoint, params=params)
-            if not tickers:
-                self.logger.info("fetch_bids_asks: Received empty tickers list. Will pause for 5 minutes")
-                return None
-
-            return tickers
-        except Exception as e:
-            self.logger.error(f"❌ Error fetching bids and asks: {e}", exc_info=True)
-            return {}
 

@@ -71,6 +71,8 @@ class PrecisionUtils:
         try:
             if not isinstance(value, Decimal):
                 value = Decimal(str(value))
+            if not value:
+                pass
             # Handle non-finite cleanly (NaN/Inf)
             if not value.is_finite():
                 self.logger.warning(f"⚠️ safe_quantize: non-finite value {value}; returning 0 at requested scale.")
@@ -87,7 +89,8 @@ class PrecisionUtils:
                     ctx.prec = max(int_digits + scale, getcontext().prec, 28)
                     return value.quantize(precision, rounding=rounding)
             except Exception as fallback_error:
-                self.logger.error(f"❌ safe_quantize failed for value={value}, precision={precision}: {fallback_error}")
+                caller_function_name = stack()[1].function  # debugging
+                self.logger.error(f"❌ safe_quantize failed for value={value}, precision={precision}: {fallback_error}", exc_info=True)
                 return Decimal(0)  # or raise, per your policy
 
     def safe_convert(self, val, decimal_places: int = 4, *, rounding=ROUND_DOWN) -> Decimal:
