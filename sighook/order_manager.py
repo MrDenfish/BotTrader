@@ -235,20 +235,53 @@ class OrderManager:
             self.logger.error(f'❌ Error cancelling stale orders: {e}', exc_info=True)
             return None
 
-    async def cancel_order(self, order_id, product_id):
-        """PART III: Trading Strategies """
+    async def cancel_order(self, order_id, product_id, cancel_tag: str | None = None) -> bool:
+        """
+        Cancel a single order with per-order verification.
+        Returns True only if the specific order_id was cancelled successfully.
+        """
         try:
-            if order_id is not None:
-                print(f'Cancelling order {product_id}:{order_id}')
-                response = await self.coinbase_api.cancel_order([order_id])
-                if response:
-                    print(f"  🟪🟨  open order canceled  🟨🟪  ")  # debug
-                    return
-                else:
-                    print(f'‼️ Order {product_id}:{order_id}  was not cancelled')
-                    return
+            if not order_id:
+                self.logger.warning(f"⚠️ cancel_order called with empty order_id for {product_id}")
+                return False
+
+            # Human-friendly breadcrumb
+            tag_txt = f" tag={cancel_tag}" if cancel_tag else ""
+            print(f'Cancelling order {product_id}:{order_id}{tag_txt}', self.shared_utils_color.BRIGHT_BLUE)
+
+            resp = await self.coinbase_api.cancel_order([order_id])
+
+            # Coinbase returns shape like: {"results": [{"success": true, "order_id": "...", "failure_reason": "..."}]}
+            results = (resp or {}).get("results") or []
+            # Find the specific entry for our order_id
+            entry = next((r for r in results if str(r.get("order_id")) == str(order_id)), None)
+
+            if entry is None:
+                # No per-order entry returned — treat as failure and log whole resp for forensics
+                self.logger.warning(f"⚠️ batch_cancel returned no entry for {order_id}; resp={resp}")
+                print(f'‼️ Order {product_id}:{order_id} was not cancelled (no entry returned)')
+                return False
+
+            if bool(entry.get("success")):
+                # Success
+                print(f"  🟪🟨  open order canceled for {product_id}  🟨🟪  ")
+                self.logger.info(
+                    "✅ Cancelled %s on %s%s", order_id, product_id, f" (tag={cancel_tag})" if cancel_tag else ""
+                )
+                return True
+
+            # Failure — surface reason if present
+            reason = entry.get("failure_reason") or "UNKNOWN"
+            self.logger.warning(
+                "⚠️ Cancel failed for %s on %s: reason=%s%s", order_id, product_id, reason,
+                f", tag={cancel_tag}" if cancel_tag else ""
+            )
+            print(f'‼️ Order {product_id}:{order_id} was not cancelled (reason={reason})')
+            return False
+
         except Exception as e:
-            self.logger.error(f'❌Error cancelling order {product_id}:{order_id}: {e}', exc_info=True)
+            self.logger.error(f'❌ Error cancelling order {product_id}:{order_id}: {e}', exc_info=True)
+            return False
 
     async def adjust_merged_orders_prices(self, merged_orders):
         """

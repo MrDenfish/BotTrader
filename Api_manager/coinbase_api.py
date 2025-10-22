@@ -342,16 +342,14 @@ class CoinbaseAPI:
         """
         Cancel multiple orders using Coinbase Advanced Trade API.
 
-        Args:
-            order_ids (list[str]): List of order UUIDs to cancel.
-
         Returns:
-            dict: API response containing details of cancelled and failed orders.
+            dict: {"results": [{"order_id": "...", "success": bool, "failure_reason": str|None}, ...]}
+                  If the API errors, returns {"results": [{"order_id": id, "success": False, "failure_reason": "HTTP_<code>"} ...]}
         """
         try:
             if not order_ids:
                 self.logger.warning("⚠️ batch_cancel called with empty order_ids list.")
-                return {"success": [], "failure": []}
+                return {"results": []}
 
             request_path = "/api/v3/brokerage/orders/batch_cancel"
             jwt_token = self.generate_rest_jwt("POST", request_path)
@@ -370,16 +368,50 @@ class CoinbaseAPI:
                 text = await response.text()
 
                 if response.status != 200:
+                    # Normalize an error shape per order so callers can still inspect by id
                     self.logger.error(f"❌ batch_cancel failed: {response.status} - {text}")
-                    return {"success": [], "failure": order_ids}
+                    return {
+                        "results": [
+                            {"order_id": oid, "success": False, "failure_reason": f"HTTP_{response.status}"}
+                            for oid in order_ids
+                        ]
+                    }
 
                 data = await response.json()
-                self.logger.info(f"✅ batch_cancel succeeded: {data}")
-                return data
+                # Coinbase usually returns {"results":[{order_id, success, failure_reason}, ...]}
+                results = data.get("results") if isinstance(data, dict) else None
+                if not isinstance(results, list):
+                    # Unexpected shape — normalize to per-order failures to be safe
+                    self.logger.warning(f"⚠️ Unexpected batch_cancel shape: {data}")
+                    return {
+                        "results": [
+                            {"order_id": oid, "success": False, "failure_reason": "UNEXPECTED_RESPONSE_SHAPE"}
+                            for oid in order_ids
+                        ]
+                    }
+
+                # Coerce minimal fields/types
+                norm = []
+                for r in results:
+                    try:
+                        oid = str(r.get("order_id")) if r.get("order_id") is not None else None
+                        succ = bool(r.get("success"))
+                        reason = r.get("failure_reason")
+                        norm.append({"order_id": oid, "success": succ, "failure_reason": reason})
+                    except Exception:
+                        norm.append({"order_id": None, "success": False, "failure_reason": "PARSE_ERROR"})
+
+                self.logger.info(f"✅ batch_cancel returned {len(norm)} result(s)")
+                return {"results": norm}
 
         except Exception as e:
             self.logger.error(f"❌ Exception in batch_cancel: {e}", exc_info=True)
-            return {"success": [], "failure": order_ids}
+            return {
+                "results": [
+                    {"order_id": oid, "success": False, "failure_reason": "EXCEPTION"}
+                    for oid in (order_ids or [])
+                ]
+            }
 
     async def get_historical_orders_batch(self, params: dict) -> dict:
         request_path = '/api/v3/brokerage/orders/historical/batch'

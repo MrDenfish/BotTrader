@@ -69,12 +69,16 @@ class PrecisionUtils:
 
     def safe_quantize(self, value: Decimal, precision: Decimal, rounding=ROUND_DOWN) -> Decimal:
         try:
+            if value is None:
+                return None
             if not isinstance(value, Decimal):
                 value = Decimal(str(value))
             if not value:
                 pass
             # Handle non-finite cleanly (NaN/Inf)
             if not value.is_finite():
+                caller_function_name = stack()[1].function  # debugging
+                print(f'{caller_function_name}')  # debugging
                 self.logger.warning(f"⚠️ safe_quantize: non-finite value {value}; returning 0 at requested scale.")
                 return Decimal(0).quantize(precision, rounding=rounding)
             return value.quantize(precision, rounding=rounding)

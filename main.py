@@ -615,11 +615,9 @@ def make_webhook_tasks(*, listener, logger_manager, websocket_manager, shared_da
         asyncio.create_task(periodic_runner(listener.reconcile_with_rest_api, interval=300)),
         asyncio.create_task(listener.periodic_save(), name="Periodic Data Saver"),
         asyncio.create_task(listener.sync_open_orders(), name="TradeRecord Sync"),
-        asyncio.create_task(websocket_manager.start_websockets(), name="Websocket Manager"),
-        t_leaderboard_job,
-        t_watchdog, # debugging
-        asyncio.create_task(task_census(120)), # debugging
-
+        asyncio.create_task(websocket_manager.start_websockets(), name="Websocket Manager"), t_leaderboard_job, t_watchdog,
+        asyncio.create_task(task_census(120)),
+        asyncio.create_task(listener.asset_monitor.run_positions_exit_sentinel(3), name="Positions Exit Sentinel"),
     ]
 
     # 🔇 Optional: only add accumulation in non-webhook modes (or if explicitly enabled)

@@ -251,13 +251,13 @@ class PassiveOrderManager:
         base_deci, quote_deci, *_ = self.shared_utils_precision.fetch_precision(asset)
         quote_quantizer = Decimal("1").scaleb(-quote_deci)
         bid_ask = self.bid_ask_spread.get(trading_pair, {})
-        print(f"biDs and ask {bid_ask}")
+
         bid = bid_ask.get('bid')
         ask = bid_ask.get('ask')
 
         current_bid = self.shared_utils_precision.safe_quantize(bid, quote_quantizer)
         current_ask = self.shared_utils_precision.safe_quantize(ask, quote_quantizer)
-        print(f"bid:{current_bid} ask:{current_ask}")
+
 
         self.logger.info(f"🧭 PassiveMM:start {product_id} asset={asset}") # debug
 
