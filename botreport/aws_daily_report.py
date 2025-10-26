@@ -15,6 +15,7 @@ import csv
 import ssl
 import json
 import pandas as pd
+import numpy as np
 import pg8000.native as pg
 
 from pathlib import Path
@@ -775,7 +776,22 @@ def compute_cash_vs_invested(conn, exposures):
 # Fast roundtrips (≤60s)
 # -------------------------
 
-def build_fast_rt_sql(table_name: str):
+def build_fast_rt_sql(table_name: str, lookback_minutes: int = None):
+    """
+    Build SQL to find ≤60s roundtrips.
+    - Restricts to a recent window (default 24h) to keep the section fresh and fast.
+    - Prefers pairing on link_key (parent_id) when available.
+    - Falls back to nearest opposite-side execution when either side lacks link_key.
+    """
+    # Default to 24h unless caller overrides via env
+    if lookback_minutes is None:
+        try:
+            lookback_minutes = int(os.getenv("FAST_RT_LOOKBACK_MINUTES", "1440"))
+        except Exception:
+            lookback_minutes = 1440
+
+    time_window_clause = f"AND e.order_time >= (now() AT TIME ZONE 'UTC') - interval '{lookback_minutes} minutes'"
+
     return text(f"""
 WITH execs AS (
   SELECT
@@ -790,6 +806,7 @@ WITH execs AS (
       e.status                                       AS status
   FROM {table_name} e
   WHERE e.status = 'filled'
+    {time_window_clause}
 ),
 paired AS (
   SELECT
@@ -813,13 +830,16 @@ paired AS (
       SELECT *
       FROM execs b
       WHERE b.symbol = a.symbol
+        AND b.exec_time > a.exec_time
+        AND b.side <> a.side
+        -- Pairing preference:
+        -- 1) If both link_keys exist, require equality (true “pair”).
+        -- 2) Else, if either side lacks link_key, allow a best-effort nearest match.
         AND (
              (a.link_key IS NOT NULL AND b.link_key = a.link_key)
              OR
-             (a.link_key IS NULL AND b.link_key IS NULL)
+             (a.link_key IS NULL OR b.link_key IS NULL)
         )
-        AND b.exec_time > a.exec_time
-        AND b.side <> a.side
       ORDER BY b.exec_time
       LIMIT 1
   ) b ON TRUE
@@ -840,60 +860,124 @@ LIMIT 200;
 
 def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     try:
+        lookback = int(os.getenv("FAST_RT_LOOKBACK_MINUTES", "1440"))
         with engine.begin() as conn:
-            df = pd.read_sql(build_fast_rt_sql(os.getenv("REPORT_EXECUTIONS_TABLE", REPORT_EXECUTIONS_TABLE)), conn)
+            df = pd.read_sql(
+                build_fast_rt_sql(
+                    os.getenv("REPORT_EXECUTIONS_TABLE", REPORT_EXECUTIONS_TABLE),
+                    lookback_minutes=lookback
+                ),
+                con=conn
+            )
     except Exception as e:
         msg = f"{type(e).__name__}: {str(e)}"
         if os.getenv("REPORT_DEBUG") == "1":
             print(f"[fast_roundtrips] error: {msg}")
-        html = f"""
+        html = """
         <h3>Near-Instant Roundtrips (≤60s)</h3>
         <p style="color:#b00;">Could not compute fast roundtrips. Ensure REPORT_EXECUTIONS_TABLE points to your fills table and column names match:
-        <code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol, order_id</code>.<br/>
-        <small>{msg}</small></p>
-        """
+        <code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol, order_id</code>.</p>
+        """.strip() + f"\n<small>{msg}</small>"
         return html.strip(), None, None
 
     if df.empty:
         html = """
         <h3>Near-Instant Roundtrips (≤60s)</h3>
         <p>No roundtrips ≤60 seconds in this window.</p>
-        """
-        return html.strip(), None, df
+        """.strip()
+        return html, None, df
 
-    df["entry_time"] = pd.to_datetime(df["entry_time"]).dt.tz_convert("UTC")
-    df["exit_time"]  = pd.to_datetime(df["exit_time"]).dt.tz_convert("UTC")
+    # --- Normalize types & sanitize ---
+    # Force tz-aware (UTC). No tz_convert() needed afterwards.
+    df["entry_time"] = pd.to_datetime(df["entry_time"], utc=True, errors="coerce")
+    df["exit_time"]  = pd.to_datetime(df["exit_time"],  utc=True, errors="coerce")
 
-    n = len(df)
-    median_hold = int(df["hold_seconds"].median())
-    total_pnl = float(df["pnl_abs"].sum())
+    # Drop any malformed rows
+    df = df.dropna(subset=["entry_time", "exit_time", "hold_seconds", "entry_price", "exit_price"])
 
-    view_cols = ["symbol", "entry_time", "exit_time", "hold_seconds", "entry_price", "exit_price", "pnl_abs", "pnl_pct"]
-    show = df[view_cols].copy()
+    # Safety: remove self-pairs or negative holds if any slipped through
+    df = df[df["entry_time"] < df["exit_time"]]
+    df = df[df["hold_seconds"].astype(int) >= 0]
+
+    # --- Metrics from the live DataFrame (these reflect LIMIT 200 if applied in SQL) ---
+    n = int(len(df))
+    median_hold = int(float(df["hold_seconds"].median())) if n else 0
+    # pnl_abs can be NaN if upstream left it blank; treat NaN as 0 in the sum
+    total_pnl = float(np.nansum(df["pnl_abs"].astype(float)))
+
+    # --- Build the preview table (top 8) ---
+    view_cols = [
+        "symbol", "entry_time", "exit_time",
+        "hold_seconds", "entry_price", "exit_price",
+        "pnl_abs", "pnl_pct"
+    ]
+    show = df.loc[:, view_cols].copy()
+
+    # Pretty formatting (NaN-safe)
     show["entry_time"] = show["entry_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     show["exit_time"]  = show["exit_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-    show["pnl_abs"]    = show["pnl_abs"].map(lambda x: f"${x:,.2f}")
-    show["pnl_pct"]    = show["pnl_pct"].map(lambda x: f"{x:,.2f}%")
-    show["entry_price"]= show["entry_price"].map(lambda x: f"{x:.8f}".rstrip('0').rstrip('.'))
-    show["exit_price"] = show["exit_price"].map(lambda x: f"{x:.8f}".rstrip('0').rstrip('.'))
 
-    html_table = show.head(8).to_html(index=False, border=1, justify="center")
+    def _fmt_money(x):
+        try:
+            xv = float(x)
+            return f"${xv:,.2f}"
+        except Exception:
+            return ""
+
+    def _fmt_pct(x):
+        try:
+            xv = float(x)
+            return f"{xv:,.2f}%"
+        except Exception:
+            return ""
+
+    def _fmt_price(x):
+        try:
+            s = f"{float(x):.8f}".rstrip('0').rstrip('.')
+            return s if s else "0"
+        except Exception:
+            return ""
+
+    show["pnl_abs"]     = show["pnl_abs"].map(_fmt_money)
+    show["pnl_pct"]     = show["pnl_pct"].map(_fmt_pct)
+    show["entry_price"] = show["entry_price"].map(_fmt_price)
+    show["exit_price"]  = show["exit_price"].map(_fmt_price)
+
+    html_table = show.head(8).to_html(index=False, border=1, justify="center", escape=False)
+
+    # --- Freshness note if latest exit is old ---
+    try:
+        latest_ts = pd.to_datetime(df["exit_time"], utc=True).max()
+        now_utc = pd.Timestamp.utcnow().tz_localize("UTC")
+        age = now_utc - latest_ts
+        if age.total_seconds() > 6 * 3600:
+            # Human-ish formatting for the timedelta
+            hours = int(age.total_seconds() // 3600)
+            mins = int((age.total_seconds() % 3600) // 60)
+            stale_note = f"<p style='color:#b00;'>Note: newest ≤60s roundtrip is {hours}h {mins}m old.</p>"
+            html_table = stale_note + html_table
+    except Exception:
+        pass
 
     html = f"""
     <h3>Near-Instant Roundtrips (≤60s)</h3>
     <p>Count: <b>{n}</b> &nbsp; Median hold: <b>{median_hold}s</b> &nbsp; Total PnL: <b>${total_pnl:,.2f}</b></p>
     {html_table}
     <p style="color:#666;margin-top:6px">Full list (up to 200) saved as CSV on the server.</p>
-    """
+    """.strip()
 
+    # --- Write CSV safely ---
     csv_out = None
     try:
-        df.to_csv(csv_path, index=False)
-        csv_out = csv_path
-    except Exception:
-        pass
+        out_path = Path(csv_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(out_path, index=False)
+        csv_out = str(out_path)
+    except Exception as e:
+        if os.getenv("REPORT_DEBUG") == "1":
+            print(f"[fast_roundtrips] CSV write failed: {e}")
 
-    return html.strip(), csv_out, df
+    return html, csv_out, df
 
 # -------------------------
 # Email / CSV Builders
