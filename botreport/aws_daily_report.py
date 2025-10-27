@@ -53,7 +53,7 @@ REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_rec
 IN_DOCKER = config.in_docker
 REGION = config.aws_region
 SENDER = config.report_sender.strip()
-RECIPIENTS = config.report_recipients
+RECIPIENTS = [config.report_recipients]
 # Where SignalManager writes JSONL; can override via env
 SCORE_JSONL_PATH = config.score_jsonl_path
 
@@ -1547,6 +1547,7 @@ def main():
         save_report_copy(csvb)
         send_email(html, csvb)
     else:
+        send_email(html, csvb)
         # Local dev: pretty console output + local CSV, no email
         as_of_utc = datetime.now(timezone.utc)
         window_label = "last 24h"  # or derive from REPORT_USE_PT_DAY/LOOKBACK
