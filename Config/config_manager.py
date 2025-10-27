@@ -511,7 +511,7 @@ class CentralConfig:
 
     @property
     def report_recipient(self):
-        return self._report_recipient
+        return self._report_recipients
 
     @property
     def email_alerts(self):
