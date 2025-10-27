@@ -46,7 +46,7 @@ CASH_AMT_COL        = os.getenv("REPORT_CASH_AMT_COL")   or "balance"
 CASH_SYMBOLS        = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMBOLS", "USD,USDC,USDT").split(",") if s.strip()]
 
 config = Config()
-SCORE_JSONL_PATH = config.score_jsonl_path()
+SCORE_JSONL_PATH = config.score_jsonl_path
 # -------------------------
 # Helpers
 # -------------------------

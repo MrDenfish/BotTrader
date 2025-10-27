@@ -31,10 +31,10 @@ from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from .metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl,
+from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl,
                               load_tpsl_jsonl, aggregate_tpsl, render_tpsl_section, render_tpsl_suggestions)
-from .emailer import send_email as send_email_via_ses  # uses lazy boto3
-from .email_report_print_format import build_console_report
+from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
+from botreport.email_report_print_format import build_console_report
 
 
 # (no-op) from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
@@ -50,12 +50,12 @@ except Exception:
     load_dotenv = None
 
 REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
-IN_DOCKER = config.in_docker()
-REGION = config.aws_region()
-SENDER = config.report_sender().strip()
-RECIPIENTS = config.report_recipients()
+IN_DOCKER = config.in_docker
+REGION = config.aws_region
+SENDER = config.report_sender.strip()
+RECIPIENTS = config.report_recipients
 # Where SignalManager writes JSONL; can override via env
-SCORE_JSONL_PATH = config.score_jsonl_path()
+SCORE_JSONL_PATH = config.score_jsonl_path
 
 def _html_to_text(s: str) -> str:
     if not s:
@@ -97,8 +97,8 @@ load_report_dotenv()
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
-TAKER_FEE = Decimal(config.taker_fee())
-MAKER_FEE = Decimal(config.maker_fee())
+TAKER_FEE = Decimal(config.taker_fee)
+MAKER_FEE = Decimal(config.maker_fee)
 
 DEBUG = os.getenv("REPORT_DEBUG", "0").strip() in {"1", "true", "TRUE", "yes", "Yes"}
 

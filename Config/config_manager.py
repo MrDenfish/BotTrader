@@ -373,7 +373,7 @@ class CentralConfig:
 
     @property
     def in_docker(self):
-        return self.in_docker
+        return running_in_docker()
 
     @property
     def webhook_api_key_path(self):
