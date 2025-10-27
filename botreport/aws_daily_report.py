@@ -778,12 +778,11 @@ def compute_cash_vs_invested(conn, exposures):
 
 def build_fast_rt_sql(table_name: str, lookback_minutes: int = None):
     """
-    Build SQL to find ≤60s roundtrips.
-    - Restricts to a recent window (default 24h) to keep the section fresh and fast.
-    - Prefers pairing on link_key (parent_id) when available.
-    - Falls back to nearest opposite-side execution when either side lacks link_key.
+    ≤60s roundtrips with realized, fees-aware PnL.
+    - Time-windowed (default 24h via FAST_RT_LOOKBACK_MINUTES)
+    - Prefer parent_id link when available; fall back if missing on either side
+    - Deterministic pairing when timestamps tie (order_id tie-break)
     """
-    # Default to 24h unless caller overrides via env
     if lookback_minutes is None:
         try:
             lookback_minutes = int(os.getenv("FAST_RT_LOOKBACK_MINUTES", "1440"))
@@ -797,10 +796,10 @@ WITH execs AS (
   SELECT
       e.order_id                                     AS id,
       e.symbol                                       AS symbol,
-      e.side                                         AS side,
+      LOWER(e.side)                                  AS side,
       e.size::numeric(38,18)                         AS qty,
       e.price::numeric(38,18)                        AS price,
-      COALESCE(e.total_fees_usd, 0)::numeric(38,18)  AS fee,
+      COALESCE(e.total_fees_usd, 0)::numeric(38,18)  AS fee_usd,
       e.order_time::timestamptz                      AS exec_time,
       e.parent_id                                    AS link_key,
       e.status                                       AS status
@@ -816,43 +815,88 @@ paired AS (
       a.side             AS entry_side,
       a.qty              AS entry_qty,
       a.price            AS entry_price,
-      a.fee              AS entry_fee,
+      a.fee_usd          AS entry_fee_usd,
       a.exec_time        AS entry_time,
+
       b.id               AS exit_id,
       b.side             AS exit_side,
       b.qty              AS exit_qty,
       b.price            AS exit_price,
-      b.fee              AS exit_fee,
+      b.fee_usd          AS exit_fee_usd,
       b.exec_time        AS exit_time,
+
       EXTRACT(EPOCH FROM (b.exec_time - a.exec_time))::int AS hold_seconds
   FROM execs a
   JOIN LATERAL (
       SELECT *
       FROM execs b
       WHERE b.symbol = a.symbol
-        AND b.exec_time > a.exec_time
         AND b.side <> a.side
+        -- strictly later, with tie-break when same second
+        AND (b.exec_time > a.exec_time OR (b.exec_time = a.exec_time AND b.id > a.id))
         -- Pairing preference:
-        -- 1) If both link_keys exist, require equality (true “pair”).
-        -- 2) Else, if either side lacks link_key, allow a best-effort nearest match.
         AND (
              (a.link_key IS NOT NULL AND b.link_key = a.link_key)
-             OR
-             (a.link_key IS NULL OR b.link_key IS NULL)
+             OR (a.link_key IS NULL OR b.link_key IS NULL)
         )
-      ORDER BY b.exec_time
+      ORDER BY b.exec_time, b.id
       LIMIT 1
   ) b ON TRUE
+),
+realized AS (
+  SELECT
+      entry_id, exit_id, symbol,
+      entry_side, entry_qty, entry_price, entry_fee_usd, entry_time,
+      exit_side,  exit_qty,  exit_price,  exit_fee_usd,  exit_time,
+      hold_seconds,
+
+      LEAST(entry_qty, exit_qty) AS matched_qty,
+
+      -- scale each leg's fee by its matched fraction
+      CASE
+        WHEN entry_qty IS NULL OR entry_qty = 0 THEN 0
+        ELSE entry_fee_usd * (LEAST(entry_qty, exit_qty) / NULLIF(entry_qty,0))
+      END AS entry_fee_used,
+
+      CASE
+        WHEN exit_qty IS NULL OR exit_qty = 0 THEN 0
+        ELSE exit_fee_usd * (LEAST(entry_qty, exit_qty) / NULLIF(exit_qty,0))
+      END AS exit_fee_used
+  FROM paired
+),
+pnl AS (
+  SELECT
+      *,
+      (entry_fee_used + exit_fee_used)                                         AS fees_used_usd,
+      -- Sign convention: positive when the roundtrip closes profitably
+      (matched_qty * (exit_price - entry_price) *
+          CASE WHEN entry_side='buy' THEN 1 ELSE -1 END
+      ) - (entry_fee_used + exit_fee_used)                                     AS pnl_usd,
+
+      -- net % relative to entry notional
+      CASE
+        WHEN entry_price = 0 OR matched_qty = 0 THEN NULL
+        ELSE 100.0 * (
+          ( (matched_qty * (exit_price - entry_price) *
+              CASE WHEN entry_side='buy' THEN 1 ELSE -1 END
+            ) - (entry_fee_used + exit_fee_used)
+          ) / (matched_qty * entry_price)
+        )
+      END                                                                      AS pnl_pct
+  FROM realized
 )
 SELECT
     entry_id, exit_id, symbol,
-    entry_side, entry_qty, entry_price, entry_fee, entry_time,
-    exit_side,  exit_qty,  exit_price,  exit_fee,  exit_time,
+    entry_side, entry_qty, entry_price, entry_fee_usd, entry_time,
+    exit_side,  exit_qty,  exit_price,  exit_fee_usd,  exit_time,
     hold_seconds,
-    LEAST(entry_qty, exit_qty) * entry_price                                              AS notional_entry,
-    LEAST(entry_qty, exit_qty) * (exit_price - entry_price) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END AS pnl_abs,
-    100.0 * (exit_price / NULLIF(entry_price,0) - 1.0) * CASE WHEN entry_side='buy' THEN 1 ELSE -1 END     AS pnl_pct
-FROM paired
+    matched_qty,
+    fees_used_usd,
+    -- keep notional entry for reference/debugging
+    (matched_qty * entry_price)                                                AS notional_entry,
+    pnl_usd,
+    pnl_pct
+FROM pnl
 WHERE hold_seconds BETWEEN 0 AND 60
 ORDER BY entry_time DESC
 LIMIT 200;
@@ -873,50 +917,39 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         msg = f"{type(e).__name__}: {str(e)}"
         if os.getenv("REPORT_DEBUG") == "1":
             print(f"[fast_roundtrips] error: {msg}")
-        html = """
-        <h3>Near-Instant Roundtrips (≤60s)</h3>
-        <p style="color:#b00;">Could not compute fast roundtrips. Ensure REPORT_EXECUTIONS_TABLE points to your fills table and column names match:
-        <code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol, order_id</code>.</p>
-        """.strip() + f"\n<small>{msg}</small>"
+        html = (
+            "<h3>Near-Instant Roundtrips (≤60s)</h3>"
+            "<p style='color:#b00;'>Could not compute fast roundtrips. Ensure REPORT_EXECUTIONS_TABLE points to your fills table and column names match: "
+            "<code>order_time, price, size, total_fees_usd, side, status, parent_id, symbol, order_id</code>.</p>"
+            f"<small>{msg}</small>"
+        )
         return html.strip(), None, None
 
     if df.empty:
-        html = """
-        <h3>Near-Instant Roundtrips (≤60s)</h3>
-        <p>No roundtrips ≤60 seconds in this window.</p>
-        """.strip()
-        return html, None, df
+        html = (
+            "<h3>Near-Instant Roundtrips (≤60s)</h3>"
+            "<p>No roundtrips ≤60 seconds in this window.</p>"
+        )
+        return html.strip(), None, df
 
     # --- Normalize types & sanitize ---
-    # Force tz-aware (UTC). No tz_convert() needed afterwards.
     df["entry_time"] = pd.to_datetime(df["entry_time"], utc=True, errors="coerce")
     df["exit_time"]  = pd.to_datetime(df["exit_time"],  utc=True, errors="coerce")
 
-    # Drop any malformed rows
     df = df.dropna(subset=["entry_time", "exit_time", "hold_seconds", "entry_price", "exit_price"])
-
-    # Safety: remove self-pairs or negative holds if any slipped through
     df = df[df["entry_time"] < df["exit_time"]]
     df = df[df["hold_seconds"].astype(int) >= 0]
 
-    # --- Metrics from the live DataFrame (these reflect LIMIT 200 if applied in SQL) ---
+    # Optional cosmetic clamp to avoid “0s” when exchange timestamps share the same second
+    if os.getenv("FAST_RT_CLAMP_ONESEC", "0") == "1":
+        df["hold_seconds"] = df["hold_seconds"].clip(lower=1)
+
+    # --- Metrics ---
     n = int(len(df))
     median_hold = int(float(df["hold_seconds"].median())) if n else 0
-    # pnl_abs can be NaN if upstream left it blank; treat NaN as 0 in the sum
-    total_pnl = float(np.nansum(df["pnl_abs"].astype(float)))
+    total_pnl = float(np.nansum(df["pnl_usd"].astype(float)))
 
-    # --- Build the preview table (top 8) ---
-    view_cols = [
-        "symbol", "entry_time", "exit_time",
-        "hold_seconds", "entry_price", "exit_price",
-        "pnl_abs", "pnl_pct"
-    ]
-    show = df.loc[:, view_cols].copy()
-
-    # Pretty formatting (NaN-safe)
-    show["entry_time"] = show["entry_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-    show["exit_time"]  = show["exit_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-
+    # --- Helpers (define BEFORE using) ---
     def _fmt_money(x):
         try:
             xv = float(x)
@@ -938,10 +971,20 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         except Exception:
             return ""
 
-    show["pnl_abs"]     = show["pnl_abs"].map(_fmt_money)
-    show["pnl_pct"]     = show["pnl_pct"].map(_fmt_pct)
+    # --- Build the preview table (top 8) ---
+    view_cols = [
+        "symbol", "entry_time", "exit_time",
+        "hold_seconds", "entry_price", "exit_price",
+        "pnl_usd", "pnl_pct"
+    ]
+    show = df.loc[:, view_cols].copy()
+
+    show["entry_time"]  = show["entry_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    show["exit_time"]   = show["exit_time"].dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     show["entry_price"] = show["entry_price"].map(_fmt_price)
     show["exit_price"]  = show["exit_price"].map(_fmt_price)
+    show["pnl_usd"]     = show["pnl_usd"].map(_fmt_money)
+    show["pnl_pct"]     = show["pnl_pct"].map(_fmt_pct)
 
     html_table = show.head(8).to_html(index=False, border=1, justify="center", escape=False)
 
@@ -951,7 +994,6 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         now_utc = pd.Timestamp.utcnow().tz_localize("UTC")
         age = now_utc - latest_ts
         if age.total_seconds() > 6 * 3600:
-            # Human-ish formatting for the timedelta
             hours = int(age.total_seconds() // 3600)
             mins = int((age.total_seconds() % 3600) // 60)
             stale_note = f"<p style='color:#b00;'>Note: newest ≤60s roundtrip is {hours}h {mins}m old.</p>"
