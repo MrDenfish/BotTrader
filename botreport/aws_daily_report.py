@@ -13,7 +13,6 @@ import re
 import io
 import csv
 import ssl
-import json
 import pandas as pd
 import numpy as np
 import pg8000.native as pg
@@ -26,6 +25,7 @@ from statistics import mean, pstdev
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import text, create_engine
 from urllib.parse import urlparse, parse_qs
+from Config.config_manager import CentralConfig as Config
 from collections import defaultdict, Counter
 from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
@@ -43,13 +43,19 @@ from .email_report_print_format import build_console_report
 # Config / Environment
 # -------------------------
 SENDER = RECIPIENTS = REGION = None
-
+config = Config()
 try:
     from dotenv import load_dotenv
 except Exception:
     load_dotenv = None
 
 REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
+IN_DOCKER = config.in_docker()
+REGION = config.aws_region()
+SENDER = config.report_sender().strip()
+RECIPIENTS = config.report_recipients()
+# Where SignalManager writes JSONL; can override via env
+SCORE_JSONL_PATH = config.score_jsonl_path()
 
 def _html_to_text(s: str) -> str:
     if not s:
@@ -66,14 +72,14 @@ def load_report_dotenv():
     - Does NOT override already-set env vars (override=False).
     - Falls back to .env_tradebot only if .env_runtime is missing.
     """
-    if os.getenv("IN_DOCKER", "false").lower() == "true":
+    if IN_DOCKER:
         return
     if load_dotenv is None:
         return
 
     here = Path(__file__).resolve()
     project_root = here.parents[1]  # .../BotTrader/
-    in_docker = os.getenv("IN_DOCKER")
+    in_docker = IN_DOCKER
     env_path = Path(project_root / ".env_runtime") if in_docker else (project_root / ".env_tradebot")
     if not env_path.is_absolute():
         env_path = (project_root / env_path).resolve()
@@ -87,19 +93,12 @@ def load_report_dotenv():
         load_dotenv(dotenv_path=fallback, override=False)
 # Ensure env is loaded BEFORE we snapshot env variables below.
 load_report_dotenv()
-IN_DOCKER = os.getenv("IN_DOCKER", "false").lower() == "true"
-REGION = os.getenv("AWS_REGION", "us-west-2")
-SENDER = (os.getenv("REPORT_SENDER", "reports@a1zoobies.com") or "").strip()
-RECIPIENTS = [addr for _, addr in getaddresses([os.getenv("REPORT_RECIPIENTS", "dennfish@gmail.com")]) if addr]
-# Where SignalManager writes JSONL; can override via env
-SCORE_JSONL_PATH = os.getenv("SCORE_JSONL_PATH", os.path.join("logs", "score_log.jsonl"))
-
 
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
-TAKER_FEE = Decimal(os.getenv("TAKER_FEE", "0.0040"))
-MAKER_FEE = Decimal(os.getenv("MAKER_FEE", "0.0025"))
+TAKER_FEE = Decimal(config.taker_fee())
+MAKER_FEE = Decimal(config.maker_fee())
 
 DEBUG = os.getenv("REPORT_DEBUG", "0").strip() in {"1", "true", "TRUE", "yes", "Yes"}
 
@@ -258,8 +257,8 @@ def split_schema_table(qualified: str):
     q = qualified.strip().strip('"')
     if "." in q:
         s, t = q.split(".", 1)
-        return (s.strip('"') or "public", t.strip('"'))
-    return ("public", q)
+        return s.strip('"') or "public", t.strip('"')
+    return "public", q
 
 def qident(name: str) -> str:
     return '"' + name.replace('"','""') + '"'
@@ -709,37 +708,62 @@ def compute_max_drawdown(conn):
     if not ts_col:
         return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no time-like column on {tbl}"]
 
+    # New: allow ignoring the early 'flat bank' region to avoid % blowups
+    try:
+        min_start_equity = float(os.getenv("REPORT_MDD_MIN_START_EQUITY", "500"))
+    except Exception:
+        min_start_equity = 500.0
+
+    # Build cumulative equity and running peak; then anchor at first equity >= threshold
     q = f"""
         WITH t AS (
-          SELECT {qident(ts_col)} AS ts, COALESCE({qident(pnl_col)},0) AS pnl
+          SELECT {qident(ts_col)}::timestamptz AS ts,
+                 COALESCE({qident(pnl_col)}, 0)::numeric AS pnl
           FROM {qualify(tbl)}
           WHERE {qident(pnl_col)} IS NOT NULL
         ),
-        c AS (
+        c AS (  -- equity curve
           SELECT ts,
                  SUM(pnl) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS equity
           FROM t
         ),
-        d AS (
+        anchor AS (  -- first time equity exceeds threshold
+          SELECT MIN(ts) AS ts_anchor
+          FROM c
+          WHERE equity >= {min_start_equity}
+        ),
+        c2 AS (  -- filtered equity after anchor (fallback to all if never reached)
+          SELECT c.*
+          FROM c
+          LEFT JOIN anchor a ON TRUE
+          WHERE a.ts_anchor IS NULL OR c.ts >= a.ts_anchor
+        ),
+        d AS (  -- running peak and drawdowns on filtered curve
           SELECT ts, equity,
                  MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS run_max
-          FROM c
+          FROM c2
         )
         SELECT
-          MIN((equity - run_max) / NULLIF(run_max,0.0)) AS min_frac,
-          MIN(equity - run_max) AS min_abs,
-          MAX(run_max) AS peak_eq,
-          MIN(equity) AS trough_eq
+          MIN( (equity - run_max) / NULLIF(run_max, 0.0) ) AS min_frac,
+          MIN( equity - run_max )                          AS min_abs,
+          MAX(run_max)                                     AS peak_eq,
+          MIN(equity)                                      AS trough_eq
         FROM d
     """
     min_frac, min_abs, peak_eq, trough_eq = conn.run(q)[0]
+
     if min_frac is None or peak_eq in (None, 0):
         dd_pct = 0.0
     else:
         dd_pct = abs(float(min_frac) * 100.0)
+
     dd_abs = abs(float(min_abs or 0.0))
-    notes.append(f"Drawdown source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
+    notes.append(
+        f"Drawdown source: {tbl} pnl_col={pnl_col} ts_col={ts_col} "
+        f"min_start_equity={min_start_equity}"
+    )
     return dd_pct, dd_abs, float(peak_eq or 0.0), float(trough_eq or 0.0), notes
+
 
 def compute_cash_vs_invested(conn, exposures):
     invested = float(exposures.get("total_notional", 0.0) if exposures else 0.0)
@@ -904,7 +928,7 @@ LIMIT 200;
 
 def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     try:
-        lookback = int(os.getenv("FAST_RT_LOOKBACK_MINUTES", "1440"))
+        lookback = int(config.report_lookback_minutes)
         with engine.begin() as conn:
             df = pd.read_sql(
                 build_fast_rt_sql(
@@ -941,7 +965,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     df = df[df["hold_seconds"].astype(int) >= 0]
 
     # Optional cosmetic clamp to avoid “0s” when exchange timestamps share the same second
-    if os.getenv("FAST_RT_CLAMP_ONESEC", "0") == "1":
+    if os.getenv("FAST_RT_CLAMP_ONESEC", "1") == "1":
         df["hold_seconds"] = df["hold_seconds"].clip(lower=1)
 
     # --- Metrics ---
@@ -1429,11 +1453,11 @@ def main():
     open_pos_out = open_pos if REPORT_SHOW_DETAILS else []
     trades_out = recent_trades if REPORT_SHOW_DETAILS else []
     try:
-        score_path = os.getenv("SCORE_JSONL_PATH", "/app/logs/score_log.jsonl")
+        score_path = SCORE_JSONL_PATH
         df = load_score_jsonl(score_path, since_hours=24)
         metrics = score_snapshot_metrics_from_jsonl(df)
         score_section_html = render_score_section_jsonl(metrics)
-        tpsl_path = os.getenv("TP_SL_LOG_PATH", "/app/logs/tpsl.jsonl")
+        tpsl_path = config.tp_sl_log_path
         tpsl_rows = load_tpsl_jsonl(tpsl_path, since_hours=24)
         tpsl_per, tpsl_gsum = aggregate_tpsl(tpsl_rows)
         tpsl_table_html = render_tpsl_section(tpsl_per, tpsl_gsum)

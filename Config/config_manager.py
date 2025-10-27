@@ -37,7 +37,7 @@ class CentralConfig:
         """Set default values for all configuration attributes."""
         self.db_url = self.db_user = self.db_password = self.db_host = None
         self.db_port = self.db_name = self._api_url = self._json_config = None
-        self._phone = self._report_sender = self._smtp_password = self._report_recipient = self._email_alerts = None
+        self._phone = self._report_sender = self._smtp_password = self._report_recipients = self._email_alerts = None
         self._order_size_fiat = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
@@ -60,6 +60,7 @@ class CentralConfig:
         self._tp_min_ticks = self._sl_limit_offset_ticks = self._score_buy_target = self._score_sell_target =  None
         self._allow_buys_on_red_day = self._flip_hysteresis_pct = self._cooldown_bars = self._enrich_limit =  None
         self._sl_limit_offset_ticks = self._min_l1_notional_usd = self._pre_bracket_sigma_ratio = None
+        self._aws_region = self._score_jsonl_path = self._tp_sl_log_path = self._report_lookback_minutes = None
         self.exchange: Optional[Any] = None
 
         # Default values
@@ -90,6 +91,8 @@ class CentralConfig:
 
     def _load_environment_variables(self):
         env_vars = {
+            "_in_docker": "IN_DOCKER",
+            "_aws_region": "AWS_REGION",
             "db_host": "DB_HOST",
             "db_port": "DB_PORT",
             "db_name": "DB_NAME",
@@ -98,8 +101,9 @@ class CentralConfig:
             "_db_connection_threshold": "DB_CONNECTION_THRESHOLD",
             "db_password": "DB_PASSWORD",
             "_email_alerts": "EMAIL_ALERTS",
-            "_report_recipient": "REPORT_RECIPIENT",
+            "_report_recipients": "REPORT_RECIPIENTS",
             "_report_sender": "REPORT_SENDER",
+            "_report_lookback_minutes": "REPORT_LOOKBACK_MINUTES",
             "_email_password": "SMTP_PASSWORD",
             "_log_level": "LOG_LEVEL",
             "_quote_currency": "QUOTE_CURRENCY",
@@ -161,10 +165,12 @@ class CentralConfig:
             "_enrich_limit": "ENRICH_LIMIT",
             "_currency_pairs_ignored": "CURRENCY_PAIRS_IGNORED",
             "_shill_coins": "SHILL_COINS",
-            "_sleep_time": 'SLEEP',
+            "_sleep_time": "SLEEP",
+            "_tp_sl_log_path": "TP_SL_LOG_PATH",
+            "_score_jsonl_path": "SCORE_JSONL_PATH",
             # "_pc_url": 'PC_URL',
-            "_maker_fee": 'MAKER_FEE',
-            "_taker_fee": 'TAKER_FEE',
+            "_maker_fee": "MAKER_FEE",
+            "_taker_fee": "TAKER_FEE",
 
         }
 
@@ -346,6 +352,28 @@ class CentralConfig:
         except (FileNotFoundError, json.JSONDecodeError) as e:
             print(f"Error loading tb CDP API key JSON: {e}")
             exit(1)
+
+    @property
+    def report_recipients(self):
+        return self._report_recipients
+    @property
+    def report_lookback_minutes(self):
+        return self._report_lookback_minutes
+
+    @property
+    def score_jsonl_path(self):
+        return self._score_jsonl_path
+    @property
+    def tp_sl_log_path(self):
+        return self._tp_sl_log_path
+
+    @property
+    def aws_region(self):
+        return self._aws_region
+
+    @property
+    def in_docker(self):
+        return self.in_docker
 
     @property
     def webhook_api_key_path(self):

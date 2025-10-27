@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 from sqlalchemy.engine import Engine, Connection
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncConnection
+from Config.config_manager import CentralConfig as Config
 from typing import Dict, Any, Optional, Union, Tuple, List
 
 
@@ -44,6 +45,8 @@ CASH_SYM_COL        = os.getenv("REPORT_CASH_SYM_COL")   or "symbol"
 CASH_AMT_COL        = os.getenv("REPORT_CASH_AMT_COL")   or "balance"
 CASH_SYMBOLS        = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMBOLS", "USD,USDC,USDT").split(",") if s.strip()]
 
+config = Config()
+SCORE_JSONL_PATH = config.score_jsonl_path()
 # -------------------------
 # Helpers
 # -------------------------
@@ -147,7 +150,7 @@ def load_score_jsonl(path: str = None, since_hours: int = 24) -> pd.DataFrame:
     Read score JSONL and return a pandas DataFrame filtered to the last `since_hours`.
     Returns an empty DataFrame if the file doesn't exist or is unreadable.
     """
-    base = Path(path or os.getenv("SCORE_JSONL_PATH") or "/app/logs/score_log.jsonl")
+    base = Path(SCORE_JSONL_PATH)
 
     # If directory or file is missing, just return empty DF
     if not base.parent.exists():
