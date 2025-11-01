@@ -5,11 +5,32 @@ BotTrader/
 │    ├── accumulation_manager.py
 ├── Api_manager                               
 │    ├── __init__.py
-│    ├── __pycache__
 │    ├── api_exceptions.py
 │    ├── coinbase_api.py
 │    ├── api_manager.py
-│         
+├── botreport
+|    ├── emailio
+│           ├── __int__.py
+│           ├── ses_client.py
+|    ├── render
+|       ├── html_templates
+│           ├── daily_report.html.j2.html
+|       ├── text_templates
+│           ├── daily_report.txt.j2
+│       ├── __int__.py
+│       ├── base.py
+│       ├── text_renderer.py
+│    ├── __init__.py
+│    ├── __main__.py
+│    ├── aws_daily_report.py
+│    ├── compute.py
+│    ├── config.py
+│    ├── data_access.py
+│    ├── db.py
+│    ├── email_report_print_format.py
+│    ├── emailer.py
+│    ├── metrics_compute.py
+│    └── models.py
 ├── Config
 │    ├── __int__.py
 │    ├── __pycache__
@@ -36,9 +57,12 @@ BotTrader/
 |         ├── entrypoint.sh
 │    ├── sync-env-to-ssm.sh
 │    └── update.sh
+├── logs
+│    ├── shared
+│    ├── sighook
+│    └── webhook
 ├── MarketDataManager
 │    ├── ___int___.py
-│    ├── __pycache__
 │    ├── asset_manager.py
 │    ├── market_data_manager.py
 │    ├── market_manager.py
@@ -48,46 +72,34 @@ BotTrader/
 │    └── webhook_order_book.py
 ├── ProfitDataManager
 │    ├── __int__.py
-│    ├── __pycache__
 │    ├── fee_manager.py
 │    ├── performance_tracker.py
 │    └── profit_data_manager.py
 ├── SharedDataManager
-│    ├── __pycache__
+│    ├── __init__.py
+│    ├── leader_board.py
+│    ├── leaderboard_runner.py
+|    ├── shared_data_view.py
 │    ├── trade_recorder.py
 │    └── shared_data_manager.py
 ├── Shared_Utils
 │    ├── __init__.py
-│    ├── __pycache__
 │    ├── alert_system.py
 │    ├── database_checker.py
 │    ├── dates_and_times.py
 │    ├── enum.py
 │    ├── exchange_manager.py
 │    ├── logging_manager.py
+│    ├── paths.py
 │    ├── precision.py
 │    ├── print_data.py
+|    ├── runtime_env.py
 │    ├── scheduler.py
 │    ├── snapshots_manager.py
+|    ├── url_helper.py
 │    └── utility.py
-├── project file tree
-├── discription.py
-├── docker-compose.digital_ocean.yml
-├── docker-compose.mac.old.yaml
-├── docker-compose.network.digital_ocean.old.yaml
-├── docker-compose.override.yml
-├── docker-compose.yml
-├── environment.yml
-├── logs
-│    ├── listener_logs
-│    ├── logs
-│    └── signal_logs
-├── profile_output.prof
-├── requirements.in
-├── requirements.txt
 ├── sighook
 │    ├── __init__.py
-│    ├── __pycache__
 │    ├── alerts_msgs_webhooks.py
 │    ├── async_functions.py
 │    ├── holdings_process_manager.py
@@ -99,20 +111,28 @@ BotTrader/
 │    ├── signal_manager.py
 │    └── trading_strategy.py
 ├── TableModels
-│    ├── base.py
 │    ├── __init__.py
+|    ├── active_symbols.py
 │    ├── base.py
-│    ├── database_table_model.py
+│    ├── database_table_models.py
 │    ├── market_snapshot.py
 │    ├── ohlcv_data.py
 │    ├── order_management.py
 │    ├── passive_orders.py
 │    ├── shared_data.py
 │    ├── trade_record.py
+|    └── trade_record_debug.py
+├── TestDebugMaintenance
+│    ├── __init__.py
+|    ├── debug_config.py
+│    ├── debug_env.py
+│    ├── debug_sos.py
+│    ├── debugger.py
+│    ├── test_buy_action.py
+│    ├── test_ohlcv_integrity.py
+|    └── trade_record_maintenance.py
 └── webhook
-    ├── Dockerfile
     ├── __init__.py
-    ├── __pycache__
     ├── listener.py
     ├── requirements.txt
     ├── webhook_manager.py
@@ -122,10 +142,14 @@ BotTrader/
     ├── webhook_validate_orders.py
     ├── websocket_helper.py
     └── websocket_market_manager.py
+├── .env_runtime
+├── .env_tradebot
+├── docker-compose.aws.yaml
+├── docker-compose.yml
+├── env_AWS
+├── environment.yml
 ├── main.py                                         # ✅ entry point for the project
 ├── Discription
-├── bot_sync.sh
-├── deploy_to_droplet.sh
 ├── discription.py
 ├── docker-compose.aws.yml
 ├── docker-compose.yml
@@ -135,5 +159,7 @@ BotTrader/
 ├── requirements-report.txt
 ├── requirements.in
 ├── requirements.txt
+├── bot_sync.sh
+├── deploy_to_droplet.sh
 ├── sync_cleanup_and_push.sh
 ├── sync_pull_and_deploy.sh
