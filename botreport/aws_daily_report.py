@@ -351,7 +351,7 @@ def render_score_section_html(metrics: dict) -> str:
 
 def run_queries(conn):
     errors = []
-    detect_notes = ["Build:v6"]
+    detect_notes = ["Build:v7"]  # Increment version
 
     # Realized PnL (windowed if timestamp exists)
     try:
@@ -373,10 +373,10 @@ def run_queries(conn):
             if ts_col:
                 low_sql, high_sql = _time_window_sql(qident(ts_col))
                 q = f"""
-                            SELECT COALESCE(SUM({qident(pnl_col)}), 0)
-                            FROM {qualify(tbl_pnl)}
-                            WHERE {low_sql} {high_sql}
-                        """
+                    SELECT COALESCE(SUM({qident(pnl_col)}), 0)
+                    FROM {qualify(tbl_pnl)}
+                    WHERE {low_sql} {high_sql}
+                """
                 detect_notes.append(f"PnL windowed: table=({tbl_pnl}) col={pnl_col} ts={ts_col}")
             else:
                 q = f"SELECT COALESCE(SUM({qident(pnl_col)}), 0) FROM {qualify(tbl_pnl)}"
@@ -387,34 +387,55 @@ def run_queries(conn):
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
 
-    # Positions
+    # Positions - FIXED: Calculate from windowed trades, not cumulative view
     open_pos = []
     try:
-        tbl_pos = REPORT_POSITIONS_TABLE
-        cols_pos = table_columns(conn, tbl_pos)
+        tbl_trades = REPORT_TRADES_TABLE
+        cols_trades = table_columns(conn, tbl_trades)
+
         if DEBUG:
-            detect_notes.append(f"Columns({tbl_pos}): {sorted(cols_pos)}")
-        if not cols_pos:
-            raise RuntimeError(f"Table not found: {tbl_pos}")
+            detect_notes.append(f"Columns({tbl_trades}): {sorted(cols_trades)}")
 
-        qty_col = REPORT_COL_POS_QTY if (REPORT_COL_POS_QTY and REPORT_COL_POS_QTY in cols_pos) else \
-                  pick_first_available(cols_pos, ["position_qty","pos_qty","qty","size","amount"])
-        if not qty_col:
-            raise RuntimeError(f"No qty-like column found on {tbl_pos}")
+        if not cols_trades:
+            raise RuntimeError(f"Table not found: {tbl_trades}")
 
-        price_col = pick_first_available(cols_pos, ["avg_entry_price","avg_price","price"])
-        price_sql = f"{qident(price_col)} AS avg_price" if price_col else "NULL::numeric AS avg_price"
+        # Verify required columns exist
+        if 'symbol' not in cols_trades:
+            raise RuntimeError(f"Missing 'symbol' column in {tbl_trades}")
+        if 'side' not in cols_trades:
+            raise RuntimeError(f"Missing 'side' column in {tbl_trades}")
+        if 'size' not in cols_trades:
+            raise RuntimeError(f"Missing 'size' column in {tbl_trades}")
+
+        # Build time window filter
+        time_window_sql, upper_bound_sql = _time_window_sql("order_time")
 
         q = f"""
-            SELECT symbol,
-                   {qident(qty_col)} AS qty,
-                   {price_sql}
-            FROM {qualify(tbl_pos)}
-            WHERE COALESCE({qident(qty_col)}, 0) <> 0
+            SELECT 
+                symbol,
+                SUM(CASE 
+                    WHEN LOWER(side::text) = 'buy' THEN size 
+                    WHEN LOWER(side::text) = 'sell' THEN -size
+                    ELSE 0
+                END) AS qty,
+                AVG(price) AS avg_price
+            FROM {qualify(tbl_trades)}
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND status = 'filled'
+            GROUP BY symbol
+            HAVING ABS(SUM(CASE 
+                WHEN LOWER(side::text) = 'buy' THEN size 
+                ELSE -size 
+            END)) > 0.0001
             ORDER BY symbol
         """
         open_pos = conn.run(q)
-        detect_notes.append(f"Positions source: {tbl_pos} qty_col={qty_col} price_col={price_col or 'NULL'}")
+        detect_notes.append(
+            f"Positions: WINDOWED calculation from {tbl_trades} "
+            f"(shows net positions from trades within time window only)"
+        )
+
     except Exception as e1:
         errors.append(f"Positions query failed: {e1}")
 
