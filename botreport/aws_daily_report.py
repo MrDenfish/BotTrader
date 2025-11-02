@@ -1,13 +1,86 @@
-
-
 #!/usr/bin/env python3
 
-""" AWS Daily Report Emailer
-Scheduling is managed externally
- - host-level cron job
- - 6 hour cycle.
+"""
+AWS Daily Trading Report Emailer
 
- """
+Generates and delivers daily trading performance reports via email.
+Queries windowed trade/position data, calculates metrics, builds HTML/CSV,
+and sends via AWS SES.
+
+Scheduling: Managed externally (cron runs every 6 hours)
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+SECTION 1: Configuration & Imports .......................... Lines 30-100
+    - Environment variables
+    - Constants and configuration
+    - Library imports
+
+SECTION 2: Database Connections ............................. Lines 101-200
+    - Connection factory (get_db_conn)
+    - SSL context handling
+    - SQLAlchemy engine setup
+    - SSM parameter retrieval
+
+SECTION 3: Schema Helpers & Query Builders .................. Lines 201-580
+    - Table/column detection (table_columns, pick_first_available)
+    - SQL identifiers (qident, qualify)
+    - Time window SQL generation (_time_window_sql)
+
+SECTION 4: Core Queries ..................................... Lines 581-680
+    - run_queries() - Main query orchestrator
+    - Position calculation (windowed)
+    - PnL calculation (windowed)
+    - Trade fetching
+
+SECTION 5: Metric Calculations .............................. Lines 681-900
+    - compute_exposures() - Position concentration
+    - compute_unrealized_pnl() - Mark-to-market
+    - compute_win_rate() - Win/loss statistics
+    - compute_trade_stats_windowed() - Avg win/loss, profit factor
+    - compute_max_drawdown() - Peak-to-trough analysis
+    - compute_cash_vs_invested() - Capital allocation
+
+SECTION 6: Fast Roundtrip Analysis .......................... Lines 901-930
+    - build_fast_rt_sql() - SQL for ≤60s trades
+    - fetch_fast_roundtrips() - Execution and CSV export
+
+SECTION 7: HTML Generation .................................. Lines 931-1060
+    - build_html() - Main HTML builder
+    - render_score_section_html() - Signal scores
+    - render_fees_section_html() - Break-even thresholds
+
+SECTION 8: CSV & File I/O ................................... Lines 1061-1210
+    - build_csv() - CSV export
+    - save_report_copy() - Local file storage
+
+SECTION 9: Email Delivery ................................... Lines 1211-1220
+    - send_email() - SES wrapper
+
+SECTION 10: Main Entry Point ................................ Lines 1221-END
+    - main() - Orchestrates entire report flow
+    - Error handling and output routing
+
+================================================================================
+QUICK NAVIGATION TIPS
+================================================================================
+
+To find specific functionality:
+    - Database connection issues? → Section 2
+    - Query errors? → Section 4
+    - Position calculation? → Section 4, line ~599
+    - Metric wrong? → Section 5
+    - Email formatting? → Section 7
+    - CSV export? → Section 8
+
+Use Ctrl+G (Windows/Linux) or Cmd+L (Mac) to jump to line number.
+Use Ctrl+F12 to see structure outline.
+
+================================================================================
+"""
+
 import os
 import re
 import io
@@ -39,9 +112,9 @@ from botreport.email_report_print_format import build_console_report
 
 # (no-op) from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
 
-# -------------------------
-# Config / Environment
-# -------------------------
+# ============================================================================
+# Section 1: Configuration & Imports
+# ============================================================================
 SENDER = RECIPIENTS = REGION = None
 config = Config()
 try:
@@ -160,9 +233,11 @@ def _get_ses():
             raise RuntimeError("SES requested but boto3 is not available") from e
         ses = boto3.client("ses", region_name=REGION)
     return ses
-# -------------------------
-# DB Connection Helpers
-# -------------------------
+
+# ============================================================================
+# SECTION 2: Database Connections
+# ============================================================================
+# Connection factory, SSL handling, SSM parameter retrieval
 
 def get_param(name: str) -> str:
     return _get_ssm().get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
@@ -249,9 +324,10 @@ def get_sa_engine():
 
     return create_engine(f"postgresql+pg8000://{user}:{pwd}@{host}:{port}/{name}")
 
-# -------------------------
-# Identifier / info_schema
-# -------------------------
+# ============================================================================
+# SECTION 3: Schema Helpers & Query Builders
+# ============================================================================
+# Table/column detection, SQL identifiers, time window generation
 
 def split_schema_table(qualified: str):
     q = qualified.strip().strip('"')
@@ -345,9 +421,11 @@ def render_score_section_html(metrics: dict) -> str:
 
     return "\n".join(html)
 
-# -------------------------
-# Core Queries (schema-aware)
-# -------------------------
+
+# ============================================================================
+# SECTION 4: Core Queries
+# ============================================================================
+# Main query orchestrator, position/PnL/trade fetching
 
 def run_queries(conn):
     errors = []
@@ -536,9 +614,10 @@ def run_queries(conn):
 
     return total_pnl, open_pos, recent_trades, errors, detect_notes
 
-# -------------------------
-# Exposure Snapshot
-# -------------------------
+# ============================================================================
+# SECTION 5: Metric Calculations
+# ============================================================================
+# Exposure, unrealized PnL, win rate, drawdown, capital allocation
 
 def compute_exposures(open_pos, top_n: int = 3):
     items = []
@@ -565,9 +644,11 @@ def compute_exposures(open_pos, top_n: int = 3):
         it["pct"] = (it["notional"] / total * 100.0) if total > 0 else 0.0
     return {"total_notional": total, "items": items[:top_n], "all_items": items}
 
-# -------------------------
-# Prices & Metrics
-# -------------------------
+
+# ============================================================================
+# Section 4: Metric Calculations & Prices
+# ============================================================================
+
 
 def _latest_price_map(conn, price_table: str):
     cols = table_columns(conn, price_table)
@@ -833,9 +914,10 @@ def compute_cash_vs_invested(conn, exposures):
     notes.append(f"Cash source: {tbl} sym_col={sym_col} amt_col={amt_col} symbols={REPORT_CASH_SYMBOLS}")
     return cash, invested, invested_pct, notes
 
-# -------------------------
-# Fast roundtrips (≤60s)
-# -------------------------
+# ============================================================================
+# SECTION 6: Fast Roundtrip Analysis
+# ============================================================================
+# Near-instant (≤60s) trade detection and analysis
 
 def build_fast_rt_sql(table_name: str, lookback_minutes: int = None):
     """
@@ -1082,9 +1164,10 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
 
     return html, csv_out, df
 
-# -------------------------
-# Email / CSV Builders
-# -------------------------
+# ============================================================================
+# SECTION 7: HTML Generation
+# ============================================================================
+# Email body construction, section builders, formatting
 def render_fees_section_html(break_even: dict) -> str:
     if not break_even:
         return ""
@@ -1251,6 +1334,10 @@ def build_html(total_pnl,
         <p style="color:#666">CSV attachment includes these tables.</p>
         </body></html>"""
 
+# ============================================================================
+# SECTION 8: CSV & File I/O
+# ============================================================================
+# CSV export and local file storage
 def build_csv(total_pnl,
               open_pos,
               recent_trades,
@@ -1434,6 +1521,10 @@ def save_report_copy(csv_bytes: bytes, out_dir="/tmp"):  # was "/app/logs"
     with open(os.path.join(out_dir, f"trading_report_{ts}.csv"), "wb") as f:
         f.write(csv_bytes)
 
+# ============================================================================
+# SECTION 9: Email Delivery
+# ============================================================================
+# SES email sending wrapper
 def send_email(html, csv_bytes):
     send_email_via_ses(
         subject="Daily Trading Bot Report",
@@ -1445,6 +1536,10 @@ def send_email(html, csv_bytes):
     )
 
 
+# ============================================================================
+# SECTION 10: Main Entry Point
+# ============================================================================
+# Report orchestration, error handling, output routing
 
 def main():
     conn = get_db_conn()
@@ -1470,7 +1565,7 @@ def main():
         max_dd_pct, max_dd_abs, peak_eq, trough_eq, dd_notes = compute_max_drawdown(conn)
         detect_notes.extend(dd_notes)
 
-        exposures = compute_exposures(open_pos, top_n=3)
+        exposures = compute_exposures(open_pos, top_n=10)
         cash_usd, invested_usd, invested_pct, cash_notes = compute_cash_vs_invested(conn, exposures)
         detect_notes.extend(cash_notes)
 
