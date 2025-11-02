@@ -402,39 +402,55 @@ def run_queries(conn):
         # Verify required columns exist
         if 'symbol' not in cols_trades:
             raise RuntimeError(f"Missing 'symbol' column in {tbl_trades}")
-        if 'side' not in cols_trades:
-            raise RuntimeError(f"Missing 'side' column in {tbl_trades}")
-        if 'size' not in cols_trades:
-            raise RuntimeError(f"Missing 'size' column in {tbl_trades}")
+        if 'ts' not in cols_trades:
+            raise RuntimeError(f"Missing 'ts' column in {tbl_trades}")
+
+        has_qty_signed = 'qty_signed' in cols_trades
 
         # Build time window filter
-        time_window_sql, upper_bound_sql = _time_window_sql("order_time")
+        time_window_sql, upper_bound_sql = _time_window_sql("ts")
 
-        q = f"""
-            SELECT 
-                symbol,
-                SUM(CASE 
-                    WHEN LOWER(side::text) = 'buy' THEN size 
-                    WHEN LOWER(side::text) = 'sell' THEN -size
-                    ELSE 0
-                END) AS qty,
-                AVG(price) AS avg_price
-            FROM {qualify(tbl_trades)}
-            WHERE {time_window_sql}
-              {upper_bound_sql}
-              AND status = 'filled'
-            GROUP BY symbol
-            HAVING ABS(SUM(CASE 
-                WHEN LOWER(side::text) = 'buy' THEN size 
-                ELSE -size 
-            END)) > 0.0001
-            ORDER BY symbol
-        """
+        if has_qty_signed:
+            # qty_signed already has the sign (positive for buy, negative for sell)
+            q = f"""
+                    SELECT 
+                        symbol,
+                        SUM(qty_signed) AS qty,
+                        AVG(price) AS avg_price
+                    FROM {qualify(tbl_trades)}
+                    WHERE {time_window_sql}
+                      {upper_bound_sql}
+                    GROUP BY symbol
+                    HAVING ABS(SUM(qty_signed)) > 0.0001
+                    ORDER BY symbol
+                """
+            detect_notes.append(f"Positions: WINDOWED from {tbl_trades} using qty_signed (pre-signed)")
+        else:
+            # Fallback: use size + side columns
+            q = f"""
+                    SELECT 
+                        symbol,
+                        SUM(CASE 
+                            WHEN LOWER(side::text) = 'buy' THEN size 
+                            WHEN LOWER(side::text) = 'sell' THEN -size
+                            ELSE 0
+                        END) AS qty,
+                        AVG(price) AS avg_price
+                    FROM {qualify(tbl_trades)}
+                    WHERE {time_window_sql}
+                      {upper_bound_sql}
+                      AND status = 'filled'
+                    GROUP BY symbol
+                    HAVING ABS(SUM(CASE 
+                        WHEN LOWER(side::text) = 'buy' THEN size 
+                        ELSE -size 
+                    END)) > 0.0001
+                    ORDER BY symbol
+                """
+            detect_notes.append(f"Positions: WINDOWED from {tbl_trades} using size+side")
+
         open_pos = conn.run(q)
-        detect_notes.append(
-            f"Positions: WINDOWED calculation from {tbl_trades} "
-            f"(shows net positions from trades within time window only)"
-        )
+        detect_notes.append(f"Positions calculated: {len(open_pos)} symbols with non-zero qty")
 
     except Exception as e1:
         errors.append(f"Positions query failed: {e1}")
