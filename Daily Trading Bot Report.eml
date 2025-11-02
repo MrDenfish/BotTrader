@@ -1,83 +1,83 @@
 Delivered-To: dennfish@gmail.com
-Received: by 2002:a05:612c:2d02:b0:54b:9b10:c15e with SMTP id iy2csp754829vqb;
-        Sat, 1 Nov 2025 18:48:07 -0700 (PDT)
-X-Google-Smtp-Source: AGHT+IEGdtLPgO1PZkBOE7TIf3MlsKJOHuIPLcmLI6z+w281r2cqG9JqXXGHKGtd4TVyoGJ6TSE5
-X-Received: by 2002:a17:90b:3842:b0:335:2eef:4ca8 with SMTP id 98e67ed59e1d1-34083088cfamr10490204a91.33.1762048087664;
-        Sat, 01 Nov 2025 18:48:07 -0700 (PDT)
-ARC-Seal: i=1; a=rsa-sha256; t=1762048087; cv=none;
+Received: by 2002:a05:612c:2d02:b0:54b:9b10:c15e with SMTP id iy2csp757755vqb;
+        Sat, 1 Nov 2025 19:01:20 -0700 (PDT)
+X-Google-Smtp-Source: AGHT+IE4pOWEKUkcNm+iFI92x9BL7VmFXcUkNdakwugzZkSqjgKSrlaP0YQS+bJGxx5ID0FxRzPT
+X-Received: by 2002:a05:6a21:9994:b0:334:a6c6:1533 with SMTP id adf61e73a8af0-348cc8e667cmr11841360637.38.1762048880548;
+        Sat, 01 Nov 2025 19:01:20 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1762048880; cv=none;
         d=google.com; s=arc-20240605;
-        b=IYJQWvqwXRYehI9AOuSP3kphzOn9C5jHHge/jLdsw6S1YriyUF/NqZ7JSqbVEBA96i
-         S58xHVCTs1QgG/GBghKmq+26lKXhHwI8mu9V4iltXnNCKuiixPKnauAVflWcuVpG0yWm
-         VqP31Cx5S6iXLX6SkArVyVpgm25ygAA2/HC3iG2/Tkp/U3eZ19Zyn3kMzmczUYRsnjOe
-         mJJSIAxQskh8KWJxSmfcz5o3KJ+uzFMII0QuLh4qblpht4uJurrCa08MKYG3EVAQ8PWh
-         36FCZpziofFTSoN+epLS3zxttziKn2YII65cKFJL0KTw8CZ4kb5mGlp7v1EvfYKzhkZ+
-         /KcA==
+        b=XRP2FOKd/6/m/2finffzrttQDRhLJtJNXoLw57qzmrY6N2qerKZ6yUxMc4E7chADU2
+         9MzpKG8/sk7jFjGeuM3+nv16oBOtAH+TfhJIOraPrKRxbYqSIavnspQgq8l5DeZeEnjd
+         5Rh87hht0x4s27BW4fnvbgRX3Xvwb62zh9SnbWktkkUwIt/YfPrS4wrggCo9M3LjlfUc
+         AKPyP85CaexRyNKQ0ZujddI53i43b8hdnNCoRyCB4KoI1ZqUFjONF0dgDxqoGPF2kVQU
+         T+ifB40P74Qmqe28aP278seocKTiZ+AkeNcxegdD+J8TsrlY8LSW0RrY6gGa0RAxpYW7
+         KmXA==
 ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
         h=feedback-id:date:message-id:to:from:subject:mime-version
          :dkim-signature:dkim-signature;
-        bh=wQXKHoqdRaXPGzR9KZsPIJeSN0bCS72vqfw7czO3G8E=;
+        bh=WZDP0VDfkPM69E7OkgcmM362lb4CyzONbUHLQ8VdXe4=;
         fh=OwCCBNqpUq8vskC8QJXspjy6kwovRaSiUaRXOaQd5CY=;
-        b=aSyNBNljvazMHJD8XM/jbZCFfAtvPev7k7Tetbrq/TogPq2P1VsHy8GxtbpoYYMqVJ
-         fs1oh/NgHnTdvhe39ADWqrylz8Hm+6OefvV/geXvrY1QTOJ0+eZjocqfYLyFfDX4qjq5
-         wSLi8XXeA7Wv6S2tlhOfd3gZNixcwj0pETJqR3qz+fWi7r9qwez7ajBHo1rqUzh9qH0M
-         jgxd8ICgSZ6i8cdaMhlDNd/O+Za0mIOAin5CHETzSbZvNnxgqGReyqMgjYGbWryA1SLf
-         k8Cc+mQvnbIxZJPL03ymtK166cY0aq/zLN4pzDbZNBSkm6DF1kdxxz09DRJxoB0R/7Hg
-         sSHw==;
+        b=H7IHzGmqUg9Oz7KZE0IyAIOUGsWATrcdUJAXEaB1yI2UIr22tWOdRs8vBJn4B5bIL1
+         1WVzr7m2DzL2824nikKncHY0nBLb0PgSIspVaw6YHpcGL4BDo/yuEYZtGiCe2xEkyOsm
+         Kbm+/8H0Y34r28kEznLiIJirYz9TcUIvj9FK28YMpXJtt1UYgfUSFQgeJVZGOk/LVoOA
+         Kgmkl6wYlGIlRlh7WPcvoqMfdJ5uocDyH1bMNwfmqW1pfhu7PCLwM+Cz1xBgOSRjZEhZ
+         fqq2HSj6Yh6oIPn47qTQXfikgr+DjS5NxIcahv+RK4pW38BrjffkAeYcFufCMb0dtUWO
+         oGdA==;
         dara=google.com
 ARC-Authentication-Results: i=1; mx.google.com;
-       dkim=pass header.i=@a1zoobies.com header.s=ppirjmqiyqqnqvhwfrfd6vspyteddaff header.b=sGudUB8e;
-       dkim=pass header.i=@amazonses.com header.s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx header.b=c5u39V4T;
-       spf=pass (google.com: domain of 0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@mailfrom.a1zoobies.com designates 54.240.27.11 as permitted sender) smtp.mailfrom=0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@mailfrom.a1zoobies.com;
+       dkim=pass header.i=@a1zoobies.com header.s=ppirjmqiyqqnqvhwfrfd6vspyteddaff header.b=DdixL7Fi;
+       dkim=pass header.i=@amazonses.com header.s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx header.b=LdTiEmif;
+       spf=pass (google.com: domain of 0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@mailfrom.a1zoobies.com designates 54.240.27.185 as permitted sender) smtp.mailfrom=0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@mailfrom.a1zoobies.com;
        dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=a1zoobies.com
-Return-Path: <0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@mailfrom.a1zoobies.com>
-Received: from a27-11.smtp-out.us-west-2.amazonses.com (a27-11.smtp-out.us-west-2.amazonses.com. [54.240.27.11])
-        by mx.google.com with ESMTPS id 98e67ed59e1d1-3404f4ee2cesi5297743a91.81.2025.11.01.18.48.07
+Return-Path: <0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@mailfrom.a1zoobies.com>
+Received: from a27-185.smtp-out.us-west-2.amazonses.com (a27-185.smtp-out.us-west-2.amazonses.com. [54.240.27.185])
+        by mx.google.com with ESMTPS id d2e1a72fcca58-7a7dcb17109si3558034b3a.788.2025.11.01.19.01.20
         for <dennfish@gmail.com>
         (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);
-        Sat, 01 Nov 2025 18:48:07 -0700 (PDT)
-Received-SPF: pass (google.com: domain of 0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@mailfrom.a1zoobies.com designates 54.240.27.11 as permitted sender) client-ip=54.240.27.11;
+        Sat, 01 Nov 2025 19:01:20 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@mailfrom.a1zoobies.com designates 54.240.27.185 as permitted sender) client-ip=54.240.27.185;
 Authentication-Results: mx.google.com;
-       dkim=pass header.i=@a1zoobies.com header.s=ppirjmqiyqqnqvhwfrfd6vspyteddaff header.b=sGudUB8e;
-       dkim=pass header.i=@amazonses.com header.s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx header.b=c5u39V4T;
-       spf=pass (google.com: domain of 0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@mailfrom.a1zoobies.com designates 54.240.27.11 as permitted sender) smtp.mailfrom=0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@mailfrom.a1zoobies.com;
+       dkim=pass header.i=@a1zoobies.com header.s=ppirjmqiyqqnqvhwfrfd6vspyteddaff header.b=DdixL7Fi;
+       dkim=pass header.i=@amazonses.com header.s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx header.b=LdTiEmif;
+       spf=pass (google.com: domain of 0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@mailfrom.a1zoobies.com designates 54.240.27.185 as permitted sender) smtp.mailfrom=0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@mailfrom.a1zoobies.com;
        dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=a1zoobies.com
 DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
-	s=ppirjmqiyqqnqvhwfrfd6vspyteddaff; d=a1zoobies.com; t=1762048087;
+	s=ppirjmqiyqqnqvhwfrfd6vspyteddaff; d=a1zoobies.com; t=1762048880;
 	h=Content-Type:MIME-Version:Subject:From:To:Message-ID:Date;
-	bh=wQXKHoqdRaXPGzR9KZsPIJeSN0bCS72vqfw7czO3G8E=;
-	b=sGudUB8eBvTLTexlTKHhHFoidF2FOF+dIt2SfwF1VTgLiCvaGTBrYELhjxIEAwM6
-	K3UPrDpKty/8gQDGOpMGi/iN7iJtX95q7OgQKIn/YqxB13p3x/G/ERuBI5j2VgqZGEF
-	R40w5HPIU/kNyz0otddalXPHy3nb2PacGqjP91HPUTvBjzjGQ4CtBsFKFD9G+iTPdcY
-	Kh29BDLDHPa5tQZbDj5WPjAihNGk7O5TzynWfu6VX6y2Yq67IyWzEEtDWhyxeHjHb44
-	A3xh4abZDQgc4AhzdnjYLCO/80guF/Ap7Dx6UDdxHsJyjHo0WxQQkRIRQcv/Sa2fNWA
-	TlwHo/zydQ==
+	bh=WZDP0VDfkPM69E7OkgcmM362lb4CyzONbUHLQ8VdXe4=;
+	b=DdixL7FiwYP85z/QqkmauyI+NyjAVAZ5GZNG9DeruEnfN2M1blbc/DuNCQ33PVch
+	mqvLmkLqr1xVs7ak7/Ad2h1uPUWjudXo4tl5N/nvgqM+MpHt6OHBbpyo/w4o41nH94A
+	3oUQpGt0Frp0Mc8NbsJUuYNsHaGS8dItinbRCqBQ5pEzShrpkDvwRMniEjAJuVF0HVS
+	ydYQZdYM34X1RNNsZFEw5+NoB50kY2oJte6B45wPtnN+z6YGrLxE5nAFTZAUolv72rk
+	EOpWtYtnI8eZIGN4d0D8lkkHLNx0eJrF94XoYlsR8taQmVzgJOZ0wQWi6wYZiFsXu4A
+	tLdATK/CPQ==
 DKIM-Signature: v=1; a=rsa-sha256; q=dns/txt; c=relaxed/simple;
-	s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx; d=amazonses.com; t=1762048087;
+	s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx; d=amazonses.com; t=1762048880;
 	h=Content-Type:MIME-Version:Subject:From:To:Message-ID:Date:Feedback-ID;
-	bh=wQXKHoqdRaXPGzR9KZsPIJeSN0bCS72vqfw7czO3G8E=;
-	b=c5u39V4TtQbOlJCZLKcpeY5rLGYkgfbrRa/ZmvQVBUN9z9NWrmBohVzv+Mme2szH
-	8B6tLFZTYSe4N0vL5BWgXi7Rt0eiktpUH9f/OB8EfzaYfdKoF1+vjrd7DTVKD2YTKYd
-	ndN6vKr44YQnAVmM7uQEs/pKeDpSw4IXtl9AxmI0=
-Content-Type: multipart/mixed; boundary="===============4540557531222389553=="
+	bh=WZDP0VDfkPM69E7OkgcmM362lb4CyzONbUHLQ8VdXe4=;
+	b=LdTiEmif962jiXol9JqpBv/fds4Z64QMSGcj2yqbRqNXMlbM/BmdsMBpR2kWYI7Y
+	jRHbP87p/2h38oc+LF+YcCjN/dNstmpaxAEb8S0kelXNvMOjK5K9O3PYjsQ4zk/9Z5z
+	Uh9hpjzrwygemvom8dk6pe/P0G1mImhFuOQFJXjU=
+Content-Type: multipart/mixed; boundary="===============7274286936301209473=="
 MIME-Version: 1.0
 Subject: Daily Trading Bot Report
 From: reports@a1zoobies.com
 To: dennfish@gmail.com
-Message-ID: <0101019a424014a0-dcbb5036-fb04-42eb-9b1d-8da3892c8e68-000000@us-west-2.amazonses.com>
-Date: Sun, 2 Nov 2025 01:48:07 +0000
+Message-ID: <0101019a424c2e17-baf8ec3e-22a8-48d7-96a3-5b251c58ef0e-000000@us-west-2.amazonses.com>
+Date: Sun, 2 Nov 2025 02:01:20 +0000
 Feedback-ID: ::1.us-west-2.Nu03GYVsjC/TKONLEBdJbmg0myPWCSdTOd4tJPqRJ60=:AmazonSES
-X-SES-Outgoing: 2025.11.02-54.240.27.11
+X-SES-Outgoing: 2025.11.02-54.240.27.185
 
---===============4540557531222389553==
-Content-Type: multipart/alternative; boundary="===============9097064062686138951=="
+--===============7274286936301209473==
+Content-Type: multipart/alternative; boundary="===============7839535739714632446=="
 MIME-Version: 1.0
 
---===============9097064062686138951==
+--===============7839535739714632446==
 Content-Type: text/plain; charset="utf-8"
 MIME-Version: 1.0
 Content-Transfer-Encoding: base64
 
-RGFpbHkgVHJhZGluZyBCb3QgUmVwb3J0IEFzIG9mOiAyMDI1LTExLTAyIDAxOjQ4IFVUQyBLZXkg
+RGFpbHkgVHJhZGluZyBCb3QgUmVwb3J0IEFzIG9mOiAyMDI1LTExLTAyIDAyOjAxIFVUQyBLZXkg
 TWV0cmljcyBSZWFsaXplZCBQbkwgKFVTRCkgVW5yZWFsaXplZCBQbkwgKFVTRCkgV2luIFJhdGUg
 LTE5LjIxIDAuMDAgMTEuOCUgKDIvMTcpIENvc3RzICYgQnJlYWstRXZlbiBNb3ZlIFJvdW5kLXRy
 aXAgdGFrZXIgYnJlYWstZXZlbiBSb3VuZC10cmlwIG1ha2VyIGJyZWFrLWV2ZW4gMS4xMCUgMC42
@@ -128,14 +128,14 @@ NiUgMS44NCUgMC4wMCUgMC4wMCUgMC41NSUg4pOYIEFUUiUgYW5kIFNwcmVhZCUgYXJlIHR1bmFi
 bGUgaW5wdXRz4oCUZXhwb3NpbmcgdGhlbSBoZXJlIGhlbHBzIHlvdSBhZGp1c3Qgc3RyYXRlZ3kg
 dGhyZXNob2xkcy4=
 
---===============9097064062686138951==
+--===============7839535739714632446==
 Content-Type: text/html; charset="utf-8"
 MIME-Version: 1.0
 Content-Transfer-Encoding: base64
 
 PGh0bWw+PGJvZHkgc3R5bGU9ImZvbnQtZmFtaWx5OkFyaWFsLEhlbHZldGljYSxzYW5zLXNlcmlm
 Ij4KICAgICAgICA8aDI+RGFpbHkgVHJhZGluZyBCb3QgUmVwb3J0PC9oMj48cD48Yj5BcyBvZjo8
-L2I+IDIwMjUtMTEtMDIgMDE6NDggVVRDPC9wPgogICAgICAgIAogICAgPGgzPktleSBNZXRyaWNz
+L2I+IDIwMjUtMTEtMDIgMDI6MDEgVVRDPC9wPgogICAgICAgIAogICAgPGgzPktleSBNZXRyaWNz
 PC9oMz4KICAgIDx0YWJsZSBib3JkZXI9IjEiIGNlbGxwYWRkaW5nPSI2IiBjZWxsc3BhY2luZz0i
 MCI+CiAgICAgIDx0cj48dGg+UmVhbGl6ZWQgUG5MIChVU0QpPC90aD48dGg+VW5yZWFsaXplZCBQ
 bkwgKFVTRCk8L3RoPjx0aD5XaW4gUmF0ZTwvdGg+PC90cj4KICAgICAgPHRyPgogICAgICAgIDx0
@@ -245,16 +245,16 @@ QVRSJTwvYj4gYW5kIDxiPlNwcmVhZCU8L2I+IGFyZSA8aT50dW5hYmxlPC9pPiBpbnB1dHPigJRl
 eHBvc2luZyB0aGVtIGhlcmUgaGVscHMgeW91IGFkanVzdCBzdHJhdGVneSB0aHJlc2hvbGRzLjwv
 cD4KPC9ib2R5PjwvaHRtbD4=
 
---===============9097064062686138951==--
+--===============7839535739714632446==--
 
---===============4540557531222389553==
+--===============7274286936301209473==
 Content-Type: application/octet-stream; Name="trading_report.csv"
 MIME-Version: 1.0
 Content-Transfer-Encoding: base64
 Content-Disposition: attachment; filename="trading_report.csv"
 
-RGFpbHkgVHJhZGluZyBCb3QgUmVwb3J0DQpHZW5lcmF0ZWQgKFVUQyksMjAyNS0xMS0wMlQwMTo0
-ODowNi40ODMwMDkNCg0KS2V5IE1ldHJpY3MNClJlYWxpemVkIFBuTCAoVVNEKSwtMTkuMjENClVu
+RGFpbHkgVHJhZGluZyBCb3QgUmVwb3J0DQpHZW5lcmF0ZWQgKFVUQyksMjAyNS0xMS0wMlQwMjow
+MToxOS40ODIwMjQNCg0KS2V5IE1ldHJpY3MNClJlYWxpemVkIFBuTCAoVVNEKSwtMTkuMjENClVu
 cmVhbGl6ZWQgUG5MIChVU0QpLDAuMA0KV2luIFJhdGUsMTEuOCUgKDIvMTcpDQoNClRyYWRlIFN0
 YXRzIChXaW5kb3cpDQpBdmcgV2luLDEuNjcNCkF2ZyBMb3NzLC0xLjYxDQpQcm9maXQgRmFjdG9y
 LDAuMTUNCkF2ZyBXIC8gQXZnIEwsMS4wNA0KDQpSaXNrICYgQ2FwaXRhbA0KTWF4IERyYXdkb3du
@@ -263,4 +263,4 @@ b3Rpb25hbCAoVVNEKSwwLjANCkludmVzdGVkICUsMC4wDQoNCk9wZW4gUG9zaXRpb25zDQpTeW1i
 b2wsUXR5LEF2ZyBQcmljZQ0KDQpUcmFkZXMgKFdpbmRvdykNClN5bWJvbCxTaWRlLFByaWNlLEFt
 b3VudCxUaW1lDQo=
 
---===============4540557531222389553==--
+--===============7274286936301209473==--
