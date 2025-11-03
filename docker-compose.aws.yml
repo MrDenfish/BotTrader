@@ -148,6 +148,7 @@ services:
         condition: service_healthy
     volumes:
       - /opt/bot/logs:/app/logs:rw
+      - /opt/bot/.env_runtime:/app/.env_runtime:ro
     environment:
       TZ: ${TZ}
       AWS_REGION: ${AWS_REGION:-us-west-2}
