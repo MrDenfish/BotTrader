@@ -1075,7 +1075,7 @@ class WebhookListener:
 
             # ✅ Fetch recent FILLED orders
             params = {"limit": limit, "order_status": ["FILLED"]}
-            filled_response = await 0(params)
+            filled_response = await coinbase_api.get_historical_orders_batch(params=params)
             orders = filled_response.get("orders", []) or []
             logger.debug(f"📘 Retrieved {len(orders)} filled orders")
 

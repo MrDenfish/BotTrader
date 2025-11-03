@@ -80,6 +80,10 @@ Use Ctrl+F12 to see structure outline.
 
 ================================================================================
 """
+# ============================================================================
+# SECTION 1: Configuration & Imports
+# ============================================================================
+# Environment variables, constants, and library imports
 
 import os
 import re
@@ -109,26 +113,74 @@ from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_
 from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
 from botreport.email_report_print_format import build_console_report
 
-
-# (no-op) from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKeyWithSerialization
+# ============================================================================
+# NEW: Import from Config package
+# ============================================================================
+from Config.environment import env, is_docker
+from Config.constants_core import (
+    POSITION_DUST_THRESHOLD,
+    FAST_ROUNDTRIP_MAX_SECONDS,
+    TRADE_QUERY_HARD_LIMIT,
+    ABSOLUTE_MAX_LOOKBACK_HOURS,
+    DEFAULT_TOP_POSITIONS as CORE_DEFAULT_TOP_POSITIONS,
+)
+from Config.constants_report import (
+    DEFAULT_TOP_POSITIONS,
+    DEFAULT_LOOKBACK_HOURS,
+    MAX_LOOKBACK_HOURS,
+    MIN_LOOKBACK_HOURS,
+    REPORT_PNL_TABLE,
+    REPORT_EXECUTIONS_TABLE,
+    REPORT_PRICE_TABLE,
+    REPORT_POSITIONS_TABLE,
+    REPORT_TRADES_TABLE,
+    REPORT_WINRATE_TABLE,
+    REPORT_BALANCES_TABLE,
+    REPORT_COL_SYMBOL,
+    REPORT_COL_SIDE,
+    REPORT_COL_PRICE,
+    REPORT_COL_SIZE,
+    REPORT_COL_TIME,
+    REPORT_COL_POS_QTY,
+    REPORT_COL_PNL,
+    REPORT_PRICE_COL,
+    REPORT_PRICE_TIME_COL,
+    REPORT_PRICE_SYM_COL,
+    REPORT_CASH_SYM_COL,
+    REPORT_CASH_AMT_COL,
+    REPORT_CASH_SYMBOLS,
+    REPORT_SHOW_DETAILS,
+    REPORT_DEBUG,
+    REPORT_USE_PT_DAY,
+    STARTING_EQUITY_USD,
+    TAKER_FEE,
+    MAKER_FEE,
+)
 
 # ============================================================================
-# Section 1: Configuration & Imports
+# Environment-aware configuration
 # ============================================================================
-SENDER = RECIPIENTS = REGION = None
-config = Config()
+
+# Use new Config system
+IN_DOCKER = is_docker
+REGION = os.getenv('AWS_REGION', 'us-west-2')
+SENDER = os.getenv('REPORT_SENDER', '').strip()
+RECIPIENTS = [os.getenv('REPORT_RECIPIENTS', SENDER)]
+
+# Use environment-aware paths
+SCORE_JSONL_PATH = str(env.score_jsonl_path)
+
+# Keep CentralConfig for backward compatibility if needed
+try:
+    config = Config()
+except:
+    config = None
+
+
 try:
     from dotenv import load_dotenv
 except Exception:
     load_dotenv = None
-
-REPORT_EXECUTIONS_TABLE = os.getenv("REPORT_EXECUTIONS_TABLE", "public.trade_records")
-IN_DOCKER = config.in_docker
-REGION = config.aws_region
-SENDER = config.report_sender.strip()
-RECIPIENTS = [config.report_recipients]
-# Where SignalManager writes JSONL; can override via env
-SCORE_JSONL_PATH = config.score_jsonl_path
 
 def _html_to_text(s: str) -> str:
     if not s:
@@ -137,79 +189,24 @@ def _html_to_text(s: str) -> str:
     s = unescape(re.sub(r"<[^>]+>", " ", s))
     return re.sub(r"\s+", " ", s).strip()
 
+
 def load_report_dotenv():
     """
-    Local-only env loader for the email report.
-    - If RUNNING_IN_DOCKER=true: do nothing (Compose/entrypoint env wins).
-    - Else: load ENV_FILE (absolute path) or project-root/.env_runtime by default.
-    - Does NOT override already-set env vars (override=False).
-    - Falls back to .env_tradebot only if .env_runtime is missing.
+    Load environment configuration.
+
+    Now handled by Config.environment module automatically.
+    This function kept for backward compatibility.
     """
-    if IN_DOCKER:
-        return
-    if load_dotenv is None:
-        return
-
-    here = Path(__file__).resolve()
-    project_root = here.parents[1]  # .../BotTrader/
-    in_docker = IN_DOCKER
-    env_path = Path(project_root / ".env_runtime") if in_docker else (project_root / ".env_tradebot")
-    if not env_path.is_absolute():
-        env_path = (project_root / env_path).resolve()
-
-    if env_path.exists():
-        load_dotenv(dotenv_path=env_path, override=False)
-        return
-
-    fallback = (project_root / ".env_tradebot")
-    if fallback.exists():
-        load_dotenv(dotenv_path=fallback, override=False)
+    # Config.environment.env already loaded the appropriate .env file
+    # Nothing to do here, but keep function for compatibility
+    pass
 # Ensure env is loaded BEFORE we snapshot env variables below.
 load_report_dotenv()
 
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
-TAKER_FEE = Decimal(config.taker_fee)
-MAKER_FEE = Decimal(config.maker_fee)
 
-DEBUG = os.getenv("REPORT_DEBUG", "0").strip() in {"1", "true", "TRUE", "yes", "Yes"}
-
-# Trading tables
-REPORT_TRADES_TABLE = os.getenv("REPORT_TRADES_TABLE", "public.trade_records")
-REPORT_POSITIONS_TABLE = os.getenv("REPORT_POSITIONS_TABLE", "public.report_positions")
-REPORT_PNL_TABLE = os.getenv("REPORT_PNL_TABLE", "public.trade_records")
-
-# Column overrides (optional)
-REPORT_COL_SYMBOL = os.getenv("REPORT_COL_SYMBOL")     # symbol
-REPORT_COL_SIDE   = os.getenv("REPORT_COL_SIDE")       # side
-REPORT_COL_PRICE  = os.getenv("REPORT_COL_PRICE")      # price
-REPORT_COL_SIZE   = os.getenv("REPORT_COL_SIZE")       # qty_signed
-REPORT_COL_TIME   = os.getenv("REPORT_COL_TIME")       # ts
-REPORT_COL_POS_QTY = os.getenv("REPORT_COL_POS_QTY")   # position_qty
-REPORT_COL_PNL    = os.getenv("REPORT_COL_PNL")        # realized_profit
-
-# Price source for unrealized PnL
-REPORT_PRICE_TABLE      = os.getenv("REPORT_PRICE_TABLE", "public.report_prices")
-REPORT_PRICE_COL        = os.getenv("REPORT_PRICE_COL")        # e.g. "price","last","mid"
-REPORT_PRICE_TIME_COL   = os.getenv("REPORT_PRICE_TIME_COL")   # e.g. "ts","updated_at"
-REPORT_PRICE_SYM_COL    = os.getenv("REPORT_PRICE_SYM_COL")    # e.g. "symbol","product_id","ticker"
-
-# Win rate table (optional override)
-REPORT_WINRATE_TABLE = os.getenv("REPORT_WINRATE_TABLE")  # default: REPORT_TRADES_TABLE
-
-# Cash balances (optional)
-REPORT_BALANCES_TABLE  = os.getenv("REPORT_BALANCES_TABLE", "public.report_balances")
-REPORT_CASH_SYM_COL    = os.getenv("REPORT_CASH_SYM_COL")      # currency/asset/symbol
-REPORT_CASH_AMT_COL    = os.getenv("REPORT_CASH_AMT_COL")      # balance/available/free
-REPORT_CASH_SYMBOLS    = [s.strip().upper() for s in os.getenv("REPORT_CASH_SYMBOLS", "USD,USDC,USDT").split(",") if s.strip()]
-
-# Window semantics
-REPORT_USE_PT_DAY = os.getenv("REPORT_USE_PT_DAY", "0").strip() in {"1","true","TRUE","yes","Yes"}
-REPORT_LOOKBACK_HOURS = int(os.getenv("REPORT_LOOKBACK_HOURS", "24"))
-
-# Overview vs Details
-REPORT_SHOW_DETAILS = os.getenv("REPORT_SHOW_DETAILS", "0").strip() in {"1","true","TRUE","yes","Yes"}
 
 ssm = None
 ses = None
@@ -373,7 +370,7 @@ def _time_window_sql(ts_expr: str):
             f"AT TIME ZONE 'America/Anchorage')"
         )
     else:
-        time_window_sql = f"{ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '{REPORT_LOOKBACK_HOURS} hours')"
+        time_window_sql = f"{ts_expr} >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '{DEFAULT_LOOKBACK_HOURS} hours')"
 
     upper_bound_sql = f"AND {ts_expr} < (NOW() AT TIME ZONE 'UTC')"
     return time_window_sql, upper_bound_sql
@@ -435,7 +432,7 @@ def run_queries(conn):
     try:
         tbl_pnl = REPORT_PNL_TABLE
         cols_present = table_columns(conn, tbl_pnl)
-        if DEBUG:
+        if REPORT_DEBUG:
             detect_notes.append(f"Columns({tbl_pnl}): {sorted(cols_present)}")
 
         pnl_candidates = ["pnl_usd", "realized_pnl_usd", "realized_pnl", "pnl", "profit", "realized_profit"]
@@ -471,7 +468,7 @@ def run_queries(conn):
         tbl_trades = REPORT_TRADES_TABLE
         cols_trades = table_columns(conn, tbl_trades)
 
-        if DEBUG:
+        if REPORT_DEBUG:
             detect_notes.append(f"Columns({tbl_trades}): {sorted(cols_trades)}")
 
         if not cols_trades:
@@ -499,7 +496,7 @@ def run_queries(conn):
                     WHERE {time_window_sql}
                       {upper_bound_sql}
                     GROUP BY symbol
-                    HAVING ABS(SUM(qty_signed)) > 0.0001
+                    HAVING ABS(SUM(qty_signed)) > 0.0001  # POSITION_DUST_THRESHOLD
                     ORDER BY symbol
                 """
             detect_notes.append(f"Positions: WINDOWED from {tbl_trades} using qty_signed (pre-signed)")
@@ -522,7 +519,7 @@ def run_queries(conn):
                     HAVING ABS(SUM(CASE 
                         WHEN LOWER(side::text) = 'buy' THEN size 
                         ELSE -size 
-                    END)) > 0.0001
+                    END)) > 0.0001  # POSITION_DUST_THRESHOLD
                     ORDER BY symbol
                 """
             detect_notes.append(f"Positions: WINDOWED from {tbl_trades} using size+side")
@@ -536,7 +533,7 @@ def run_queries(conn):
     # Trades (window)
     def run_trades_for(table_name: str, use_mappings: bool = True):
         cols_tr = table_columns(conn, table_name)
-        if DEBUG:
+        if REPORT_DEBUG:
             detect_notes.append(f"Columns({table_name}): {sorted(cols_tr)}")
         if not cols_tr:
             raise RuntimeError(f"Table not found: {table_name}")
@@ -1565,7 +1562,7 @@ def main():
         max_dd_pct, max_dd_abs, peak_eq, trough_eq, dd_notes = compute_max_drawdown(conn)
         detect_notes.extend(dd_notes)
 
-        exposures = compute_exposures(open_pos, top_n=10)
+        exposures = compute_exposures(open_pos, top_n=DEFAULT_TOP_POSITIONS)
         cash_usd, invested_usd, invested_pct, cash_notes = compute_cash_vs_invested(conn, exposures)
         detect_notes.extend(cash_notes)
 
@@ -1636,7 +1633,7 @@ def main():
         sa_engine = get_sa_engine()
         fast_html, fast_csv_path, fast_df = fetch_fast_roundtrips(sa_engine)
     except Exception as e:
-        if DEBUG:
+        if REPORT_DEBUG:
             print(f"[fast_roundtrips] error: {e}")
         fast_html = (
             "<h3>Near-Instant Roundtrips (≤60s)</h3>"

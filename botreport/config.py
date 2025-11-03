@@ -11,6 +11,16 @@ try:
 except Exception:
     load_dotenv = None
 
+# ============================================================================
+# NEW: Import shared constants from Config package
+# ============================================================================
+from Config.constants_report import (
+    MAX_LOOKBACK_HOURS,
+    MIN_LOOKBACK_HOURS,
+    DEFAULT_LOOKBACK_HOURS,
+)
+from Config.constants_trading import TAKER_FEE, MAKER_FEE
+
 @dataclass(frozen=True)
 class EmailConfig:
     backend: str                 # "ses" or "smtp"
@@ -93,14 +103,35 @@ def load_db_config() -> DBConfig:
     ssl_required = (os.getenv("DB_SSL", "disable").lower() in {"require", "true", "1"})
     return DBConfig(url=url, host=host, port=port, name=name, user=user, password=pwd, ssl_required=ssl_required)
 
+
 def load_report_config() -> ReportConfig:
     in_docker = os.getenv("IN_DOCKER", "false").lower() == "true"
-    lookback = int(os.getenv("REPORT_LOOKBACK_HOURS", os.getenv("LOOKBACK_HOURS", "24")))
-    use_pt   = os.getenv("REPORT_USE_PT_DAY", "0").lower() in {"1","true","yes"}
-    details  = os.getenv("REPORT_SHOW_DETAILS", "0").lower() in {"1","true","yes"}
-    taker    = float(os.getenv("TAKER_FEE", "0.0040"))
-    maker    = float(os.getenv("MAKER_FEE", "0.0025"))
-    equity   = float(os.getenv("STARTING_EQUITY_USD", "3000"))
+
+    # Validate lookback hours (use constants from Config)
+    lookback = int(os.getenv("REPORT_LOOKBACK_HOURS", str(DEFAULT_LOOKBACK_HOURS)))
+    if not MIN_LOOKBACK_HOURS <= lookback <= MAX_LOOKBACK_HOURS:
+        raise ValueError(
+            f"REPORT_LOOKBACK_HOURS must be {MIN_LOOKBACK_HOURS}-{MAX_LOOKBACK_HOURS}, got {lookback}"
+        )
+
+    use_pt = os.getenv("REPORT_USE_PT_DAY", "0").lower() in {"1", "true", "yes"}
+    details = os.getenv("REPORT_SHOW_DETAILS", "0").lower() in {"1", "true", "yes"}
+
+    # Use constants from Config (already have env override support)
+    taker = TAKER_FEE
+    maker = MAKER_FEE
+
+    # Validate fees
+    if not 0 <= taker <= 0.05:
+        raise ValueError(f"TAKER_FEE must be 0-5%, got {taker}")
+    if not 0 <= maker <= 0.05:
+        raise ValueError(f"MAKER_FEE must be 0-5%, got {maker}")
+
+    # Validate starting equity
+    equity = float(os.getenv("STARTING_EQUITY_USD", "3000"))
+    if equity <= 0:
+        raise ValueError(f"STARTING_EQUITY_USD must be > 0, got {equity}")
+
     return ReportConfig(
         in_docker=in_docker,
         lookback_hours=lookback,
