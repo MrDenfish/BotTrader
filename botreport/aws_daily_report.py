@@ -103,6 +103,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text, create_engine
 from urllib.parse import urlparse, parse_qs
 from Config.config_manager import CentralConfig as Config
+from Config.environment import env
 from collections import defaultdict, Counter
 from typing import Optional, List, Dict, Tuple
 from email.mime.multipart import MIMEMultipart
@@ -443,7 +444,7 @@ def run_queries(conn):
             detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
         else:
             ts_candidates = ["order_time", "exec_time", "time", "ts", "timestamp", "created_at", "updated_at"]
-            ts_col = pick_first_available(cols_present, ts_candidates)
+            ts_col = pick_first_available(cols_present, ["order_time", "trade_time", "ts", "timestamp", "created_at", "updated_at"])
 
             if ts_col:
                 low_sql, high_sql = _time_window_sql(qident(ts_col))
