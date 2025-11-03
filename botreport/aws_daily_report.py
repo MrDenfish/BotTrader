@@ -1586,7 +1586,7 @@ def main():
         df = load_score_jsonl(score_path, since_hours=24)
         metrics = score_snapshot_metrics_from_jsonl(df)
         score_section_html = render_score_section_jsonl(metrics)
-        tpsl_path = config.tp_sl_log_path
+        tpsl_path = env.tp_sl_log_path
         tpsl_rows = load_tpsl_jsonl(tpsl_path, since_hours=24)
         tpsl_per, tpsl_gsum = aggregate_tpsl(tpsl_rows)
         tpsl_table_html = render_tpsl_section(tpsl_per, tpsl_gsum)
