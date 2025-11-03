@@ -426,7 +426,7 @@ def render_score_section_html(metrics: dict) -> str:
 
 def run_queries(conn):
     errors = []
-    detect_notes = ["Build:v7"]  # Increment version
+    detect_notes = ["Build:v8"]  # Increment version
 
     # Realized PnL (windowed if timestamp exists)
     try:
