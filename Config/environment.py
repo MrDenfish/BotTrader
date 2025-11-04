@@ -128,7 +128,7 @@ class Environment:
         return self.log_dir / 'scores.jsonl'
 
     @property
-    def tpsl_log_path(self) -> Path:
+    def tp_sl_log_path(self) -> Path:
         """Get TP/SL log path for current environment."""
         env_path = os.getenv('TP_SL_LOG_PATH')
         if env_path:

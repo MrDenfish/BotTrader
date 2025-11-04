@@ -116,7 +116,7 @@ from botreport.email_report_print_format import build_console_report
 # ============================================================================
 # NEW: Import from Config package
 # ============================================================================
-from Config.environment import env, is_docker
+from Config.environment import Environment as EnvConfig
 from Config.constants_core import (
     POSITION_DUST_THRESHOLD,
     FAST_ROUNDTRIP_MAX_SECONDS,
@@ -161,20 +161,24 @@ from Config.constants_report import (
 # Environment-aware configuration
 # ============================================================================
 
-# Use new Config system
-IN_DOCKER = is_docker
-REGION = os.getenv('AWS_REGION', 'us-west-2')
-SENDER = os.getenv('REPORT_SENDER', '').strip()
-RECIPIENTS = [os.getenv('REPORT_RECIPIENTS', SENDER)]
-
-# Use environment-aware paths
-SCORE_JSONL_PATH = str(env.score_jsonl_path)
-
 # Keep CentralConfig for backward compatibility if needed
 try:
     config = Config()
 except:
     config = None
+try:
+    env_config = EnvConfig()
+except:
+    env_config = None
+
+# Use new Config system
+IN_DOCKER = env_config.is_docker
+REGION = os.getenv('AWS_REGION', 'us-west-2')
+SENDER = os.getenv('REPORT_SENDER', '').strip()
+RECIPIENTS = [os.getenv('REPORT_RECIPIENTS', SENDER)]
+
+# Use environment-aware paths
+SCORE_JSONL_PATH = str(env_config.score_jsonl_path)
 
 
 try:
@@ -1587,7 +1591,7 @@ def main():
         df = load_score_jsonl(score_path, since_hours=24)
         metrics = score_snapshot_metrics_from_jsonl(df)
         score_section_html = render_score_section_jsonl(metrics)
-        tpsl_path = config.tp_sl_log_path
+        tpsl_path = str(env_config.tp_sl_log_path)
         tpsl_rows = load_tpsl_jsonl(tpsl_path, since_hours=24)
         tpsl_per, tpsl_gsum = aggregate_tpsl(tpsl_rows)
         tpsl_table_html = render_tpsl_section(tpsl_per, tpsl_gsum)
