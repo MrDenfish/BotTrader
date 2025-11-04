@@ -498,7 +498,7 @@ def run_queries(conn):
                     WHERE {time_window_sql}
                       {upper_bound_sql}
                     GROUP BY symbol
-                    HAVING ABS(SUM(qty_signed)) > 0.0001  # POSITION_DUST_THRESHOLD
+                    HAVING ABS(SUM(qty_signed)) > 0.0001  -- POSITION_DUST_THRESHOLD (Python: {POSITION_DUST_THRESHOLD})
                     ORDER BY symbol
                 """
             detect_notes.append(f"Positions: WINDOWED from {tbl_trades} using qty_signed (pre-signed)")
@@ -521,7 +521,7 @@ def run_queries(conn):
                     HAVING ABS(SUM(CASE 
                         WHEN LOWER(side::text) = 'buy' THEN size 
                         ELSE -size 
-                    END)) > 0.0001  # POSITION_DUST_THRESHOLD
+                    END)) > 0.0001  -- POSITION_DUST_THRESHOLD (Python: {POSITION_DUST_THRESHOLD})
                     ORDER BY symbol
                 """
             detect_notes.append(f"Positions: WINDOWED from {tbl_trades} using size+side")
