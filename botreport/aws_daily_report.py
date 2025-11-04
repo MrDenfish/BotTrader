@@ -478,13 +478,14 @@ def run_queries(conn):
         # Verify required columns exist
         if 'symbol' not in cols_trades:
             raise RuntimeError(f"Missing 'symbol' column in {tbl_trades}")
-        if 'ts' not in cols_trades:
-            raise RuntimeError(f"Missing 'ts' column in {tbl_trades}")
+        ts_col = pick_first_available(cols_trades, ["order_time", "trade_time", "filled_at", "ts", "timestamp", "created_at"])
+        if not ts_col:
+            raise RuntimeError(f"Missing time column in {tbl_trades}. Tried: order_time, trade_time, filled_at, ts, timestamp, created_at")
 
         has_qty_signed = 'qty_signed' in cols_trades
 
         # Build time window filter
-        time_window_sql, upper_bound_sql = _time_window_sql("ts")
+        time_window_sql, upper_bound_sql = _time_window_sql(ts_col)
 
         if has_qty_signed:
             # qty_signed already has the sign (positive for buy, negative for sell)
