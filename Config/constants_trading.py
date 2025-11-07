@@ -53,7 +53,7 @@ MAX_OHLCV_ROWS = int(os.getenv('MAX_OHLCV_ROWS', '2000'))
 STOP_MODE = os.getenv('STOP_MODE', 'atr')
 """Stop mode: 'atr' or 'fixed'"""
 
-STOP_ATR_MULT = float(os.getenv('STOP_ATR_MULT', '1.8'))
+ATR_MULTIPLIER_STOP = float(os.getenv('ATR_MULTIPLIER_STOP', '1.8'))
 """ATR multiplier for stop-loss calculation"""
 
 STOP_MIN_PCT = float(os.getenv('STOP_MIN_PCT', '0.012'))
@@ -183,3 +183,19 @@ INVENTORY_BIAS_FACTOR = float(os.getenv('INVENTORY_BIAS_FACTOR', '0.10'))
 # ============================================================================
 
 ENRICH_LIMIT = int(os.getenv('ENRICH_LIMIT', '20'))
+
+# ============================================================================
+# Validation on Import (Optional)
+# ============================================================================
+
+# To enable validation on import, set environment variable:
+#   export CONFIG_VALIDATE_ON_IMPORT=1
+#
+# This will validate all constants when this module is first imported,
+# raising an error if any values are invalid.
+
+if os.getenv("CONFIG_VALIDATE_ON_IMPORT", "").lower() in {"1", "true", "yes"}:
+    from .validators import validate_trading_constants
+    result = validate_trading_constants()
+    if not result.is_valid:
+        raise ValueError(f"Trading constants validation failed:\n{result.format_report()}")

@@ -278,7 +278,7 @@ class ProfitDataManager:
             spread_pct = _spread_pct(order_book)
 
             if mode == "atr":
-                atr_mult = _env_pct("STOP_ATR_MULT", 1.8)
+                atr_mult = _env_pct("ATR_MULTIPLIER_STOP", 1.8)
                 min_pct  = _env_pct("STOP_MIN_PCT", 0.012)  # 1.2% floor
                 atr_pct  = _atr_pct_from_ohlcv(ohlcv, entry) or Decimal("0")
                 base_pct = max(min_pct, atr_pct * atr_mult)

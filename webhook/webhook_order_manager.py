@@ -224,7 +224,7 @@ class TradeOrderManager:
         spread_pct = self._infer_spread_pct_from_orderbook(order_book)
 
         if mode == "atr":
-            atr_mult = self._get_env_pct("STOP_ATR_MULT", 1.8)
+            atr_mult = self._get_env_pct("ATR_MULTIPLIER_STOP", 1.8)
             min_pct = self._get_env_pct("STOP_MIN_PCT", 0.012)
             atr_pct = self._compute_atr_pct_from_ohlcv(ohlcv, entry_price) or Decimal("0")
             base_pct = max(min_pct, atr_pct * atr_mult)
