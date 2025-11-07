@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # --- config (edit once) ---
-ENVFILE="${1:-../.env_tradebot}"   # path to your desktop .env
+ENVFILE="${1:-../.env}"   # path to your unified .env
 REGION="${2:-us-west-2}"
 STAGE="${3:-prod}"
 SSH_HOST="${4:-ubuntu@54.187.252.72}"   # ubuntu@<EC2_PUBLIC_IP>

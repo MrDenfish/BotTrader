@@ -40,7 +40,7 @@ print(f"   File exists: {env.env_file.exists() if env.env_file else False}")
 print(f"   Loaded: {env._loaded}")
 print()
 
-# Check a few env vars that should be in .env_tradebot
+# Check a few env vars that should be in .env
 print("Environment Variables (from .env):")
 print("-" * 80)
 test_vars = ['TAKER_FEE', 'MAKER_FEE', 'DB_HOST', 'QUOTE_CURRENCY', 'ATR_WINDOW']

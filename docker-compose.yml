@@ -6,7 +6,7 @@ services:
     container_name: tradebot
     restart: unless-stopped
     #env_file:
-    #  - .env_tradebot
+    #  - .env
     environment:
       - DOCKER_ENV=true
     volumes:

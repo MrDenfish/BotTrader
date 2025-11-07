@@ -4,8 +4,8 @@ set -euo pipefail
 cd /opt/bot
 
 # guard against conflict markers in any env files you might still use
-if [ -f .env_tradebot ] && grep -qE '^(<<<<<<<|=======|>>>>>>>)' .env_tradebot; then
-  echo "❌ .env_tradebot contains merge-conflict markers. Resolve before deploy."
+if [ -f .env ] && grep -qE '^(<<<<<<<|=======|>>>>>>>)' .env; then
+  echo "❌ .env contains merge-conflict markers. Resolve before deploy."
   exit 1
 fi
 

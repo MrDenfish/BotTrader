@@ -67,7 +67,8 @@ class CentralConfig:
         self._json_config = {}
         self._log_level = "INFO"
         self._currency_pairs_ignored = []
-        self.is_docker = os.getenv("IN_DOCKER", "false").lower() == "true"
+        # Use runtime detection instead of env variable
+        # Note: self.is_docker set in __init__ based on running_in_docker()
 
     def _load_configuration(self):
         """Load configuration from environment variables and JSON files."""
@@ -75,6 +76,7 @@ class CentralConfig:
         self.machine_type, self.webhook_port = self.determine_machine_type()  # self.sighook_port
         self._load_environment_variables()
         self._load_json_config()  # Ensure paths like _sighook_api_key_path are set
+        self._compute_environment_specific_values()  # Compute runtime-dependent values
 
         self._generate_database_url()
         self._is_loaded = True  # Mark the configuration as loaded
@@ -82,12 +84,18 @@ class CentralConfig:
     @staticmethod
     def load_dotenv_settings():
         from pathlib import Path
-        if os.getenv("IN_DOCKER", "false").lower() == "true":
-            # Don’t load local .env inside containers
+        # Check if running in Docker via runtime detection
+        if running_in_docker():
+            # Don't load local .env inside containers (env vars come from compose/entrypoint)
+            print("🔹 Running in Docker - skipping .env file load (using container env)")
             return
-        env_path = Path(__file__).resolve().parent.parent / '.env_tradebot'
-        print(f"🔹 Loading local .env from {env_path}")
-        load_dotenv(dotenv_path=env_path)
+        # Load unified .env file for desktop
+        env_path = Path(__file__).resolve().parent.parent / '.env'
+        if env_path.exists():
+            print(f"🔹 Loading .env from {env_path}")
+            load_dotenv(dotenv_path=env_path)
+        else:
+            print(f"⚠️  No .env file found at {env_path}")
 
     def _load_environment_variables(self):
         env_vars = {
@@ -182,6 +190,41 @@ class CentralConfig:
             else:
                 pass
         print(f"Configuration loaded successfully.")
+
+    def _compute_environment_specific_values(self):
+        """
+        Compute environment-specific values based on runtime detection.
+        These values differ between desktop and Docker environments.
+        """
+        is_docker = self.is_docker
+
+        # 1. Compute DB_HOST if not explicitly set
+        if not self.db_host:
+            self.db_host = "db" if is_docker else "127.0.0.1"
+            print(f"🔧 Auto-configured DB_HOST={self.db_host} (is_docker={is_docker})")
+
+        # 2. Compute log paths if not explicitly set
+        if not self._score_jsonl_path:
+            if is_docker:
+                self._score_jsonl_path = "/app/logs/scores.jsonl"
+            else:
+                # Desktop: use project cache directory
+                from pathlib import Path
+                cache_dir = Path(__file__).resolve().parent.parent / ".bottrader" / "cache"
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                self._score_jsonl_path = str(cache_dir / "scores.jsonl")
+            print(f"🔧 Auto-configured SCORE_JSONL_PATH={self._score_jsonl_path}")
+
+        if not self._tp_sl_log_path:
+            if is_docker:
+                self._tp_sl_log_path = "/app/logs/tpsl.jsonl"
+            else:
+                # Desktop: use project cache directory
+                from pathlib import Path
+                cache_dir = Path(__file__).resolve().parent.parent / ".bottrader" / "cache"
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                self._tp_sl_log_path = str(cache_dir / "tpsl.jsonl")
+            print(f"🔧 Auto-configured TP_SL_LOG_PATH={self._tp_sl_log_path}")
 
     def _load_json_config(self):
         """Load and merge JSON configuration files from Shared_Utils."""

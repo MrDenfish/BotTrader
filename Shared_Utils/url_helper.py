@@ -1,6 +1,7 @@
 # Common/db_url.py
 import os, urllib.parse
 from urllib.parse import urlparse
+from Shared_Utils.runtime_env import running_in_docker
 
 ASYNC_DRIVER = "postgresql+asyncpg://"
 
@@ -31,9 +32,10 @@ def build_asyncpg_url_from_env() -> str:
     if env_url:
         return normalize_driver(env_url)
 
-    # Default host depends on context: 'db' in Docker, 127.0.0.1 otherwise
-    in_docker = os.getenv("IN_DOCKER", "false").lower() == "true"
-    default_host = "db" if in_docker else "127.0.0.1"
+    # Default host depends on runtime environment: 'db' in Docker, 127.0.0.1 otherwise
+    # Use runtime detection instead of reading IN_DOCKER env var
+    is_docker = running_in_docker()
+    default_host = "db" if is_docker else "127.0.0.1"
 
     host = os.getenv("DB_HOST", default_host)
     port = os.getenv("DB_PORT", "5432")

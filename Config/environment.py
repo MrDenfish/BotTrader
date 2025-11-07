@@ -1,11 +1,8 @@
 """
 Environment detection and .env file loading.
 
-Handles the complexity of dual-environment setup:
-- Desktop: Uses .env_tradebot
-- Docker: Uses .env_runtime
-
-Auto-detects environment and loads the appropriate file.
+Uses a unified .env file for both desktop and Docker environments.
+Runtime detection handles environment-specific configuration.
 """
 import os
 from pathlib import Path
@@ -38,27 +35,17 @@ class Environment:
         return False
 
     def _find_env_file(self) -> Optional[Path]:
-        """Find the appropriate .env file for current environment."""
+        """Find the unified .env file for current environment."""
         if self.is_docker:
-            # Docker: check container paths
-            candidates = [
-                Path('/app/.env_runtime'),
-                Path('/app/.env_tradebot'),  # fallback
-            ]
+            # Docker: check container path
+            env_path = Path('/app/.env')
         else:
             # Desktop: check project root
             # Go up from Config/ to project root
             project_root = Path(__file__).parents[1]
-            candidates = [
-                project_root / '.env_tradebot',
-                project_root / '.env_runtime',  # fallback
-            ]
+            env_path = project_root / '.env'
 
-        for path in candidates:
-            if path.exists():
-                return path
-
-        return None
+        return env_path if env_path.exists() else None
 
     def load(self, force_reload: bool = False) -> None:
         """

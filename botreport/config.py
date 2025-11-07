@@ -52,7 +52,7 @@ def load_report_dotenv_if_needed() -> None:
     """
     Local-only env loader for the email report.
     - If IN_DOCKER=true: do nothing (Compose/entrypoint env wins).
-    - Else: load project-root/.env_runtime if present; else fall back to .env_tradebot.
+    - Else: load project-root/.env if present.
     - Does NOT override already-set env vars (override=False).
     """
     if os.getenv("IN_DOCKER", "false").lower() == "true":
@@ -62,12 +62,9 @@ def load_report_dotenv_if_needed() -> None:
     here = Path(__file__).resolve()
     # botreport/ -> project root at parents[1]
     project_root = here.parents[1]
-    preferred = project_root / ".env_runtime"
-    fallback  = project_root / ".env_tradebot"
-    if preferred.exists():
-        load_dotenv(dotenv_path=preferred, override=False)
-    elif fallback.exists():
-        load_dotenv(dotenv_path=fallback, override=False)
+    env_file = project_root / ".env"
+    if env_file.exists():
+        load_dotenv(dotenv_path=env_file, override=False)
 
 def _env_list_csv(name: str) -> list[str]:
     raw = os.getenv(name, "")
