@@ -42,10 +42,10 @@ class AlertSystem:
     def validate_env(self):
         if self.email_alert_on:
             missing = [k for k, v in {
-                'PHONE': self.phone,
-                'EMAIL_FROM': self.email_from,
+                'ALERT_PHONE (or PHONE or ACCOUNT_PHONE)': self.phone,
+                'REPORT_SENDER': self.email_from,
                 'SMTP_PASSWORD': self.email_pass,
-                'EMAIL_TO': self.email_to
+                'REPORT_RECIPIENTS': self.email_to
             }.items() if not v]
 
             if missing:
