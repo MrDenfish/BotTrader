@@ -213,20 +213,23 @@ class PortfolioManager:
                 # Create a copy of the DataFrame to avoid SettingWithCopyWarning
                 rows_to_add = rows_to_add.copy()
 
-                # Convert 'quote volume' and 'price change %' to numeric
+                # Convert to numeric FIRST, then round
                 rows_to_add['quote volume'] = pd.to_numeric(rows_to_add['quote volume'], errors='coerce')
-                rows_to_add['price change %'] = pd.to_numeric(round(rows_to_add['price change %'],1), errors='coerce')
+                rows_to_add['price change %'] = pd.to_numeric(rows_to_add['price change %'], errors='coerce')
+
+                # Now round the numeric column
+                rows_to_add['price change %'] = rows_to_add['price change %'].round(1)
 
                 # Drop rows with NaNs in the relevant columns
                 rows_to_add = rows_to_add.dropna(subset=['quote volume', 'price change %'])
 
-                # Fix: Apply absolute value only to 'price change %' and correctly structure conditions
+                # Apply filters
                 filtered_df = rows_to_add[
-                    (abs(rows_to_add['price change %']) >= self.roc_sell_24h) &  # use the lowest  roc 24h value
-                    (rows_to_add['quote volume'] >= self.min_quote_volume/2)
+                    (abs(rows_to_add['price change %']) >= self.roc_sell_24h) &
+                    (rows_to_add['quote volume'] >= self.min_quote_volume / 2)
                     ]
 
-                return filtered_df  # Return filtered DataFrame
+                return filtered_df
 
             return pd.DataFrame()  # Return empty DataFrame if required columns are missing
 
