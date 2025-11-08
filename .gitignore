@@ -9,8 +9,13 @@ __pycache__/
 .eggs/
 .venv/
 venv/
+
+# Environment files (keep secrets out of git)
 .env
+.env_tradebot
+.env_runtime
 .env.*
+!.env.template
 .envrc
 
 # OS / Editors
@@ -42,10 +47,8 @@ webhook_logger.log
 docker-compose.override.yml
 # === end ===
 
-# env & local artifacts
+# Local artifacts
 project file tree
-.env_tradebot
-env_*
 *.pkg
 recent_orders.json
 Trade records for review

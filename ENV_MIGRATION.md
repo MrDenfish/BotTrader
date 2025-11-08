@@ -64,6 +64,28 @@ Function: `Shared_Utils.runtime_env.running_in_docker()`
 
 ## Migration Guide
 
+### For New Deployments (Using .env.template)
+
+**Recommended for new setups:**
+
+1. **Copy the template**:
+   ```bash
+   cp .env.template .env
+   ```
+
+2. **Fill in your secrets** (edit `.env`):
+   - `DB_PASSWORD` - Your database password
+   - `SMTP_USERNAME` - Your SMTP username (for SES)
+   - `SMTP_PASSWORD` - Your SMTP password
+   - `REPORT_SENDER` - Email address to send reports from
+   - `REPORT_RECIPIENTS` - Email addresses to receive reports
+   - `ALERT_EMAIL` - Email for alerts
+   - `ALERT_PHONE` - Phone number for SMS alerts
+   - `WEBHOOK_TOKEN` - A secure random token
+   - `COIN_WHITELIST` - Add your IPs (desktop, server, docker subnet, etc.)
+
+3. **The system will automatically detect and configure the environment**
+
 ### For Existing Deployments
 
 If you have an existing deployment with `.env_tradebot` or `.env_runtime`:
@@ -72,27 +94,26 @@ If you have an existing deployment with `.env_tradebot` or `.env_runtime`:
    ```bash
    cd /path/to/BotTrader
    cp .env_tradebot .env
-   # Or create new .env from template
    ```
 
 2. **On Server (AWS/Droplet)**:
    ```bash
    cd /opt/bot  # or your deployment path
    cp .env_runtime .env
-   # Or create new .env from template
    ```
 
-3. **Update docker-compose paths** (if using custom paths):
+3. **Verify all required variables are present**:
+   ```bash
+   grep -E "^(REPORT_SENDER|REPORT_RECIPIENTS|SMTP_PASSWORD|ALERT_PHONE)" .env
+   ```
+
+   If any are missing, add them from your old files or from `.env.template`
+
+4. **Update docker-compose paths** (already done in this migration):
    ```yaml
    volumes:
      - /opt/bot/.env:/app/.env:ro  # Not .env_runtime
    ```
-
-### For New Deployments
-
-1. Copy `.env` to your deployment location
-2. Update environment-specific values as needed
-3. The system will automatically detect and configure the environment
 
 ## Environment-Specific Overrides
 
