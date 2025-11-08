@@ -13,6 +13,10 @@ import json
 import re
 from Shared_Utils.enum import ValidationCode
 from Config.config_manager import CentralConfig as Config
+from Shared_Utils.logger import get_logger
+
+# Module-level logger for order validation
+_logger = get_logger('webhook', context={'component': 'validate_orders'})
 
 
 @dataclass
@@ -145,7 +149,14 @@ class OrderData:
 
             # Debug anomaly detection
             if amount == 0 and status.upper() == "FILLED":
-                print(f"‼️ FILLED order has amount=0: {data.get('order_id')} — check raw input structure. Raw keys: {list(data.keys())}")
+                _logger.warning(
+                    "FILLED order has amount=0",
+                    extra={
+                        'order_id': data.get('order_id'),
+                        'raw_keys': list(data.keys()),
+                        'status': status
+                    }
+                )
             info_keys = data.get('info', {})
             order_config = info_keys.get('order_configuration', {})
             return cls(
@@ -191,16 +202,19 @@ class OrderData:
             )
 
         except Exception as e:
-
-            print(f"‼️WARNING  Error creating OrderData from dict: {e}  ‼️")
+            _logger.error(
+                "Error creating OrderData from dict",
+                extra={'error': str(e), 'data_keys': list(data.keys()) if data else None},
+                exc_info=True
+            )
             raise
 
     def debug_summary(self, verbose: bool = False) -> str:
         """Generate a safe, readable summary of this order for debugging/logging."""
-        print("\n" + "<><><><<><>" * 5 + "\n")
-        print(f'                  DEBUG SUMMARY')
+        _logger.debug("=" * 50)
+        _logger.debug("DEBUG SUMMARY")
 
-        summary_lines = [f"\n� OrderData Summary for {self.trading_pair} [{self.side.upper()}]"]
+        summary_lines = [f"\n📋 OrderData Summary for {self.trading_pair} [{self.side.upper()}]"]
 
         for key, value in asdict(self).items():
             if isinstance(value, pd.DataFrame):

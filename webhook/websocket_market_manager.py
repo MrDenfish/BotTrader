@@ -8,6 +8,7 @@ from decimal import Decimal, getcontext
 from TableModels.trade_record import TradeRecord
 from Config.config_manager import CentralConfig as Config
 from webhook.webhook_validate_orders import OrderData
+from Shared_Utils.logger import get_logger
 
 getcontext().prec = 10
 
@@ -26,6 +27,7 @@ class WebSocketMarketManager:
         self.ccxt_api = ccxt_api
         self.coinbase_api = coinbase_api
         self.logger = logger_manager  # 🙂
+        self.structured_logger = get_logger('webhook', context={'component': 'websocket_market_manager'})
         self.alerts = self.listener.alerts  # ✅ Assign alerts from webhook
         self.sequence_number = None  # Sequence number tracking
 
@@ -402,7 +404,15 @@ class WebSocketMarketManager:
             adaptive_threshold = Decimal(adaptive_threshold).quantize(precision)
 
             if log_roc >= self._roc_5min and volatility >= adaptive_threshold:
-                print(f"✅ ROC={log_roc:.2f}%, Vol={volatility:.2f} ≥ Adaptive={adaptive_threshold:.2f} — Execute trade")
+                self.structured_logger.info(
+                    "ROC threshold met - executing trade",
+                    extra={
+                        'product_id': product_id,
+                        'roc_pct': float(log_roc),
+                        'volatility': float(volatility),
+                        'adaptive_threshold': float(adaptive_threshold)
+                    }
+                )
                 trading_pair = product_id.replace("-", "/")
                 symbol = trading_pair.split("/")[0]
                 trigger = {"trigger": f"roc", "trigger_note": f"ROC:{log_roc} % "}
@@ -415,11 +425,17 @@ class WebSocketMarketManager:
                 )
 
                 if roc_order_data:
-                    print(f'\n� Order Data:\n{roc_order_data.debug_summary(verbose=True)}\n')
+                    self.structured_logger.debug(
+                        "ROC Order Data",
+                        extra={'order_summary': roc_order_data.debug_summary(verbose=True)}
+                    )
                     if roc_order_data.side =='buy':
                         pass
                     order_success, response_msg = await self.trade_order_manager.place_order(roc_order_data)
-                    print(f"‼️ ROC ALERT: {product_id} increased by {log_roc:.2f}% 5 minutes. A buy order was placed!")
+                    self.structured_logger.order_sent(
+                        "ROC ALERT - Buy order placed",
+                        extra={'product_id': product_id, 'roc_pct': float(log_roc)}
+                    )
             else:
                 return
                 # print(f"⛔ Skipped {product_id}: ROC={log_roc}%, Passed ROC={log_roc >= self._roc_5min}, "
@@ -441,7 +457,7 @@ class WebSocketMarketManager:
         # Received = order accepted by engine, not on book yet
         client_oid = message.get("client_oid")
         if client_oid:
-            print(f" 🪲Order received: {client_oid} 🪲")#debug
+            self.structured_logger.debug("Order received", extra={'client_oid': client_oid})
 
     async def _handle_open(self, message):
         # Order now open on the order book
@@ -449,19 +465,25 @@ class WebSocketMarketManager:
         remaining = message.get("remaining_size")
         price = message.get("price")
         side = message.get("side")
-        print(f" 🪲 Order open: {order_id} at {price} ({remaining}) [{side}] 🪲") #debug
+        self.structured_logger.debug(
+            "Order open",
+            extra={'order_id': order_id, 'price': price, 'remaining': remaining, 'side': side}
+        )
 
     async def _handle_done(self, message):
         order_id = message.get("order_id")
         reason = message.get("reason")
-        print(f" 🪲 Order done: {order_id}, reason: {reason} 🪲") #debug
+        self.structured_logger.debug("Order done", extra={'order_id': order_id, 'reason': reason})
 
     async def _handle_match(self, message):
         price = message.get("price")
         size = message.get("size")
         maker_id = message.get("maker_order_id")
         taker_id = message.get("taker_order_id")
-        print(f" 🪲 Match: {size} at {price} between {maker_id} and {taker_id} 🪲") #debug
+        self.structured_logger.debug(
+            "Order match",
+            extra={'size': size, 'price': price, 'maker_order_id': maker_id, 'taker_order_id': taker_id}
+        )
 
     async def _handle_change(self, message):
         order_id = message.get("order_id")
