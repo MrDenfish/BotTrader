@@ -27,6 +27,10 @@ from dataclasses import dataclass, field
 
 from .validators import validate_all_config, ValidationResult
 from .exceptions import ConfigError
+from Shared_Utils.logger import get_logger
+
+# Module-level logger
+_logger = get_logger('health_check', context={'component': 'health_check'})
 
 
 @dataclass
@@ -322,9 +326,13 @@ def run_health_check(
         db_check=db_check,
     )
 
-    # Print or raise
+    # Log or raise
     if verbose or not result.is_healthy:
-        print(result.format(verbose=verbose))
+        # Use appropriate log level based on health status
+        log_level = 'info' if result.is_healthy else 'warning'
+        log_func = getattr(_logger, log_level)
+        log_func("Health check result",
+            extra={'is_healthy': result.is_healthy, 'report': result.format(verbose=verbose)})
 
     if not result.is_healthy and raise_on_error:
         raise ConfigError("Health check failed - see report above")
