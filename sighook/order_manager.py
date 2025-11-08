@@ -247,7 +247,8 @@ class OrderManager:
 
             # Human-friendly breadcrumb
             tag_txt = f" tag={cancel_tag}" if cancel_tag else ""
-            print(f'Cancelling order {product_id}:{order_id}{tag_txt}', self.shared_utils_color.BRIGHT_BLUE)
+            self.logger.info("Cancelling order",
+                extra={'product_id': product_id, 'order_id': order_id, 'cancel_tag': cancel_tag})
 
             resp = await self.coinbase_api.cancel_order([order_id])
 
@@ -258,25 +259,20 @@ class OrderManager:
 
             if entry is None:
                 # No per-order entry returned — treat as failure and log whole resp for forensics
-                self.logger.warning(f"⚠️ batch_cancel returned no entry for {order_id}; resp={resp}")
-                print(f'‼️ Order {product_id}:{order_id} was not cancelled (no entry returned)')
+                self.logger.warning("Batch cancel returned no entry for order",
+                    extra={'order_id': order_id, 'product_id': product_id, 'response': resp})
                 return False
 
             if bool(entry.get("success")):
                 # Success
-                print(f"  🟪🟨  open order canceled for {product_id}  🟨🟪  ")
-                self.logger.info(
-                    "✅ Cancelled %s on %s%s", order_id, product_id, f" (tag={cancel_tag})" if cancel_tag else ""
-                )
+                self.logger.info("Order cancelled successfully",
+                    extra={'order_id': order_id, 'product_id': product_id, 'cancel_tag': cancel_tag})
                 return True
 
             # Failure — surface reason if present
             reason = entry.get("failure_reason") or "UNKNOWN"
-            self.logger.warning(
-                "⚠️ Cancel failed for %s on %s: reason=%s%s", order_id, product_id, reason,
-                f", tag={cancel_tag}" if cancel_tag else ""
-            )
-            print(f'‼️ Order {product_id}:{order_id} was not cancelled (reason={reason})')
+            self.logger.warning("Cancel failed for order",
+                extra={'order_id': order_id, 'product_id': product_id, 'failure_reason': reason, 'cancel_tag': cancel_tag})
             return False
 
         except Exception as e:
@@ -446,7 +442,8 @@ class OrderManager:
             )
 
             usd_balance_info = self.filtered_balances.get('USD', {})
-            print(f"USD Balance Info: {self.render_usd_info(usd_balance_info)}")  # debug
+            self.logger.debug("USD balance info",
+                extra={'balance_info': self.render_usd_info(usd_balance_info), 'symbol': symbol})
             quote_avail_balance = Decimal(usd_balance_info['available_to_trade_fiat'])
             quote_avail_balance = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, quote_avail_balance, convert='quote'

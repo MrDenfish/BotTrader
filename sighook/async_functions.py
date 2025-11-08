@@ -2,6 +2,11 @@ import asyncio
 import signal
 from typing import Optional
 
+from Shared_Utils.logger import get_logger
+
+# Module-level logger
+_logger = get_logger('async_functions', context={'component': 'async_functions'})
+
 
 class AsyncFunctions:
     shutdown_in_progress = False
@@ -14,7 +19,7 @@ class AsyncFunctions:
 
     @classmethod
     async def shutdown(cls, loop, http_session=None):
-        print("Initiating shutdown sequence...")
+        _logger.info("Initiating shutdown sequence", extra={'loop_id': id(loop)})
         tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task(loop)]
 
         for task in tasks:
@@ -27,15 +32,16 @@ class AsyncFunctions:
             try:
                 await http_session.close()
             except Exception as e:
-                print(f"Error closing the HTTP session: {e}")
+                _logger.error("Error closing HTTP session",
+                    extra={'error_type': type(e).__name__, 'error_msg': str(e)}, exc_info=e)
 
-        print("Shutdown complete.")
+        _logger.info("Shutdown complete", extra={'task_count': len(tasks)})
 
     @classmethod
     def signal_handler(cls, *args):
         if not cls.shutdown_in_progress:
             cls.shutdown_in_progress = True
-            print("Shutdown signal received.")
+            _logger.warning("Shutdown signal received", extra={'signal_args': args})
             if cls.shutdown_event:
                 cls.shutdown_event.set()
 
