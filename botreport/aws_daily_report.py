@@ -113,6 +113,9 @@ from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_
 from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
 from botreport.email_report_print_format import build_console_report
 
+# Structured logging
+from Shared_Utils.logger import get_logger
+
 # ============================================================================
 # NEW: Import from Config package
 # ============================================================================
@@ -210,7 +213,8 @@ load_report_dotenv()
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
 
-
+# Initialize structured logger for botreport
+logger = get_logger('botreport', context={'component': 'daily_report'})
 
 ssm = None
 ses = None
@@ -270,7 +274,17 @@ def get_db_conn():
         url = os.getenv("DATABASE_URL")
 
         def _log_conn_plan(source, _host, _port, _user, _name, _ssl):
-            print(f"[DB] source={source} host={_host} port={_port} user={_user} db={_name} ssl={'on' if _ssl else 'off'}")
+            logger.info(
+                "Database connection initialized",
+                extra={
+                    'source': source,
+                    'host': _host,
+                    'port': _port,
+                    'user': _user,
+                    'database': _name,
+                    'ssl': 'on' if _ssl else 'off'
+                }
+            )
 
         if url:
             u = urlparse(url)
@@ -1061,7 +1075,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
     except Exception as e:
         msg = f"{type(e).__name__}: {str(e)}"
         if os.getenv("REPORT_DEBUG") == "1":
-            print(f"[fast_roundtrips] error: {msg}")
+            logger.error("Fast roundtrips query failed", extra={'error_type': type(e).__name__, 'error_msg': str(e)})
         html = (
             "<h3>Near-Instant Roundtrips (≤60s)</h3>"
             "<p style='color:#b00;'>Could not compute fast roundtrips. Ensure REPORT_EXECUTIONS_TABLE points to your fills table and column names match: "
@@ -1162,7 +1176,7 @@ def fetch_fast_roundtrips(engine, csv_path="/app/logs/fast_roundtrips.csv"):
         csv_out = str(out_path)
     except Exception as e:
         if os.getenv("REPORT_DEBUG") == "1":
-            print(f"[fast_roundtrips] CSV write failed: {e}")
+            logger.error("Fast roundtrips CSV write failed", extra={'error': str(e)}, exc_info=True)
 
     return html, csv_out, df
 
@@ -1639,7 +1653,7 @@ def main():
         fast_html, fast_csv_path, fast_df = fetch_fast_roundtrips(sa_engine)
     except Exception as e:
         if REPORT_DEBUG:
-            print(f"[fast_roundtrips] error: {e}")
+            logger.error("Fast roundtrips processing error", extra={'error': str(e)}, exc_info=True)
         fast_html = (
             "<h3>Near-Instant Roundtrips (≤60s)</h3>"
             "<p style='color:#b00;'>Error computing fast roundtrips.</p>"
