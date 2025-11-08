@@ -15,10 +15,10 @@ Usage:
     validate_all_config()  # Raises ConfigError if invalid
 
     # Or get a validation report
-    issues = validate_all_config(raise_on_error=False)
-    if issues:
-        for issue in issues:
-            print(f"WARNING: {issue}")
+    result = validate_all_config(raise_on_error=False)
+    if not result.is_valid:
+        for issue in result.errors + result.warnings:
+            _logger.warning(f"Config validation issue: {issue}")
 """
 
 from __future__ import annotations
@@ -33,6 +33,10 @@ from .exceptions import (
     ConfigTypeError,
     ConfigRelationshipError,
 )
+from Shared_Utils.logger import get_logger
+
+# Module-level logger for config validation
+_logger = get_logger('config', context={'component': 'validators'})
 
 
 # ============================================================================
@@ -710,13 +714,25 @@ def validate_all_config(raise_on_error: bool = True, verbose: bool = False) -> O
     except ImportError:
         pass  # Report config not available, skip
 
-    # Print or raise
+    # Log or raise
     if verbose or not result.is_valid:
-        print("\n" + "=" * 60)
-        print("CONFIG VALIDATION REPORT")
-        print("=" * 60)
-        print(result.format_report())
-        print("=" * 60 + "\n")
+        report = result.format_report()
+        _logger.info(
+            "CONFIG VALIDATION REPORT",
+            extra={
+                'is_valid': result.is_valid,
+                'error_count': len(result.errors),
+                'warning_count': len(result.warnings),
+                'report': report
+            }
+        )
+        # Also print to console if verbose (for CLI usage)
+        if verbose:
+            print("\n" + "=" * 60)
+            print("CONFIG VALIDATION REPORT")
+            print("=" * 60)
+            print(report)
+            print("=" * 60 + "\n")
 
     if not result.is_valid and raise_on_error:
         raise ConfigError(f"Config validation failed:\n{result.format_report(include_warnings=False)}")
@@ -745,13 +761,20 @@ def validate_on_import():
 # CLI for manual validation
 # ============================================================================
 
-if __name__ == "__main__":
+if __main__ == "__main__":
     """Run validation from command line: python -m Config.validators"""
     import sys
 
+    # CLI tool - use both logging and console output
+    _logger.info("Starting BotTrader configuration validation")
     print("Validating BotTrader configuration...")
     print()
 
     result = validate_all_config(raise_on_error=False, verbose=True)
+
+    if result.is_valid:
+        _logger.info("Configuration validation passed")
+    else:
+        _logger.error("Configuration validation failed", extra={'error_count': len(result.errors)})
 
     sys.exit(0 if result.is_valid else 1)

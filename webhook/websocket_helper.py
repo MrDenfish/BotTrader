@@ -8,6 +8,7 @@ from decimal import Decimal
 from coinbase import jwt_generator
 from datetime import datetime, timedelta, timezone
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
+from Shared_Utils.logger import get_logger
 
 BATCH_SIZE = 10
 TASK_TIMEOUT = 10  # per asset
@@ -34,6 +35,9 @@ class WebSocketHelper:
         self.market_ws_manager = market_ws_manager
         self.coinbase_api = coinbase_api
         self.logger = logger_manager
+
+        # Structured logger for websocket operations
+        self.structured_logger = get_logger('webhook', context={'component': 'websocket_helper'})
 
         # WebSocket variables
         self.market_ws = None
@@ -253,7 +257,10 @@ class WebSocketHelper:
                 self.count += 1
                 if self.count >= 50:
                     heartbeat_counter = data.get("events", [{}])[0].get("heartbeat_counter")
-                    print(f"💚 USER heartbeat: Counter={heartbeat_counter}")
+                    self.structured_logger.debug(
+                        "USER heartbeat",
+                        extra={'counter': heartbeat_counter}
+                    )
                     self.count = 0
             elif channel == "subscriptions":
                 self.logger.debug(f"� Received user channel subscription update: {json.dumps(data, indent=2)}")
@@ -365,7 +372,10 @@ class WebSocketHelper:
 
             # ✅ Periodic status print (every 25 messages by default)
             if self.market_channel_counters[channel] >= 25:
-                print(f"💙 MARKET channel active: {channel} | Count={self.market_channel_counters[channel]}")
+                self.structured_logger.debug(
+                    "MARKET channel active",
+                    extra={'channel': channel, 'count': self.market_channel_counters[channel]}
+                )
                 self.market_channel_counters[channel] = 0
 
             # --- Process specific channels ---
@@ -375,7 +385,7 @@ class WebSocketHelper:
             elif channel == "level2":
                 # Debug level2 occasionally if needed
                 if self.market_channel_counters[channel] == 0:
-                    print(f"💙 MARKET level2 active")
+                    self.structured_logger.debug("MARKET level2 active")
                 # process level2 here if implemented
 
             elif channel == "heartbeats":
@@ -383,7 +393,10 @@ class WebSocketHelper:
                 self.count += 1
                 if self.count >= 25:
                     heartbeat_counter = data.get("events", [{}])[0].get("heartbeat_counter")
-                    print(f"💙 MARKET heartbeat: Counter={heartbeat_counter}")
+                    self.structured_logger.debug(
+                        "MARKET heartbeat",
+                        extra={'counter': heartbeat_counter}
+                    )
                     self.count = 0
 
 
@@ -419,8 +432,14 @@ class WebSocketHelper:
                 preview_str = f" · ticker_batch: {len(tickers)} symbols ({preview}{'…' if len(tickers) > 5 else ''})" if tickers else ""
 
                 # Concise INFO line
-
-                print(f"🟢🟢🟢 Subscriptions confirmed · {summary}{preview_str}  🟢🟢🟢")
+                self.structured_logger.info(
+                    "Subscriptions confirmed",
+                    extra={
+                        'summary': summary,
+                        'ticker_batch_count': len(tickers) if tickers else 0,
+                        'ticker_preview': preview if preview else None
+                    }
+                )
 
                 # Full payload only at DEBUG (for deep dives when needed)
 
