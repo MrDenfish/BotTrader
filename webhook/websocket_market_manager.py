@@ -391,6 +391,7 @@ class WebSocketMarketManager:
 
             try:
                 log_roc = Decimal(math.log(float(latest_close / oldest_close))) * 100
+
             except (ValueError, ZeroDivisionError) as e:
                 self.logger.error(f"Log ROC calculation error for {product_id}: {e}")
                 return
