@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_DOWN, InvalidOperation
 import asyncio
 from TableModels.trade_record import TradeRecord
 from TestDebugMaintenance.trade_record_maintenance import recompute_fifo_for_symbol
+from Shared_Utils.logger import get_logger
 
 # from TableModels.trade_record_debug import TradeRecordDebug
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,7 +24,7 @@ class TradeRecorder:
 
     def __init__(self, database_session_manager, logger, shared_utils_precision, coinbase_api, maintenance_callback=None, shared_data_manager=None):
         self.db_session_manager = database_session_manager
-        self.logger = logger
+        self.logger = get_logger('trade_recorder', context={'component': 'trade_recorder'})
         self.shared_utils_precision = shared_utils_precision
         self.coinbase_api = coinbase_api
         self.run_maintenance_if_needed = maintenance_callback
@@ -58,7 +59,8 @@ class TradeRecorder:
         if isinstance(trade_data.get("parent_id"), TradeRecord):
             self.logger.warning(f"🚨 enqueue_trade received TradeRecord for parent_id: {trade_data['parent_id']}")
         await self.trade_queue.put(trade_data)
-        print(f"📥 Trade queued: {trade_data.get('symbol')} {trade_data.get('side')}")#debug
+        self.logger.debug("Trade queued",
+                         extra={'symbol': trade_data.get('symbol'), 'side': trade_data.get('side')})
 
     async def _trade_worker_loop(self):
         """Continuously processes queued trades in FIFO order."""

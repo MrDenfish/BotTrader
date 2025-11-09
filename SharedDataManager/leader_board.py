@@ -15,6 +15,10 @@ from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timedelta, timezone
 from TableModels.active_symbols import ActiveSymbol
 from Shared_Utils.logging_manager import LoggerManager
+from Shared_Utils.logger import get_logger
+
+# Module-level logger
+_logger = get_logger('leader_board', context={'component': 'leader_board'})
 
 # Add type for clarity: fetch_precision takes symbol -> tuple[base_deci, quote_deci, base_quant, quote_quant]
 FetchPrecisionFn = Callable[[str], tuple[int, int, object, object]]
@@ -151,7 +155,8 @@ async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: Leader
             m["n"] >= cfg.min_n_24h and m["win_rate"] >= cfg.win_rate_min and
             m["mean_pnl"] > 0 and (m["profit_factor"] or 0) >= cfg.pf_min
     ))
-    print(f"Leaderboard scan: rows={len(rows)} symbols={len(symbols)} eligible={eligible_cnt}")
+    _logger.info("Leaderboard scan completed",
+                extra={'rows': len(rows), 'symbols': len(symbols), 'eligible': eligible_cnt})
 
     for s in upserts:
         await session.execute(s)
