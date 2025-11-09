@@ -21,6 +21,7 @@ from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
+from Shared_Utils.logger import get_logger
 from sighook.alerts_msgs_webhooks import SenderWebhook
 from sighook.async_functions import AsyncFunctions
 from database_manager.database_ops import DatabaseOpsManager
@@ -52,9 +53,9 @@ class TradeBot:
         self.app_config = bot_config()
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
-        # Logger injection
-        self.logger_manager = logger_manager  # 🙂
-        self.logger = logger_manager.loggers['sighook_logger']  # 🙂
+        # Logger - use new structured logging
+        self.logger_manager = logger_manager  # Keep for backward compatibility with other components
+        self.logger = get_logger('sighook_logger', context={'component': 'sighook'})
 
         self.database_session_mngr = shared_data_mgr.database_session_manager
         if not self.app_config._is_loaded:
