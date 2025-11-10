@@ -32,6 +32,7 @@ from typing import Any, Tuple, Optional, Dict
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
+from Shared_Utils.logger import get_logger
 
 
 
@@ -50,9 +51,8 @@ class PassiveOrderManager:
         self.shared_utils_utility = shared_utils_utility
         self.shared_utils_color = shared_utils_color
         self.shared_data_manager = shared_data_manager
-        self.logger_manager = logger_manager  # 🙂
-        if logger_manager:
-            self.logger = self.logger_manager.loggers['shared_logger']  # ✅ this is the actual logger being used
+        self.logger_manager = logger_manager  # Keep for backward compatibility
+        self.logger = get_logger('passive_order_manager', context={'component': 'passive_order_manager'})
         self.fee = fee_cache  # expects {'maker': Decimal, 'taker': Decimal}
 
 
@@ -134,10 +134,9 @@ class PassiveOrderManager:
             )
             volatility_multiplier = max(Decimal("1.0"), normalized_spread_pct * Decimal("10"))
 
-            print(
-                f"🔷 Passive Active Order: {symbol} Current:{current_price} Entry:{entry} "
-                f"Peak:{peak_price} Spread%:{normalized_spread_pct:.4%}"
-            )
+            self.logger.debug("Passive active order monitoring",
+                            extra={'symbol': symbol, 'current_price': str(current_price), 'entry': str(entry),
+                                   'peak_price': str(peak_price), 'spread_pct': f"{normalized_spread_pct:.4%}"})
 
             # Update peak price (for TSL tracking)
             if current_price > peak_price:
@@ -353,9 +352,12 @@ class PassiveOrderManager:
             )
 
             if trading_pair in profitable: # Breakpoint set here for debugging
-                print(f"🧭 PassiveMM:profitable? {product_id}={trading_pair in profitable} (min_vol={self._min_quote_volume})",self.shared_utils_color.MAGENTA)
+                self.logger.info("PassiveMM profitable check passed",
+                               extra={'product_id': product_id, 'trading_pair': trading_pair,
+                                      'min_quote_volume': str(self._min_quote_volume)})
             else:
-                print(f"⛔ Skipping {trading_pair} — not profitable/liquid enough (min_vol={self._min_quote_volume})",self.shared_utils_color.CYAN) # Breakpoint set here for debugging
+                self.logger.debug("Skipping non-profitable/illiquid symbol",
+                                extra={'trading_pair': trading_pair, 'min_quote_volume': str(self._min_quote_volume)})
                 return
 
             # -------- 2) active_symbols gate --------
@@ -498,9 +500,11 @@ class PassiveOrderManager:
                     buy_od.strategy_tag = "passivemm"
                     buy_od.source = "passivemm"
 
-                    print(f"🧭 PassiveMM:BUY submit {product_id} notional=${buy_notional} px={buy_px}",self.shared_utils_color.BRIGHT_GREEN)
+                    self.logger.info("PassiveMM BUY order submitting",
+                                   extra={'product_id': product_id, 'notional_usd': str(buy_notional), 'price': str(buy_px)})
                     res_buy = await self.tom.place_order(buy_od)
-                    print(f"🧭 PassiveMM:BUY submit {product_id} buy order response {res_buy}", self.shared_utils_color.BRIGHT_GREEN)
+                    self.logger.debug("PassiveMM BUY order response",
+                                    extra={'product_id': product_id, 'response': str(res_buy)})
                     ok_buy, order_id_buy, raw_buy = _order_result(res_buy)
 
                     v_only, reason = _validated_only(raw_buy)
@@ -544,7 +548,8 @@ class PassiveOrderManager:
                     sell_od.strategy_tag = "passivemm"
                     sell_od.source = "passivemm"
 
-                    print(f"🚀🚀 PassiveMM:SELL submit {product_id} size={sell_sz} px={sell_px} 🚀🚀",self.shared_utils_color.BRIGHT_GREEN)
+                    self.logger.info("PassiveMM SELL order submitting",
+                                   extra={'product_id': product_id, 'size': str(sell_sz), 'price': str(sell_px)})
 
                     res_sell = await self.tom.place_order(sell_od)
                     ok_sell, order_id_sell, raw_sell = _order_result(res_sell)
@@ -563,8 +568,9 @@ class PassiveOrderManager:
                                 "post_only": True, "tif": "GTC", "source": "passivemm"
                             })()
                         )
-                        print(f"✅ Placed PASSIVE SELL {trading_pair} {sell_sz} @ {sell_px} (order_id={order_id_sell})",
-                              self.shared_utils_color.BRIGHT_GREEN)
+                        self.logger.info("Placed PASSIVE SELL order",
+                                       extra={'trading_pair': trading_pair, 'size': str(sell_sz),
+                                              'price': str(sell_px), 'order_id': order_id_sell})
                     else:
                         self.logger.error(
                             f"❌ Failed to place PASSIVE SELL for {trading_pair} — "
@@ -719,8 +725,10 @@ class PassiveOrderManager:
         if not self._passes_balance_check(quote_od):
             return
 
-        print(f"📈 Placing {quote_od.source} order: {quote_od.trading_pair} {quote_od.side.upper()} "
-              f"{quote_od.adjusted_size} @ {price}  | Spread: {quote_od.spread}")
+        self.logger.info("Placing passive order",
+                        extra={'source': quote_od.source, 'trading_pair': quote_od.trading_pair,
+                               'side': quote_od.side.upper(), 'size': str(quote_od.adjusted_size),
+                               'price': str(price), 'spread': str(quote_od.spread)})
 
         ok, res = await self.tom.place_order(quote_od)
 
@@ -729,7 +737,9 @@ class PassiveOrderManager:
             if order_id:
                 quote_od.open_orders = True
                 quote_od.order_id = order_id
-                print(f"✅ Saving Passive order: {quote_od.side.upper()} {trading_pair} @ {price}")
+                self.logger.info("Saving passive order",
+                               extra={'side': quote_od.side.upper(), 'trading_pair': trading_pair,
+                                      'price': str(price), 'order_id': order_id})
                 await self._track_passive_order(trading_pair, quote_od.side, order_id, quote_od)
             else:
                 self.logger.warning(f"⚠️ No order_id returned in order placement response: {res}")
@@ -740,8 +750,9 @@ class PassiveOrderManager:
             msg = res.get("message", "No message")
             attempts = res.get("attempts", "N/A")
 
-            print(f"⚠️ Passive {quote_od.side.upper()} {trading_pair} attempt {attempts} failed — Reason: {reason} | Msg: {msg}")
-            self.logger.warning(f"⚠️ Passive {quote_od.side.upper()} failed for {trading_pair}: {msg}", exc_info=True)
+            self.logger.warning("Passive order attempt failed",
+                              extra={'side': quote_od.side.upper(), 'trading_pair': trading_pair,
+                                     'attempts': str(attempts), 'reason': reason, 'message': msg})
 
     # ------------------------------------------------------------------
     # Helper methods
@@ -854,7 +865,7 @@ class PassiveOrderManager:
                                 )
 
                         self.passive_order_tracker.pop(symbol, None)
-                        print(f"🧹 Cleaned expired: {symbol}")
+                        self.logger.info("Cleaned expired passive order", extra={'symbol': symbol})
 
                     else:
                         # ✅ Ensure active buys are monitored by a dedicated task
@@ -941,16 +952,10 @@ class PassiveOrderManager:
                     .to_dict()
                 )
                 if total_trades >0:
-                    print(self.shared_utils_color.format(
-                        "\n[passivemm Live Performance Tracker]\n"
-                        "-------------------------------------\n"
-                        f"Total Trades (last {lookback_days}d): {total_trades}\n"
-                        f"Win Rate: {win_rate:.2f}%\n"
-                        f"Total PnL: {total_pnl:+.2f} USD\n"
-                        f"Average PnL/Trade: {avg_pnl:+.2f} USD\n"
-                        f"Top Symbols: {top_symbols}\n"
-                        "-------------------------------------"
-                    , self.shared_utils_color.BRIGHT_GREEN))
+                    self.logger.info("PassiveMM live performance tracker",
+                                   extra={'lookback_days': lookback_days, 'total_trades': total_trades,
+                                          'win_rate': f"{win_rate:.2f}%", 'total_pnl_usd': f"{total_pnl:+.2f}",
+                                          'avg_pnl_per_trade': f"{avg_pnl:+.2f}", 'top_symbols': str(top_symbols)})
 
             except Exception as e:
                 self.logger.error(f"❌ Live performance tracker error: {e}", exc_info=True)

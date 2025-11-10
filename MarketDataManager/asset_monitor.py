@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
+from Shared_Utils.logger import get_logger
 
 # === Config knobs (put near other module-level constants or __init__) ===
 POSITIONS_EXIT_SWEEP_INTERVAL_SEC = 3       # how often you’ll call this (see B)
@@ -30,7 +31,7 @@ class AssetMonitor:
     def __init__(self, *,listener, logger, config, shared_data_manager, trade_order_manager, order_manager, trade_recorder, profit_data_manager,
                  order_book_manager, shared_utils_precision, shared_utils_color, shared_utils_date_time):
 
-        self.logger = logger
+        self.logger = get_logger('asset_monitor', context={'component': 'asset_monitor'})
         self.listener = listener
         self.shared_data_manager = shared_data_manager
         self.shared_utils_precision = shared_utils_precision
@@ -475,7 +476,8 @@ class AssetMonitor:
                 self.logger.warning(f"[SAFE-REPLACE] build failed for {symbol} (TP/SL adjust); keeping existing")
                 return
 
-            print(f"🛠️ [DEBUG] asset monitor is placing new order for {symbol} with trigger: {trigger}", self.shared_utils_color.MAGENTA)
+            self.logger.debug("Asset monitor placing new order",
+                            extra={'symbol': symbol, 'trigger': str(trigger)})
             success, resp = await self.trade_order_manager.place_order(new_order_data, precision_data)
             if not success:
                 self.logger.warning(f"[SAFE-REPLACE] place failed for {symbol} (TP/SL adjust); keeping existing: {resp}")
@@ -1174,12 +1176,8 @@ class AssetMonitor:
 
         if profit_data_list:
             df = self.profit_data_manager.consolidate_profit_data(profit_data_list)
-            print(self.shared_utils_color.format(
-                "\nProfit Data Open Orders:\n"
-                "-------------------------------------\n"
-                f"Total Trades (last {df.to_string(index=True)}\n"
-                "-------------------------------------"
-                , self.shared_utils_color.BRIGHT_GREEN))
+            self.logger.info("Profit data for open orders",
+                           extra={'profit_data': df.to_dict(orient='records') if hasattr(df, 'to_dict') else str(df)})
 
     async def monitor_untracked_assets(self):
         self.logger.info("📱 Starting monitor_untracked_assets")
