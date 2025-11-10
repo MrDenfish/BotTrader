@@ -132,7 +132,7 @@ services:
 
     # Add a simple healthcheck that requires no extra packages:
     healthcheck:
-      test: [ "CMD-SHELL", "python -c \"import os,time,sys;p='/app/logs/sighook/sighook_logger.log';sys.exit(0) if (os.path.exists(p) and (time.time()-os.path.getmtime(p)<300)) else sys.exit(1)\"" ]
+      test: [ "CMD-SHELL", "python -c \"import os,time,sys;p='/app/logs/sighook_logger.log';sys.exit(0) if (os.path.exists(p) and (time.time()-os.path.getmtime(p)<300)) else sys.exit(1)\"" ]
       interval: 30s
       timeout: 5s
       retries: 5
