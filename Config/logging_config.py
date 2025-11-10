@@ -12,10 +12,12 @@ This module provides centralized logging configuration with:
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, Optional
+from uuid import UUID
 
 from Config.environment import get_environment
 
@@ -35,6 +37,39 @@ TRADE_LOG_LEVELS = {
 # Register custom log levels
 for level_name, level_num in TRADE_LOG_LEVELS.items():
     logging.addLevelName(level_num, level_name)
+
+
+class SafeJSONEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder that handles non-serializable types commonly used in trading.
+
+    Handles:
+    - Decimal: Convert to string to preserve precision
+    - datetime/date: Convert to ISO format
+    - UUID: Convert to string
+    - Other objects: Convert to string representation
+    """
+
+    def default(self, obj):
+        """Convert non-serializable objects to JSON-compatible types."""
+        if isinstance(obj, Decimal):
+            # Convert Decimal to string to preserve precision
+            return str(obj)
+        elif isinstance(obj, (datetime, date)):
+            # Convert datetime/date to ISO format
+            return obj.isoformat()
+        elif isinstance(obj, UUID):
+            # Convert UUID to string
+            return str(obj)
+        elif isinstance(obj, bytes):
+            # Convert bytes to string
+            return obj.decode('utf-8', errors='replace')
+        elif hasattr(obj, '__dict__'):
+            # For custom objects, try to serialize their __dict__
+            return str(obj)
+        else:
+            # Fallback to string representation
+            return str(obj)
 
 
 class JSONFormatter(logging.Formatter):
@@ -90,7 +125,7 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info:
             log_data['exc_info'] = self.formatException(record.exc_info)
 
-        return json.dumps(log_data)
+        return json.dumps(log_data, cls=SafeJSONEncoder)
 
 
 class ColoredConsoleFormatter(logging.Formatter):
