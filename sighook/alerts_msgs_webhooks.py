@@ -101,7 +101,7 @@ class SenderWebhook:
                 return None
             self.processed_uuids.add(uuid)
 
-        print(self.shared_utils_color.format(f" 🔹 Sending webhook: {webhook_payload}", self.shared_utils_color.MAGENTA))
+        self.logger.info("Sending webhook", extra={'webhook_payload': str(webhook_payload)})
 
 
         for attempt in range(1, retries + 1):
@@ -113,8 +113,7 @@ class SenderWebhook:
 
                 headers = {"Content-Type": "application/json"}
                 if not token:
-                    print(f"⚠️ Warning: WEBHOOK_TOKEN is not set; {token}")
-                    self.logger.error("WEBHOOK_TOKEN is missing; server will reject the webhook")
+                    self.logger.warning("WEBHOOK_TOKEN is not set; server will reject webhook", extra={'token': str(token)})
                 else:
                     if auth_header_name.lower() == "authorization":
                         headers["Authorization"] = f"{auth_scheme} {token}".strip()

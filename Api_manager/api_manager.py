@@ -6,6 +6,7 @@ from inspect import stack
 
 from aiohttp import ClientConnectionError
 from ccxt.base.errors import RequestTimeout, BadSymbol, RateLimitExceeded, ExchangeError, InvalidOrder
+from Shared_Utils.logger import get_logger
 
 
 class ApiRateLimiter:
@@ -54,9 +55,8 @@ class ApiManager:
             raise Exception("ApiManager is a singleton and has already been initialized!")
 
         self.exchange = exchange_client
-        self.logger_manager = logger_manager  # 🙂
-        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
-            self.logger = logger_manager.loggers['shared_logger']
+        self.logger_manager = logger_manager  # Keep for backward compatibility
+        self.logger = get_logger('api_manager', context={'component': 'api_manager'})
         self.alert_system = alert_system
         self.rate_limiter = ApiRateLimiter(burst, rate)
         self.semaphores = {
@@ -118,9 +118,9 @@ class ApiManager:
                     return response
 
                 except (ClientConnectionError, RemoteDisconnected) as e:
-                    print(f'{caller_function_name}')
                     wait_time = min(delay * (2 ** attempt), max_delay)
-                    self.logger.error(f"Network error on attempt {attempt}: {e}, retrying in {wait_time}s")
+                    self.logger.error(f"Network error on attempt {attempt}: {e}, retrying in {wait_time}s",
+                                    extra={'caller': caller_function_name, 'attempt': attempt})
                     await asyncio.sleep(wait_time)
 
                 except (RequestTimeout, RateLimitExceeded, BadSymbol) as e:
@@ -154,11 +154,9 @@ class ApiManager:
                         continue  # Retry after delay
                     elif 'Insufficient balance in source account' in error_message:
                         # **Gracefully handle insufficient balance**
-                        self.logger.info(f"Insufficient balance for {func.__name__}. Cannot place order.",
-                                              exc_info=False)
-
-                        # Optional: Send an alert if necessary
-                        print(f"⚠️ Insufficient balance detected for {func.__name__}. Order could not be placed.")
+                        self.logger.warning("Insufficient balance for order placement",
+                                          extra={'function': func.__name__, 'caller': caller_function_name},
+                                          exc_info=False)
 
                         # Return a meaningful response
                         if  caller_function_name == 'place_limit_order':
@@ -183,15 +181,14 @@ class ApiManager:
                         response['message'] = 'priced below the lowest sell price'
                         return
                 except asyncio.TimeoutError:
-                    print(f'{caller_function_name}')
                     if attempt == retries:
-                        self.logger.error("TimeoutError after max retries")
+                        self.logger.error("TimeoutError after max retries", extra={'caller': caller_function_name})
                         break
                     await asyncio.sleep(delay * (2 ** attempt))
                 except Exception as e:
                     if attempt == retries:
-                        print(f'an exception was raised when the api was called from {caller_function_name}')
-                        self.logger.error(f"Unexpected error: {e}", exc_info=True)
+                        self.logger.error(f"Unexpected error: {e}",
+                                        extra={'caller': caller_function_name, 'function': func.__name__}, exc_info=True)
                         raise
             self.logger.info(f"API call failed after all retries. {func.__name__}", exc_info=True)
             return None

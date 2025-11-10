@@ -112,7 +112,7 @@ class TradingStrategy:
                 buy_sell_matrix.at[asset, 'Buy Signal'] = buy_signal
                 buy_sell_matrix.at[asset, 'Sell Signal'] = sell_signal
                 if buy_signal[0] == 0 and "blocked" in buy_signal[3]:
-                    print(f"⚠️⚠️⚠️   Buy signal for {asset} blocked — {buy_signal[3]}    ⚠️⚠️⚠️")
+                    self.logger.warning("Buy signal blocked", extra={'asset': asset, 'reason': buy_signal[3]})
             return strategy_results, buy_sell_matrix
 
         except Exception as e:

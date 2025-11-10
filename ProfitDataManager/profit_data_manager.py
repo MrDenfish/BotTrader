@@ -7,6 +7,7 @@ from decimal import Decimal
 from datetime import datetime, timezone
 from webhook.webhook_validate_orders import OrderData
 from Config.config_manager import CentralConfig as config
+from Shared_Utils.logger import get_logger
 
 def _env_pct(name: str, default: float) -> Decimal:
     try:
@@ -69,9 +70,8 @@ class ProfitDataManager:
         self._take_profit = Decimal(self.config.take_profit)
         self.market_cache = None
         self.last_ticker_update = None
-        self.logger_manager = logger_manager  # 🙂
-        if logger_manager.loggers['shared_logger'].name == 'shared_logger':  # 🙂
-            self.logger = logger_manager.loggers['shared_logger']
+        self.logger_manager = logger_manager  # Keep for backward compatibility
+        self.logger = get_logger('profit_data_manager', context={'component': 'profit_data_manager'})
         self.shared_data_manager = shared_data_manager
         self.shared_utils_utility = shared_utils_utility
         self.shared_utils_print_data = shared_utils_print_data
@@ -152,7 +152,7 @@ class ProfitDataManager:
             asset = base
 
             if current_price == 0 and quote not in ['USD', 'USDC']:
-                print(f"Current price for {normalized_symbol} not available.")
+                self.logger.warning("Current price not available", extra={'symbol': normalized_symbol})
                 profit_data = {
                     'asset': asset,
                     'balance': round(Decimal(required_prices.get('asset_balance', 0)), 2),
@@ -214,7 +214,7 @@ class ProfitDataManager:
         """
         try:
             if not profit_data_list:
-                print("No profitability data available.")
+                self.logger.info("No profitability data available")
                 return None
 
             # Convert list of dictionaries to DataFrame
@@ -231,7 +231,7 @@ class ProfitDataManager:
             return profit_df
 
         except Exception as e:
-            print(f"❌ Error consolidating profit data: {e}")
+            self.logger.error("Error consolidating profit data", extra={'error': str(e)}, exc_info=True)
             return None
 
     async def calculate_tp_sl(self, order_data: OrderData):
