@@ -12,6 +12,7 @@ Usage:
 import asyncio
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -25,16 +26,50 @@ from database_manager.database_session_manager import DatabaseSessionManager
 from sqlalchemy import text
 
 
+class _SimpleLogger:
+    """Simple logger for diagnostic output."""
+    def debug(self, msg, **kwargs): pass
+    def info(self, msg, **kwargs): print(f"ℹ️  {msg}")
+    def warning(self, msg, **kwargs): print(f"⚠️  {msg}")
+    def error(self, msg, **kwargs): print(f"❌ {msg}")
+    def exception(self, msg, **kwargs): print(f"❌ {msg}")
+
+
 class PerformanceDiagnostic:
     """Comprehensive performance diagnostic analyzer."""
 
     def __init__(self, days: int = 30, detailed: bool = False):
         self.days = days
         self.detailed = detailed
-        self.db = DatabaseSessionManager()
+        self.db = None
 
     async def initialize(self):
         """Initialize database connection."""
+        # Get DSN from environment (same as main.py)
+        dsn = os.getenv("DATABASE_URL") or os.getenv("TRADEBOT_DATABASE_URL")
+        if not dsn:
+            raise RuntimeError("DATABASE_URL or TRADEBOT_DATABASE_URL must be set")
+
+        # Normalize to async driver
+        if dsn.startswith("postgres://"):
+            dsn = dsn.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif dsn.startswith("postgresql://") and "+asyncpg" not in dsn:
+            dsn = dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        # Create DatabaseSessionManager with proper initialization
+        logger = _SimpleLogger()
+        self.db = DatabaseSessionManager(
+            dsn,
+            logger=logger,
+            echo=False,
+            pool_size=int(os.getenv("DB_POOL_SIZE", "5")),
+            max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "5")),
+            pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "10")),
+            pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "300")),
+            pool_pre_ping=True,
+            future=True,
+        )
+
         await self.db.initialize()
 
     async def close(self):
