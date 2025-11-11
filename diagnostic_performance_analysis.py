@@ -74,7 +74,8 @@ class PerformanceDiagnostic:
 
     async def close(self):
         """Close database connection."""
-        await self.db.close()
+        if self.db is not None:
+            await self.db.close()
 
     async def analyze_all(self):
         """Run all diagnostic analyses."""
