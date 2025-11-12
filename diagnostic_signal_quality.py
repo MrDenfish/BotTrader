@@ -2,11 +2,12 @@
 """
 Signal Quality Diagnostic Tool
 
-Analyzes score.jsonl to evaluate trading signal quality.
+Analyzes scores.jsonl to evaluate trading signal quality.
 This helps identify if signals are causing profitability issues.
 
 Usage:
     python diagnostic_signal_quality.py [--hours 24] [--min-score 5.0]
+    python diagnostic_signal_quality.py --file logs/scores.jsonl --hours 48
 """
 
 import json
@@ -18,22 +19,31 @@ from typing import Dict, List
 
 
 class SignalQualityAnalyzer:
-    """Analyzes signal quality from score.jsonl logs."""
+    """Analyzes signal quality from scores.jsonl logs."""
 
     def __init__(self, hours: int = 24, min_score: float = 5.0):
         self.hours = hours
         self.min_score = min_score
         self.signals = []
 
-    def load_signals(self, file_path: str = "/app/logs/score.jsonl"):
+    def load_signals(self, file_path: str = "/app/logs/scores.jsonl"):
         """Load signals from JSONL file."""
         from datetime import timezone
         path = Path(file_path)
         if not path.exists():
-            path = Path("logs/score.jsonl")
+            path = Path("logs/scores.jsonl")
+
+        # Try alternate filename (score.jsonl vs scores.jsonl)
+        if not path.exists():
+            alt_path = Path("logs/score.jsonl") if "scores.jsonl" in str(path) else Path("logs/scores.jsonl")
+            if alt_path.exists():
+                path = alt_path
 
         if not path.exists():
-            print(f"❌ Signal log file not found: {file_path}")
+            print(f"❌ Signal log file not found.")
+            print(f"   Tried: {file_path}")
+            print(f"   Tried: logs/scores.jsonl")
+            print(f"   Tried: logs/score.jsonl")
             return False
 
         print(f"📂 Loading signals from: {path}")
@@ -319,7 +329,7 @@ def main():
     parser = argparse.ArgumentParser(description='Signal Quality Diagnostic')
     parser.add_argument('--hours', type=int, default=24, help='Hours to analyze (default: 24)')
     parser.add_argument('--min-score', type=float, default=5.5, help='Minimum score threshold (default: 5.5)')
-    parser.add_argument('--file', type=str, default='/app/logs/score.jsonl', help='Path to score.jsonl')
+    parser.add_argument('--file', type=str, default='/app/logs/scores.jsonl', help='Path to scores.jsonl')
     args = parser.parse_args()
 
     analyzer = SignalQualityAnalyzer(hours=args.hours, min_score=args.min_score)
@@ -328,8 +338,7 @@ def main():
         analyzer.analyze_all()
     else:
         print("\n❌ Unable to load signals. Check file path.")
-        print(f"   Expected: {args.file}")
-        print("   Or: logs/score.jsonl")
+        print(f"   Tried: {args.file}, logs/scores.jsonl, logs/score.jsonl")
 
 
 if __name__ == "__main__":
