@@ -27,6 +27,7 @@ class SignalQualityAnalyzer:
 
     def load_signals(self, file_path: str = "/app/logs/score.jsonl"):
         """Load signals from JSONL file."""
+        from datetime import timezone
         path = Path(file_path)
         if not path.exists():
             path = Path("logs/score.jsonl")
@@ -37,7 +38,7 @@ class SignalQualityAnalyzer:
 
         print(f"📂 Loading signals from: {path}")
 
-        cutoff_time = datetime.now() - timedelta(hours=self.hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=self.hours)
 
         with open(path, 'r') as f:
             for line_num, line in enumerate(f, 1):
