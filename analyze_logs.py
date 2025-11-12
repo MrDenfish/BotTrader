@@ -193,18 +193,19 @@ class LogAnalyzer:
 
     def _parse_time_range(self, time_str: str) -> Optional[datetime]:
         """Parse time range string (e.g., '1h', '24h', '7d')."""
+        from datetime import timezone
         time_str = time_str.strip().lower()
 
         try:
             if time_str.endswith('h'):
                 hours = int(time_str[:-1])
-                return datetime.utcnow() - timedelta(hours=hours)
+                return datetime.now(timezone.utc) - timedelta(hours=hours)
             elif time_str.endswith('d'):
                 days = int(time_str[:-1])
-                return datetime.utcnow() - timedelta(days=days)
+                return datetime.now(timezone.utc) - timedelta(days=days)
             elif time_str.endswith('m'):
                 minutes = int(time_str[:-1])
-                return datetime.utcnow() - timedelta(minutes=minutes)
+                return datetime.now(timezone.utc) - timedelta(minutes=minutes)
         except ValueError:
             pass
 
@@ -212,8 +213,9 @@ class LogAnalyzer:
 
     def _parse_timestamp(self, timestamp: Optional[str]) -> datetime:
         """Parse ISO timestamp from log entry."""
+        from datetime import timezone
         if not timestamp:
-            return datetime.min
+            return datetime.min.replace(tzinfo=timezone.utc)
 
         try:
             # Handle 'Z' suffix
@@ -221,7 +223,7 @@ class LogAnalyzer:
                 timestamp = timestamp[:-1] + '+00:00'
             return datetime.fromisoformat(timestamp)
         except ValueError:
-            return datetime.min
+            return datetime.min.replace(tzinfo=timezone.utc)
 
     def print_summary(self) -> None:
         """Print analysis summary."""

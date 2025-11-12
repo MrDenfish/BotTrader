@@ -417,10 +417,11 @@ class OrderManager:
             return None
 
     def render_usd_info(self, info):
-        asset = info['asset']
-        total = float(info["total_balance_fiat"])
-        avail = float(info["available_to_trade_fiat"])
-        alloc = float(info["allocation"]) * 100
+        # Handle missing keys gracefully
+        asset = info.get('asset', 'USD')
+        total = float(info.get("total_balance_fiat", 0))
+        avail = float(info.get("available_to_trade_fiat", 0))
+        alloc = float(info.get("allocation", 0)) * 100
         return f"{asset} | total=${total:.2f} | avail=${avail:.2f} | alloc={alloc:.2f}% "
 
     async def handle_actions(self, order, holdings):
@@ -444,7 +445,7 @@ class OrderManager:
             usd_balance_info = self.filtered_balances.get('USD', {})
             self.logger.debug("USD balance info",
                 extra={'balance_info': self.render_usd_info(usd_balance_info), 'symbol': symbol})
-            quote_avail_balance = Decimal(usd_balance_info['available_to_trade_fiat'])
+            quote_avail_balance = Decimal(usd_balance_info.get('available_to_trade_fiat', 0))
             quote_avail_balance = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, quote_avail_balance, convert='quote'
             )
