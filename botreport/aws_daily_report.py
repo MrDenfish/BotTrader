@@ -170,6 +170,7 @@ from Config.constants_report import (
 # Report Feature Flags
 # ============================================================================
 REPORT_INCLUDE_SYMBOL_PERFORMANCE = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
+REPORT_CAPTURE_HTML = os.getenv('REPORT_CAPTURE_HTML', 'false').lower() == 'true'
 
 # ============================================================================
 # Environment-aware configuration
@@ -1735,7 +1736,6 @@ def main():
         save_report_copy(csvb)
         send_email(html, csvb)
     else:
-        send_email(html, csvb)
         # Local dev: pretty console output + local CSV, no email
         as_of_utc = datetime.now(timezone.utc)
         window_label = "last 24h"  # or derive from REPORT_USE_PT_DAY/LOOKBACK
@@ -1769,6 +1769,11 @@ def main():
 
         print(console_text)
         print("\n[Saved CSV] trading_report_local.csv")
+
+    # Return HTML if capture flag is set (for --preview-html)
+    if REPORT_CAPTURE_HTML:
+        return html
+    return None
 
 
 if __name__ == "__main__":

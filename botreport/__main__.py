@@ -81,24 +81,27 @@ def main():
     #   - build HTML/CSV
     #   - if IN_DOCKER=true -> email via SES and save CSV copy
     #   - else               -> print console summary + save local CSV only
-    report.main()
+    # Returns HTML content if preview_html is requested
+    html_content = None
+    if args.preview_html:
+        # Capture HTML output by modifying the report module temporarily
+        os.environ["REPORT_CAPTURE_HTML"] = "true"
+
+    try:
+        html_content = report.main()
+    except TypeError:
+        # main() doesn't return HTML yet, need to modify it
+        report.main()
+        html_content = None
 
     # Optional: write a preview HTML copy if requested
-    if args.preview_html:
-        # Build a minimal preview run again to render the same HTML into a file
-        # without re-sending. We rely on REPORT_PREVIEW_ONLY to suppress send.
-        os.environ["IN_DOCKER"] = "false"
-        # We can grab the same internals by calling the builder path quickly:
-        # Easiest: re-run the pipeline to get the same HTML and write it.
-        # (This duplicates a small amount of work, but keeps __main__ simple.)
-        # If you prefer: you can refactor aws_daily_report to expose a function
-        # that returns the HTML/csv_bytes tuple without side-effects.
+    if args.preview_html and html_content:
         try:
-            # Quick single-shot: call again and trap the HTML by toggling a flag.
-            # If you’d like zero duplication, expose a `render_report_only()` in aws_daily_report.
-            pass  # Keep it simple for now; preview_html is optional.
-        except Exception:
-            pass
+            with open(args.preview_html, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            print(f"\n[Saved HTML Preview] {args.preview_html}")
+        except Exception as e:
+            print(f"\n[Warning] Could not save HTML preview: {e}")
 
 
 if __name__ == "__main__":
