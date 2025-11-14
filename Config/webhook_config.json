@@ -10,5 +10,8 @@
   },
   "do_server": {
     "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
+  },
+  "bot": {
+    "LISTENER_ERROR_LOG_DIR": "logs/listener_logs"
   }
 }
