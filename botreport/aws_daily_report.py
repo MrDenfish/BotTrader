@@ -110,6 +110,11 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl,
                               load_tpsl_jsonl, aggregate_tpsl, render_tpsl_section, render_tpsl_suggestions)
+from botreport.analysis_symbol_performance import (
+    compute_symbol_performance,
+    render_symbol_performance_html,
+    generate_symbol_suggestions
+)
 from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
 from botreport.email_report_print_format import build_console_report
 
@@ -159,6 +164,11 @@ from Config.constants_report import (
     TAKER_FEE,
     MAKER_FEE,
 )
+
+# ============================================================================
+# Report Feature Flags
+# ============================================================================
+REPORT_INCLUDE_SYMBOL_PERFORMANCE = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
 
 # ============================================================================
 # Environment-aware configuration
@@ -1588,6 +1598,28 @@ def main():
         strat_rows, strat_notes = compute_strategy_breakdown_windowed(conn)
         detect_notes.extend(strat_notes)
 
+        # Compute per-symbol performance (Phase 1 - Parameter Tuning)
+        symbol_perf_data = None
+        symbol_perf_html = ""
+        if REPORT_INCLUDE_SYMBOL_PERFORMANCE:
+            try:
+                symbol_perf_data = compute_symbol_performance(
+                    conn,
+                    hours_back=hours_back,
+                    top_n=15,
+                    min_trades=3
+                )
+                symbol_perf_html = render_symbol_performance_html(symbol_perf_data, include_header=True)
+
+                # Add suggestions to notes
+                suggestions = generate_symbol_suggestions(symbol_perf_data)
+                if suggestions:
+                    detect_notes.append("Symbol performance suggestions available")
+            except Exception as e:
+                logger.error("Symbol performance analysis error", extra={'error': str(e)}, exc_info=True)
+                symbol_perf_html = "<!-- symbol performance unavailable -->"
+                detect_notes.append(f"Symbol performance error: {e}")
+
         extras = derive_extra_metrics(
             win_rate_pct=win_rate,
             avg_win=avg_win,
@@ -1667,6 +1699,13 @@ def main():
                 html = html + "\n" + fast_html
         if "</body></html>" in html:
             html = html.replace("</body></html>", tpsl_html + "\n</body></html>")
+
+        # Add symbol performance section (Phase 1 - Parameter Tuning)
+        if symbol_perf_html and REPORT_INCLUDE_SYMBOL_PERFORMANCE:
+            if "</body></html>" in html:
+                html = html.replace("</body></html>", "\n" + symbol_perf_html + "\n</body></html>")
+            else:
+                html = html + "\n" + symbol_perf_html
         else:
             html += "\n" + tpsl_html
 
