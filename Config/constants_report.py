@@ -26,6 +26,8 @@ DEFAULT_LOOKBACK_MINUTES = int(os.getenv('REPORT_LOOKBACK_MINUTES', '1440'))
 MAX_LOOKBACK_HOURS = ABSOLUTE_MAX_LOOKBACK_HOURS
 """Maximum lookback window (inherited from core)"""
 
+REPORT_LOOKBACK_HOURS = int(os.getenv('REPORT_LOOKBACK_HOURS', '24'))
+
 MIN_LOOKBACK_HOURS = 1
 """Minimum lookback window"""
 

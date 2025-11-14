@@ -135,6 +135,7 @@ from Config.constants_core import (
 from Config.constants_report import (
     DEFAULT_TOP_POSITIONS,
     DEFAULT_LOOKBACK_HOURS,
+    REPORT_LOOKBACK_HOURS,
     MAX_LOOKBACK_HOURS,
     MIN_LOOKBACK_HOURS,
     REPORT_PNL_TABLE,
@@ -1605,7 +1606,7 @@ def main():
             try:
                 symbol_perf_data = compute_symbol_performance(
                     conn,
-                    hours_back=hours_back,
+                    hours_back=REPORT_LOOKBACK_HOURS,
                     top_n=15,
                     min_trades=3
                 )
