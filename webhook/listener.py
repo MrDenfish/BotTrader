@@ -46,11 +46,15 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from ProfitDataManager.profit_data_manager import ProfitDataManager
 from webhook.websocket_market_manager import WebSocketMarketManager
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK, InvalidStatusCode
+from Shared_Utils.logger import get_logger
 
 
 
 SYNC_INTERVAL = 60  # seconds
 SYNC_LOOKBACK = 24
+
+# Module-level logger for global handlers
+_module_logger = get_logger('webhook', context={'component': 'listener_global'})
 
 
 
@@ -352,8 +356,12 @@ class WebhookListener:
 
         self.bot_config = bot_config
         self.test_mode = self.bot_config.test_mode
+
+        # Initialize structured logger early for initialization logging
+        self._temp_logger = get_logger('webhook', context={'component': 'listener'})
+
         if not hasattr(self.bot_config, 'rest_client') or not self.bot_config.rest_client:
-            print("REST client is not initialized. Initializing now...")
+            self._temp_logger.info("REST client not initialized, initializing now")
             self.bot_config.initialize_rest_client()
         # Assign the REST client and portfolio UUID
         self.rest_client = self.bot_config.rest_client
@@ -369,7 +377,10 @@ class WebhookListener:
         self.market_data_updater = market_data_updater
         self.logger_manager = logger_manager  # 🙂
         if logger_manager:
-            self.logger = logger_manager.loggers['webhook_logger']  # ✅ this is the actual logger you’ll use
+            self.logger = logger_manager.loggers['webhook_logger']  # ✅ this is the actual logger you'll use
+
+        # Structured logger for webhook operations
+        self.structured_logger = get_logger('webhook', context={'component': 'listener'})
 
         self.webhook_manager = self.ticker_manager = self.utility = None  # Initialize webhook manager properly
         self.ohlcv_manager = None
@@ -655,13 +666,20 @@ class WebhookListener:
             self.usd_pairs = self.market_data.get('usd_pairs_cache', {})
             self.spot_info = self.market_data.get('spot_positions', {})
 
-            print(f"\n🟠 handle_order_fill - OrderData: {websocket_order_data.debug_summary(verbose=True)}\n")
+            self.structured_logger.debug(
+                "handle_order_fill - OrderData",
+                extra={'order_data': websocket_order_data.debug_summary(verbose=True)}
+            )
 
             # Hand off to processor
             await self._process_order_fill('WebSocket', websocket_order_data)
 
         except Exception as e:
-            print(f'websocket_msg: {websocket_order_data}')
+            self.structured_logger.error(
+                "Error in handle_order_fill",
+                extra={'websocket_msg': str(websocket_order_data)},
+                exc_info=True
+            )
             self.logger.error(f"Error in handle_order_fill: {e} {websocket_order_data}", exc_info=True)
 
     async def _process_order_fill(self, source, order_data: OrderData):
@@ -671,7 +689,10 @@ class WebhookListener:
         Args:
             order_data (dict): Details of the filled order, including symbol, price, and size.
         """
-        print(f"Processing order fill: {order_data.side}:{order_data.trading_pair}")
+        self.structured_logger.info(
+            "Processing order fill",
+            extra={'side': order_data.side, 'trading_pair': order_data.trading_pair, 'source': source}
+        )
         try:
             if order_data.open_orders is not None:
                 if order_data.open_orders.get('open_order'):
@@ -692,7 +713,7 @@ class WebhookListener:
             if response_data:
                 if response_data.get('details', {}).get("Order_id"):
                     pass
-                    print(f'REVIEW CODE FOR TRAILING STOP ORDER (1789)*********************************')
+                    self.structured_logger.warning("REVIEW CODE FOR TRAILING STOP ORDER - Line 1789")
                     # Add the trailing stop order to the order_tracker
                     self.order_management['order_tracker'][response_data["order_id"]] = {
                         'symbol': order_data.trading_pair,
@@ -703,15 +724,21 @@ class WebhookListener:
                         'limit_price': order_data.limit_price * Decimal('1.002')  # Example limit price adjustment
                     }
                     order_id = response_data.get("order_id")
-                    print(f"Order tracker updated with trailing stop order: {order_id}")
+                    self.structured_logger.info(
+                        "Order tracker updated with trailing stop order",
+                        extra={'order_id': order_id, 'trading_pair': order_data.trading_pair}
+                    )
 
                     # Remove the associated buy order from the order_tracker
                     associated_buy_order_id = order_data.order_id
                     if associated_buy_order_id in self.order_management['order_tracker']:
                         del self.order_management['order_tracker'][associated_buy_order_id]
-                        print(f"Removed associated buy order {associated_buy_order_id} from order_tracker")
+                        self.structured_logger.info(
+                            "Removed associated buy order from order_tracker",
+                            extra={'buy_order_id': associated_buy_order_id}
+                        )
             else:
-                print("No response data received from order_type_manager.process_limit_and_tp_sl_orders")
+                self.structured_logger.warning("No response data received from order_type_manager.process_limit_and_tp_sl_orders")
 
         except Exception as e:
             self.logger.error(f"Error in _process_order_fill: {e}", exc_info=True)
@@ -723,7 +750,10 @@ class WebhookListener:
 
             # print(f"� Request Headers: {dict(request.headers)}")  # Debug
             request_json = await request.json()
-            print(f"🔹 Receiving webhook: {request_json}")
+            self.structured_logger.info(
+                "Receiving webhook",
+                extra={'webhook_data': request_json, 'ip': ip_address}
+            )
 
             symbol = request_json.get("pair")
             side = request_json.get("side")
@@ -732,7 +762,10 @@ class WebhookListener:
             source = request_json.get("source")
 
             if origin == "TradingView":
-                print(f"Handling webhook request from: {origin} {symbol} uuid :{request_json.get('uuid')}")
+                self.structured_logger.info(
+                    "Handling webhook request from TradingView",
+                    extra={'origin': origin, 'symbol': symbol, 'uuid': request_json.get('uuid')}
+                )
 
             # Ensure UUID is present
             request_json["uuid"] = request_json.get("uuid", str(uuid.uuid4()))
@@ -951,7 +984,10 @@ class WebhookListener:
             order_details.trigger = trigger
 
             # ✅ Debug summary
-            print(f"\n 🟠️ process_webhook - Order Data: 🟠\n{order_details.debug_summary(verbose=True)}\n")
+            self.structured_logger.debug(
+                "process_webhook - Order Data",
+                extra={'order_data': order_details.debug_summary(verbose=True)}
+            )
 
             # ✅ Delegate to action handler
             response = await self.webhook_manager.handle_action(order_details, precision_data)
@@ -1617,14 +1653,16 @@ class WebhookListener:
 def handle_global_exception(loop, context):
     exception = context.get("exception")
     message = context.get("message", "Unhandled exception occurred")
-    print(f"Global exception handler caught: {message}")
-    if exception:
-        print(f"Exception: {exception}")
+    _module_logger.error(
+        "Global exception handler caught",
+        extra={'message': message, 'exception_type': type(exception).__name__ if exception else None},
+        exc_info=exception
+    )
 
     if hasattr(loop, 'log_manager'):
         loop.log_manager.error(f"Unhandled exception: {message}", exc_info=exception)
     else:
-        print(f"Unhandled exception: {message}")
+        _module_logger.error(f"Unhandled exception: {message}", exc_info=exception)
 
 # def shutdown_handler(signal_received, frame):
 #     """Gracefully shuts down the application by setting the shutdown event."""
@@ -1642,7 +1680,11 @@ async def supervised_task(task_coro, name):
     try:
         await task_coro
     except Exception as e:
-        print(f"❌ Task {name} encountered an error: {e}")
+        _module_logger.error(
+            "Task encountered an error",
+            extra={'task_name': name, 'error': str(e)},
+            exc_info=True
+        )
 
 
 

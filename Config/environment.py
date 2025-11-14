@@ -136,3 +136,15 @@ env.load()
 # Export for convenience
 is_docker = env.is_docker
 env_name = env.env_name
+
+
+def get_environment() -> str:
+    """
+    Get current environment name.
+
+    Returns:
+        Environment name: 'docker', 'prod', or 'dev'
+    """
+    if env.is_docker:
+        return 'docker'
+    return env.env_name

@@ -8,6 +8,10 @@ from coinbase import rest as coinbase
 from pandas.core.methods.describe import select_describe_func
 from Shared_Utils.runtime_env import running_in_docker as running_in_docker
 from Shared_Utils.url_helper import build_asyncpg_url_from_env
+from Shared_Utils.logger import get_logger
+
+# Module-level logger
+_logger = get_logger('config_manager', context={'component': 'config_manager'})
 
 class CentralConfig:
     """Centralized configuration manager shared across all modules."""
@@ -16,7 +20,7 @@ class CentralConfig:
 
     def __new__(cls, is_docker=None):
         if cls._instance is None:
-            print("Creating Config Manager instance")
+            _logger.info("Creating Config Manager instance")
             cls._instance = super(CentralConfig, cls).__new__(cls)
         return cls._instance
 
@@ -87,15 +91,16 @@ class CentralConfig:
         # Check if running in Docker via runtime detection
         if running_in_docker():
             # Don't load local .env inside containers (env vars come from compose/entrypoint)
-            print("🔹 Running in Docker - skipping .env file load (using container env)")
+            _logger.info("Running in Docker - skipping .env file load",
+                extra={'reason': 'using_container_env'})
             return
         # Load unified .env file for desktop
         env_path = Path(__file__).resolve().parent.parent / '.env'
         if env_path.exists():
-            print(f"🔹 Loading .env from {env_path}")
+            _logger.info("Loading .env file", extra={'env_path': str(env_path)})
             load_dotenv(dotenv_path=env_path)
         else:
-            print(f"⚠️  No .env file found at {env_path}")
+            _logger.warning("No .env file found", extra={'expected_path': str(env_path)})
 
     def _load_environment_variables(self):
         env_vars = {
@@ -189,7 +194,7 @@ class CentralConfig:
                 setattr(self, attr, Decimal(value) if attr.startswith("_") and "percentage" in attr.lower() else value)
             else:
                 pass
-        print(f"Configuration loaded successfully.")
+        _logger.info("Configuration loaded successfully from environment variables")
 
     def _compute_environment_specific_values(self):
         """
@@ -201,7 +206,8 @@ class CentralConfig:
         # 1. Compute DB_HOST if not explicitly set
         if not self.db_host:
             self.db_host = "db" if is_docker else "127.0.0.1"
-            print(f"🔧 Auto-configured DB_HOST={self.db_host} (is_docker={is_docker})")
+            _logger.info("Auto-configured DB_HOST",
+                extra={'db_host': self.db_host, 'is_docker': is_docker})
 
         # 2. Compute log paths if not explicitly set
         if not self._score_jsonl_path:
@@ -213,7 +219,8 @@ class CentralConfig:
                 cache_dir = Path(__file__).resolve().parent.parent / ".bottrader" / "cache"
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 self._score_jsonl_path = str(cache_dir / "scores.jsonl")
-            print(f"🔧 Auto-configured SCORE_JSONL_PATH={self._score_jsonl_path}")
+            _logger.info("Auto-configured SCORE_JSONL_PATH",
+                extra={'score_jsonl_path': self._score_jsonl_path})
 
         if not self._tp_sl_log_path:
             if is_docker:
@@ -224,7 +231,8 @@ class CentralConfig:
                 cache_dir = Path(__file__).resolve().parent.parent / ".bottrader" / "cache"
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 self._tp_sl_log_path = str(cache_dir / "tpsl.jsonl")
-            print(f"🔧 Auto-configured TP_SL_LOG_PATH={self._tp_sl_log_path}")
+            _logger.info("Auto-configured TP_SL_LOG_PATH",
+                extra={'tp_sl_log_path': self._tp_sl_log_path})
 
     def _load_json_config(self):
         """Load and merge JSON configuration files from Shared_Utils."""
@@ -258,9 +266,11 @@ class CentralConfig:
             self._websocket_api_key_path = os.path.join(shared_utils_dir, 'websocket_api_info.json')
             self.websocket_api = self.load_websocket_api_key()
 
-            print(f"Configuration loaded successfully for machine type '{self.machine_type}'.")
+            _logger.info("Configuration loaded successfully",
+                extra={'machine_type': self.machine_type})
         except Exception as e:
-            print(f"Error loading JSON configuration: {e}")
+            _logger.error("Error loading JSON configuration",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e)}, exc_info=e)
             exit(1)
 
     def _merge_config_data(self, new_config):
@@ -278,10 +288,11 @@ class CentralConfig:
         try:
             self.db_url = build_asyncpg_url_from_env()
             masked = self.db_url.replace(self.db_url.split("://", 1)[1].split("@", 1)[0], "****:****")
-            print(f"Configured PostgreSQL database at: {masked}")
-            print(f" ❇️  web_url: {self.web_url}  ❇️ ")
+            _logger.info("Configured PostgreSQL database",
+                extra={'masked_url': masked, 'web_url': self.web_url})
         except Exception as e:
-            print(f"Error configuring database URL: {e}")
+            _logger.error("Error configuring database URL",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e)}, exc_info=e)
             raise
 
     def load_sighook_api_key(self):
@@ -290,7 +301,8 @@ class CentralConfig:
             with open(self._sighook_api_key_path, 'r') as file:
                 return json.load(file)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading Sighook API key JSON: {e}")
+            _logger.error("Error loading Sighook API key JSON",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e), 'key_path': self._sighook_api_key_path})
             return None
 
     def get_whitelist(self):
@@ -322,9 +334,11 @@ class CentralConfig:
 
             self.rest_client = coinbase.RESTClient(api_key=api_key, api_secret=api_secret)
             self.portfolio_uuid = portfolio_uuid
-            print("REST client successfully initialized.")
+            _logger.info("REST client successfully initialized",
+                extra={'portfolio_uuid': portfolio_uuid})
         except Exception as e:
-            print(f"Error initializing REST client: {e}")
+            _logger.error("Error initializing REST client",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e)}, exc_info=e)
             raise
 
     def load_channels(self):
@@ -338,7 +352,8 @@ class CentralConfig:
 
             return market_channels, user_channels
         except Exception as e:
-            print(f"Error loading channels: {e}")
+            _logger.error("Error loading channels",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e)}, exc_info=e)
             return [], []  # Return empty lists in case of failure
 
     def get_database_dir(self):
@@ -352,7 +367,8 @@ class CentralConfig:
             with open(self._webhook_api_key_path, 'r') as file:
                 return json.load(file)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading webhook CDP API key JSON: {e}")
+            _logger.error("Error loading webhook CDP API key JSON",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e), 'key_path': self._webhook_api_key_path})
             exit(1)
 
     def load_websocket_api_key(self):
@@ -360,7 +376,8 @@ class CentralConfig:
             with open(self._websocket_api_key_path, 'r') as file:
                 return json.load(file)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading websocket CDP API key JSON: {e}")
+            _logger.error("Error loading websocket CDP API key JSON",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e), 'key_path': self._websocket_api_key_path})
             exit(1)
 
     def reload_config(self):
@@ -373,17 +390,19 @@ class CentralConfig:
 
     def determine_machine_type(self) -> tuple:
         cwd_parts = os.getcwd().split('/')
-        print(f"🍀🍀🍀 {cwd_parts} 🍀🍀🍀")
+        _logger.debug("Determining machine type", extra={'cwd_parts': cwd_parts})
         if 'app' in cwd_parts:
-            print(f"🍀 Machine type: docker 🍀")
+            _logger.info("Machine type determined: docker")
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         elif len(cwd_parts) > 2:
 
             if cwd_parts[2] == 'jack':
-                print(f"🍀 Machine type: Laptop 🍀")
+                _logger.info("Machine type determined: Laptop",
+                    extra={'machine_type': cwd_parts[2]})
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
             else:
-                print(f"🍀 Machine type: Desktop 🍀")
+                _logger.info("Machine type determined: Desktop",
+                    extra={'machine_type': cwd_parts[2]})
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
         else:
             raise ValueError(f"Invalid path {os.getcwd()}, unable to determine machine type.")
@@ -393,7 +412,8 @@ class CentralConfig:
             with open(self._tb_api_key_path, 'r') as file:
                 return json.load(file)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Error loading tb CDP API key JSON: {e}")
+            _logger.error("Error loading tb CDP API key JSON",
+                extra={'error_type': type(e).__name__, 'error_msg': str(e), 'key_path': self._tb_api_key_path})
             exit(1)
 
     @property
@@ -768,7 +788,7 @@ class CentralConfig:
             path = "/" + path
         final = urljoin(base + "/", path.lstrip("/"))
         self._log_url("computed", final, base=base, path=path)
-        print("Webhook URL resolved to:", final)
+        _logger.info("Webhook URL resolved", extra={'webhook_url': final, 'base': base, 'path': path})
         return final
 
     def _default_base_url(self) -> str:
@@ -796,7 +816,8 @@ class CentralConfig:
         return "http://127.0.0.1:5003"
 
     def _log_url(self, source: str, url: str, **kw):
-        print(f"❇️ web_url ({source}): {url}  {(' ' + str(kw)) if kw else ''}")
+        _logger.debug("Web URL computed",
+            extra={'source': source, 'url': url, 'details': kw})
 
     @property
     def sleep_time(self):

@@ -10,6 +10,7 @@ from Api_manager.api_exceptions import RateLimitException, BadRequestException, 
 from Api_manager.api_exceptions import UnknownException
 from Config.config_manager import CentralConfig as Config
 from webhook.webhook_validate_orders import OrderData
+from Shared_Utils.logger import get_logger
 
 
 class WebHookManager:
@@ -34,6 +35,7 @@ class WebHookManager:
         self.shared_utils_precision = shared_utils_precision
         self.trade_order_manager = trade_order_manager
         self.logger = logger_manager  # 🙂
+        self.structured_logger = get_logger('webhook', context={'component': 'webhook_manager'})
 
         self.session = session
 
@@ -148,7 +150,16 @@ class WebHookManager:
 
         except Exception as e:
             caller_function_name = stack()[1].function  # Debugging
-            print(f'{caller_function_name} - base_amount: {base_amount}, base_price: {base_price}')
+            self.structured_logger.error(
+                'calculate_order_size_fiat error',
+                extra={
+                    'caller_function': caller_function_name,
+                    'base_amount': float(base_amount) if base_amount else None,
+                    'base_price': float(base_price) if base_price else None,
+                    'error': str(e)
+                },
+                exc_info=True
+            )
             self.logger.error(f'calculate_order_size_fiat: An unexpected error occurred: {e}', exc_info=True)
             return None, None, None  # Return safe defaults on error
 

@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Config.config_manager import CentralConfig as Config
+from Shared_Utils.logger import get_logger
 
 
 # Define the OrderTypeManager class
@@ -43,6 +44,7 @@ class OrderTypeManager:
         self.coinbase_api = coinbase_api
         # self.base_url = self.config._api_url
         self.logger = logger_manager  # 🙂
+        self.structured_logger = get_logger('webhook', context={'component': 'order_types'})
 
         self.validate = validate
         self.order_book_manager = order_book_manager
@@ -380,7 +382,14 @@ class OrderTypeManager:
             asset = order_data.base_currency
 
             print_order_data = self.shared_utils_utility.pretty_summary(order_data)
-            print(f"✅ Processing TP/SL Order from {source}: {print_order_data}")
+            self.structured_logger.info(
+                "Processing TP/SL Order",
+                extra={
+                    'source': source,
+                    'trading_pair': trading_pair,
+                    'order_summary': print_order_data
+                }
+            )
 
             # ✅ Avoid duplicate open orders
             has_open_order, open_order = self.shared_utils_utility.has_open_orders(
@@ -574,7 +583,10 @@ class OrderTypeManager:
 
             if isinstance(response, dict) and response.get("success") and response.get("success_response", {}).get("order_id"):
                 order_id = response["success_response"]["order_id"]
-                print(f"✅ TP/SL Order Placed Successfully → {order_id}")
+                self.structured_logger.order_sent(
+                    "TP/SL Order Placed Successfully",
+                    extra={'order_id': order_id, 'trading_pair': trading_pair}
+                )
                 return {
                     **response,
                     "status": "placed",
@@ -596,7 +608,13 @@ class OrderTypeManager:
                     "order_id": None,
                     "error_response": {"message": "Adapter returned None/invalid"}
                 }
-            print(f"❗️ TP/SL Order Rejected → {response.get('error_response', {}).get('message')}")
+            self.structured_logger.warning(
+                "TP/SL Order Rejected",
+                extra={
+                    'trading_pair': trading_pair,
+                    'error_message': response.get('error_response', {}).get('message')
+                }
+            )
             response.setdefault("success", False)
             response.setdefault("order_id", None)
             return response
@@ -728,14 +746,15 @@ class OrderTypeManager:
 
                 response = await self.coinbase_api.create_order(payload)
 
-                print(self.shared_utils_color.format(
-                    f"{order_data.source.upper()} ORDER ({order_data.trigger.get('trigger')}): {symbol} — {response}",
-                    {
-                        "websocket": self.shared_utils_color.CYAN,
-                        "passivemm": self.shared_utils_color.BLUE,
-                        "webhook": self.shared_utils_color.YELLOW
-                    }.get(order_data.source, self.shared_utils_color.MAGENTA)
-                ))
+                self.structured_logger.info(
+                    f"{order_data.source.upper()} ORDER",
+                    extra={
+                        'source': order_data.source,
+                        'trigger': order_data.trigger.get('trigger'),
+                        'symbol': symbol,
+                        'response': response
+                    }
+                )
 
                 if response.get("success"):
                     order_id = response['success_response'].get('order_id')
@@ -884,7 +903,10 @@ class OrderTypeManager:
             }
 
             # ✅ Debugging
-            print(f"Payload before sending: {json.dumps(payload, indent=4)}")
+            self.structured_logger.debug(
+                "Payload before sending",
+                extra={'payload': payload, 'product_id': product_id}
+            )
 
             # ✅ Send order request to Coinbase API
             response = await self.coinbase_api.create_order(payload)
@@ -893,11 +915,21 @@ class OrderTypeManager:
                 self.logger.error(f"Received None as the response from create_order.")
                 return None
             elif 'Insufficient balance in source account' in response:
-                print(f"� Debugging: Available balance {available_balance}, base_size {base_size}")
+                self.structured_logger.debug(
+                    "Insufficient balance for trailing stop",
+                    extra={
+                        'available_balance': float(available_balance),
+                        'base_size': float(base_size),
+                        'trading_pair': order_data['trading_pair']
+                    }
+                )
                 self.logger.info(f"Insufficient funds for trailing stop order: {order_data['trading_pair']}")
                 return None
 
-            print(f'Trailing stop order placed for {order_data["trading_pair"]}, response: {response}')  # Debugging
+            self.structured_logger.info(
+                "Trailing stop order placed",
+                extra={'trading_pair': order_data["trading_pair"], 'response_status': response.get('status', 'unknown')}
+            )
             response['trigger'] = order_data.trigger
             response['status'] = 'placed'
             response['source'] = order_data.source

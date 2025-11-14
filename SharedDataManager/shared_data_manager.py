@@ -22,6 +22,10 @@ from TableModels.active_symbols import ActiveSymbol
 from datetime import datetime, date, timezone, timedelta
 from SharedDataManager.trade_recorder import TradeRecorder
 from SharedDataManager.leader_board import recompute_and_upsert_active_symbols, LeaderboardConfig
+from Shared_Utils.logger import get_logger
+
+# Module-level logger for static methods
+_logger = get_logger('shared_data_manager', context={'component': 'shared_data_manager'})
 
 
 
@@ -76,7 +80,8 @@ class DecimalDecoderOut(json.JSONDecoder):
                 try:
                     obj[key] = Decimal(value)
                 except Exception as e:
-                    print(f"Error converting {value} to Decimal: {e}")
+                    _logger.error("Error converting value to Decimal",
+                                extra={'value': str(value), 'error_type': type(e).__name__, 'error_msg': str(e)})
                     pass  # Ignore if conversion fails
         return obj
 
@@ -120,7 +125,7 @@ class SharedDataManager:
             raise Exception("This class is a singleton! Use get_instance() instead.")
 
         self.db_semaphore = asyncio.Semaphore(10)
-        self.logger = logger_manager  # 🙂
+        self.logger = get_logger('shared_data_manager', context={'component': 'shared_data_manager'})
 
         self.shared_utils_utility = shared_utils_utility
         self.database_session_manager = database_session_manager
@@ -300,19 +305,20 @@ class SharedDataManager:
         async with self.lock:
             try:
                 func_name = stack()[1].function
-                print(f"Fetching market data from the database...Initiated by {func_name}")
+                self.logger.info("Fetching market data from database",
+                               extra={'initiated_by': func_name})
                 if not self.market_data:
                     self.market_data = await self.fetch_market_data()
                 else:
-                    print("✅ Skipping fetch_market_data(): market_data is already populated")
+                    self.logger.debug("Skipping fetch_market_data - already populated")
 
-                print("Fetching order management data from the database...")
+                self.logger.info("Fetching order management data from database")
                 if not self.order_management:
                     self.market_data = await self.fetch_order_management()
                 else:
-                    print("✅ Skipping fetch_order_management(): order_management is already populated")
+                    self.logger.debug("Skipping fetch_order_management - already populated")
                 self.order_management["passive_orders"] = await self.fetch_passive_orders()
-                print("✅ SharedDataManager:initialized successfully.")
+                self.logger.info("SharedDataManager initialized successfully")
 
                 if not self._initialized_event.is_set():
                     self._initialized_event.set()
@@ -350,7 +356,7 @@ class SharedDataManager:
                 self.order_management = self.validate_order_management_data(self.order_management)
                 self.order_management["passive_orders"] = await self.fetch_passive_orders()
 
-                print("Shared data refreshed successfully.")
+                self.logger.info("Shared data refreshed successfully")
                 return self.market_data, self.order_management
             except Exception as e:
                 self.logger.error(f"❌ Error refreshing shared data: {e}", exc_info=True)

@@ -21,6 +21,7 @@ from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.snapshots_manager import SnapshotsManager
 from Shared_Utils.utility import SharedUtility
+from Shared_Utils.logger import get_logger
 from sighook.alerts_msgs_webhooks import SenderWebhook
 from sighook.async_functions import AsyncFunctions
 from database_manager.database_ops import DatabaseOpsManager
@@ -52,9 +53,9 @@ class TradeBot:
         self.app_config = bot_config()
         self.rest_client = rest_client
         self.portfolio_uuid = portfolio_uuid
-        # Logger injection
-        self.logger_manager = logger_manager  # 🙂
-        self.logger = logger_manager.loggers['sighook_logger']  # 🙂
+        # Logger - use new structured logging
+        self.logger_manager = logger_manager  # Keep for backward compatibility with other components
+        self.logger = get_logger('sighook_logger', context={'component': 'sighook'})
 
         self.database_session_mngr = shared_data_mgr.database_session_manager
         if not self.app_config._is_loaded:
@@ -153,12 +154,14 @@ class TradeBot:
 
     async def refresh_trade_data(self):
         try:
-            print(f"Fetching the latest snapshots using SnapshotManager...")
+            self.logger.debug("Fetching latest snapshots using SnapshotManager")
             market_data_snapshot, order_management_snapshot = await self.snapshots_manager.get_snapshots()
 
             # Log the fetched snapshots for debugging
-            print(f"Fetched market_data_snapshot: {market_data_snapshot}")
-            print(f"Fetched order_management_snapshot: {order_management_snapshot}")
+            self.logger.debug("Fetched market_data_snapshot",
+                extra={'snapshot_keys': list(market_data_snapshot.keys()) if isinstance(market_data_snapshot, dict) else None})
+            self.logger.debug("Fetched order_management_snapshot",
+                extra={'snapshot_keys': list(order_management_snapshot.keys()) if isinstance(order_management_snapshot, dict) else None})
 
             if not market_data_snapshot or not order_management_snapshot:
                 raise ValueError("Snapshots are empty or not initialized.")
@@ -183,7 +186,8 @@ class TradeBot:
 
             """PART I: Data Gathering"""
             self.start_time = time.time()
-            print('🟩   Part I: Data Gathering and Database Loading - Start Time:', datetime.datetime.now())
+            self.logger.info("Part I: Data Gathering and Database Loading - Start",
+                extra={'start_time': datetime.datetime.now().isoformat(), 'part': 'I'})
 
             market_data_manager = await MarketDataUpdater.get_instance(
                 ticker_manager=self.ticker_manager,
@@ -191,7 +195,7 @@ class TradeBot:
             )
 
             # Use already initialized market_data and order_management
-            print(f"Using preloaded market_data and order_management.")
+            self.logger.debug("Using preloaded market_data and order_management")
 
             # Set ticker_cache, market_cache, and other relevant data
             # await self.database_session_mngr.process_data()
@@ -206,7 +210,8 @@ class TradeBot:
 
             if self._is_initialized:
                 TradeBot._exchange_instance_count -= 1
-            print(f"Exchange instance closed. Total instances: {TradeBot._exchange_instance_count}")
+            self.logger.debug("Exchange instance closed",
+                extra={'total_instances': TradeBot._exchange_instance_count})
 
     async def load_bot_components(self):
         """Initialize all components required by the TradeBot."""
@@ -305,7 +310,7 @@ class TradeBot:
             self.profit_data_manager, self.shared_data_manager, self.web_url, self.logger
         )
 
-        print("✅ TradeBot:load_bot_components() completed successfully.")
+        self.logger.info("TradeBot load_bot_components completed successfully")
 
     async def start(self):
         """ Start the bot after initialization. """
@@ -318,7 +323,7 @@ class TradeBot:
         finally:
             if self.database_session_mngr and self.database_session_mngr.database.is_connected:
                 await self.database_session_mngr.disconnect()
-            print("Program has exited.")
+            self.logger.info("Program has exited")
 
     async def run_bot(self):  # async
         # Fetch snapshots using the shared instance
@@ -332,12 +337,14 @@ class TradeBot:
         try:
             loop = asyncio.get_running_loop()  # Get the correct running loop
             while not self.shutdown_event.is_set():
-                print(f"<", "-" * 160, ">")
-                print(f"Starting new bot iteration at {datetime.datetime.now()}")
-                print(f"<", "-" * 160, ">")
+                self.logger.info("=" * 80)
+                self.logger.info("Starting new bot iteration",
+                    extra={'iteration_time': datetime.datetime.now().isoformat()})
+                self.logger.info("=" * 80)
                 # PART II:
                 #   Trade Database Updates and Portfolio Management
-                print(f'🟩   Part II: Trade Database Updates and Portfolio Management - Start Time:', datetime.datetime.now())
+                self.logger.info("Part II: Trade Database Updates and Portfolio Management - Start",
+                    extra={'start_time': datetime.datetime.now().isoformat(), 'part': 'II'})
                 (holdings_list, usd_coins, buy_sell_matrix, price_change) = \
                     self.portfolio_manager.get_portfolio_data(self.start_time)
 
@@ -349,14 +356,15 @@ class TradeBot:
 
                 # PART III:
                 #   Order cancellation and Data Collection
-                # print(f"Exchange instance. Total instances: {TradeBot._exchange_instance_count}")# debug
-                print(f'🟩   Part III: Order cancellation and OHLCV Data Collection - Start Time:', datetime.datetime.now())
+                # self.logger.debug("Exchange instance count", extra={'total_instances': TradeBot._exchange_instance_count})
+                self.logger.info("Part III: Order cancellation and OHLCV Data Collection - Start",
+                    extra={'start_time': datetime.datetime.now().isoformat(), 'part': 'III'})
                 if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
                     # Step 1: Get open orders (if needed for Part III logic)
                     open_orders = await self.order_manager.get_open_orders()
 
                     if open_orders is None or open_orders.empty:  # debug
-                        print("No open orders found.")
+                        self.logger.debug("No open orders found")
 
                     # Step 2: Initialize or update OHLCV data
                     if filtered_ticker_cache is not None and not filtered_ticker_cache.empty:
@@ -371,12 +379,13 @@ class TradeBot:
                     self.shared_utils_print.print_elapsed_time(self.market_manager.start_time,
                                                               '🟩   Part III: Order cancellation and OHLCV Data Collection')
                 else:
-                    print("No coins to trade. Skipping Part III.")
+                    self.logger.debug("No coins to trade. Skipping Part III")
 
 
                 # PART IV:
                 # Trading Strategies
-                print(f'🟩   Part IV: Trading Strategies - Start Time:', datetime.datetime.now())
+                self.logger.info("Part IV: Trading Strategies - Start",
+                    extra={'start_time': datetime.datetime.now().isoformat(), 'part': 'IV'})
                 strategy_results, buy_sell_matrix = await self.trading_strategy.process_all_rows(filtered_ticker_cache,
                                                                                         buy_sell_matrix, open_orders)
 
@@ -384,7 +393,8 @@ class TradeBot:
 
                 # PART V:
                 # Order Execution
-                print(f'🟩   Part V: Order Execution based on Market conditions - Start Time:', datetime.datetime.now())
+                self.logger.info("Part V: Order Execution based on Market conditions - Start",
+                    extra={'start_time': datetime.datetime.now().isoformat(), 'part': 'V'})
                 submitted_orders = await self.order_manager.execute_actions(strategy_results, holdings_list)
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, 'Part V: Order Execution')
@@ -392,7 +402,8 @@ class TradeBot:
                 # PART VI:
                 # Profitability Analysis and Order Generation update holdings db
 
-                print(f'🟩   Part VI: Profitability Analysis and Order Generation - Start Time:', datetime.datetime.now())
+                self.logger.info("Part VI: Profitability Analysis and Order Generation - Start",
+                    extra={'start_time': datetime.datetime.now().isoformat(), 'part': 'VI'})
                 aggregated_df = await self.profit_manager.update_and_process_holdings(self.start_time, open_orders)
 
                 self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part VI: Profitability Analysis and Order Generation')
@@ -401,7 +412,7 @@ class TradeBot:
                         await self.exchange.close()
 
                 if open_orders is None or open_orders.empty:  # debug
-                    print("No open orders found.")
+                    self.logger.debug("No open orders found")
 
                 self.shared_utils_print.print_data(self.min_quote_volume, open_orders, buy_sell_matrix, submitted_orders,
                                                    aggregated_df)
@@ -414,7 +425,8 @@ class TradeBot:
                     await asyncio.sleep(int(0))
 
                 self.start_time = time.time()  # rest start time for next iteration.
-                print('🟩   Part I: Data Gathering and Database Loading - Start Time:', self.start_time)
+                self.logger.info("Part I: Data Gathering and Database Loading - Start",
+                    extra={'start_time': self.start_time, 'part': 'I'})
 
                 self.market_data, self.order_management = await self.shared_data_manager.refresh_shared_data()
 
@@ -434,9 +446,10 @@ class TradeBot:
 
 
         except KeyboardInterrupt:
-            print("Program interrupted, exiting...")
+            self.logger.warning("Program interrupted by user, exiting")
             self.save_data_on_exit(profit_data)
         except asyncio.CancelledError:
+            self.logger.info("Bot loop cancelled, saving data and exiting")
             self.save_data_on_exit(profit_data)
         except Exception as e:
             self.logger.error(f"❌Error in main loop: {e}", exc_info=True)
@@ -449,7 +462,7 @@ class TradeBot:
                 TradeBot._exchange_instance_count -= 1
             if self.shutdown_event.is_set():
                 await AsyncFunctions.shutdown(asyncio.get_running_loop(), http_session=self.http_session)
-            print("Program has exited.")
+            self.logger.info("Program has exited")
 
     def save_data_on_exit(self, profit_data):
         pass

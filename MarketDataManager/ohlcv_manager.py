@@ -6,6 +6,10 @@ import pandas as pd
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
+from Shared_Utils.logger import get_logger
+
+# Module-level logger for debug counter
+_ohlcv_logger = get_logger('ohlcv_manager', context={'component': 'ohlcv_manager'})
 
 
 class OHLCVDebugCounter:
@@ -16,13 +20,15 @@ class OHLCVDebugCounter:
     async def track(cls, coro, symbol: str):
         cls.active_requests += 1
         cls.max_seen = max(cls.max_seen, cls.active_requests)
-        print(f"📊 OHLCV active={cls.active_requests} (max={cls.max_seen}) | Fetching: {symbol}")
+        _ohlcv_logger.debug("OHLCV fetch started",
+                          extra={'symbol': symbol, 'active_requests': cls.active_requests, 'max_seen': cls.max_seen})
 
         try:
             return await coro
         finally:
             cls.active_requests -= 1
-            print(f"✅ Done with {symbol}, active now={cls.active_requests}")
+            _ohlcv_logger.debug("OHLCV fetch completed",
+                              extra={'symbol': symbol, 'active_requests': cls.active_requests})
 
 class OHLCVManager:
     _instance = None
@@ -62,8 +68,7 @@ class OHLCVManager:
         self.db_session_manager = database_session_manager
 
         # ✅ Setup logging
-        if logger_manager.loggers['shared_logger'].name == 'shared_logger':
-            self.logger = logger_manager.loggers['shared_logger']
+        self.logger = get_logger('ohlcv_manager', context={'component': 'ohlcv_manager'})
 
         self.market_manager = market_manager
         self.shared_utiles_data_time = shared_utiles_data_time

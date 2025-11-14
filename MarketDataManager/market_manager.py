@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from MarketDataManager.ohlcv_manager import OHLCVDebugCounter
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from Shared_Utils.logger import get_logger
 
 
 class MarketManager:
@@ -50,8 +51,7 @@ class MarketManager:
         self.db_session_manager = database_session_manager
 
         # ✅ Logging
-        if logger_manager.loggers['shared_logger'].name == 'shared_logger':
-            self.logger = logger_manager.loggers['shared_logger']
+        self.logger = get_logger('market_manager', context={'component': 'market_manager'})
 
         self.start_time = None
         self.request_semaphore = asyncio.Semaphore(2)
@@ -145,7 +145,8 @@ class MarketManager:
                     if ohlcv_result and not ohlcv_result['data'].empty:
                         all_dfs.append(ohlcv_result['data'])
                     else:
-                        print(f"⚠️ No data returned for {symbol} during chunk: {chunk_start} to {chunk_end}")
+                        self.logger.warning("No OHLCV data returned for chunk",
+                                          extra={'symbol': symbol, 'chunk_start': str(chunk_start), 'chunk_end': str(chunk_end)})
 
                     await asyncio.sleep(0.2)  # Gentle pacing
 
@@ -158,7 +159,7 @@ class MarketManager:
 
                     await self.store_ohlcv_data({'symbol': symbol, 'data': df})
                 else:
-                    print(f"❌ No OHLCV data fetched for {symbol} over 24h window")
+                    self.logger.error("No OHLCV data fetched for 24h window", extra={'symbol': symbol})
 
             except Exception as e_process:
                 self.logger.error(f"❌ Error processing OHLCV data for {symbol}: {e_process}", exc_info=True)
@@ -185,7 +186,8 @@ class MarketManager:
                 batch = symbols[i:i + batch_size]
                 tasks = [throttled_fetch_store(symbol) for symbol in batch]
                 await asyncio.gather(*tasks)
-                print(f'Processed {i + len(batch)} symbols out of {total_symbols}')
+                self.logger.info("OHLCV batch processing progress",
+                               extra={'processed': i + len(batch), 'total': total_symbols})
                 await asyncio.sleep(0.5)  # Slight delay between batches to respect rate limits
 
         except Exception as e:

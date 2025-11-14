@@ -35,6 +35,7 @@ from Shared_Utils.alert_system import AlertSystem
 
 from Shared_Utils.exchange_manager import ExchangeManager
 from Shared_Utils.logging_manager import LoggerManager
+from Shared_Utils.logger import get_logger
 from Shared_Utils.print_data import PrintData
 from Shared_Utils.print_data import ColorCodes
 from Shared_Utils.precision import PrecisionUtils
@@ -66,8 +67,18 @@ _ = Config(is_docker=IS_DOCKER)
 # os.environ.setdefault("BOTTRADER_DATA_DIR", str(DATA_DIR))
 # os.environ.setdefault("BOTTRADER_CACHE_DIR", str(CACHE_DIR))
 # os.environ.setdefault("BOTTRADER_LOG_DIR", str(LOG_DIR))
-print("✅ CentralConfig preloaded:")
-print(f"   Machine Type:{_.machine_type} DB:{_.db_user}@{_.db_host}/{_.db_name}")
+
+# Initialize structured logger
+startup_logger = get_logger('main', context={'component': 'startup'})
+startup_logger.info(
+    "CentralConfig preloaded",
+    extra={
+        'machine_type': _.machine_type,
+        'db_user': _.db_user,
+        'db_host': _.db_host,
+        'db_name': _.db_name
+    }
+)
 
 async def load_config():
     return Config(is_docker=running_in_docker())
@@ -83,7 +94,10 @@ async def preload_market_data(logger_manager, shared_data_manager, market_data_u
         # ✅ Explicitly assign to shared_data_manager
         shared_data_manager.market_data = market_data or {}
         shared_data_manager.order_management = order_mgmt or {}
-        print(f"✅ Market data preloaded successfully with data from the database. preload:{list(shared_data_manager.market_data.keys())}")
+        shared_logger.info(
+            "Market data preloaded successfully",
+            extra={'symbols': list(shared_data_manager.market_data.keys())}
+        )
         return market_data, order_mgmt
     except Exception as e:
         shared_logger.error(f"❌ Failed to preload market/order data: {e}", exc_info=True)
@@ -314,12 +328,13 @@ async def build_websocket_components(config, listener, shared_data_manager):
 
 async def refresh_loop(shared_data_manager, interval=30):
     """Continuously refresh shared data from the database."""
+    refresh_logger = get_logger('main', context={'component': 'refresh_loop'})
     while True:
         try:
             await shared_data_manager.refresh_shared_data()
             await asyncio.sleep(interval)
         except asyncio.CancelledError:
-            print("Refresh loop cancelled")
+            refresh_logger.info("Refresh loop cancelled")
 
 
 
@@ -334,7 +349,8 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
     await shared_data_manager.initialize_shared_data()
     # ✅ Wait for webhook to populate shared data
     await shared_data_manager.wait_until_initialized()
-    print(f"✅ Shared data is initialized. Proceeding with sighook setup.")
+    sighook_logger = get_logger('main', context={'component': 'sighook'})
+    sighook_logger.info("Shared data is initialized. Proceeding with sighook setup.")
 
     websocket_helper = listener.websocket_helper if listener else None
     # ⚙️ Finalize coinbase_api from any available source
@@ -503,8 +519,11 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, marke
     site = web.TCPSite(runner, '0.0.0.0', config.webhook_port)
     await site.start()
 
-    print(f"✅ TradeBot is running on version: {config.program_version} ✅")
-    print(f"👉 Webhook {config.program_version} is Listening on port {config.webhook_port} 👈\n")
+    webhook_logger = get_logger('main', context={'component': 'webhook'})
+    webhook_logger.info(
+        "TradeBot started",
+        extra={'version': config.program_version, 'port': config.webhook_port}
+    )
 
     loop = asyncio.get_running_loop()
     # after: app = await listener.create_app()
