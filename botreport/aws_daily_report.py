@@ -458,6 +458,7 @@ def run_queries(conn):
     detect_notes = ["Build:v8"]  # Increment version
 
     # Realized PnL (windowed if timestamp exists)
+    logger.info("Starting PnL query", extra={'context': {'component': 'daily_report'}})
     try:
         tbl_pnl = REPORT_PNL_TABLE
         cols_present = table_columns(conn, tbl_pnl)
@@ -491,8 +492,11 @@ def run_queries(conn):
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
 
+    logger.info("PnL query completed", extra={'context': {'component': 'daily_report', 'total_pnl': total_pnl}})
+
     # Positions - FIXED: Calculate from windowed trades, not cumulative view
     open_pos = []
+    logger.info("Starting positions query", extra={'context': {'component': 'daily_report'}})
     try:
         tbl_trades = REPORT_TRADES_TABLE
         cols_trades = table_columns(conn, tbl_trades)
@@ -560,7 +564,10 @@ def run_queries(conn):
     except Exception as e1:
         errors.append(f"Positions query failed: {e1}")
 
+    logger.info("Positions query completed", extra={'context': {'component': 'daily_report', 'position_count': len(open_pos)}})
+
     # Trades (window)
+    logger.info("Starting trades query", extra={'context': {'component': 'daily_report'}})
     def run_trades_for(table_name: str, use_mappings: bool = True):
         cols_tr = table_columns(conn, table_name)
         if REPORT_DEBUG:
@@ -639,6 +646,7 @@ def run_queries(conn):
         except Exception as e:
             errors.append(f"Trades fallback query failed: {e}")
 
+    logger.info("Trades query completed", extra={'context': {'component': 'daily_report', 'trade_count': len(recent_trades)}})
     return total_pnl, open_pos, recent_trades, errors, detect_notes
 
 # ============================================================================
