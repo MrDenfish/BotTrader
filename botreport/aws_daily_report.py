@@ -284,9 +284,9 @@ def get_db_conn():
     try:
         url = os.getenv("DATABASE_URL")
 
-        def _log_conn_plan(source, _host, _port, _user, _name, _ssl):
+        def _log_conn_attempt(source, _host, _port, _user, _name, _ssl):
             logger.info(
-                "Database connection initialized",
+                "Attempting database connection",
                 extra={
                     'source': source,
                     'host': _host,
@@ -307,11 +307,22 @@ def get_db_conn():
             qs = parse_qs(u.query or "")
             sslmode = (qs.get("sslmode", [""])[0] or "").lower()
             require_ssl = sslmode in {"require", "verify-ca", "verify-full"} or "+ssl" in (u.scheme or "")
-            _log_conn_plan("DATABASE_URL", host, port, user, name, require_ssl)
-            return pg.Connection(
-                user=user, password=pwd, host=host, port=port, database=name,
-                ssl_context=_maybe_ssl_context(require_ssl)
-            )
+            _log_conn_attempt("DATABASE_URL", host, port, user, name, require_ssl)
+
+            # Set socket timeout to prevent indefinite hanging
+            import socket
+            old_timeout = socket.getdefaulttimeout()
+            try:
+                socket.setdefaulttimeout(10.0)  # 10 second timeout
+                conn = pg.Connection(
+                    user=user, password=pwd, host=host, port=port, database=name,
+                    ssl_context=_maybe_ssl_context(require_ssl)
+                )
+            finally:
+                socket.setdefaulttimeout(old_timeout)
+
+            logger.info("Database connection successful", extra={'source': 'DATABASE_URL'})
+            return conn
 
         in_docker = IN_DOCKER
         default_host = "db" if in_docker else "localhost"
@@ -322,12 +333,24 @@ def get_db_conn():
         user = _env_or_ssm("DB_USER", None, default_user)
         pwd  = _env_or_ssm("DB_PASSWORD", None, None)
         db_ssl = (os.getenv("DB_SSL", "disable").lower() in {"require", "true", "1"})
-        _log_conn_plan("ENV_VARS", host, port, user, name, db_ssl)
-        return pg.Connection(
-            user=user, password=pwd, host=host, port=port, database=name,
-            ssl_context=_maybe_ssl_context(db_ssl)
-        )
+        _log_conn_attempt("ENV_VARS", host, port, user, name, db_ssl)
+
+        # Set socket timeout to prevent indefinite hanging
+        import socket
+        old_timeout = socket.getdefaulttimeout()
+        try:
+            socket.setdefaulttimeout(10.0)  # 10 second timeout
+            conn = pg.Connection(
+                user=user, password=pwd, host=host, port=port, database=name,
+                ssl_context=_maybe_ssl_context(db_ssl)
+            )
+        finally:
+            socket.setdefaulttimeout(old_timeout)
+
+        logger.info("Database connection successful", extra={'source': 'ENV_VARS'})
+        return conn
     except Exception as e:
+        logger.error("DB connection failed", extra={'error': str(e)}, exc_info=True)
         raise RuntimeError(f"DB connection failed: {e}")
 
 def get_sa_engine():
