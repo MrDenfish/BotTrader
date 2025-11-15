@@ -78,15 +78,21 @@ def render_fast_roundtrips_table(df, max_rows: int = 15) -> str:
     headers = [h.replace("_", " ").title() for h in df2.columns]
     rows = []
     for _, row in df2.iterrows():
-        rows.append([
-            _limit(row.get("symbol", "")),
-            row.get("entry_side", ""),
-            str(row.get("entry_time", "")),
-            str(row.get("exit_time", "")),
-            f"{row.get('hold_seconds', 0):.0f}",
-            _fmt_money(row.get("pnl_abs", 0)),
-            _fmt_pct(row.get("pnl_pct", 0)),
-        ])
+        row_data = []
+        for col in df2.columns:
+            if col == "symbol":
+                row_data.append(_limit(row.get(col, "")))
+            elif col in ["entry_time", "exit_time"]:
+                row_data.append(str(row.get(col, "")))
+            elif col == "hold_seconds":
+                row_data.append(f"{row.get(col, 0):.0f}")
+            elif col == "pnl_abs":
+                row_data.append(_fmt_money(row.get(col, 0)))
+            elif col == "pnl_pct":
+                row_data.append(_fmt_pct(row.get(col, 0)))
+            else:
+                row_data.append(str(row.get(col, "")))
+        rows.append(row_data)
     return "Near-Instant Roundtrips (≤60s) — top rows\n" + _table(headers, rows)
 
 # ---------------------------------
