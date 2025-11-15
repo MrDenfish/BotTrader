@@ -1610,7 +1610,9 @@ def main():
         # Compute per-symbol performance (Phase 1 - Parameter Tuning)
         symbol_perf_data = None
         symbol_perf_html = ""
-        if REPORT_INCLUDE_SYMBOL_PERFORMANCE:
+        # Check flag at runtime to allow dynamic override
+        include_symbol_perf = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
+        if include_symbol_perf:
             try:
                 symbol_perf_data = compute_symbol_performance(
                     conn,
@@ -1710,13 +1712,13 @@ def main():
             html = html.replace("</body></html>", tpsl_html + "\n</body></html>")
 
         # Add symbol performance section (Phase 1 - Parameter Tuning)
-        if symbol_perf_html and REPORT_INCLUDE_SYMBOL_PERFORMANCE:
+        # Check flag at runtime to allow dynamic override
+        include_symbol_perf = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
+        if symbol_perf_html and include_symbol_perf:
             if "</body></html>" in html:
                 html = html.replace("</body></html>", "\n" + symbol_perf_html + "\n</body></html>")
             else:
                 html = html + "\n" + symbol_perf_html
-        else:
-            html += "\n" + tpsl_html
 
     # Build CSV attachment / local artifact
     csvb = build_csv(
@@ -1738,7 +1740,10 @@ def main():
         strat_rows=strat_rows,
     )
 
-    if IN_DOCKER:
+    # Check IN_DOCKER at runtime (not module import time) so __main__ can override it
+    in_docker = os.getenv('IN_DOCKER', str(IN_DOCKER)).lower() in ('true', '1', 'yes')
+
+    if in_docker:
         # Docker: save copy and email via SES
         save_report_copy(csvb)
         send_email(html, csvb)
