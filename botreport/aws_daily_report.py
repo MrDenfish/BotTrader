@@ -170,7 +170,6 @@ from Config.constants_report import (
 # Report Feature Flags
 # ============================================================================
 REPORT_INCLUDE_SYMBOL_PERFORMANCE = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
-REPORT_CAPTURE_HTML = os.getenv('REPORT_CAPTURE_HTML', 'false').lower() == 'true'
 
 # ============================================================================
 # Environment-aware configuration
@@ -1771,7 +1770,8 @@ def main():
         print("\n[Saved CSV] trading_report_local.csv")
 
     # Return HTML if capture flag is set (for --preview-html)
-    if REPORT_CAPTURE_HTML:
+    # Check at runtime (not module import time) so __main__ can set it dynamically
+    if os.getenv('REPORT_CAPTURE_HTML', 'false').lower() == 'true':
         return html
     return None
 
