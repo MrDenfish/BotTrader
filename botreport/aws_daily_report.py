@@ -1637,12 +1637,15 @@ def main():
         include_symbol_perf = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
         if include_symbol_perf:
             try:
-                symbol_perf_data = compute_symbol_performance(
-                    conn,
-                    hours_back=REPORT_LOOKBACK_HOURS,
-                    top_n=15,
-                    min_trades=3
-                )
+                # Symbol performance uses SQLAlchemy, not pg8000
+                sa_engine = get_sa_engine()
+                with sa_engine.connect() as sa_conn:
+                    symbol_perf_data = compute_symbol_performance(
+                        sa_conn,
+                        hours_back=REPORT_LOOKBACK_HOURS,
+                        top_n=15,
+                        min_trades=3
+                    )
                 symbol_perf_html = render_symbol_performance_html(symbol_perf_data, include_header=True)
 
                 # Add suggestions to notes
