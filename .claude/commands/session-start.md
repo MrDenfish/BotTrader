@@ -1,3 +1,8 @@
+---
+description: Start a new development session with optional name
+argument-hint: [session-name]
+---
+
 Start a new development session by creating a session file in `.claude/sessions/` with the format `YYYY-MM-DD-HHMM-$ARGUMENTS.md` (or just `YYYY-MM-DD-HHMM.md` if no name provided).
 
 The session file should begin with:

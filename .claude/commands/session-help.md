@@ -1,3 +1,7 @@
+---
+description: Show help for session management commands
+---
+
 Show help for the session management system:
 
 ## Session Management Commands

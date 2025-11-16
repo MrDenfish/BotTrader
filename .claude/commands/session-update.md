@@ -1,7 +1,12 @@
+---
+description: Add notes and updates to the current session
+argument-hint: [notes]
+---
+
 Update the current development session by:
 
 1. Check if `.claude/sessions/.current-session` exists to find the active session
-2. If no active session, inform user to start one with `/project:session-start`
+2. If no active session, inform user to start one with `/session-start`
 3. If session exists, append to the session file with:
    - Current timestamp
    - The update: $ARGUMENTS (or if no arguments, summarize recent activities)

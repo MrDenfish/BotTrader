@@ -1,3 +1,7 @@
+---
+description: End the current session with comprehensive summary
+---
+
 End the current development session by:
 
 1. Check `.claude/sessions/.current-session` for the active session
