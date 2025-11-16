@@ -6,12 +6,12 @@ The session system helps document development work for future reference.
 
 ### Available Commands:
 
-- `/project:session-start [name]` - Start a new session with optional name
-- `/project:session-update [notes]` - Add notes to current session  
-- `/project:session-end` - End session with comprehensive summary
-- `/project:session-list` - List all session files
-- `/project:session-current` - Show current session status
-- `/project:session-help` - Show this help
+- `/session-start [name]` - Start a new session with optional name
+- `/session-update [notes]` - Add notes to current session
+- `/session-end` - End session with comprehensive summary
+- `/session-list` - List all session files
+- `/session-current` - Show current session status
+- `/session-help` - Show this help
 
 ### How It Works:
 
@@ -30,8 +30,8 @@ The session system helps document development work for future reference.
 ### Example Workflow:
 
 ```
-/project:session-start refactor-auth
-/project:session-update Added Google OAuth restriction
-/project:session-update Fixed Next.js 15 params Promise issue  
-/project:session-end
+/session-start refactor-auth
+/session-update Added Google OAuth restriction
+/session-update Fixed Next.js 15 params Promise issue
+/session-end
 ```
