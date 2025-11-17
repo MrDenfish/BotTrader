@@ -22,8 +22,6 @@ logs/**/*.log
 
 # Local-only env/config (never bake into images)
 .env*
-.env_tradebot
-.env_tradebot_sensitive
 #Config/*.json
 TestDebugMaintenance/logs/
 
