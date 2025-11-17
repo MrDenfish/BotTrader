@@ -40,8 +40,8 @@ WORKDIR /app
 
 # copy source
 COPY . /app
-# Remove legacy desktop env so it can’t override .env_runtime
-RUN rm -f /app/.env_tradebot || true
+# Remove any legacy env files from old multi-env system
+RUN rm -f /app/.env_tradebot /app/.env_tradebot_sensitive || true
 
 # ensure entrypoint has LF endings and is executable
 # (sed removes CR if file was committed with CRLF)
