@@ -316,21 +316,26 @@ class ProfitDataManager:
             stop_pct = float((entry - sl_adj) / entry) if entry else None
             tp_pct = float((tp_adj - entry) / entry) if entry else None
 
-            self.shared_utils_utility.write_jsonl(TP_SL_LOG_PATH, {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "symbol": order_data.trading_pair,
-                "entry": float(entry),
-                "tp": float(tp_adj),
-                "sl": float(sl_adj),
-                "rr": rr,  # risk:reward at entry time
-                "tp_pct": tp_pct,  # +% target
-                "stop_pct": stop_pct,  # -% stop
-                "stop_mode": getattr(self, "stop_mode", "atr"),
-                "atr_pct": atr_pct,
-                "cushion_spread": spr_pct,
-                "cushion_fee": fee_pct,
-                "fee_side": fee_side
-            })
+            # Try to write TP/SL log, but don't fail if path is inaccessible
+            try:
+                self.shared_utils_utility.write_jsonl(TP_SL_LOG_PATH, {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "symbol": order_data.trading_pair,
+                    "entry": float(entry),
+                    "tp": float(tp_adj),
+                    "sl": float(sl_adj),
+                    "rr": rr,  # risk:reward at entry time
+                    "tp_pct": tp_pct,  # +% target
+                    "stop_pct": stop_pct,  # -% stop
+                    "stop_mode": getattr(self, "stop_mode", "atr"),
+                    "atr_pct": atr_pct,
+                    "cushion_spread": spr_pct,
+                    "cushion_fee": fee_pct,
+                    "fee_side": fee_side
+                })
+            except OSError as write_err:
+                # Log path not writable (e.g., /app on desktop) - just skip logging
+                self.logger.debug(f"TP/SL log path not writable ({TP_SL_LOG_PATH}): {write_err}")
 
             return tp_adj, sl_adj
 
