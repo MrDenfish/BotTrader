@@ -417,11 +417,19 @@ class OrderManager:
             return None
 
     def render_usd_info(self, info):
-        # Handle missing keys gracefully
-        asset = info.get('asset', 'USD')
-        total = float(info.get("total_balance_fiat", 0))
-        avail = float(info.get("available_to_trade_fiat", 0))
-        alloc = float(info.get("allocation", 0)) * 100
+        # Handle both dict and PortfolioPosition object
+        if hasattr(info, 'get'):
+            # It's a dict
+            asset = info.get('asset', 'USD')
+            total = float(info.get("total_balance_fiat", 0))
+            avail = float(info.get("available_to_trade_fiat", 0))
+            alloc = float(info.get("allocation", 0)) * 100
+        else:
+            # It's a PortfolioPosition object
+            asset = getattr(info, 'asset', 'USD')
+            total = float(getattr(info, 'total_balance_fiat', 0))
+            avail = float(getattr(info, 'available_to_trade_fiat', 0))
+            alloc = float(getattr(info, 'allocation', 0)) * 100
         return f"{asset} | total=${total:.2f} | avail=${avail:.2f} | alloc={alloc:.2f}% "
 
     async def handle_actions(self, order, holdings):
@@ -437,7 +445,11 @@ class OrderManager:
 
             # ✅ Safely fetch balances with defaults for buy orders
             asset_balance_info = self.filtered_balances.get(asset, {})
-            base_avail_to_trade = Decimal(asset_balance_info.get('available_to_trade_crypto', 0))
+            # Handle both dict and PortfolioPosition object
+            if hasattr(asset_balance_info, 'get'):
+                base_avail_to_trade = Decimal(asset_balance_info.get('available_to_trade_crypto', 0))
+            else:
+                base_avail_to_trade = Decimal(getattr(asset_balance_info, 'available_to_trade_crypto', 0))
             base_avail_to_trade = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, base_avail_to_trade, convert='base'
             )
@@ -445,7 +457,11 @@ class OrderManager:
             usd_balance_info = self.filtered_balances.get('USD', {})
             self.logger.debug("USD balance info",
                 extra={'balance_info': self.render_usd_info(usd_balance_info), 'symbol': symbol})
-            quote_avail_balance = Decimal(usd_balance_info.get('available_to_trade_fiat', 0))
+            # Handle both dict and PortfolioPosition object
+            if hasattr(usd_balance_info, 'get'):
+                quote_avail_balance = Decimal(usd_balance_info.get('available_to_trade_fiat', 0))
+            else:
+                quote_avail_balance = Decimal(getattr(usd_balance_info, 'available_to_trade_fiat', 0))
             quote_avail_balance = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, quote_avail_balance, convert='quote'
             )
