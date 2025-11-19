@@ -960,13 +960,14 @@ class PassiveOrderManager:
 
     async def _monitor_active_symbol(self, symbol: str, entry: dict):
         """
-        Per-symbol monitoring loop for active buy orders.
+        Per-symbol monitoring loop for active buy orders and webhook limit-only positions.
         Runs frequently (every 5s) and stops automatically when order is gone.
         """
         self.logger.info(f"▶️ Starting monitor for active order: {symbol}")
 
         try:
-            while symbol in self.passive_order_tracker and "buy" in entry:
+            # Monitor while either a buy order exists OR a webhook limit-only position exists
+            while symbol in self.passive_order_tracker and ("buy" in entry or "webhook_limit_only" in entry):
                 od = entry.get("order_data")
                 if isinstance(od, OrderData):
                     await self.monitor_passive_position(symbol, od)
