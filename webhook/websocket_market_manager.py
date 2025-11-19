@@ -323,9 +323,10 @@ class WebSocketMarketManager:
 
         if side == "sell":
             try:
-                parent_id = await self.shared_data_manager.trade_recorder.find_unlinked_buy_id(symbol)
+                # 🔧 FIX: Corrected function name (was find_unlinked_buy_id - doesn't exist)
+                parent_id = await self.shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
             except Exception as e:
-                self.logger.exception("find_unlinked_buy_id failed for %s: %s", symbol, e)
+                self.logger.exception("find_latest_unlinked_buy_id failed for %s: %s", symbol, e)
                 parent_id = None
         else:
             parent_id = base_id

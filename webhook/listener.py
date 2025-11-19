@@ -1150,13 +1150,19 @@ class WebhookListener:
                 gross_override, fees_override = _gross_and_fees_from_batch(order)
 
                 # Parent hints
+                # 🔧 FIX: Don't use Coinbase's originating_order_id for sells - it's often stale
+                # Let FIFO logic in trade_recorder compute correct parent matching
                 preferred_parent_id = order.get("originating_order_id") or None
                 parent_id = None
                 parent_ids = None
                 if side == "sell":
-                    # Prefer true origination if present, else FIFO hint
-                    parent_id = preferred_parent_id or await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
-                    parent_ids = [parent_id] if parent_id else None
+                    # ❌ OLD: Used Coinbase parent_id which could be months old
+                    # parent_id = preferred_parent_id or await shared_data_manager.trade_recorder.find_latest_unlinked_buy_id(symbol)
+                    # ✅ NEW: Force None - let trade_recorder's FIFO logic compute correct parent
+                    parent_id = None
+                    parent_ids = None
+                    # Still pass as hint for FIFO preference, but don't force it
+                    preferred_parent_id = None  # Don't even hint - let FIFO be pure chronological
                 else:
                     # For buys, let the recorder assign chain id; don't self-parent
                     parent_id = None
