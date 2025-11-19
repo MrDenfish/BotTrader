@@ -868,77 +868,136 @@ def compute_trade_stats_windowed(conn):
     notes.append(f"TradeStats source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
     return avg_win, avg_loss_neg, pf, notes
 
-def compute_max_drawdown(conn):
+def compute_drawdown_metrics(conn, lookback_hours=24):
+    """
+    Compute three-tier drawdown metrics:
+    1. 24-hour drawdown (recent risk)
+    2. Max drawdown since inception (historical worst-case)
+    3. Average drawdown (typical drawdown magnitude)
+
+    Returns: dict with keys:
+        dd_24h_pct, dd_24h_abs, dd_inception_pct, dd_inception_abs,
+        dd_avg_pct, dd_avg_abs, peak_eq, trough_eq, notes
+    """
     notes = []
     tbl = REPORT_PNL_TABLE
     cols = table_columns(conn, tbl)
     if not cols:
-        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: table not found: {tbl}"]
+        return {
+            "dd_24h_pct": 0.0, "dd_24h_abs": 0.0,
+            "dd_inception_pct": 0.0, "dd_inception_abs": 0.0,
+            "dd_avg_pct": 0.0, "dd_avg_abs": 0.0,
+            "peak_eq": 0.0, "trough_eq": 0.0,
+            "notes": [f"Drawdown: table not found: {tbl}"]
+        }
 
     pnl_col = REPORT_COL_PNL if (REPORT_COL_PNL and REPORT_COL_PNL in cols) else \
               pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
     if not pnl_col:
-        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no pnl-like column on {tbl}"]
+        return {
+            "dd_24h_pct": 0.0, "dd_24h_abs": 0.0,
+            "dd_inception_pct": 0.0, "dd_inception_abs": 0.0,
+            "dd_avg_pct": 0.0, "dd_avg_abs": 0.0,
+            "peak_eq": 0.0, "trough_eq": 0.0,
+            "notes": [f"Drawdown: no pnl-like column on {tbl}"]
+        }
 
     ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
     if not ts_col:
-        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no time-like column on {tbl}"]
+        return {
+            "dd_24h_pct": 0.0, "dd_24h_abs": 0.0,
+            "dd_inception_pct": 0.0, "dd_inception_abs": 0.0,
+            "dd_avg_pct": 0.0, "dd_avg_abs": 0.0,
+            "peak_eq": 0.0, "trough_eq": 0.0,
+            "notes": [f"Drawdown: no time-like column on {tbl}"]
+        }
 
-    # New: allow ignoring the early 'flat bank' region to avoid % blowups
+    # Use starting equity as baseline (default 0 for cumulative PnL approach)
     try:
-        min_start_equity = float(os.getenv("REPORT_MDD_MIN_START_EQUITY", "500"))
+        starting_equity = float(os.getenv("STARTING_EQUITY_USD", "0"))
     except Exception:
-        min_start_equity = 500.0
+        starting_equity = 0.0
 
-    # Build cumulative equity and running peak; then anchor at first equity >= threshold
+    # Main query to compute equity curve and drawdowns
     q = f"""
         WITH t AS (
           SELECT {qident(ts_col)}::timestamptz AS ts,
                  COALESCE({qident(pnl_col)}, 0)::numeric AS pnl
           FROM {qualify(tbl)}
           WHERE {qident(pnl_col)} IS NOT NULL
+          ORDER BY {qident(ts_col)}
         ),
-        c AS (  -- equity curve
+        c AS (  -- equity curve (cumulative PnL + starting equity)
           SELECT ts,
-                 SUM(pnl) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS equity
+                 SUM(pnl) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) + {starting_equity} AS equity
           FROM t
         ),
-        anchor AS (  -- first time equity exceeds threshold
-          SELECT MIN(ts) AS ts_anchor
-          FROM c
-          WHERE equity >= {min_start_equity}
-        ),
-        c2 AS (  -- filtered equity after anchor (fallback to all if never reached)
-          SELECT c.*
-          FROM c
-          LEFT JOIN anchor a ON TRUE
-          WHERE a.ts_anchor IS NULL OR c.ts >= a.ts_anchor
-        ),
-        d AS (  -- running peak and drawdowns on filtered curve
+        d AS (  -- running peak and drawdowns
           SELECT ts, equity,
-                 MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS run_max
-          FROM c2
+                 MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS run_max,
+                 (equity - MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) AS dd_abs,
+                 CASE
+                   WHEN MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) > 0
+                   THEN (equity - MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW))
+                        / MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                   ELSE 0
+                 END AS dd_pct
+          FROM c
+        ),
+        recent AS (
+          SELECT * FROM d
+          WHERE ts >= NOW() - INTERVAL '{lookback_hours} hours'
         )
         SELECT
-          MIN( (equity - run_max) / NULLIF(run_max, 0.0) ) AS min_frac,
-          MIN( equity - run_max )                          AS min_abs,
-          MAX(run_max)                                     AS peak_eq,
-          MIN(equity)                                      AS trough_eq
+          -- 24-hour metrics
+          COALESCE(MIN(r.dd_pct), 0) AS dd_24h_pct,
+          COALESCE(MIN(r.dd_abs), 0) AS dd_24h_abs,
+          -- Inception metrics
+          COALESCE(MIN(d.dd_pct), 0) AS dd_inception_pct,
+          COALESCE(MIN(d.dd_abs), 0) AS dd_inception_abs,
+          -- Average drawdown (all negative drawdowns)
+          COALESCE(AVG(d.dd_pct) FILTER (WHERE d.dd_pct < 0), 0) AS dd_avg_pct,
+          COALESCE(AVG(d.dd_abs) FILTER (WHERE d.dd_abs < 0), 0) AS dd_avg_abs,
+          -- Peak and trough
+          MAX(d.run_max) AS peak_eq,
+          MIN(d.equity) AS trough_eq
         FROM d
+        LEFT JOIN recent r ON TRUE
     """
-    min_frac, min_abs, peak_eq, trough_eq = conn.run(q)[0]
 
-    if min_frac is None or peak_eq in (None, 0):
-        dd_pct = 0.0
-    else:
-        dd_pct = abs(float(min_frac) * 100.0)
+    result = conn.run(q)[0]
+    dd_24h_pct, dd_24h_abs, dd_inception_pct, dd_inception_abs, dd_avg_pct, dd_avg_abs, peak_eq, trough_eq = result
 
-    dd_abs = abs(float(min_abs or 0.0))
     notes.append(
         f"Drawdown source: {tbl} pnl_col={pnl_col} ts_col={ts_col} "
-        f"min_start_equity={min_start_equity}"
+        f"lookback_hours={lookback_hours} starting_equity={starting_equity}"
     )
-    return dd_pct, dd_abs, float(peak_eq or 0.0), float(trough_eq or 0.0), notes
+
+    return {
+        "dd_24h_pct": abs(float(dd_24h_pct or 0.0)) * 100.0,
+        "dd_24h_abs": abs(float(dd_24h_abs or 0.0)),
+        "dd_inception_pct": abs(float(dd_inception_pct or 0.0)) * 100.0,
+        "dd_inception_abs": abs(float(dd_inception_abs or 0.0)),
+        "dd_avg_pct": abs(float(dd_avg_pct or 0.0)) * 100.0,
+        "dd_avg_abs": abs(float(dd_avg_abs or 0.0)),
+        "peak_eq": float(peak_eq or 0.0),
+        "trough_eq": float(trough_eq or 0.0),
+        "notes": notes
+    }
+
+# Legacy wrapper for backward compatibility
+def compute_max_drawdown(conn):
+    """Legacy function - returns old format but uses new calculation"""
+    result = compute_drawdown_metrics(conn, lookback_hours=24)
+    notes = result["notes"]
+    # Return in old format: dd_pct, dd_abs, peak_eq, trough_eq, notes
+    return (
+        result["dd_inception_pct"],
+        result["dd_inception_abs"],
+        result["peak_eq"],
+        result["trough_eq"],
+        notes
+    )
 
 
 def compute_cash_vs_invested(conn, exposures):
@@ -1262,7 +1321,8 @@ def build_html(total_pnl,
                *,
                fees_html: str = "",
                tpsl_html: str = "",
-               score_section_html: str = ""
+               score_section_html: str = "",
+               dd_metrics: Optional[dict] = None
                ):
     def rows(rows_):
         if not rows_:
@@ -1305,12 +1365,44 @@ def build_html(total_pnl,
     </table>
     """
 
+    # Build drawdown display - use new metrics if available, fallback to legacy
+    if dd_metrics:
+        dd_24h = f"{dd_metrics['dd_24h_pct']:.2f}%"
+        dd_inception = f"{dd_metrics['dd_inception_pct']:.2f}%"
+        dd_avg = f"{dd_metrics['dd_avg_pct']:.2f}%"
+        drawdown_section = f"""
+        <h4>Drawdown Analysis</h4>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>24-Hour Drawdown</th><th>Max Drawdown (Inception)</th><th>Avg Drawdown</th></tr>
+          <tr>
+            <td>{dd_24h}</td>
+            <td>{dd_inception}</td>
+            <td>{dd_avg}</td>
+          </tr>
+        </table>
+        <p style="color:#666;font-size:90%">
+          <b>24h DD:</b> Peak-to-trough in last 24 hours (current risk).
+          <b>Inception DD:</b> Historical worst-case since first trade.
+          <b>Avg DD:</b> Typical drawdown magnitude.
+        </p>
+        """
+    else:
+        # Legacy single drawdown display
+        drawdown_section = f"""
+        <h4>Drawdown</h4>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Max Drawdown (since inception)</th></tr>
+          <tr><td>{max_dd_pct:.1f}%</td></tr>
+        </table>
+        """
+
     risk_cap_html = f"""
     <h3>Risk &amp; Capital</h3>
+    {drawdown_section}
+    <h4>Capital Allocation</h4>
     <table border="1" cellpadding="6" cellspacing="0">
-      <tr><th>Max Drawdown (since inception)</th><th>Cash (USD)</th><th>Invested Notional (USD)</th><th>Invested %</th></tr>
+      <tr><th>Cash (USD)</th><th>Invested Notional (USD)</th><th>Invested %</th></tr>
       <tr>
-        <td>{max_dd_pct:.1f}%</td>
         <td>${cash_usd:,.2f}</td>
         <td>${invested_usd:,.2f}</td>
         <td>{invested_pct:.1f}%</td>
@@ -1620,8 +1712,14 @@ def main():
         avg_win, avg_loss, profit_factor, ts_notes = compute_trade_stats_windowed(conn)
         detect_notes.extend(ts_notes)
 
-        max_dd_pct, max_dd_abs, peak_eq, trough_eq, dd_notes = compute_max_drawdown(conn)
-        detect_notes.extend(dd_notes)
+        # New three-tier drawdown metrics
+        dd_metrics = compute_drawdown_metrics(conn, lookback_hours=REPORT_LOOKBACK_HOURS)
+        detect_notes.extend(dd_metrics["notes"])
+        # For backward compatibility, still extract old variables
+        max_dd_pct = dd_metrics["dd_inception_pct"]
+        max_dd_abs = dd_metrics["dd_inception_abs"]
+        peak_eq = dd_metrics["peak_eq"]
+        trough_eq = dd_metrics["trough_eq"]
 
         exposures = compute_exposures(open_pos, top_n=DEFAULT_TOP_POSITIONS)
         cash_usd, invested_usd, invested_pct, cash_notes = compute_cash_vs_invested(conn, exposures)
@@ -1714,6 +1812,7 @@ def main():
         fees_html=fees_html,
         tpsl_html=tpsl_html,
         score_section_html=score_section_html,
+        dd_metrics=dd_metrics,
     )
 
     # Near-instant roundtrips (≤60s) + CSV saved server-side when available
@@ -1800,6 +1899,7 @@ def main():
             strat_rows=strat_rows,
             notes=detect_notes,
             fast_df=fast_df,
+            dd_metrics=dd_metrics,
         )
 
         with open("trading_report_local.csv", "wb") as f:

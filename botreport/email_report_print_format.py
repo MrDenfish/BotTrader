@@ -121,6 +121,7 @@ def build_console_report(
     strat_rows: Optional[List[Dict[str, Any]]] = None,
     notes: Optional[list[str]] = None,
     fast_df=None,
+    dd_metrics: Optional[Dict[str, Any]] = None,
 ) -> str:
     lines: List[str] = []
     lines.append("Daily Trading Bot Report")
@@ -161,23 +162,44 @@ def build_console_report(
     stdev_str = _fmt_money(stdev_pnl_per_trade) if stdev_pnl_per_trade is not None else "n/a"
     sharpe_str = f"{sharpe_like:.4f}" if isinstance(sharpe_like, (int, float)) else "n/a"
 
-    # Max Drawdown (window)
-    dd_str = _fmt_pct(max_dd_pct_window) if max_dd_pct_window is not None else "n/a"
-
-    km_rows = [
-        ("Realized PnL (USD)", _fmt_money(total_pnl)),
-        ("Unrealized PnL (USD)", _fmt_money(unrealized_pnl)),
-        ("Win Rate", f"{win_rate:.1f}% ({wins}/{total_trades})" if total_trades else "n/a"),
-        ("Avg Win", _fmt_money(avg_win)),
-        ("Avg Loss", _fmt_money(avg_loss)),
-        ("Avg W / Avg L", aw_al),
-        ("Profit Factor", pf_str),
-        ("Expectancy / Trade", exp_str),
-        ("Mean PnL / Trade", mean_str),
-        ("Stdev PnL / Trade", stdev_str),
-        ("Sharpe-like (per trade)", sharpe_str),
-        ("Max Drawdown (window)", dd_str),
-    ]
+    # Drawdown - use new metrics if available, fallback to legacy
+    if dd_metrics:
+        dd_24h_str = _fmt_pct(dd_metrics.get("dd_24h_pct"))
+        dd_inception_str = _fmt_pct(dd_metrics.get("dd_inception_pct"))
+        dd_avg_str = _fmt_pct(dd_metrics.get("dd_avg_pct"))
+        km_rows = [
+            ("Realized PnL (USD)", _fmt_money(total_pnl)),
+            ("Unrealized PnL (USD)", _fmt_money(unrealized_pnl)),
+            ("Win Rate", f"{win_rate:.1f}% ({wins}/{total_trades})" if total_trades else "n/a"),
+            ("Avg Win", _fmt_money(avg_win)),
+            ("Avg Loss", _fmt_money(avg_loss)),
+            ("Avg W / Avg L", aw_al),
+            ("Profit Factor", pf_str),
+            ("Expectancy / Trade", exp_str),
+            ("Mean PnL / Trade", mean_str),
+            ("Stdev PnL / Trade", stdev_str),
+            ("Sharpe-like (per trade)", sharpe_str),
+            ("DD 24h", dd_24h_str),
+            ("DD Inception", dd_inception_str),
+            ("DD Avg", dd_avg_str),
+        ]
+    else:
+        # Legacy single drawdown
+        dd_str = _fmt_pct(max_dd_pct_window) if max_dd_pct_window is not None else "n/a"
+        km_rows = [
+            ("Realized PnL (USD)", _fmt_money(total_pnl)),
+            ("Unrealized PnL (USD)", _fmt_money(unrealized_pnl)),
+            ("Win Rate", f"{win_rate:.1f}% ({wins}/{total_trades})" if total_trades else "n/a"),
+            ("Avg Win", _fmt_money(avg_win)),
+            ("Avg Loss", _fmt_money(avg_loss)),
+            ("Avg W / Avg L", aw_al),
+            ("Profit Factor", pf_str),
+            ("Expectancy / Trade", exp_str),
+            ("Mean PnL / Trade", mean_str),
+            ("Stdev PnL / Trade", stdev_str),
+            ("Sharpe-like (per trade)", sharpe_str),
+            ("Max Drawdown (window)", dd_str),
+        ]
     lines.append(_table(["Stat", "Value"], km_rows))
     lines.append("")
 
