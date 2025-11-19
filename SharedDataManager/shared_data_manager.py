@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from TableModels.ohlcv_data import OHLCVData
 from TableModels.shared_data import SharedData
 from TableModels.passive_orders import PassiveOrder
+from TableModels.webhook_limit_only_positions import WebhookLimitOnlyPosition
 from TableModels.active_symbols import ActiveSymbol
 from datetime import datetime, date, timezone, timedelta
 from SharedDataManager.trade_recorder import TradeRecorder
@@ -874,6 +875,107 @@ class SharedDataManager:
 
         except Exception as e:
             self.logger.error(f"❌ Failed to reconcile passive orders: {e}", exc_info=True)
+
+    # ==================== Webhook Limit-Only Position Methods ====================
+
+    async def save_webhook_limit_only_position(self, position_record: dict):
+        """
+        Save a webhook limit-only position for passive_order_manager to monitor.
+
+        Args:
+            position_record: Dict with keys: symbol, order_id, entry_price, size,
+                           tp_price, sl_price, timestamp, source, order_data_dict
+        """
+        try:
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():
+                    pos = WebhookLimitOnlyPosition(
+                        order_id=position_record["order_id"],
+                        symbol=position_record["symbol"],
+                        entry_price=position_record["entry_price"],
+                        size=position_record["size"],
+                        tp_price=position_record["tp_price"],
+                        sl_price=position_record["sl_price"],
+                        timestamp=datetime.fromisoformat(position_record["timestamp"]),
+                        source=position_record.get("source", "webhook_limit_only"),
+                        order_data=position_record.get("order_data_dict")
+                    )
+                    session.add(pos)
+
+            self.logger.info(
+                f"✅ Saved webhook limit-only position: {position_record['symbol']} "
+                f"order_id={position_record['order_id']}"
+            )
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 save_webhook_limit_only_position was cancelled.", exc_info=True)
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Failed to save webhook limit-only position: {e}", exc_info=True)
+
+    async def load_webhook_limit_only_positions(self) -> list[dict]:
+        """
+        Load all webhook limit-only positions for monitoring.
+
+        Returns:
+            List of position dicts with keys: symbol, order_id, entry_price, size,
+                                              tp_price, sl_price, timestamp, source, order_data_dict
+        """
+        try:
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():
+                    result = await session.execute(select(WebhookLimitOnlyPosition))
+                    rows = result.scalars().all()
+
+                    positions = []
+                    for r in rows:
+                        positions.append({
+                            "order_id": r.order_id,
+                            "symbol": r.symbol,
+                            "entry_price": r.entry_price,
+                            "size": r.size,
+                            "tp_price": r.tp_price,
+                            "sl_price": r.sl_price,
+                            "timestamp": r.timestamp.isoformat(),
+                            "source": r.source,
+                            "order_data_dict": r.order_data
+                        })
+
+                    if positions:
+                        self.logger.info(f"📥 Loaded {len(positions)} webhook limit-only positions")
+
+                    return positions
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 load_webhook_limit_only_positions was cancelled.", exc_info=True)
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Failed to load webhook limit-only positions: {e}", exc_info=True)
+            return []
+
+    async def remove_webhook_limit_only_position(self, order_id: str):
+        """
+        Remove a webhook limit-only position after it's been loaded for monitoring.
+
+        Args:
+            order_id: The order ID to remove
+        """
+        try:
+            async with self.database_session_manager.async_session() as session:
+                async with session.begin():
+                    await session.execute(
+                        delete(WebhookLimitOnlyPosition).where(
+                            WebhookLimitOnlyPosition.order_id == order_id
+                        )
+                    )
+
+            self.logger.debug(f"🗑️ Removed webhook limit-only position: {order_id}")
+
+        except asyncio.CancelledError:
+            self.logger.warning("🛑 remove_webhook_limit_only_position was cancelled.", exc_info=True)
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Failed to remove webhook limit-only position {order_id}: {e}", exc_info=True)
 
     async def fetch_profitable_symbols(
             self,

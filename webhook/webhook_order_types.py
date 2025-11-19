@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Config.config_manager import CentralConfig as Config
 from Shared_Utils.logger import get_logger
+from utils.order_strategy_selector import get_strategy_selector
 
 
 # Define the OrderTypeManager class
@@ -556,6 +557,40 @@ class OrderTypeManager:
                 sl_limit = self.shared_utils_precision.safe_quantize(adj["sl_limit"], quote_quantizer)
                 tp_post_only = adj["post_only"]
 
+            # ========== HYBRID ORDER MANAGEMENT: Strategy Selection ==========
+            # Determine whether to use bracket orders or limit-only monitoring
+            strategy_selector = get_strategy_selector()
+
+            # Calculate spread percentage for volatility assessment
+            spread_pct = spread / adjusted_price if adjusted_price > 0 else Decimal("0")
+
+            # Check websocket connectivity (assume connected if websocket_helper exists)
+            websocket_connected = hasattr(self, 'websocket_helper') and self.websocket_helper is not None
+
+            strategy_decision = strategy_selector.select_strategy(
+                symbol=trading_pair,
+                entry_price=adjusted_price,
+                position_size_base=adjusted_size,
+                bid=best_bid,
+                ask=best_ask,
+                spread_pct=spread_pct,
+                websocket_connected=websocket_connected
+            )
+
+            self.logger.info(
+                f"📊 Order Strategy: {strategy_decision.strategy.upper()} for {trading_pair} - "
+                f"{strategy_decision.reason}"
+            )
+
+            # Store strategy decision in order_data for later reference
+            order_data.order_strategy = strategy_decision.strategy
+            order_data.strategy_reason = strategy_decision.reason
+            order_data.tp_price = tp_price
+            order_data.sl_price = sl_price
+
+            # Build order payload based on selected strategy
+            use_limit_only = (strategy_decision.strategy == "limit_only")
+
             order_payload = {
                 "client_order_id": client_order_id,
                 "product_id": trading_pair,
@@ -565,16 +600,21 @@ class OrderTypeManager:
                         "base_size": str(adjusted_size),
                         "limit_price": str(adjusted_price)
                     }
-                },
-                "attached_order_configuration": {
+                }
+            }
+
+            # Only attach bracket configuration if using bracket strategy
+            if not use_limit_only:
+                order_payload["attached_order_configuration"] = {
                     "trigger_bracket_gtc": {
                         "limit_price": str(tp_price),
                         "stop_trigger_price": str(sl_price)
                     }
                 }
-            }
-
-            self.logger.debug(f"📤 Submitting TP/SL Order → {order_payload}")
+                self.logger.debug(f"📤 Submitting BRACKET Order → {order_payload}")
+            else:
+                # Limit-only: will be monitored by passive_order_manager
+                self.logger.debug(f"📤 Submitting LIMIT-ONLY Entry (monitoring enabled) → {order_payload}")
 
             order_data.time_order_placed = datetime.now()
 
@@ -583,10 +623,30 @@ class OrderTypeManager:
 
             if isinstance(response, dict) and response.get("success") and response.get("success_response", {}).get("order_id"):
                 order_id = response["success_response"]["order_id"]
+                order_type_desc = "LIMIT-ONLY Entry" if use_limit_only else "BRACKET Order"
                 self.structured_logger.order_sent(
-                    "TP/SL Order Placed Successfully",
-                    extra={'order_id': order_id, 'trading_pair': trading_pair}
+                    f"{order_type_desc} Placed Successfully",
+                    extra={'order_id': order_id, 'trading_pair': trading_pair, 'strategy': strategy_decision.strategy}
                 )
+
+                # If limit-only, register position for monitoring
+                if use_limit_only:
+                    # Store order info for passive_order_manager to monitor
+                    # We'll use shared_data_manager to communicate with passive_order_manager
+                    await self._register_limit_only_position(
+                        symbol=trading_pair,
+                        order_id=order_id,
+                        order_data=order_data,
+                        entry_price=adjusted_price,
+                        size=adjusted_size,
+                        tp_price=tp_price,
+                        sl_price=sl_price
+                    )
+                    self.logger.info(
+                        f"✅ Registered {trading_pair} for limit-only monitoring "
+                        f"(TP: {tp_price}, SL: {sl_price})"
+                    )
+
                 return {
                     **response,
                     "status": "placed",
@@ -594,7 +654,8 @@ class OrderTypeManager:
                     "source": order_data.source,
                     "order_id": order_id,
                     "tp": float(tp_price),
-                    "sl": float(sl_price)
+                    "sl": float(sl_price),
+                    "strategy": strategy_decision.strategy
                 }
 
             # Ensure we always return a dict
@@ -938,6 +999,69 @@ class OrderTypeManager:
         except Exception as ex:
             self.logger.error(f" ❌ Error in place_trailing_stop_order: {str(ex)}", exc_info=True)
             return None
+
+    async def _register_limit_only_position(
+        self,
+        symbol: str,
+        order_id: str,
+        order_data: OrderData,
+        entry_price: Decimal,
+        size: Decimal,
+        tp_price: Decimal,
+        sl_price: Decimal
+    ):
+        """
+        Register a filled limit-only entry order for monitoring by passive_order_manager.
+
+        This stores the position details so passive_order_manager can:
+        1. Monitor price in real-time via websocket
+        2. Place limit TP/SL orders when conditions are met
+        3. Handle order timeouts and failsafes
+
+        Args:
+            symbol: Trading pair (e.g., "BTC-USD")
+            order_id: Order ID from Coinbase
+            order_data: Original OrderData object
+            entry_price: Entry price
+            size: Position size in base currency
+            tp_price: Take-profit target price
+            sl_price: Stop-loss trigger price
+        """
+        try:
+            # Store in shared_data_manager for passive_order_manager to pick up
+            if hasattr(self, 'shared_data_manager') and self.shared_data_manager:
+                # Create tracking record
+                position_record = {
+                    "symbol": symbol,
+                    "order_id": order_id,
+                    "entry_price": float(entry_price),
+                    "size": float(size),
+                    "tp_price": float(tp_price),
+                    "sl_price": float(sl_price),
+                    "timestamp": datetime.now().isoformat(),
+                    "source": "webhook_limit_only",
+                    "order_data_dict": order_data.to_dict() if hasattr(order_data, 'to_dict') else None
+                }
+
+                # Save to database for passive_order_manager to load
+                await self.shared_data_manager.save_webhook_limit_only_position(position_record)
+
+                self.logger.debug(
+                    f"📋 Registered limit-only position: {symbol} "
+                    f"Entry: {entry_price}, TP: {tp_price}, SL: {sl_price}"
+                )
+            else:
+                self.logger.warning(
+                    f"⚠️ shared_data_manager not available - "
+                    f"cannot register {symbol} for limit-only monitoring"
+                )
+
+        except Exception as e:
+            self.logger.error(
+                f"❌ Failed to register limit-only position for {symbol}: {e}",
+                exc_info=True
+            )
+            # Don't raise - order was still placed successfully
 
     @staticmethod
     async def update_order_payload(order_id, symbol, trailing_stop_price, limit_price, amount):

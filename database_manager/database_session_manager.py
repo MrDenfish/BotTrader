@@ -102,15 +102,23 @@ class DatabaseSessionManager:
                 return
             try:
                 # Import lazily so environments without this module don't crash at import time
-                from .bootstrap_schema import ensure_trade_provenance_schema  # type: ignore
+                from .bootstrap_schema import ensure_trade_provenance_schema, ensure_webhook_limit_only_positions_table  # type: ignore
             except Exception:
                 ensure_trade_provenance_schema = None
+                ensure_webhook_limit_only_positions_table = None
 
             if ensure_trade_provenance_schema:
                 try:
                     await ensure_trade_provenance_schema(self.engine)
                 except Exception as e:
                     self.logger.debug("Schema bootstrap failed/skipped: %s", e)
+
+            if ensure_webhook_limit_only_positions_table:
+                try:
+                    await ensure_webhook_limit_only_positions_table(self.engine)
+                except Exception as e:
+                    self.logger.debug("Webhook limit-only table bootstrap failed/skipped: %s", e)
+
             self._schema_ready = True
 
     @asynccontextmanager

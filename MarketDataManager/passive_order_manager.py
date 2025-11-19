@@ -637,6 +637,72 @@ class PassiveOrderManager:
             except Exception as e:
                 self.logger.warning(f"⚠️ Failed to restore passive order for {symbol}/{side}: {e}", exc_info=True)
 
+    async def load_webhook_limit_only_positions(self):
+        """
+        Load limit-only positions created by webhook orders for monitoring.
+        These positions need TP/SL monitoring via limit orders instead of brackets.
+        """
+        if not self.shared_data_manager:
+            return
+
+        try:
+            # Load positions from shared_data_manager
+            positions = await self.shared_data_manager.load_webhook_limit_only_positions()
+
+            for pos in positions:
+                try:
+                    symbol = pos.get("symbol")
+                    order_id = pos.get("order_id")
+                    entry_price = Decimal(str(pos.get("entry_price", 0)))
+                    size = Decimal(str(pos.get("size", 0)))
+                    tp_price = Decimal(str(pos.get("tp_price", 0)))
+                    sl_price = Decimal(str(pos.get("sl_price", 0)))
+
+                    if not symbol or entry_price <= 0 or size <= 0:
+                        self.logger.warning(f"⚠️ Invalid webhook position data: {pos}")
+                        continue
+
+                    # Create minimal OrderData for monitoring
+                    # We need to reconstruct enough info for monitor_passive_position to work
+                    od_dict = pos.get("order_data_dict")
+                    if od_dict:
+                        od = OrderData.from_dict(od_dict)
+                    else:
+                        # Fallback: create minimal OrderData if dict not available
+                        od = OrderData()
+                        od.trading_pair = symbol
+                        od.limit_price = entry_price
+                        od.filled_price = entry_price
+                        od.available_to_trade_crypto = size
+                        od.order_id = order_id
+
+                    # Register in passive_order_tracker for monitoring
+                    entry = self.passive_order_tracker.setdefault(symbol, {})
+                    entry["webhook_limit_only"] = order_id
+                    entry["order_data"] = od
+                    entry["peak_price"] = entry_price  # Initialize to entry price
+                    entry["timestamp"] = time.time()
+                    entry["tp_target"] = tp_price
+                    entry["sl_target"] = sl_price
+                    entry["source"] = "webhook_limit_only"
+
+                    self.logger.info(
+                        f"🔁 Loaded webhook limit-only position: {symbol} "
+                        f"Entry: {entry_price}, TP: {tp_price}, SL: {sl_price}"
+                    )
+
+                    # Remove from database so we don't load it again
+                    await self.shared_data_manager.remove_webhook_limit_only_position(order_id)
+
+                except Exception as e:
+                    self.logger.warning(
+                        f"⚠️ Failed to load webhook position {pos.get('symbol')}: {e}",
+                        exc_info=True
+                    )
+
+        except Exception as e:
+            self.logger.error(f"❌ Error loading webhook limit-only positions: {e}", exc_info=True)
+
     async def _quote_passive_buy(self, od: OrderData, trading_pair: str, tick: Decimal):
         """
         Quotes a passive BUY order with size scaled by spread quality.
@@ -874,10 +940,20 @@ class PassiveOrderManager:
                                 self._monitor_active_symbol(symbol, entry)
                             )
 
+                        # ✅ Ensure webhook limit-only positions are monitored
+                        if "webhook_limit_only" in entry and not entry.get("monitor_task"):
+                            entry["monitor_task"] = asyncio.create_task(
+                                self._monitor_active_symbol(symbol, entry)
+                            )
+
                 # 🔁 Reconcile DB every ~5 min (10 cycles at 30s each)
                 counter += 1
                 if counter % 10 == 0:
                     await self.shared_data_manager.reconcile_passive_orders()
+
+                # 🔁 Load webhook limit-only positions every cycle (30s)
+                # This picks up new positions created by webhook orders
+                await self.load_webhook_limit_only_positions()
 
             except Exception as ex:
                 self.logger.error(f"⚠️ Watchdog error {ex}", exc_info=True)
