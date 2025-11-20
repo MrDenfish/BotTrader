@@ -4,7 +4,7 @@ from inspect import stack  # debugging
 
 import pandas as pd
 from typing import Optional
-from decimal import Decimal, ROUND_DOWN, InvalidOperation, localcontext, getcontext
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_EVEN, InvalidOperation, localcontext, getcontext
 
 
 class PrecisionUtils:
@@ -24,6 +24,9 @@ class PrecisionUtils:
 
         self.logger = logger_manager.loggers.get('shared_logger') # 🙂
         self.shared_data_manager = shared_data_manager
+
+        # Initialize dust threshold configuration for FIFO allocations
+        self._init_dust_thresholds()
 
 
 
@@ -372,3 +375,244 @@ class PrecisionUtils:
         except Exception as e:
             self.logger.error(f'❌ An error was detected {e}', exc_info=True)
             return Decimal(0)
+
+    # =========================================================================
+    # FIFO Allocation Support - Dust Thresholds and Granularity
+    # =========================================================================
+
+    def _init_dust_thresholds(self):
+        """
+        Initialize dust threshold configuration for FIFO allocations.
+
+        Dust is the minimum amount below which we don't create allocations
+        or consider inventory available. This prevents accumulated rounding
+        errors and handles amounts too small to be economically meaningful.
+        """
+        # Default thresholds
+        self.DEFAULT_DUST_THRESHOLD = Decimal('0.00001')
+        self.DEFAULT_MIN_TRADE_SIZE = Decimal('0.0001')
+
+        # Symbol-specific dust thresholds
+        # These are conservative defaults - can be overridden per symbol
+        self.DUST_THRESHOLDS = {
+            # Major pairs - BTC
+            'BTC-USD': Decimal('0.00001'),    # ~$0.50 at $50k BTC
+            'BTC-USDT': Decimal('0.00001'),
+
+            # Major pairs - ETH
+            'ETH-USD': Decimal('0.0001'),     # ~$0.30 at $3k ETH
+            'ETH-USDT': Decimal('0.0001'),
+
+            # Layer 1s
+            'SOL-USD': Decimal('0.001'),      # ~$0.10 at $100 SOL
+            'ADA-USD': Decimal('0.1'),        # ~$0.05 at $0.50 ADA
+            'AVAX-USD': Decimal('0.01'),
+
+            # Altcoins - Higher Value
+            'LINK-USD': Decimal('0.01'),
+            'UNI-USD': Decimal('0.01'),
+            'AAVE-USD': Decimal('0.001'),
+
+            # Altcoins - Medium Value
+            'MATIC-USD': Decimal('0.1'),
+            'DOT-USD': Decimal('0.01'),
+            'ATOM-USD': Decimal('0.01'),
+
+            # Altcoins - Lower Value
+            'DOGE-USD': Decimal('1.0'),       # ~$0.10 at $0.10 DOGE
+            'XRP-USD': Decimal('0.1'),
+            'TRX-USD': Decimal('1.0'),
+
+            # Meme/Low-Value Coins
+            'SHIB-USD': Decimal('1000'),      # 1000 SHIB minimum
+            'PEPE-USD': Decimal('10000'),
+
+            # Stablecoins
+            'USDC-USD': Decimal('0.01'),      # 1 cent
+            'USDT-USD': Decimal('0.01'),
+            'DAI-USD': Decimal('0.01'),
+        }
+
+        # Minimum trade sizes (exchange minimums)
+        self.MIN_TRADE_SIZES = {
+            'BTC-USD': Decimal('0.0001'),     # ~$5 at $50k
+            'ETH-USD': Decimal('0.001'),      # ~$3 at $3k
+            'SOL-USD': Decimal('0.01'),
+            'DOGE-USD': Decimal('10.0'),
+            'SHIB-USD': Decimal('10000'),
+            # Add more as needed
+        }
+
+    def get_dust_threshold(self, symbol: str) -> Decimal:
+        """
+        Get dust threshold for a trading pair.
+
+        Dust is the minimum amount below which we don't create allocations
+        or consider inventory available.
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC-USD')
+
+        Returns:
+            Decimal dust threshold
+
+        Example:
+            >>> precision_utils.get_dust_threshold('BTC-USD')
+            Decimal('0.00001')
+        """
+        # Normalize symbol format (handle both 'BTC-USD' and 'BTC/USD')
+        normalized = symbol.replace('/', '-')
+        return self.DUST_THRESHOLDS.get(normalized, self.DEFAULT_DUST_THRESHOLD)
+
+    def get_min_trade_size(self, symbol: str) -> Decimal:
+        """
+        Get minimum trade size for a trading pair.
+
+        This is the exchange's minimum order size.
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC-USD')
+
+        Returns:
+            Decimal minimum trade size
+        """
+        normalized = symbol.replace('/', '-')
+        return self.MIN_TRADE_SIZES.get(normalized, self.DEFAULT_MIN_TRADE_SIZE)
+
+    def is_dust(self, value: Decimal, symbol: str) -> bool:
+        """
+        Check if a value is considered dust for a symbol.
+
+        Args:
+            value: Amount to check
+            symbol: Trading pair
+
+        Returns:
+            True if value <= dust threshold
+
+        Example:
+            >>> precision_utils.is_dust(Decimal('0.000001'), 'BTC-USD')
+            True  # Less than 0.00001 threshold
+        """
+        if not isinstance(value, Decimal):
+            value = self.safe_decimal(value)
+
+        threshold = self.get_dust_threshold(symbol)
+        return value <= threshold
+
+    def validate_trade_size(self, size: Decimal, symbol: str) -> bool:
+        """
+        Validate that a trade size meets minimum requirements.
+
+        Args:
+            size: Trade size to validate
+            symbol: Trading pair
+
+        Returns:
+            True if size is valid (>= min_trade_size)
+
+        Example:
+            >>> precision_utils.validate_trade_size(Decimal('0.0001'), 'BTC-USD')
+            True  # Meets minimum
+            >>> precision_utils.validate_trade_size(Decimal('0.00001'), 'BTC-USD')
+            False  # Below minimum
+        """
+        if not isinstance(size, Decimal):
+            size = self.safe_decimal(size)
+
+        min_size = self.get_min_trade_size(symbol)
+        return size >= min_size
+
+    def round_with_bankers(self, value: Decimal, symbol: str, is_base: bool = True) -> Decimal:
+        """
+        Round a value using banker's rounding (ROUND_HALF_EVEN) for fairness.
+
+        Banker's rounding minimizes bias by rounding .5 to the nearest even number.
+        This is important for FIFO allocations to prevent systematic over/under allocation.
+
+        Args:
+            value: The decimal value to round
+            symbol: Trading pair (e.g., 'BTC-USD')
+            is_base: True if base currency (BTC), False if quote (USD)
+
+        Returns:
+            Rounded Decimal value
+
+        Example:
+            >>> precision_utils.round_with_bankers(Decimal('0.123456789'), 'BTC-USD', is_base=True)
+            Decimal('0.12345679')  # Rounded to 8 decimals with banker's rounding
+        """
+        try:
+            base_prec, quote_prec, _, _ = self.fetch_precision(symbol)
+            decimals = base_prec if is_base else quote_prec
+
+            quantizer = Decimal('1') / (Decimal('10') ** decimals)
+            return value.quantize(quantizer, rounding=ROUND_HALF_EVEN)
+
+        except Exception as e:
+            self.logger.error(f"❌ round_with_bankers failed for {symbol}: {e}", exc_info=True)
+            # Fallback to safe_quantize with ROUND_HALF_EVEN
+            return self.safe_quantize(value, Decimal('1e-8'), rounding=ROUND_HALF_EVEN)
+
+    def set_dust_threshold(self, symbol: str, threshold: Decimal) -> None:
+        """
+        Set or update dust threshold for a symbol.
+
+        Useful for dynamically adjusting thresholds based on price changes
+        or adding new trading pairs.
+
+        Args:
+            symbol: Trading pair (e.g., 'NEW-USD')
+            threshold: New dust threshold (Decimal)
+
+        Example:
+            >>> precision_utils.set_dust_threshold('NEW-USD', Decimal('0.001'))
+        """
+        normalized = symbol.replace('/', '-')
+        self.DUST_THRESHOLDS[normalized] = threshold
+        self.logger.info(f"✅ Dust threshold for {normalized} set to {threshold}")
+
+    def set_min_trade_size(self, symbol: str, min_size: Decimal) -> None:
+        """
+        Set or update minimum trade size for a symbol.
+
+        Args:
+            symbol: Trading pair
+            min_size: New minimum trade size (Decimal)
+        """
+        normalized = symbol.replace('/', '-')
+        self.MIN_TRADE_SIZES[normalized] = min_size
+        self.logger.info(f"✅ Minimum trade size for {normalized} set to {min_size}")
+
+    def format_for_display(self, value: Decimal, symbol: str, is_base: bool = True) -> str:
+        """
+        Format a value for human-readable display with appropriate precision.
+
+        Args:
+            value: Decimal value to format
+            symbol: Trading pair
+            is_base: True if base currency, False if quote
+
+        Returns:
+            Formatted string
+
+        Example:
+            >>> precision_utils.format_for_display(Decimal('0.12345678'), 'BTC-USD', is_base=True)
+            '0.12345678 BTC'
+        """
+        try:
+            base_prec, quote_prec, _, _ = self.fetch_precision(symbol)
+            decimals = base_prec if is_base else quote_prec
+
+            # Get currency name
+            normalized = symbol.replace('/', '-')
+            base, quote = normalized.split('-')
+            currency = base if is_base else quote
+
+            # Format with appropriate precision
+            format_str = f"{{:.{decimals}f}} {currency}"
+            return format_str.format(value)
+
+        except Exception as e:
+            self.logger.error(f"❌ format_for_display failed for {symbol}: {e}")
+            return str(value)
