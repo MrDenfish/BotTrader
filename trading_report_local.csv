@@ -1,0 +1,31 @@
+Daily Trading Bot Report
+Generated (UTC),2025-11-18T20:42:03.402244
+
+Key Metrics
+Realized PnL (USD),-1.17
+Unrealized PnL (USD),3.81
+Win Rate,42.9% (6/14)
+
+Trade Stats (Window)
+Avg Win,1.68
+Avg Loss,-1.4
+Profit Factor,0.9
+Avg W / Avg L,1.19
+
+Risk & Capital
+Max Drawdown (since inception) %,299.22
+Cash (USD),0.0
+Invested Notional (USD),116.22
+Invested %,0.0
+
+Exposure Snapshot
+Total Notional (USD),116.22
+Symbol,Notional,% of Total,Side,Qty,Avg Price
+UNI-USD,58.59,50.4%,long,7.9281179999999996,7.389857142857144
+AERO-USD,57.63,49.6%,long,70.09999999999998,0.8221260000000001
+
+Open Positions
+Symbol,Qty,Avg Price
+
+Trades (Window)
+Symbol,Side,Price,Amount,Time

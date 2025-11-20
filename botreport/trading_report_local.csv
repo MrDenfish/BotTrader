@@ -1,0 +1,32 @@
+Daily Trading Bot Report
+Generated (UTC),2025-11-19T17:13:31.099756
+
+Key Metrics
+Realized PnL (USD),-350.95
+Unrealized PnL (USD),0.23
+Win Rate,18.2% (6/33)
+
+Trade Stats (Window)
+Avg Win,11.54
+Avg Loss,-15.56
+Profit Factor,0.16
+Avg W / Avg L,0.74
+
+Risk & Capital
+Max Drawdown (since inception) %,298.84
+Cash (USD),0.0
+Invested Notional (USD),119.76
+Invested %,0.0
+
+Exposure Snapshot
+Total Notional (USD),119.76
+Symbol,Notional,% of Total,Side,Qty,Avg Price
+UNI-USD,59.09,49.3%,short,-7.928118,7.453666666666667
+BCH-USD,30.41,25.4%,long,0.060739829999999995,500.65999999999997
+SOL-USD,30.14,25.2%,long,0.21596717,139.57599999999996
+
+Open Positions
+Symbol,Qty,Avg Price
+
+Trades (Window)
+Symbol,Side,Price,Amount,Time

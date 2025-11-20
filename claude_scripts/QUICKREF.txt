@@ -1,0 +1,118 @@
+╔═══════════════════════════════════════════════════════════════╗
+║              CLANKER POSITION BUG - QUICK FIX                 ║
+╚═══════════════════════════════════════════════════════════════╝
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ THE BUG                                                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  BUY orders: remaining_size = 0.5159  ❌ (should be 0)
+  SELL orders: remaining_size = NULL   ✅ (correct)
+  
+  Result: Only sells counted in position → phantom short!
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ FASTEST FIX (30 seconds)                                    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  1. Copy scripts to server:
+     scp *.sql apply_all_fixes.sh YOUR_SERVER:/opt/bot/
+  
+  2. SSH and run:
+     cd /opt/bot
+     ./apply_all_fixes.sh
+  
+  3. Done! Check verification_results.txt
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ MANUAL FIX (2 minutes)                                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  docker compose -f docker-compose.aws.yml exec db psql \
+    -U bot_user -d bot_trader_db
+
+  Then paste:
+
+  UPDATE trade_records
+  SET remaining_size = 0
+  WHERE status = 'filled'
+    AND side = 'buy'
+    AND remaining_size = size
+    AND remaining_size IS NOT NULL;
+
+  -- Check it worked:
+  SELECT * FROM report_positions 
+  WHERE symbol = 'CLANKER-USD';
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ VERIFY SUCCESS                                              ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  BEFORE:                        AFTER:
+  ─────────────────────────────────────────────────────
+  CLANKER: -243.89  ❌           CLANKER: ~0.0002  ✅
+  Total: ~$100,000  ❌           Total: ~$192      ✅
+  Max DD: -88%      ❌           Max DD: 0.42%     ✅
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ FIND THE CODE BUG                                           ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  cd /path/to/BotTrader
+  ./find_remaining_size_code.sh
+
+  Look for:
+    remaining_size = order.get("filled_size")  ❌ BAD
+    remaining_size = order.get("size")         ❌ BAD
+
+  Should be:
+    if order.get("status") == "FILLED":
+        remaining_size = 0                     ✅ GOOD
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ FILES CREATED                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  investigate_bug.sql           - See the problem
+  fix_remaining_size_bug.sql    - Fix bad data
+  fix_report_views.sql          - Update views
+  apply_all_fixes.sh            - Run everything
+  find_remaining_size_code.sh   - Find code bug
+  README.md                     - Full guide
+  QUICKREF.txt                  - This file
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ CHECKLIST                                                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  [ ] Run investigate_bug.sql (optional)
+  [ ] Run fix_remaining_size_bug.sql
+  [ ] Verify CLANKER position ≈ 0
+  [ ] Run fix_report_views.sql
+  [ ] Generate test report
+  [ ] Search code for remaining_size bug
+  [ ] Fix code so bug doesn't repeat
+  [ ] Monitor next scheduled report
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ TROUBLESHOOTING                                             ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  "Still shows -243.89"
+    → Check if UPDATE ran: SELECT COUNT(*) FROM trade_records
+      WHERE side='buy' AND status='filled' 
+      AND remaining_size=size;
+    → Should be 0 after fix
+
+  "Total still huge"  
+    → SELECT * FROM report_positions ORDER BY 
+      ABS(position_qty * avg_entry_price) DESC;
+    → Other symbols might have same bug
+
+  "Can't find code"
+    → find . -name "*.py" -exec grep -l "remaining_size" {} \;
+    → Check *recorder*.py, *webhook*.py, *order*.py
+
+═══════════════════════════════════════════════════════════════
+
+Need help? Check README.md for full documentation.

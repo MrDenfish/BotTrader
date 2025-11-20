@@ -433,6 +433,13 @@ class TradeRecorder:
                         # never touch linkage/derived fields on update for buys
                         exclude_from_update.update({"remaining_size", "realized_profit", "pnl_usd", "parent_id", "parent_ids"})
 
+                    # 🔧 FIX: For SELL updates (reconciliation), also preserve parent linkages and PnL
+                    # If SELL already exists, don't overwrite its FIFO-computed parent matching
+                    if side == "sell" and existing_source is not None:
+                        # Record already exists - preserve its parent linkages and derived PnL
+                        exclude_from_update.update({"parent_id", "parent_ids", "pnl_usd", "cost_basis_usd",
+                                                   "sale_proceeds_usd", "net_sale_proceeds_usd", "realized_profit"})
+
                     # 2) Filter insert dict to known columns only
                     insert_values = {k: v for k, v in trade_dict.items() if k in table_cols}
 

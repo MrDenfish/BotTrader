@@ -1,0 +1,181 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                    CLANKER BUG FIX - DECISION TREE                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+                           Do you have SSH access
+                           to your bot server?
+                                    │
+                    ┌───────────────┴───────────────┐
+                    │                               │
+                   YES                             NO
+                    │                               │
+                    ▼                               ▼
+           ┌─────────────────┐           ┌─────────────────┐
+           │ Want to automate│           │ Use web interface│
+           │ or do manually? │           │ or manual psql   │
+           └─────────────────┘           └─────────────────┘
+                    │                               │
+        ┌───────────┴───────────┐                  │
+        │                       │                  │
+    AUTOMATE                MANUAL                 │
+        │                       │                  │
+        ▼                       ▼                  ▼
+┌──────────────────┐   ┌──────────────────┐  ┌──────────────────┐
+│1. Copy all files │   │1. Copy SQL files │  │1. Copy SQL       │
+│   to server      │   │   to server      │  │   statements     │
+│                  │   │                  │  │                  │
+│2. Run:           │   │2. Run psql:      │  │2. Open database  │
+│   ./apply_all_   │   │   docker compose │  │   admin panel    │
+│   fixes.sh       │   │   exec db psql   │  │                  │
+│                  │   │                  │  │3. Run UPDATE     │
+│3. Review logs    │   │3. Paste queries  │  │   query directly │
+│                  │   │   from SQL files │  │                  │
+│4. Done! ✅       │   │                  │  │4. Verify ✅      │
+│                  │   │4. Done! ✅       │  │                  │
+└──────────────────┘   └──────────────────┘  └──────────────────┘
+        │                       │                      │
+        │                       │                      │
+        └───────────────────────┴──────────────────────┘
+                                │
+                                ▼
+                        ┌──────────────┐
+                        │Position fixed│
+                        │CLANKER ≈ 0   │
+                        │Total ≈ $192  │
+                        └──────────────┘
+                                │
+                                ▼
+                        ┌──────────────┐
+                        │ Next: Find   │
+                        │ the code bug │
+                        │              │
+                        │Run:          │
+                        │find_remaining│
+                        │_size_code.sh │
+                        └──────────────┘
+                                │
+                                ▼
+                        ┌──────────────┐
+                        │Fix Python    │
+                        │code so bug   │
+                        │doesn't repeat│
+                        │              │
+                        │Look for:     │
+                        │remaining_size│
+                        │= order.get() │
+                        └──────────────┘
+                                │
+                                ▼
+                         ┌─────────────┐
+                         │   DONE! 🎉  │
+                         │             │
+                         │Monitor next │
+                         │report to    │
+                         │confirm fix  │
+                         └─────────────┘
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                          RECOMMENDED PATHS                                 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Path A: Most Common (SSH + Automated)  ⭐ RECOMMENDED
+─────────────────────────────────────────────────────────
+Time: 2 minutes
+Difficulty: Easy
+Files: apply_all_fixes.sh + all SQL files
+
+Commands:
+  scp *.sql *.sh YOUR_SERVER:/opt/bot/
+  ssh YOUR_SERVER
+  cd /opt/bot
+  ./apply_all_fixes.sh
+
+Best for: Most users with server access
+
+
+Path B: Manual Control (SSH + Manual)
+─────────────────────────────────────────────────────────
+Time: 5 minutes  
+Difficulty: Medium
+Files: Individual SQL files
+
+Commands:
+  docker compose -f docker-compose.aws.yml exec db \
+    psql -U bot_user -d bot_trader_db \
+    < fix_remaining_size_bug.sql
+
+Best for: Users who want to see each step
+
+
+Path C: Web Interface (No SSH)
+─────────────────────────────────────────────────────────
+Time: 3 minutes
+Difficulty: Easy-Medium
+Files: Just copy the UPDATE query
+
+Steps:
+  1. Open database admin panel (pgAdmin/etc)
+  2. Paste UPDATE query from fix_remaining_size_bug.sql
+  3. Run and verify
+
+Best for: No server access, have DB admin panel
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                           THE CRITICAL QUERY                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+If you only run ONE thing, run this:
+
+UPDATE trade_records
+SET remaining_size = 0
+WHERE status = 'filled'
+  AND side = 'buy'
+  AND remaining_size = size
+  AND remaining_size IS NOT NULL;
+
+This fixes 80% of the problem instantly!
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                              VERIFICATION                                  ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+After ANY path, verify success with:
+
+SELECT * FROM report_positions WHERE symbol = 'CLANKER-USD';
+
+Should show: position_qty near 0 (not -243.89)
+
+SELECT SUM(ABS(position_qty * avg_entry_price)) FROM report_positions;
+
+Should show: ~$192 (not ~$100,000)
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                            FILES YOU NEED                                  ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Path A (Automated):
+  ✓ apply_all_fixes.sh
+  ✓ All .sql files
+
+Path B (Manual):  
+  ✓ fix_remaining_size_bug.sql
+  ✓ fix_report_views.sql
+  ✓ investigate_bug.sql (optional)
+
+Path C (Web):
+  ✓ Just the UPDATE query (from any SQL file)
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                            STILL CONFUSED?                                 ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+→ Read START_HERE.md for executive summary
+→ Read QUICKREF.txt for quick reference
+→ Read README.md for full documentation
+
+Or just run: ./apply_all_fixes.sh and let it guide you!
