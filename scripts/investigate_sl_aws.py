@@ -27,11 +27,11 @@ db_host = os.getenv('DB_HOST', '127.0.0.1')
 db_port = int(os.getenv('DB_PORT', '5432'))
 db_name = os.getenv('DB_NAME', 'bot_trader_db')
 db_user = os.getenv('DB_USER', 'bot_user')
-db_pass = os.getenv('DB_PASS', '')
+db_pass = os.getenv('DB_PASSWORD', '')  # Note: DB_PASSWORD not DB_PASS
 
 if not db_pass:
-    print("❌ Error: DB_PASS not found in environment")
-    print("   Set DB_PASS environment variable or add to .env file")
+    print("❌ Error: DB_PASSWORD not found in environment")
+    print("   Set DB_PASSWORD environment variable or add to .env file")
     sys.exit(1)
 
 print(f"Connecting to {db_host}:{db_port}/{db_name} as {db_user}...")
