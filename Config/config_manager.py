@@ -395,15 +395,20 @@ class CentralConfig:
             _logger.info("Machine type determined: docker")
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         elif len(cwd_parts) > 2:
-
+            # Check for known local machine types
             if cwd_parts[2] == 'jack':
                 _logger.info("Machine type determined: Laptop",
                     extra={'machine_type': cwd_parts[2]})
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
-            else:
+            elif cwd_parts[2] == 'Manny':
                 _logger.info("Machine type determined: Desktop",
                     extra={'machine_type': cwd_parts[2]})
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
+            else:
+                # Unknown path (e.g., /opt/bot on AWS) - assume docker/server
+                _logger.info("Machine type determined: docker (server deployment)",
+                    extra={'machine_type': 'docker', 'path': os.getcwd()})
+                return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         else:
             raise ValueError(f"Invalid path {os.getcwd()}, unable to determine machine type.")
 
