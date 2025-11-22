@@ -74,15 +74,22 @@ async def init_dependencies():
     await database_session_manager.initialize()
 
     # Initialize SharedDataManager (needed for PrecisionUtils)
+    # On AWS server without market cache, PrecisionUtils will fail - use fallback instead
     try:
         shared_data_manager = SharedDataManager.__new__(SharedDataManager)
         shared_utils_utility = SharedUtility.get_instance(logger_manager)
 
         # Initialize PrecisionUtils
         precision_utils = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
+
+        # Test if it's actually usable by checking for _usd_pairs
+        if not hasattr(precision_utils, '_usd_pairs'):
+            raise AttributeError("PrecisionUtils not fully initialized (missing _usd_pairs)")
+
     except Exception as e:
         # If PrecisionUtils fails to initialize, use None (FIFO engine has fallback)
-        shared_logger.warning(f"PrecisionUtils initialization failed: {e}. Using fallback precision.")
+        shared_logger.warning(f"⚠️  PrecisionUtils initialization failed: {e}")
+        shared_logger.warning(f"⚠️  Using fallback precision (1e-8 dust threshold, 8 decimal places)")
         precision_utils = None
 
     return database_session_manager, logger_manager, precision_utils, shared_logger
