@@ -83,3 +83,19 @@ STARTING_EQUITY_USD = float(os.getenv('STARTING_EQUITY_USD', '3000'))
 
 # Import from trading for consistency
 from Config.constants_trading import TAKER_FEE, MAKER_FEE
+
+# ============================================================================
+# FIFO Allocations Configuration
+# ============================================================================
+
+USE_FIFO_ALLOCATIONS = os.getenv('USE_FIFO_ALLOCATIONS', '0') == '1'
+"""Whether to use FIFO allocations for PnL instead of trade_records.pnl_usd"""
+
+FIFO_ALLOCATION_VERSION = int(os.getenv('FIFO_ALLOCATION_VERSION', '2'))
+"""Which FIFO allocation version to use in reports (default: 2, the backfilled version)"""
+
+FIFO_ALLOCATIONS_TABLE = os.getenv('FIFO_ALLOCATIONS_TABLE', 'public.fifo_allocations')
+"""FIFO allocations table name"""
+
+FIFO_HEALTH_VIEW = os.getenv('FIFO_HEALTH_VIEW', 'public.v_allocation_health')
+"""FIFO allocation health view name"""

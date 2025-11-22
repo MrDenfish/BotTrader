@@ -157,6 +157,10 @@ from Config.constants_report import (
     REPORT_USE_PT_DAY,
     STARTING_EQUITY_USD,
     TAKER_FEE,
+    USE_FIFO_ALLOCATIONS,
+    FIFO_ALLOCATION_VERSION,
+    FIFO_ALLOCATIONS_TABLE,
+    FIFO_HEALTH_VIEW,
     MAKER_FEE,
 )
 
@@ -438,44 +442,139 @@ def render_score_section_html(metrics: dict) -> str:
 
 
 # ============================================================================
+# FIFO Allocations Helpers
+# ============================================================================
+
+def query_fifo_pnl(conn, version: int):
+    """
+    Query total PnL from FIFO allocations table for a given version.
+
+    Returns:
+        (total_pnl, note) - Total PnL and descriptive note
+    """
+    try:
+        # Check if FIFO tables exist
+        cols = table_columns(conn, FIFO_ALLOCATIONS_TABLE)
+        if not cols:
+            return 0, f"FIFO table {FIFO_ALLOCATIONS_TABLE} not found"
+
+        # Get time window
+        ts_col = 'sell_time'  # FIFO allocations use sell_time
+        if ts_col in cols:
+            low_sql, high_sql = _time_window_sql(qident(ts_col))
+            q = f"""
+                SELECT COALESCE(SUM(pnl_usd), 0)
+                FROM {qualify(FIFO_ALLOCATIONS_TABLE)}
+                WHERE allocation_version = {version}
+                  AND {low_sql} {high_sql}
+            """
+            note = f"FIFO v{version} PnL (windowed by {ts_col})"
+        else:
+            q = f"""
+                SELECT COALESCE(SUM(pnl_usd), 0)
+                FROM {qualify(FIFO_ALLOCATIONS_TABLE)}
+                WHERE allocation_version = {version}
+            """
+            note = f"FIFO v{version} PnL (all-time, no time window)"
+
+        total_pnl = conn.run(q)[0][0]
+        return total_pnl, note
+
+    except Exception as e:
+        return 0, f"FIFO PnL query failed: {e}"
+
+
+def query_fifo_health(conn, version: int):
+    """
+    Query FIFO allocation health metrics for a given version.
+
+    Returns:
+        dict with health metrics or None if unavailable
+    """
+    try:
+        # Check if health view exists
+        q = f"""
+            SELECT
+                total_allocations,
+                sells_matched,
+                buys_used,
+                unmatched_sells,
+                total_pnl
+            FROM {qualify(FIFO_HEALTH_VIEW)}
+            WHERE allocation_version = {version}
+        """
+        rows = conn.run(q)
+        if not rows:
+            return None
+
+        row = rows[0]
+        return {
+            'version': version,
+            'total_allocations': row[0],
+            'sells_matched': row[1],
+            'buys_used': row[2],
+            'unmatched_sells': row[3],
+            'total_pnl': row[4],
+        }
+
+    except Exception as e:
+        return None
+
+
+# ============================================================================
 # SECTION 4: Core Queries
 # ============================================================================
 # Main query orchestrator, position/PnL/trade fetching
 
 def run_queries(conn):
     errors = []
-    detect_notes = ["Build:v8"]  # Increment version
+    detect_notes = ["Build:v9"]  # Increment version
+    fifo_health = None  # Store FIFO health metrics for HTML report
 
     # Realized PnL (windowed if timestamp exists)
     try:
-        tbl_pnl = REPORT_PNL_TABLE
-        cols_present = table_columns(conn, tbl_pnl)
-        if REPORT_DEBUG:
-            detect_notes.append(f"Columns({tbl_pnl}): {sorted(cols_present)}")
+        if USE_FIFO_ALLOCATIONS:
+            # Use FIFO allocations for PnL
+            total_pnl, fifo_note = query_fifo_pnl(conn, FIFO_ALLOCATION_VERSION)
+            detect_notes.append(fifo_note)
 
-        pnl_candidates = ["pnl_usd", "realized_pnl_usd", "realized_pnl", "pnl", "profit", "realized_profit"]
-        pnl_col = REPORT_COL_PNL if REPORT_COL_PNL else pick_first_available(cols_present, pnl_candidates)
-
-        if not pnl_col:
-            total_pnl = 0
-            detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
+            # Query FIFO health metrics
+            fifo_health = query_fifo_health(conn, FIFO_ALLOCATION_VERSION)
+            if fifo_health:
+                detect_notes.append(
+                    f"FIFO health: {fifo_health['total_allocations']} allocations, "
+                    f"{fifo_health['unmatched_sells']} unmatched sells"
+                )
         else:
-            ts_candidates = ["order_time", "exec_time", "time", "ts", "timestamp", "created_at", "updated_at"]
-            ts_col = pick_first_available(cols_present, ["order_time", "trade_time", "ts", "timestamp", "created_at", "updated_at"])
+            # Use existing trade_records.pnl_usd logic
+            tbl_pnl = REPORT_PNL_TABLE
+            cols_present = table_columns(conn, tbl_pnl)
+            if REPORT_DEBUG:
+                detect_notes.append(f"Columns({tbl_pnl}): {sorted(cols_present)}")
 
-            if ts_col:
-                low_sql, high_sql = _time_window_sql(qident(ts_col))
-                q = f"""
-                    SELECT COALESCE(SUM({qident(pnl_col)}), 0)
-                    FROM {qualify(tbl_pnl)}
-                    WHERE {low_sql} {high_sql}
-                """
-                detect_notes.append(f"PnL windowed: table=({tbl_pnl}) col={pnl_col} ts={ts_col}")
+            pnl_candidates = ["pnl_usd", "realized_pnl_usd", "realized_pnl", "pnl", "profit", "realized_profit"]
+            pnl_col = REPORT_COL_PNL if REPORT_COL_PNL else pick_first_available(cols_present, pnl_candidates)
+
+            if not pnl_col:
+                total_pnl = 0
+                detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
             else:
-                q = f"SELECT COALESCE(SUM({qident(pnl_col)}), 0) FROM {qualify(tbl_pnl)}"
-                detect_notes.append(f"PnL ALL-TIME (no ts col): table=({tbl_pnl}) col={pnl_col}")
+                ts_candidates = ["order_time", "exec_time", "time", "ts", "timestamp", "created_at", "updated_at"]
+                ts_col = pick_first_available(cols_present, ["order_time", "trade_time", "ts", "timestamp", "created_at", "updated_at"])
 
-            total_pnl = conn.run(q)[0][0]
+                if ts_col:
+                    low_sql, high_sql = _time_window_sql(qident(ts_col))
+                    q = f"""
+                        SELECT COALESCE(SUM({qident(pnl_col)}), 0)
+                        FROM {qualify(tbl_pnl)}
+                        WHERE {low_sql} {high_sql}
+                    """
+                    detect_notes.append(f"PnL windowed: table=({tbl_pnl}) col={pnl_col} ts={ts_col}")
+                else:
+                    q = f"SELECT COALESCE(SUM({qident(pnl_col)}), 0) FROM {qualify(tbl_pnl)}"
+                    detect_notes.append(f"PnL ALL-TIME (no ts col): table=({tbl_pnl}) col={pnl_col}")
+
+                total_pnl = conn.run(q)[0][0]
     except Exception as e:
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
@@ -628,7 +727,7 @@ def run_queries(conn):
         except Exception as e:
             errors.append(f"Trades fallback query failed: {e}")
 
-    return total_pnl, open_pos, recent_trades, errors, detect_notes
+    return total_pnl, open_pos, recent_trades, errors, detect_notes, fifo_health
 
 # ============================================================================
 # SECTION 5: Metric Calculations
@@ -1220,7 +1319,8 @@ def build_html(total_pnl,
                *,
                fees_html: str = "",
                tpsl_html: str = "",
-               score_section_html: str = ""
+               score_section_html: str = "",
+               fifo_health: Optional[dict] = None
                ):
     def rows(rows_):
         if not rows_:
@@ -1318,6 +1418,26 @@ def build_html(total_pnl,
         </table>
         """
 
+    fifo_health_html = ""
+    if fifo_health and USE_FIFO_ALLOCATIONS:
+        status_color = "#0a0" if fifo_health['unmatched_sells'] == 0 else "#b80"
+        status_text = "✓ Healthy" if fifo_health['unmatched_sells'] == 0 else f"⚠ {fifo_health['unmatched_sells']} unmatched sells"
+        fifo_health_html = f"""
+        <h3>FIFO Allocation Health</h3>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Version</th><th>Total Allocations</th><th>Sells Matched</th><th>Buys Used</th><th>Status</th><th>Total PnL</th></tr>
+          <tr>
+            <td>{fifo_health['version']}</td>
+            <td>{fifo_health['total_allocations']:,}</td>
+            <td>{fifo_health['sells_matched']:,}</td>
+            <td>{fifo_health['buys_used']:,}</td>
+            <td style="color:{status_color};font-weight:bold">{status_text}</td>
+            <td>${fifo_health['total_pnl']:,.2f}</td>
+          </tr>
+        </table>
+        <p style="color:#666">PnL calculated using FIFO (First-In-First-Out) allocation method for accurate cost basis.</p>
+        """
+
     notes_html = ""
     if errors or detect_notes:
         items = "".join(f"<li>{e}</li>" for e in errors + detect_notes)
@@ -1342,9 +1462,10 @@ def build_html(total_pnl,
         {fees_html}
         {trade_stats_html}
         {risk_cap_html}
-        {score_section_html}  
+        {score_section_html}
         {exposure_html}
         {strat_html}
+        {fifo_health_html}
         {details_html}
         {notes_html}
         <p style="color:#666">CSV attachment includes these tables.</p>
@@ -1566,7 +1687,7 @@ def main():
 
     try:
         # Core queries (windowed where possible)
-        total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
+        total_pnl, open_pos, recent_trades, errors, detect_notes, fifo_health = run_queries(conn)
 
         # Derived metrics
         unreal_pnl, unreal_notes = compute_unrealized_pnl(conn, open_pos)
@@ -1645,6 +1766,7 @@ def main():
         fees_html=fees_html,
         tpsl_html=tpsl_html,
         score_section_html=score_section_html,
+        fifo_health=fifo_health,
     )
 
     # Near-instant roundtrips (≤60s) + CSV saved server-side when available
