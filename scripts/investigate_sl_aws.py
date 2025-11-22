@@ -7,7 +7,15 @@ import json
 import sys
 import os
 from datetime import datetime
+from pathlib import Path
 import pg8000.native
+
+# Load .env file if it exists
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    from dotenv import load_dotenv
+    load_dotenv(env_path)
+    print(f"[INFO] Loaded environment from {env_path}\n")
 
 print("=" * 80)
 print("STOP LOSS INVESTIGATION (AWS)")
@@ -15,13 +23,18 @@ print("=" * 80)
 print(f"Timestamp: {datetime.now()}\n")
 
 # Get database connection info from environment
-db_host = os.getenv('DB_HOST', 'db')
+db_host = os.getenv('DB_HOST', '127.0.0.1')
 db_port = int(os.getenv('DB_PORT', '5432'))
 db_name = os.getenv('DB_NAME', 'bot_trader_db')
 db_user = os.getenv('DB_USER', 'bot_user')
 db_pass = os.getenv('DB_PASS', '')
 
-print(f"Connecting to {db_host}:{db_port}/{db_name}...")
+if not db_pass:
+    print("❌ Error: DB_PASS not found in environment")
+    print("   Set DB_PASS environment variable or add to .env file")
+    sys.exit(1)
+
+print(f"Connecting to {db_host}:{db_port}/{db_name} as {db_user}...")
 
 # Connect to database
 conn = pg8000.native.Connection(
