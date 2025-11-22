@@ -69,20 +69,20 @@ class FifoAllocationEngine:
                 return Decimal(str(value))
             except:
                 return Decimal('0')
-        return self._safe_decimal(value)
+        return self.precision.safe_decimal(value)
 
     def _get_dust_threshold(self, symbol: str) -> Decimal:
         """Fallback for dust threshold if precision utils unavailable."""
         if self._use_fallback_precision:
             return Decimal('0.00000001')  # 1e-8 default
-        return self._get_dust_threshold(symbol)
+        return self.precision.get_dust_threshold(symbol)
 
     def _round_with_bankers(self, value, symbol: str, is_base: bool = False):
         """Fallback for banker's rounding if precision utils unavailable."""
         if self._use_fallback_precision:
             # Simple rounding to 8 decimal places
             return round(Decimal(str(value)), 8)
-        return self._round_with_bankers(value, symbol, is_base)
+        return self.precision.round_with_bankers(value, symbol, is_base)
 
     async def compute_all_symbols(
         self,
