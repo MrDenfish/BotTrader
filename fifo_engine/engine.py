@@ -37,7 +37,7 @@ class FifoAllocationEngine:
         self,
         database_session_manager: DatabaseSessionManager,
         logger_manager: LoggerManager,
-        precision_utils: PrecisionUtils
+        precision_utils: PrecisionUtils = None
     ):
         """
         Initialize FIFO Allocation Engine.
@@ -45,13 +45,44 @@ class FifoAllocationEngine:
         Args:
             database_session_manager: Database session manager
             logger_manager: Logging manager
-            precision_utils: Precision and dust threshold utilities
+            precision_utils: Precision and dust threshold utilities (optional, uses fallbacks if None)
         """
         self.db = database_session_manager
         self.logger = logger_manager.get_logger('shared_logger')
         self.precision = precision_utils
 
+        # Use fallback precision if not provided
+        if self.precision is None:
+            self.logger.warning("⚠️  PrecisionUtils not provided, using fallback methods")
+            self._use_fallback_precision = True
+        else:
+            self._use_fallback_precision = False
+
         self.logger.info("✅ FifoAllocationEngine initialized")
+
+    def _safe_decimal(self, value) -> Decimal:
+        """Fallback for safe_decimal if precision utils unavailable."""
+        if self._use_fallback_precision:
+            if isinstance(value, Decimal):
+                return value
+            try:
+                return Decimal(str(value))
+            except:
+                return Decimal('0')
+        return self._safe_decimal(value)
+
+    def _get_dust_threshold(self, symbol: str) -> Decimal:
+        """Fallback for dust threshold if precision utils unavailable."""
+        if self._use_fallback_precision:
+            return Decimal('0.00000001')  # 1e-8 default
+        return self._get_dust_threshold(symbol)
+
+    def _round_with_bankers(self, value, symbol: str, is_base: bool = False):
+        """Fallback for banker's rounding if precision utils unavailable."""
+        if self._use_fallback_precision:
+            # Simple rounding to 8 decimal places
+            return round(Decimal(str(value)), 8)
+        return self._round_with_bankers(value, symbol, is_base)
 
     async def compute_all_symbols(
         self,
@@ -315,11 +346,11 @@ class FifoAllocationEngine:
             List of allocation dicts
         """
         allocations = []
-        remaining_sell_size = self.precision.safe_decimal(sell['size'])
+        remaining_sell_size = self._safe_decimal(sell['size'])
         symbol = sell['symbol']
 
         # Get dust threshold for this symbol
-        dust_threshold = self.precision.get_dust_threshold(symbol)
+        dust_threshold = self._get_dust_threshold(symbol)
 
         # Get sell time for temporal filtering
         sell_time = sell['order_time']
@@ -401,14 +432,14 @@ class FifoAllocationEngine:
         symbol = sell['symbol']
 
         # Prices
-        buy_price = self.precision.safe_decimal(buy['price'])
-        sell_price = self.precision.safe_decimal(sell['price'])
+        buy_price = self._safe_decimal(buy['price'])
+        sell_price = self._safe_decimal(sell['price'])
 
         # Fees per unit
-        buy_total_fees = self.precision.safe_decimal(buy.get('total_fees_usd', 0))
-        sell_total_fees = self.precision.safe_decimal(sell.get('total_fees_usd', 0))
-        buy_size = self.precision.safe_decimal(buy['size'])
-        sell_size = self.precision.safe_decimal(sell['size'])
+        buy_total_fees = self._safe_decimal(buy.get('total_fees_usd', 0))
+        sell_total_fees = self._safe_decimal(sell.get('total_fees_usd', 0))
+        buy_size = self._safe_decimal(buy['size'])
+        sell_size = self._safe_decimal(sell['size'])
 
         buy_fees_per_unit = buy_total_fees / buy_size if buy_size > 0 else Decimal('0')
         sell_fees_per_unit = sell_total_fees / sell_size if sell_size > 0 else Decimal('0')
@@ -420,10 +451,10 @@ class FifoAllocationEngine:
         pnl_usd = net_proceeds_usd - cost_basis_usd
 
         # Round using banker's rounding
-        cost_basis_usd = self.precision.round_with_bankers(cost_basis_usd, symbol, is_base=False)
-        proceeds_usd = self.precision.round_with_bankers(proceeds_usd, symbol, is_base=False)
-        net_proceeds_usd = self.precision.round_with_bankers(net_proceeds_usd, symbol, is_base=False)
-        pnl_usd = self.precision.round_with_bankers(pnl_usd, symbol, is_base=False)
+        cost_basis_usd = self._round_with_bankers(cost_basis_usd, symbol, is_base=False)
+        proceeds_usd = self._round_with_bankers(proceeds_usd, symbol, is_base=False)
+        net_proceeds_usd = self._round_with_bankers(net_proceeds_usd, symbol, is_base=False)
+        pnl_usd = self._round_with_bankers(pnl_usd, symbol, is_base=False)
 
         return {
             'sell_order_id': sell['order_id'],
@@ -454,19 +485,19 @@ class FifoAllocationEngine:
     ) -> Dict:
         """Create a placeholder allocation for unmatched sell."""
         symbol = sell['symbol']
-        sell_price = self.precision.safe_decimal(sell['price'])
+        sell_price = self._safe_decimal(sell['price'])
 
         # Fees per unit
-        sell_total_fees = self.precision.safe_decimal(sell.get('total_fees_usd', 0))
-        sell_size = self.precision.safe_decimal(sell['size'])
+        sell_total_fees = self._safe_decimal(sell.get('total_fees_usd', 0))
+        sell_size = self._safe_decimal(sell['size'])
         sell_fees_per_unit = sell_total_fees / sell_size if sell_size > 0 else Decimal('0')
 
         proceeds_usd = sell_price * unmatched_size
         net_proceeds_usd = proceeds_usd - (sell_fees_per_unit * unmatched_size)
 
         # Round using banker's rounding
-        proceeds_usd = self.precision.round_with_bankers(proceeds_usd, symbol, is_base=False)
-        net_proceeds_usd = self.precision.round_with_bankers(net_proceeds_usd, symbol, is_base=False)
+        proceeds_usd = self._round_with_bankers(proceeds_usd, symbol, is_base=False)
+        net_proceeds_usd = self._round_with_bankers(net_proceeds_usd, symbol, is_base=False)
 
         return {
             'sell_order_id': sell['order_id'],
@@ -580,7 +611,7 @@ class FifoAllocationEngine:
         """Initialize inventory from buy records."""
         inventory = {}
         for buy in buys:
-            inventory[buy['order_id']] = self.precision.safe_decimal(buy['size'])
+            inventory[buy['order_id']] = self._safe_decimal(buy['size'])
         return inventory
 
     # =========================================================================
@@ -674,7 +705,7 @@ class FifoAllocationEngine:
             WHERE allocation_version = :version
         """), {'version': version})
         row = result.fetchone()
-        return self.precision.safe_decimal(row[0])
+        return self._safe_decimal(row[0])
 
 
 # Import models at end to avoid circular imports

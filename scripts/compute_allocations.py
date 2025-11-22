@@ -74,11 +74,16 @@ async def init_dependencies():
     await database_session_manager.initialize()
 
     # Initialize SharedDataManager (needed for PrecisionUtils)
-    shared_data_manager = SharedDataManager.__new__(SharedDataManager)
-    shared_utils_utility = SharedUtility.get_instance(logger_manager)
+    try:
+        shared_data_manager = SharedDataManager.__new__(SharedDataManager)
+        shared_utils_utility = SharedUtility.get_instance(logger_manager)
 
-    # Initialize PrecisionUtils
-    precision_utils = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
+        # Initialize PrecisionUtils
+        precision_utils = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
+    except Exception as e:
+        # If PrecisionUtils fails to initialize, use None (FIFO engine has fallback)
+        shared_logger.warning(f"PrecisionUtils initialization failed: {e}. Using fallback precision.")
+        precision_utils = None
 
     return database_session_manager, logger_manager, precision_utils, shared_logger
 
