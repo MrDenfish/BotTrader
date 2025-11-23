@@ -332,14 +332,23 @@ class AssetMonitor:
             )
             for oid, order_info in orphaned_orders:
                 try:
-                    # Cancel the order on Coinbase
-                    cancel_resp = await self.trade_order_manager.coinbase_api.cancel_orders([oid])
-                    self.logger.info(f"[UNTRACKED] Canceled orphaned order {oid} for {symbol}: {cancel_resp}")
+                    # Cancel the order on Coinbase using cancel_order (takes a list)
+                    cancel_resp = await self.trade_order_manager.coinbase_api.cancel_order([oid])
 
-                    # Remove from order_tracker
-                    if oid in self.shared_data_manager.order_management.get('order_tracker', {}):
-                        del self.shared_data_manager.order_management['order_tracker'][oid]
-                        self.logger.info(f"[UNTRACKED] Removed order {oid} from order_tracker")
+                    # Check if cancellation was successful
+                    results = (cancel_resp or {}).get("results") or []
+                    entry = next((r for r in results if str(r.get("order_id")) == str(oid)), None)
+
+                    if entry and entry.get("success"):
+                        self.logger.info(f"[UNTRACKED] Canceled orphaned order {oid} for {symbol}")
+
+                        # Remove from order_tracker
+                        if oid in self.shared_data_manager.order_management.get('order_tracker', {}):
+                            del self.shared_data_manager.order_management['order_tracker'][oid]
+                            self.logger.info(f"[UNTRACKED] Removed order {oid} from order_tracker")
+                    else:
+                        failure_reason = entry.get("failure_reason") if entry else "No response entry"
+                        self.logger.warning(f"[UNTRACKED] Failed to cancel orphaned order {oid}: {failure_reason}")
                 except Exception as e:
                     self.logger.error(f"[UNTRACKED] Failed to cancel orphaned order {oid}: {e}", exc_info=True)
 
