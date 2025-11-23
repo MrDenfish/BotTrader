@@ -96,10 +96,10 @@ result = conn.run("""
         order_time,
         pnl_usd
     FROM trade_records
-    WHERE order_time >= %s
+    WHERE order_time >= :cutoff
     ORDER BY order_time DESC
     LIMIT 20
-""", seven_days_ago)
+""", cutoff=seven_days_ago)
 
 if result:
     print(f"\nFound {len(result)} recent trades:")
