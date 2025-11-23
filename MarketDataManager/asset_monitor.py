@@ -1270,6 +1270,9 @@ class AssetMonitor:
         Positions-first safety sweep with two-section locking and DAO fallback.
         """
         try:
+            # NEW: Run position monitor first (independent of position fetch)
+            await self.position_monitor.check_positions()
+
             # ── Section 1: short snapshot of the in-memory order tracker ──
             async with self.order_tracker_lock:
                 tracker_snapshot = self._normalize_order_tracker_snapshot(
@@ -1367,9 +1370,6 @@ class AssetMonitor:
                 f"[LIVENESS] pos={len(positions)} with_oco={with_oco} naked={naked} "
                 f"skipped_grace={skipped_grace} rearmed={rearmed}"
             )
-
-            # NEW: Check positions for P&L-based exits (smart LIMIT strategy)
-            await self.position_monitor.check_positions()
 
         except Exception:
             self.logger.exception("sweep_positions_for_exits failed")
