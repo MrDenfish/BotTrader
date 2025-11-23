@@ -74,7 +74,7 @@ class PositionMonitor:
         if self.last_check_time:
             elapsed = (now - self.last_check_time).total_seconds()
             if elapsed < self.check_interval:
-                return
+                return  # Silent return during interval
 
         self.last_check_time = now
 
@@ -84,7 +84,22 @@ class PositionMonitor:
             spot_positions = market_data.get('spot_positions', {})
 
             if not spot_positions:
+                self.logger.debug("[POS_MONITOR] No spot_positions found in market_data")
                 return
+
+            # Count positions to check
+            positions_to_check = 0
+            for symbol, position_data in spot_positions.items():
+                if symbol == 'USD':
+                    continue
+                total_balance = Decimal(str(position_data.get('total_balance_crypto', 0)))
+                if total_balance > 0:
+                    positions_to_check += 1
+
+            self.logger.debug(
+                f"[POS_MONITOR] Checking {positions_to_check} position(s) "
+                f"(total positions: {len(spot_positions)})"
+            )
 
             # Check each position (skip USD)
             for symbol, position_data in spot_positions.items():
@@ -125,6 +140,13 @@ class PositionMonitor:
             # Construct product_id (assuming USD quote)
             product_id = f"{symbol}-USD"
 
+            # Log position status
+            self.logger.debug(
+                f"[POS_MONITOR] {product_id}: P&L={pnl_pct:.2%} "
+                f"(entry=${avg_entry_price:.4f}, current=${current_price:.4f}, "
+                f"balance={total_balance_crypto:.6f})"
+            )
+
             # Check if we already have an open sell order for this position
             if await self._has_open_sell_order(product_id):
                 self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
@@ -148,6 +170,7 @@ class PositionMonitor:
                     exit_reason = f"TRAILING_STOP (P&L: {pnl_pct:.2%})"
 
             if not exit_reason:
+                self.logger.debug(f"[POS_MONITOR] {product_id} no threshold met, monitoring continues")
                 return  # No exit threshold met
 
             # Place exit order
