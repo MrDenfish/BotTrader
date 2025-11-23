@@ -77,6 +77,7 @@ class PositionMonitor:
                 return  # Silent return during interval
 
         self.last_check_time = now
+        self.logger.info(f"[POS_MONITOR] Starting position check cycle")
 
         try:
             # Get all open positions from shared_data
