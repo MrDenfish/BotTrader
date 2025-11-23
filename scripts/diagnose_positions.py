@@ -65,19 +65,22 @@ print("\n" + "=" * 80)
 print("2. CHECK WEBHOOK_LIMIT_ONLY_POSITIONS TABLE")
 print("=" * 80)
 
-result = conn.run("SELECT COUNT(*) FROM webhook_limit_only_positions")
-count = result[0][0]
-print(f"Rows in webhook_limit_only_positions: {count}")
+try:
+    result = conn.run("SELECT COUNT(*) FROM webhook_limit_only_positions")
+    count = result[0][0]
+    print(f"Rows in webhook_limit_only_positions: {count}")
 
-if count > 0:
-    result = conn.run("""
-        SELECT order_id, symbol, entry_price, size, sl_price, tp_price, timestamp, source
-        FROM webhook_limit_only_positions
-        LIMIT 10
-    """)
-    print("\nRecent limit-only positions:")
-    for row in result:
-        print(f"  {row[1]}: Entry=${row[2]:.2f} SL=${row[4]:.2f} TP=${row[5]:.2f} ({row[6]})")
+    if count > 0:
+        result = conn.run("""
+            SELECT order_id, symbol, entry_price, size, sl_price, tp_price, timestamp, source
+            FROM webhook_limit_only_positions
+            LIMIT 10
+        """)
+        print("\nRecent limit-only positions:")
+        for row in result:
+            print(f"  {row[1]}: Entry=${row[2]:.2f} SL=${row[4]:.2f} TP=${row[5]:.2f} ({row[6]})")
+except Exception as e:
+    print(f"✗ Table does not exist or error: {e}")
 
 print("\n" + "=" * 80)
 print("3. CHECK RECENT TRADE_RECORDS (LAST 7 DAYS)")
