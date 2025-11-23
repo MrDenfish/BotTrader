@@ -10,9 +10,9 @@ from Shared_Utils.logger import get_logger
 from MarketDataManager.position_monitor import PositionMonitor
 
 # === Config knobs (put near other module-level constants or __init__) ===
-POSITIONS_EXIT_SWEEP_INTERVAL_SEC = 3       # how often you’ll call this (see B)
+POSITIONS_EXIT_SWEEP_INTERVAL_SEC = 3       # how often you'll call this (see B)
 POSITIONS_EXIT_OCO_GRACE_SEC      = 10      # grace after open before we (re)arm
-POSITIONS_EXIT_REARM              = True    # True = create OCO if missing; False = passive-only
+POSITIONS_EXIT_REARM              = False   # DISABLED: position_monitor now handles exits with P&L thresholds
 BRACKET_ADJUST_GRACE_SEC = 10  # do not cancel/adjust bracket legs in the first N seconds
 LIMIT_ADJUST_GRACE_SEC   = 10  # do not cancel/adjust plain limit sells in the first N seconds
 PASSIVE_EXIT_MODE = "market"        # "market" | "limit_at_bid"
