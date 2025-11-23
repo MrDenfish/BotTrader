@@ -58,6 +58,7 @@ class AssetMonitor:
             shared_utils_precision=shared_utils_precision,
             logger=self.logger
         )
+        self.logger.info(f"[ASSET_MONITOR] Position monitor initialized successfully: {type(self.position_monitor).__name__}")
 
     @property
     def non_zero_balances(self):
@@ -1271,6 +1272,7 @@ class AssetMonitor:
         """
         try:
             # NEW: Run position monitor first (independent of position fetch)
+            self.logger.debug(f"[ASSET_MONITOR] About to call position_monitor.check_positions(), monitor object: {self.position_monitor}")
             await self.position_monitor.check_positions()
 
             # ── Section 1: short snapshot of the in-memory order tracker ──
