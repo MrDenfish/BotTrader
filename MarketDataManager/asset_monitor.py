@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.logger import get_logger
+from MarketDataManager.position_monitor import PositionMonitor
 
 # === Config knobs (put near other module-level constants or __init__) ===
 POSITIONS_EXIT_SWEEP_INTERVAL_SEC = 3       # how often you’ll call this (see B)
@@ -49,6 +50,14 @@ class AssetMonitor:
         self.hodl = config.hodl
 
         self.order_tracker_lock = asyncio.Lock()
+
+        # Initialize position monitor for smart LIMIT exits
+        self.position_monitor = PositionMonitor(
+            shared_data_manager=shared_data_manager,
+            trade_order_manager=trade_order_manager,
+            shared_utils_precision=shared_utils_precision,
+            logger=self.logger
+        )
 
     @property
     def non_zero_balances(self):
@@ -1358,6 +1367,9 @@ class AssetMonitor:
                 f"[LIVENESS] pos={len(positions)} with_oco={with_oco} naked={naked} "
                 f"skipped_grace={skipped_grace} rearmed={rearmed}"
             )
+
+            # NEW: Check positions for P&L-based exits (smart LIMIT strategy)
+            await self.position_monitor.check_positions()
 
         except Exception:
             self.logger.exception("sweep_positions_for_exits failed")

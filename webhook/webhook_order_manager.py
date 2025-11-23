@@ -856,7 +856,7 @@ class TradeOrderManager:
             validation_result = 'limit'
             return validation_result
         if side == 'buy':
-            validation_result = 'tp_sl'
+            validation_result = 'limit'  # Changed from 'tp_sl' - use LIMIT-only for lower fees
             return validation_result
         elif side == 'sell':
             validation_result = 'limit'
