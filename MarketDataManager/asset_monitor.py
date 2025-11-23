@@ -307,6 +307,42 @@ class AssetMonitor:
                 return
 
         # 3) No live child → (re)arm protection (treat as EXIT; bypass entry gates/cooldowns)
+
+        # NEW: Check for orphaned non-OCO orders and cancel them first
+        orphaned_orders = []
+        for oid, raw in tracked.items():
+            try:
+                if raw.get("symbol") == symbol or raw.get("product_id") == symbol:
+                    # Check if this is NOT an OCO order
+                    info = raw.get("info", {}) or {}
+                    ocfg = (info.get("order_configuration") or {})
+                    is_oco = "trigger_bracket_gtc" in ocfg
+
+                    if not is_oco and raw.get("status") in {"open", "OPEN", "new", "NEW"}:
+                        orphaned_orders.append((oid, raw))
+            except Exception as e:
+                self.logger.debug(f"Error checking order {oid}: {e}")
+                continue
+
+        # Cancel orphaned orders that are blocking OCO placement
+        if orphaned_orders:
+            self.logger.warning(
+                f"[UNTRACKED] Found {len(orphaned_orders)} orphaned non-OCO order(s) for {symbol}. "
+                f"Canceling to place protective OCO..."
+            )
+            for oid, order_info in orphaned_orders:
+                try:
+                    # Cancel the order on Coinbase
+                    cancel_resp = await self.trade_order_manager.coinbase_api.cancel_orders([oid])
+                    self.logger.info(f"[UNTRACKED] Canceled orphaned order {oid} for {symbol}: {cancel_resp}")
+
+                    # Remove from order_tracker
+                    if oid in self.shared_data_manager.order_management.get('order_tracker', {}):
+                        del self.shared_data_manager.order_management['order_tracker'][oid]
+                        self.logger.info(f"[UNTRACKED] Removed order {oid} from order_tracker")
+                except Exception as e:
+                    self.logger.error(f"[UNTRACKED] Failed to cancel orphaned order {oid}: {e}", exc_info=True)
+
         trigger = self.trade_order_manager.build_trigger(
             "rearm_oco_missing",
             f"arming protection for naked position qty={qty} avg={avg_entry}"
