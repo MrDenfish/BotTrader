@@ -138,12 +138,25 @@ class PositionMonitor:
             # Get position details
             total_balance_crypto = Decimal(str(position_data.get('total_balance_crypto', 0)))
             available_crypto = Decimal(str(position_data.get('available_to_trade_crypto', 0)))
-            avg_entry_price = Decimal(str(position_data.get('avg_entry_price', 0)))
-            current_price = Decimal(str(position_data.get('current_price', 0)))
 
-            # DEBUG: Log raw position data to diagnose missing prices
+            # Construct product_id (assuming USD quote)
+            product_id = f"{symbol}-USD"
+
+            # Fetch avg_entry_price from order_management.spot_positions (which has avg_price field)
+            om_spot_positions = self.shared_data_manager.order_management.get('spot_positions', {})
+            om_position = om_spot_positions.get(symbol, {})
+            avg_entry_price = Decimal(str(om_position.get('avg_price', 0)))
+
+            # Fetch current price from bid_ask_spread
+            bid_ask = self.shared_data_manager.bid_ask_spread.get(product_id, {})
+            current_bid = Decimal(str(bid_ask.get('bid', 0)))
+            current_ask = Decimal(str(bid_ask.get('ask', 0)))
+            # Use mid-price for P&L calculation
+            current_price = (current_bid + current_ask) / Decimal('2') if (current_bid > 0 and current_ask > 0) else Decimal('0')
+
+            # DEBUG: Log fetched price data
             self.logger.debug(
-                f"[POS_MONITOR] {symbol} raw data: "
+                f"[POS_MONITOR] {symbol} fetched prices: "
                 f"avg_entry={avg_entry_price}, current={current_price}, "
                 f"balance={total_balance_crypto}, available={available_crypto}"
             )
@@ -157,9 +170,6 @@ class PositionMonitor:
 
             # Calculate P&L
             pnl_pct = (current_price - avg_entry_price) / avg_entry_price
-
-            # Construct product_id (assuming USD quote)
-            product_id = f"{symbol}-USD"
 
             # Log position status
             self.logger.debug(
