@@ -145,6 +145,18 @@ class PositionMonitor:
             # Fetch avg_entry_price from order_management.spot_positions (which has avg_price field)
             om_spot_positions = self.shared_data_manager.order_management.get('spot_positions', {})
             om_position = om_spot_positions.get(symbol, {})
+
+            # DEBUG: Log what fields are available in om_position
+            if om_position:
+                self.logger.debug(
+                    f"[POS_MONITOR] {symbol} om_position keys: {list(om_position.keys())}"
+                )
+            else:
+                self.logger.debug(
+                    f"[POS_MONITOR] {symbol} not found in order_management.spot_positions. "
+                    f"Available symbols: {list(om_spot_positions.keys())}"
+                )
+
             avg_entry_price = Decimal(str(om_position.get('avg_price', 0)))
 
             # Fetch current price from bid_ask_spread in market_data
