@@ -74,10 +74,17 @@ class PositionMonitor:
         if self.last_check_time:
             elapsed = (now - self.last_check_time).total_seconds()
             if elapsed < self.check_interval:
+                self.logger.debug(
+                    f"[POS_MONITOR] Skipping check: {elapsed:.1f}s elapsed, "
+                    f"interval is {self.check_interval}s"
+                )
                 return  # Silent return during interval
 
         self.last_check_time = now
-        self.logger.info(f"[POS_MONITOR] Starting position check cycle")
+        self.logger.info(
+            f"[POS_MONITOR] Starting position check cycle "
+            f"(interval: {self.check_interval}s)"
+        )
 
         try:
             # Get all open positions from shared_data
