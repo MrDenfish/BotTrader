@@ -110,8 +110,10 @@ class PositionMonitor:
                 # Skip if no holdings
                 total_balance = Decimal(str(position_data.get('total_balance_crypto', 0)))
                 if total_balance <= 0:
+                    self.logger.debug(f"[POS_MONITOR] Skipping {symbol}: zero balance")
                     continue
 
+                self.logger.debug(f"[POS_MONITOR] Calling _check_position for {symbol}")
                 await self._check_position(symbol, position_data)
 
         except Exception as e:
