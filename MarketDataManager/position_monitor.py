@@ -147,8 +147,10 @@ class PositionMonitor:
             om_position = om_spot_positions.get(symbol, {})
             avg_entry_price = Decimal(str(om_position.get('avg_price', 0)))
 
-            # Fetch current price from bid_ask_spread
-            bid_ask = self.shared_data_manager.bid_ask_spread.get(product_id, {})
+            # Fetch current price from bid_ask_spread in market_data
+            market_data = self.shared_data_manager.market_data or {}
+            bid_ask_spread = market_data.get('bid_ask_spread', {})
+            bid_ask = bid_ask_spread.get(product_id, {})
             current_bid = Decimal(str(bid_ask.get('bid', 0)))
             current_ask = Decimal(str(bid_ask.get('ask', 0)))
             # Use mid-price for P&L calculation
@@ -279,7 +281,9 @@ class PositionMonitor:
             base_deci, quote_deci, _, _ = precision_data
 
             # Get current order book for limit price calculation
-            bid_ask = self.shared_data_manager.bid_ask_spread.get(product_id, {})
+            market_data = self.shared_data_manager.market_data or {}
+            bid_ask_spread = market_data.get('bid_ask_spread', {})
+            bid_ask = bid_ask_spread.get(product_id, {})
             highest_bid = Decimal(str(bid_ask.get('bid', current_price)))
             lowest_ask = Decimal(str(bid_ask.get('ask', current_price)))
 
