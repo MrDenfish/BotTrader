@@ -132,7 +132,18 @@ class PositionMonitor:
             avg_entry_price = Decimal(str(position_data.get('avg_entry_price', 0)))
             current_price = Decimal(str(position_data.get('current_price', 0)))
 
+            # DEBUG: Log raw position data to diagnose missing prices
+            self.logger.debug(
+                f"[POS_MONITOR] {symbol} raw data: "
+                f"avg_entry={avg_entry_price}, current={current_price}, "
+                f"balance={total_balance_crypto}, available={available_crypto}"
+            )
+
             if avg_entry_price <= 0 or current_price <= 0:
+                self.logger.debug(
+                    f"[POS_MONITOR] {symbol} skipped: invalid prices "
+                    f"(entry={avg_entry_price}, current={current_price})"
+                )
                 return
 
             # Calculate P&L
