@@ -195,7 +195,8 @@ class TickerManager:
         try:
             portfolio_data = await self.get_portfolio_breakdown(portfolio_uuid)
             if not portfolio_data:
-                raise ValueError("Portfolio breakdown data is empty or invalid.")
+                self.logger.warning("⚠️ Portfolio breakdown failed, attempting fallback to get_accounts()")
+                return await self._fetch_balances_from_accounts()
 
             spot_positions = portfolio_data.breakdown.spot_positions
             non_zero_balances = {}
@@ -252,6 +253,70 @@ class TickerManager:
 
         except Exception as e:
             self.logger.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
+            self.logger.warning("⚠️ Attempting fallback to get_accounts() due to error")
+            try:
+                return await self._fetch_balances_from_accounts()
+            except Exception as fallback_error:
+                self.logger.error(f"❌ Fallback also failed: {fallback_error}", exc_info=True)
+                return {}
+
+    async def _fetch_balances_from_accounts(self) -> dict:
+        """
+        Fallback method to fetch balances using get_accounts() API when
+        get_portfolio_breakdown() fails.
+
+        Returns balances in a compatible format (though without average_entry_price
+        and some other portfolio-specific fields).
+        """
+        self.logger.info("📞 Fetching balances from get_accounts() fallback")
+
+        try:
+            accounts_response = await asyncio.to_thread(self.rest_client.get_accounts)
+
+            if not accounts_response or not hasattr(accounts_response, 'accounts'):
+                self.logger.warning("⚠️ get_accounts() returned empty or invalid data")
+                return {}
+
+            non_zero_balances = {}
+
+            for account in accounts_response.accounts:
+                asset = account.currency
+                available_balance = Decimal(str(account.available_balance.value))
+                hold_balance = Decimal(str(account.hold.value))
+                total_balance_crypto = available_balance + hold_balance
+
+                # Skip if below minimum threshold (except USD)
+                # Note: We don't have fiat value here, so use a conservative crypto threshold
+                if total_balance_crypto <= Decimal('0.0001') and asset != 'USD':
+                    continue
+
+                # Create a simplified position dict compatible with process_spot_positions
+                # Note: Missing average_entry_price and unrealized_pnl - position_monitor will skip these
+                position = {
+                    'asset': asset,
+                    'total_balance_crypto': str(total_balance_crypto),
+                    'available_to_trade_crypto': str(available_balance),
+                    'total_balance_fiat': '0',  # Not available from get_accounts
+                    'available_to_trade_fiat': '0',
+                    'allocation': '0',
+                    'unrealized_pnl': {'value': '0', 'currency': 'USD'},  # Not available
+                    'cost_basis': {'value': '0', 'currency': 'USD'},  # Not available
+                    # Missing average_entry_price - will cause position_monitor to skip
+                    'precision': str(account.currency),
+                    'available_to_transfer_fiat': '0',
+                    'available_to_transfer_crypto': str(available_balance),
+                    'funding_pnl': {'value': '0', 'currency': 'USD'},
+                    'available_to_send_fiat': '0',
+                    'available_to_send_crypto': str(available_balance),
+                }
+
+                non_zero_balances[asset] = position
+
+            self.logger.info(f"✅ Fallback get_accounts() returned {len(non_zero_balances)} positions")
+            return non_zero_balances
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in _fetch_balances_from_accounts: {e}", exc_info=True)
             return {}
 
     def process_spot_positions( self, non_zero_balances: dict,
