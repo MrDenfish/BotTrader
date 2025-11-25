@@ -335,9 +335,29 @@ class PositionMonitor:
                 self.logger.warning(f"[POS_MONITOR] Failed to build order data for {product_id} exit")
                 return
 
-            # Set exit price and size
+            # Set exit price and order amounts
+            # IMPORTANT: We need to set order_amount_crypto, not just adjusted_size,
+            # because handle_order recalculates adjusted_size from order_amount_crypto
             order_data.price = exit_price
-            order_data.adjusted_size = size
+            order_data.limit_price = exit_price
+            order_data.order_amount_crypto = size  # This is what adjust_price_and_size uses
+            order_data.adjusted_price = exit_price  # Pre-set to guide price calculation
+            order_data.adjusted_size = size  # Pre-set to guide size calculation
+
+            # DEBUG: Log complete OrderData state before placement
+            self.logger.debug(
+                f"[POS_MONITOR] OrderData before placement: "
+                f"product_id={getattr(order_data, 'trading_pair', None)}, "
+                f"side={getattr(order_data, 'side', None)}, "
+                f"price={getattr(order_data, 'price', None)}, "
+                f"limit_price={getattr(order_data, 'limit_price', None)}, "
+                f"order_amount_crypto={getattr(order_data, 'order_amount_crypto', None)}, "
+                f"adjusted_size={getattr(order_data, 'adjusted_size', None)}, "
+                f"adjusted_price={getattr(order_data, 'adjusted_price', None)}, "
+                f"order_type={getattr(order_data, 'type', None)}, "
+                f"source={getattr(order_data, 'source', None)}, "
+                f"trigger={getattr(order_data, 'trigger', None)}"
+            )
 
             # Place order
             success, response = await self.trade_order_manager.place_order(order_data, precision_data)
