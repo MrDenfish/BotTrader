@@ -142,18 +142,12 @@ class PositionMonitor:
             # Construct product_id (assuming USD quote)
             product_id = f"{symbol}-USD"
 
-            # DEBUG: Log position_data keys to find average entry price field
-            self.logger.debug(
-                f"[POS_MONITOR] {symbol} position_data keys: {list(position_data.keys())}"
-            )
-
-            # Fetch avg_entry_price from position_data (Coinbase API format: average_entry_price.value)
-            avg_entry_data = position_data.get('average_entry_price', {})
-            if isinstance(avg_entry_data, dict):
-                avg_entry_price = Decimal(str(avg_entry_data.get('value', 0)))
+            # Get unrealized P&L to calculate average entry price
+            unrealized_pnl_data = position_data.get('unrealized_pnl', {})
+            if isinstance(unrealized_pnl_data, dict):
+                unrealized_pnl = Decimal(str(unrealized_pnl_data.get('value', 0)))
             else:
-                # Fallback: try direct avg_price field
-                avg_entry_price = Decimal(str(position_data.get('avg_price', 0)))
+                unrealized_pnl = Decimal(str(unrealized_pnl_data or 0))
 
             # Fetch current price from bid_ask_spread in market_data
             market_data = self.shared_data_manager.market_data or {}
@@ -164,11 +158,19 @@ class PositionMonitor:
             # Use mid-price for P&L calculation
             current_price = (current_bid + current_ask) / Decimal('2') if (current_bid > 0 and current_ask > 0) else Decimal('0')
 
+            # Calculate avg_entry_price from unrealized_pnl
+            # Formula: unrealized_pnl = (current_price - avg_entry_price) * balance
+            # Therefore: avg_entry_price = current_price - (unrealized_pnl / balance)
+            if current_price > 0 and total_balance_crypto > 0:
+                avg_entry_price = current_price - (unrealized_pnl / total_balance_crypto)
+            else:
+                avg_entry_price = Decimal('0')
+
             # DEBUG: Log fetched price data
             self.logger.debug(
-                f"[POS_MONITOR] {symbol} fetched prices: "
+                f"[POS_MONITOR] {symbol} calculated prices: "
                 f"avg_entry={avg_entry_price}, current={current_price}, "
-                f"balance={total_balance_crypto}, available={available_crypto}"
+                f"unrealized_pnl={unrealized_pnl}, balance={total_balance_crypto}"
             )
 
             if avg_entry_price <= 0 or current_price <= 0:
