@@ -328,7 +328,6 @@ class PositionMonitor:
                 asset=symbol,
                 product_id=product_id,
                 side="sell",
-                price=exit_price,
                 # Note: build_order_data will set size based on available balance
             )
 
@@ -336,7 +335,8 @@ class PositionMonitor:
                 self.logger.warning(f"[POS_MONITOR] Failed to build order data for {product_id} exit")
                 return
 
-            # Override size if needed
+            # Set exit price and size
+            order_data.price = exit_price
             order_data.adjusted_size = size
 
             # Place order
