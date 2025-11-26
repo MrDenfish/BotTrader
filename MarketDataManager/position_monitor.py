@@ -87,6 +87,10 @@ class PositionMonitor:
         )
 
         try:
+            # Load HODL list from environment (do not sell these assets)
+            hodl_list = os.getenv('HODL', '').split(',')
+            hodl_assets = {asset.strip().upper() for asset in hodl_list if asset.strip()}
+
             # Get all open positions from shared_data
             market_data = self.shared_data_manager.market_data or {}
             spot_positions = market_data.get('spot_positions', {})
@@ -100,18 +104,26 @@ class PositionMonitor:
             for symbol, position_data in spot_positions.items():
                 if symbol == 'USD':
                     continue
+                # Skip HODL assets
+                if symbol.upper() in hodl_assets:
+                    continue
                 total_balance = Decimal(str(position_data.get('total_balance_crypto', 0)))
                 if total_balance > 0:
                     positions_to_check += 1
 
             self.logger.debug(
                 f"[POS_MONITOR] Checking {positions_to_check} position(s) "
-                f"(total positions: {len(spot_positions)})"
+                f"(total positions: {len(spot_positions)}, HODL assets: {hodl_assets})"
             )
 
-            # Check each position (skip USD)
+            # Check each position (skip USD and HODL assets)
             for symbol, position_data in spot_positions.items():
                 if symbol == 'USD':
+                    continue
+
+                # Skip HODL assets
+                if symbol.upper() in hodl_assets:
+                    self.logger.debug(f"[POS_MONITOR] Skipping {symbol} - marked as HODL (no sells allowed)")
                     continue
 
                 # Skip if no holdings
@@ -226,7 +238,7 @@ class PositionMonitor:
             await self._place_exit_order(
                 symbol=symbol,
                 product_id=product_id,
-                size=available_crypto,
+                size=total_balance_crypto,  # Use total balance, not available (which could be 0 if locked)
                 current_price=current_price,
                 reason=exit_reason,
                 use_market=use_market_order
@@ -260,6 +272,60 @@ class PositionMonitor:
             self.logger.debug(f"[POS_MONITOR] Error checking open sell orders for {product_id}: {e}")
             return False
 
+    async def _cancel_existing_orders(self, product_id: str):
+        """
+        Cancel all existing orders for this product to free up locked balance.
+        This is critical before placing exit orders to avoid the "available_to_trade = 0" loop.
+
+        Args:
+            product_id: Trading pair (e.g., 'BTC-USD')
+        """
+        try:
+            order_tracker = self.shared_data_manager.order_management.get('order_tracker', {})
+
+            # Find all orders for this product
+            orders_to_cancel = []
+            for oid, order_info in list(order_tracker.items()):
+                if order_info.get('symbol') == product_id or order_info.get('product_id') == product_id:
+                    orders_to_cancel.append((oid, order_info))
+
+            if not orders_to_cancel:
+                self.logger.debug(f"[POS_MONITOR] No existing orders to cancel for {product_id}")
+                return
+
+            # Cancel each order
+            for oid, order_info in orders_to_cancel:
+                self.logger.info(
+                    f"[POS_MONITOR] Canceling existing {order_info.get('side', 'unknown')} order "
+                    f"{oid} for {product_id} before placing exit order"
+                )
+
+                # Use the trade_order_manager's coinbase_api to cancel
+                try:
+                    cancel_resp = await self.trade_order_manager.coinbase_api.cancel_order([oid])
+
+                    # Validate cancellation
+                    results = (cancel_resp or {}).get("results") or []
+                    entry = next((r for r in results if str(r.get("order_id")) == str(oid)), None)
+
+                    if entry and entry.get("success"):
+                        # Remove from order tracker
+                        if oid in order_tracker:
+                            del order_tracker[oid]
+                        self.logger.info(f"[POS_MONITOR] ✅ Successfully cancelled order {oid}")
+                    else:
+                        failure_reason = entry.get("failure_reason") if entry else "Unknown"
+                        self.logger.warning(
+                            f"[POS_MONITOR] Failed to cancel order {oid}: {failure_reason}"
+                        )
+                except Exception as cancel_error:
+                    self.logger.warning(
+                        f"[POS_MONITOR] Error canceling order {oid}: {cancel_error}"
+                    )
+
+        except Exception as e:
+            self.logger.warning(f"[POS_MONITOR] Error in _cancel_existing_orders for {product_id}: {e}")
+
     async def _place_exit_order(
         self,
         symbol: str,
@@ -282,6 +348,10 @@ class PositionMonitor:
             use_market: If True, place market order instead of limit
         """
         try:
+            # Cancel any existing orders for this symbol to free up locked balance
+            # This prevents the "available_to_trade = 0" issue when balance is locked
+            await self._cancel_existing_orders(product_id)
+
             # Get precision data
             precision_data = self.shared_utils_precision.fetch_precision(product_id)
             if not precision_data:

@@ -261,11 +261,16 @@ class ValidateOrders:
         self._min_order_amount_fiat = self.config.min_order_amount_fiat
         self._max_value_of_crypto_to_buy_more = self.config.max_value_of_crypto_to_buy_more
         self._hodl = self.config.hodl  # ✅ Ensure this is used elsewhere
+        self._shill_coins = self.config.shill_coins  # ✅ Block buys for shill coins
         self._version = self.config.program_version  # ✅ Ensure this is required
 
     @property
     def hodl(self):
         return self._hodl
+
+    @property
+    def shill_coins(self):
+        return self._shill_coins
 
     @property
     def open_orders(self):
@@ -386,11 +391,37 @@ class ValidateOrders:
                     response_msg["code"] = ValidationCode.INSUFFICIENT_BASE.value
                     return response_msg
 
+                # HODL check: Block SELL for HODL assets (only buys allowed)
                 if side == 'sell' and asset in self.hodl:
                     response_msg["error"] = "HODL_REJECT"
                     response_msg["code"] = ValidationCode.HODL_REJECT.value
                     response_msg["condition"] = f"HODLing {symbol}, sell blocked."
                     return response_msg
+
+                # SHILL_COINS check: Block BUY for shill coins (only sells allowed)
+                if side == 'buy' and asset in self.shill_coins:
+                    response_msg["error"] = "SHILL_COIN_REJECT"
+                    response_msg["code"] = ValidationCode.HODL_REJECT.value  # Reuse HODL_REJECT code
+                    response_msg["condition"] = f"{symbol} is a shill coin, buy blocked."
+                    response_msg["message"] = f"Skipping {symbol}: shill coin, only sells allowed."
+                    return response_msg
+
+                # Anti-duplicate buy logic: Block BUY if already holding > MIN_ORDER_AMOUNT_FIAT
+                # This prevents buying more of the same coin and handles crypto dust
+                if side == 'buy':
+                    # Calculate current position value
+                    current_price = order_details.limit_price or order_details.price
+                    total_balance_crypto = order_details.total_balance_crypto or Decimal('0')
+                    position_value = total_balance_crypto * current_price
+
+                    # If we already hold more than MIN_ORDER_AMOUNT_FIAT, block the buy
+                    if position_value >= self.min_order_amount_fiat:
+                        response_msg["error"] = "POSITION_EXISTS"
+                        response_msg["code"] = ValidationCode.SKIPPED_OPEN_ORDER.value  # Reuse existing code
+                        response_msg["condition"] = f"Already holding ${position_value:.2f} worth of {asset} (>= ${self.min_order_amount_fiat})"
+                        response_msg["message"] = f"Skipping {symbol}: already holding significant position (${position_value:.2f})."
+                        response_msg["details"]["position_value"] = float(position_value)
+                        return response_msg
 
                 # ✅ Success case
                 response_msg["is_valid"] = True
