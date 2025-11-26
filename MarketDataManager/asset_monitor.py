@@ -51,6 +51,12 @@ class AssetMonitor:
 
         self.order_tracker_lock = asyncio.Lock()
 
+        # Track OCO rearming attempts per symbol to prevent infinite loops
+        # Format: {symbol: {'attempts': int, 'last_attempt_time': datetime, 'backoff_until': datetime}}
+        self._oco_rearm_retries = {}
+        self._oco_max_retries = 5  # Stop retrying after 5 failed attempts
+        self._oco_backoff_minutes = 15  # Wait 15 minutes before allowing retry reset
+
         # Initialize position monitor for smart LIMIT exits
         self.position_monitor = PositionMonitor(
             shared_data_manager=shared_data_manager,
@@ -278,7 +284,39 @@ class AssetMonitor:
         Position-centric safety net:
           - If a live bracket child exists → delegate to _handle_active_tp_sl_decision.
           - Else → (re)arm a fresh protective bracket (no cancels).
+
+        Implements retry limit to prevent infinite loops when OCO placement repeatedly fails.
         """
+        # 0) Check retry limit and backoff period to prevent infinite loops
+        now = datetime.now(timezone.utc)
+        retry_data = self._oco_rearm_retries.get(symbol, {})
+        attempts = retry_data.get('attempts', 0)
+        backoff_until = retry_data.get('backoff_until')
+
+        # If we're in backoff period, skip with debug log
+        if backoff_until and now < backoff_until:
+            remaining_mins = (backoff_until - now).total_seconds() / 60
+            self.logger.debug(
+                f"[REARM_OCO] Skipping {symbol}: in backoff period for {remaining_mins:.1f} more minutes "
+                f"(failed {attempts} times)"
+            )
+            return
+
+        # If max retries exceeded and not in backoff, enter backoff period
+        if attempts >= self._oco_max_retries:
+            backoff_until = now + timedelta(minutes=self._oco_backoff_minutes)
+            self._oco_rearm_retries[symbol] = {
+                'attempts': attempts,
+                'last_attempt_time': now,
+                'backoff_until': backoff_until
+            }
+            self.logger.warning(
+                f"⚠️ [REARM_OCO] {symbol} hit max retry limit ({self._oco_max_retries} attempts). "
+                f"Backing off for {self._oco_backoff_minutes} minutes. "
+                f"OCO protection will NOT be placed until backoff expires."
+            )
+            return
+
         # 1) Try to locate a live child order for this symbol
         order_mgmt = self.shared_data_manager.order_management
         tracked = self._normalize_order_tracker_snapshot(order_mgmt)
@@ -375,12 +413,35 @@ class AssetMonitor:
             # Leave price None; your builder should compute TP/SL legs from config & avg
         )
         if not new_order:
-            self.logger.warning(f"[UNTRACKED] Failed to build protective OCO for {symbol}; leaving as-is (still monitored)")
+            # Increment retry counter on build failure
+            self._oco_rearm_retries[symbol] = {
+                'attempts': attempts + 1,
+                'last_attempt_time': now,
+                'backoff_until': backoff_until
+            }
+            self.logger.warning(
+                f"[REARM_OCO] Failed to build protective OCO for {symbol} (attempt {attempts + 1}/{self._oco_max_retries}); "
+                f"will retry on next sweep"
+            )
             return
 
         success, resp = await self.trade_order_manager.place_order(new_order, precision_data)
-        log = self.logger.info if success else self.logger.warning
-        log(f"{'🛡️' if success else '⚠️'} Rearmed protection for {symbol} (untracked): {resp}")
+
+        if success:
+            # ✅ SUCCESS: Reset retry counter
+            if symbol in self._oco_rearm_retries:
+                del self._oco_rearm_retries[symbol]
+            self.logger.info(f"🛡️ Rearmed protection for {symbol} (untracked): {resp}")
+        else:
+            # ❌ FAILURE: Increment retry counter
+            self._oco_rearm_retries[symbol] = {
+                'attempts': attempts + 1,
+                'last_attempt_time': now,
+                'backoff_until': backoff_until
+            }
+            self.logger.warning(
+                f"⚠️ [REARM_OCO] Failed to place OCO for {symbol} (attempt {attempts + 1}/{self._oco_max_retries}): {resp}"
+            )
 
 
     def _extract_order_id(self, place_response: dict | None) -> str | None:
