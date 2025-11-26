@@ -318,7 +318,10 @@ class TradeOrderManager:
 
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
-            fiat_amt = min(usd_avail, self.order_size)
+
+            # Use trigger-specific order size for visual identification
+            trigger_order_size = self.get_order_size_for_trigger(trigger if isinstance(trigger, dict) else {})
+            fiat_amt = min(usd_avail, trigger_order_size)
             crypto_amt = available_to_trade
             order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
                 side if side else "buy", fiat_amt, crypto_amt
@@ -517,6 +520,44 @@ class TradeOrderManager:
             "trigger": trigger_type.upper(),
             "trigger_note": note
         }
+
+    def get_order_size_for_trigger(self, trigger: dict) -> Decimal:
+        """
+        Get the appropriate order size based on trigger type for visual identification.
+
+        Args:
+            trigger: Trigger dict with 'trigger' and 'trigger_note' keys
+
+        Returns:
+            Decimal: Order size in USD
+        """
+        if not trigger or not isinstance(trigger, dict):
+            return Decimal(str(self.config.order_size_fiat or 35))
+
+        trigger_type = trigger.get("trigger", "").upper()
+
+        # Map trigger types to specific order sizes for visual identification
+        trigger_size_map = {
+            "ROC": self.config.order_size_roc,
+            "PASSIVE_BUY": self.config.order_size_passive,
+            "PASSIVE_SELL": self.config.order_size_passive,
+            "PASSIVE_EXIT": self.config.order_size_passive,
+            "PASSIVE_PROFIT": self.config.order_size_passive,
+            "PASSIVE_LOSS": self.config.order_size_passive,
+            "SIGNAL": self.config.order_size_signal,
+            "SCORE": self.config.order_size_signal,
+            "ROC_MOMO": self.config.order_size_roc,
+            "ROC_MOMO_OVERRIDE": self.config.order_size_roc,
+        }
+
+        # Get size from map or default to webhook size
+        size = trigger_size_map.get(trigger_type, self.config.order_size_webhook)
+
+        # Fallback to default if not configured
+        if not size:
+            size = self.config.order_size_fiat or Decimal('35')
+
+        return Decimal(str(size))
 
     async def place_order(self, raw_order_data: OrderData, precision_data=None) -> tuple[bool, dict]:
         try:
@@ -786,6 +827,25 @@ class TradeOrderManager:
                 # Success
                 if response.get('success') and response.get('order_id'):
                     order_data.order_id = response.get('order_id')
+
+                    # Enhanced logging with trigger identification
+                    trigger_info = order_data.trigger if isinstance(order_data.trigger, dict) else {}
+                    trigger_type = trigger_info.get("trigger", "UNKNOWN").upper()
+                    trigger_note = trigger_info.get("trigger_note", "")
+
+                    # Emoji based on side
+                    emoji = "🟢" if side == "buy" else "🔴"
+
+                    # Calculate order value
+                    order_value = order_data.adjusted_price * order_data.adjusted_size
+
+                    self.logger.info(
+                        f"{emoji} ORDER PLACED: {side.upper()} {symbol} "
+                        f"${order_value:.2f} (${order_data.adjusted_price:.4f} × {order_data.adjusted_size:.6f}) | "
+                        f"Trigger: {trigger_type} {f'({trigger_note})' if trigger_note else ''} | "
+                        f"Order ID: {order_data.order_id}"
+                    )
+
                     return True, {
                         'success': True,
                         'status': 'placed',
