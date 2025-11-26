@@ -356,6 +356,40 @@ class AssetMonitor:
 
         # 3) No live child → (re)arm protection (treat as EXIT; bypass entry gates/cooldowns)
 
+        # Pre-check: Validate available balance before attempting order placement
+        # This prevents "insufficient balance" loops when balance is locked in pending orders
+        try:
+            spot_pos = self.shared_data_manager.market_data.get("spot_positions", {}).get(symbol, {})
+            available_crypto = Decimal(str(spot_pos.get("available_to_trade_crypto", "0")))
+            total_crypto = Decimal(str(spot_pos.get("total_balance_crypto", "0")))
+
+            # If available balance is too low, skip (likely locked in pending orders)
+            if available_crypto <= Decimal("0.001"):
+                if total_crypto > Decimal("0.001"):
+                    # Balance exists but is locked - this is the issue we're trying to prevent
+                    self.logger.warning(
+                        f"⚠️ [REARM_OCO] Skipping {symbol}: balance locked in pending orders "
+                        f"(total={total_crypto}, available={available_crypto}). "
+                        f"Will retry after balance frees up."
+                    )
+                else:
+                    # Dust or no balance at all
+                    self.logger.debug(
+                        f"[REARM_OCO] Skipping {symbol}: insufficient balance (total={total_crypto})"
+                    )
+                # Reset retry counter since this isn't a placement failure
+                if symbol in self._oco_rearm_retries:
+                    del self._oco_rearm_retries[symbol]
+                return
+        except Exception as e:
+            self.logger.debug(f"[REARM_OCO] Could not check available balance for {symbol}: {e}")
+
+        # Log position details for diagnostics
+        self.logger.debug(
+            f"[REARM_OCO] Attempting to arm {symbol}: qty={qty}, avg_entry={avg_entry}, "
+            f"profit_pct={profit_pct:.2%}, current_price={current_price}"
+        )
+
         # NEW: Check for orphaned non-OCO orders and cancel them first
         orphaned_orders = []
         for oid, raw in tracked.items():
