@@ -359,9 +359,16 @@ class AssetMonitor:
         # Pre-check: Validate available balance before attempting order placement
         # This prevents "insufficient balance" loops when balance is locked in pending orders
         try:
-            spot_pos = self.shared_data_manager.market_data.get("spot_positions", {}).get(symbol, {})
+            # spot_positions is keyed by asset (e.g., "AERO"), not symbol (e.g., "AERO-USD")
+            spot_pos = self.shared_data_manager.market_data.get("spot_positions", {}).get(asset, {})
             available_crypto = Decimal(str(spot_pos.get("available_to_trade_crypto", "0")))
             total_crypto = Decimal(str(spot_pos.get("total_balance_crypto", "0")))
+
+            # Debug: Log what we found
+            self.logger.debug(
+                f"[REARM_OCO] Balance check for {symbol}: asset={asset}, "
+                f"available={available_crypto}, total={total_crypto}"
+            )
 
             # If available balance is too low, skip (likely locked in pending orders)
             if available_crypto <= Decimal("0.001"):
