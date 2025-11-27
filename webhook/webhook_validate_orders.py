@@ -507,7 +507,7 @@ class ValidateOrders:
             quote_price = quote_price.quantize(Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP)
 
             # Debug: Log price calculation for insufficient balance diagnosis
-            self.logger.debug(
+            self.logger.info(
                 f"[VALIDATION] {trading_pair} price calc: highest_bid={highest_bid}, "
                 f"lowest_ask={lowest_ask}, quote_price={quote_price}"
             )
@@ -523,7 +523,7 @@ class ValidateOrders:
             )
 
             # Debug: Log balance value calculation
-            self.logger.debug(
+            self.logger.info(
                 f"[VALIDATION] {trading_pair} balance calc: available_to_trade={available_to_trade}, "
                 f"base_bal_value={base_bal_value}, min_sell_value={self.min_sell_value}"
             )
@@ -565,6 +565,12 @@ class ValidateOrders:
                         condition = f'❌ Buy conditions failed: Not enough USD or not in buy zone.'
 
             elif side == 'sell':
+                # Debug: Log sell validation logic
+                self.logger.info(
+                    f"[VALIDATION] {trading_pair} SELL check: hodling={hodling}, "
+                    f"base_bal_value={base_bal_value}, min_sell_value={self.min_sell_value}, "
+                    f"comparison={base_bal_value >= self.min_sell_value}"
+                )
                 if hodling:
                     condition = f'⛔ {trading_pair} is marked HODL — sell blocked.'
                 elif base_bal_value >= self.min_sell_value:
