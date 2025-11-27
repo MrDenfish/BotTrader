@@ -828,6 +828,17 @@ class TradeOrderManager:
                 if response.get('success') and response.get('order_id'):
                     order_data.order_id = response.get('order_id')
 
+                    # Cache trigger for later retrieval when websocket fill arrives
+                    try:
+                        order_mgmt = self.shared_data_manager.order_management or {}
+                        trigger_cache = order_mgmt.get("order_triggers", {})
+                        trigger_cache[order_data.order_id] = order_data.trigger
+                        order_mgmt["order_triggers"] = trigger_cache
+                        await self.shared_data_manager.set_order_management(order_mgmt)
+                        self.logger.debug(f"Cached trigger for order {order_data.order_id}: {order_data.trigger}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to cache trigger for order {order_data.order_id}: {e}")
+
                     # Enhanced logging with trigger identification
                     trigger_info = order_data.trigger if isinstance(order_data.trigger, dict) else {}
                     trigger_type = trigger_info.get("trigger", "UNKNOWN").upper()

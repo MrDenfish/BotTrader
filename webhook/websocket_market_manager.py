@@ -330,6 +330,25 @@ class WebSocketMarketManager:
         else:
             parent_id = base_id
 
+        # Retrieve trigger from order_management cache (if available)
+        # Fallback to "websocket" if not found (for orders placed outside current session)
+        trigger_cache = (self.shared_data_manager.order_management or {}).get("order_triggers", {})
+        cached_trigger = trigger_cache.get(base_id)
+
+        if cached_trigger:
+            trigger = cached_trigger
+            # Clean up the cache entry after using it to prevent memory growth
+            try:
+                trigger_cache.pop(base_id, None)
+                order_mgmt = self.shared_data_manager.order_management or {}
+                order_mgmt["order_triggers"] = trigger_cache
+                await self.shared_data_manager.set_order_management(order_mgmt)
+            except Exception as e:
+                self.logger.warning(f"Failed to clean up cached trigger for {base_id}: {e}")
+        else:
+            # Default for orders we don't have trigger info for
+            trigger = {"trigger": "websocket", "trigger_note": "trigger unknown (order placed externally or before session start)"}
+
         return {
             "order_id": fill_order_id,
             "parent_id": parent_id,
@@ -339,7 +358,7 @@ class WebSocketMarketManager:
             "amount": amount,
             "status": "filled",
             "order_time": self._normalize_order_time(fill_time),
-            "trigger": {"trigger": order.get("order_type", "market")},
+            "trigger": trigger,
             "source": "websocket",
             "total_fees": fee,  # (optional) consider aligning with `total_fees_usd`
         }
