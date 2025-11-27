@@ -506,12 +506,6 @@ class ValidateOrders:
             quote_price = (highest_bid + lowest_ask) / 2
             quote_price = quote_price.quantize(Decimal(f'1e-{quote_deci}'), rounding=ROUND_HALF_UP)
 
-            # Debug: Log price calculation for insufficient balance diagnosis
-            self.logger.info(
-                f"[VALIDATION] {trading_pair} price calc: highest_bid={highest_bid}, "
-                f"lowest_ask={lowest_ask}, quote_price={quote_price}"
-            )
-
             # Adjust balances
             adjusted_usd = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, usd_avail, convert='usd' if quote_currency == 'USD' else 'quote'
@@ -520,12 +514,6 @@ class ValidateOrders:
             base_bal_value = available_to_trade * quote_price
             base_bal_value = self.shared_utils_precision.adjust_precision(
                 base_deci, quote_deci, base_bal_value, convert='usd' if quote_currency == 'USD' else 'quote'
-            )
-
-            # Debug: Log balance value calculation
-            self.logger.info(
-                f"[VALIDATION] {trading_pair} balance calc: available_to_trade={available_to_trade}, "
-                f"base_bal_value={base_bal_value}, min_sell_value={self.min_sell_value}"
             )
 
             # Open order check
@@ -565,12 +553,6 @@ class ValidateOrders:
                         condition = f'❌ Buy conditions failed: Not enough USD or not in buy zone.'
 
             elif side == 'sell':
-                # Debug: Log sell validation logic
-                self.logger.info(
-                    f"[VALIDATION] {trading_pair} SELL check: hodling={hodling}, "
-                    f"base_bal_value={base_bal_value}, min_sell_value={self.min_sell_value}, "
-                    f"comparison={base_bal_value >= self.min_sell_value}"
-                )
                 if hodling:
                     condition = f'⛔ {trading_pair} is marked HODL — sell blocked.'
                 elif base_bal_value >= self.min_sell_value:
