@@ -32,7 +32,7 @@ services:
       RUN_MODE: webhook
       PYTHONUNBUFFERED: "1"        # NEW: live stdout
       PYTHONFAULTHANDLER: "1"      # NEW: better crash dumps
-      LOG_LEVEL: "INFO"            # optional if your app reads it
+      LOG_LEVEL: ${LOG_LEVEL}      # Read from .env (DEBUG or INFO)
       # 🔧 Debug toggles (safe defaults for prod; flip in .env_runtime if needed)
       BT_WATCHDOG: "1"
       BT_WATCHDOG_INTERVAL: "1.0"
@@ -92,7 +92,7 @@ services:
       WEBHOOK_BASE_URL: "http://webhook:5003"
       PYTHONUNBUFFERED: "1"        # NEW: live stdout
       PYTHONFAULTHANDLER: "1"      # NEW
-      LOG_LEVEL: "INFO"            # optional
+      LOG_LEVEL: ${LOG_LEVEL}      # Read from .env (DEBUG or INFO)
       # 🔧 Debug toggles (safe defaults for prod; flip in .env_runtime if needed)
       BT_WATCHDOG: "1"
       BT_WATCHDOG_INTERVAL: "1.0"
