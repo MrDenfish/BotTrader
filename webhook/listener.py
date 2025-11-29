@@ -1636,8 +1636,45 @@ class WebhookListener:
         return app
 
     async def health(self, request: web.Request) -> web.Response:
-        """Basic health check endpoint."""
-        return web.json_response({"status": "ok"})
+        """
+        Health check endpoint with WebSocket connection verification.
+
+        Returns:
+            200 OK if both user and market websockets are connected and healthy
+            503 Service Unavailable if websockets are still connecting or have issues
+        """
+        # Check user websocket
+        user_ws_healthy = (
+            hasattr(self.websocket_helper, 'user_ws') and
+            self.websocket_helper.user_ws is not None and
+            not self.websocket_helper.user_ws.closed
+        )
+
+        # Check market websocket
+        market_ws_healthy = (
+            hasattr(self.websocket_helper, 'market_ws') and
+            self.websocket_helper.market_ws is not None and
+            not self.websocket_helper.market_ws.closed
+        )
+
+        # Both must be healthy for service to be fully operational
+        if user_ws_healthy and market_ws_healthy:
+            return web.json_response({
+                "status": "ok",
+                "websockets": {
+                    "user": "connected",
+                    "market": "connected"
+                }
+            })
+        else:
+            # Service is degraded - still starting up or reconnecting
+            return web.json_response({
+                "status": "degraded",
+                "websockets": {
+                    "user": "connected" if user_ws_healthy else "connecting",
+                    "market": "connected" if market_ws_healthy else "connecting"
+                }
+            }, status=503)
 
     async def start(self, host: str = "127.0.0.1", port: int = 5003):
         """Start aiohttp server without blocking the event loop."""
