@@ -4,7 +4,7 @@ Position Monitor - Smart LIMIT Exit Strategy
 Monitors open positions and places LIMIT sell orders based on:
 1. P&L thresholds: -2.5% loss, +3.5% profit
 2. Hard stop: -5% emergency market exit
-3. ATR-based trailing stops (future enhancement)
+3. ATR-based trailing stops: 2×ATR distance, 0.5×ATR step size
 
 Runs as part of asset_monitor sweep cycle (every 3 seconds).
 """
@@ -219,7 +219,7 @@ class PositionMonitor:
             elif pnl_pct >= self.min_profit_pct:
                 exit_reason = f"TAKE_PROFIT (P&L: {pnl_pct:.2%})"
             elif self.trailing_enabled:
-                # Check trailing stop logic (future enhancement)
+                # Check ATR-based trailing stop logic
                 trailing_exit = await self._check_trailing_stop(symbol, product_id, current_price, avg_entry_price)
                 if trailing_exit:
                     exit_reason = f"TRAILING_STOP (P&L: {pnl_pct:.2%})"
@@ -456,10 +456,9 @@ class PositionMonitor:
         """
         Check if trailing stop should trigger.
 
-        This is a placeholder for Phase 3 implementation.
-        Will implement ATR-based trailing logic with:
-        - 2×ATR distance
-        - 0.5×ATR step size
+        Implements ATR-based trailing logic with:
+        - 2×ATR distance below highest price
+        - 0.5×ATR step size for raising stops
         - Only raise stop, never lower
         - 1-2% distance constraints
 
@@ -472,6 +471,100 @@ class PositionMonitor:
         Returns:
             True if trailing stop should trigger, False otherwise
         """
-        # TODO: Implement ATR-based trailing stop logic in Phase 3
-        # For now, return False (no trailing stop trigger)
-        return False
+        try:
+            # Get ATR from cache
+            market_data = self.shared_data_manager.market_data or {}
+            atr_pct_cache = market_data.get('atr_pct_cache') or {}
+            atr_pct = atr_pct_cache.get(product_id)
+
+            if not atr_pct:
+                # Try to calculate from atr_price_cache
+                atr_price_cache = market_data.get('atr_price_cache') or {}
+                atr_price = atr_price_cache.get(product_id)
+                if atr_price and current_price > 0:
+                    atr_pct = Decimal(str(atr_price)) / current_price
+                else:
+                    self.logger.debug(f"[TRAILING] {product_id}: No ATR data available, skipping trailing stop")
+                    return False
+            else:
+                atr_pct = Decimal(str(atr_pct))
+
+            # Initialize state for this position if not exists
+            if product_id not in self.trailing_stops:
+                # First time seeing this position
+                self.trailing_stops[product_id] = {
+                    'last_high': current_price,
+                    'stop_price': None,  # Will be set when position becomes profitable
+                    'last_atr': atr_pct
+                }
+                self.logger.info(
+                    f"[TRAILING] {product_id}: Initialized trailing stop state | "
+                    f"Entry: ${avg_entry:.4f}, Current: ${current_price:.4f}, ATR: {atr_pct:.2%}"
+                )
+                return False
+
+            state = self.trailing_stops[product_id]
+
+            # Update last_high if current price is higher
+            new_high = False
+            if current_price > state['last_high']:
+                state['last_high'] = current_price
+                state['last_atr'] = atr_pct
+                new_high = True
+
+            # Calculate stop price based on 2×ATR distance from last_high
+            atr_distance = state['last_high'] * atr_pct * self.trailing_atr_mult
+            calculated_stop = state['last_high'] - atr_distance
+
+            # Apply distance constraints (1-2% from current price)
+            min_stop = current_price * (Decimal('1') - self.trailing_max_dist_pct)  # Max 2% below current
+            max_stop = current_price * (Decimal('1') - self.trailing_min_dist_pct)  # Min 1% below current
+
+            # Constrain the calculated stop
+            constrained_stop = max(min_stop, min(calculated_stop, max_stop))
+
+            # Only raise the stop, never lower it
+            if state['stop_price'] is None:
+                # First time setting stop - only set if position is profitable
+                pnl_pct = (current_price - avg_entry) / avg_entry
+                if pnl_pct > Decimal('0'):  # Only activate trailing stop when profitable
+                    state['stop_price'] = constrained_stop
+                    self.logger.info(
+                        f"[TRAILING] {product_id}: Activated trailing stop | "
+                        f"Stop: ${state['stop_price']:.4f}, High: ${state['last_high']:.4f}, "
+                        f"Current: ${current_price:.4f}, ATR: {atr_pct:.2%}"
+                    )
+                return False
+            else:
+                # Update stop only if new stop is higher (raise only, never lower)
+                step_size = state['last_high'] * state['last_atr'] * self.trailing_step_mult
+
+                if constrained_stop > state['stop_price']:
+                    # Check if price has moved enough (0.5×ATR step) to warrant an update
+                    price_move = state['last_high'] - (state['stop_price'] + (state['stop_price'] * state['last_atr'] * self.trailing_atr_mult))
+
+                    if new_high or price_move >= step_size:
+                        old_stop = state['stop_price']
+                        state['stop_price'] = constrained_stop
+                        self.logger.info(
+                            f"[TRAILING] {product_id}: Raised stop | "
+                            f"Old: ${old_stop:.4f} → New: ${state['stop_price']:.4f}, "
+                            f"High: ${state['last_high']:.4f}, Current: ${current_price:.4f}"
+                        )
+
+            # Check if trailing stop is hit
+            if state['stop_price'] and current_price <= state['stop_price']:
+                self.logger.info(
+                    f"[TRAILING] {product_id}: STOP HIT! | "
+                    f"Current: ${current_price:.4f} ≤ Stop: ${state['stop_price']:.4f}, "
+                    f"Entry: ${avg_entry:.4f}, High: ${state['last_high']:.4f}"
+                )
+                # Clear state after triggering
+                del self.trailing_stops[product_id]
+                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"[TRAILING] {product_id}: Error in trailing stop logic: {e}", exc_info=True)
+            return False
