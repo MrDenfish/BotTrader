@@ -1,10 +1,14 @@
 """
-Position Monitor - Smart LIMIT Exit Strategy
+Position Monitor - Smart LIMIT Exit Strategy with Signal Integration
 
 Monitors open positions and places LIMIT sell orders based on:
-1. P&L thresholds: -2.5% loss, +3.5% profit
-2. Hard stop: -5% emergency market exit
-3. ATR-based trailing stops: 2×ATR distance, 0.5×ATR step size
+1. Risk exits: Hard stop (-5%), Soft stop (-2.5%)
+2. Signal + profit exit: SELL signal + P&L >= 0% (Phase 5)
+3. Profit management: Trailing activation at +3.5%, ATR-based trailing
+4. Once trailing active: ignore SELL signals, let trends run
+
+Exit Priority:
+- Hard Stop (-5%) → Soft Stop (-2.5%) → SELL Signal + Profitable → Trailing Activation/Stop
 
 Runs as part of asset_monitor sweep cycle (every 3 seconds).
 """
@@ -38,7 +42,7 @@ class PositionMonitor:
         self.last_check_time = None
 
         # Track trailing stop state per position
-        self.trailing_stops = {}  # {symbol: {last_high, stop_price, last_atr}}
+        self.trailing_stops = {}  # {symbol: {last_high, stop_price, last_atr, trailing_active}}
 
     def _load_config(self):
         """Load position monitoring configuration from environment."""
@@ -54,6 +58,11 @@ class PositionMonitor:
         self.trailing_step_mult = Decimal(os.getenv('TRAILING_STEP_ATR_MULT', '0.5'))
         self.trailing_min_dist_pct = Decimal(os.getenv('TRAILING_MIN_DISTANCE_PCT', '0.01'))
         self.trailing_max_dist_pct = Decimal(os.getenv('TRAILING_MAX_DISTANCE_PCT', '0.02'))
+        self.trailing_activation_pct = Decimal(os.getenv('TRAILING_ACTIVATION_PCT', '0.035'))  # +3.5%
+
+        # Signal-based exit configuration (Phase 5)
+        self.signal_exit_enabled = os.getenv('SIGNAL_EXIT_ENABLED', 'true').lower() == 'true'
+        self.signal_exit_min_profit = Decimal(os.getenv('SIGNAL_EXIT_MIN_PROFIT_PCT', '0.0'))  # Exit on SELL if P&L >= 0%
 
         # Position check interval (seconds)
         self.check_interval = int(os.getenv('POSITION_CHECK_INTERVAL', '30'))
@@ -61,7 +70,8 @@ class PositionMonitor:
         self.logger.info(
             f"[POS_MONITOR] Configuration loaded: "
             f"max_loss={self.max_loss_pct:.2%}, min_profit={self.min_profit_pct:.2%}, "
-            f"hard_stop={self.hard_stop_pct:.2%}, trailing_enabled={self.trailing_enabled}"
+            f"hard_stop={self.hard_stop_pct:.2%}, trailing_enabled={self.trailing_enabled}, "
+            f"signal_exit_enabled={self.signal_exit_enabled}"
         )
 
     async def check_positions(self):
@@ -207,25 +217,60 @@ class PositionMonitor:
                 self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
                 return
 
-            # Determine exit reason and action
+            # Phase 5: New Exit Priority Logic
+            # Priority: Hard Stop → Soft Stop → (Signal Exit OR Trailing Activation/Stop)
             exit_reason = None
             use_market_order = False
 
+            # 1. RISK EXITS (always checked first)
             if pnl_pct <= -self.hard_stop_pct:
                 exit_reason = f"HARD_STOP (P&L: {pnl_pct:.2%})"
                 use_market_order = True  # Emergency exit
             elif pnl_pct <= -self.max_loss_pct:
-                exit_reason = f"STOP_LOSS (P&L: {pnl_pct:.2%})"
-            elif pnl_pct >= self.min_profit_pct:
-                exit_reason = f"TAKE_PROFIT (P&L: {pnl_pct:.2%})"
+                exit_reason = f"SOFT_STOP (P&L: {pnl_pct:.2%})"
+
+            # 2. PROFIT MANAGEMENT (only if no risk exit triggered)
             elif self.trailing_enabled:
-                # Check ATR-based trailing stop logic
-                trailing_exit = await self._check_trailing_stop(symbol, product_id, current_price, avg_entry_price)
-                if trailing_exit:
-                    exit_reason = f"TRAILING_STOP (P&L: {pnl_pct:.2%})"
+                # Check if trailing is already active for this position
+                trailing_state = self.trailing_stops.get(product_id, {})
+                trailing_active = trailing_state.get('trailing_active', False)
+
+                if trailing_active:
+                    # Trailing is active - IGNORE signal exits, only check trailing stop
+                    self.logger.debug(f"[POS_MONITOR] {product_id} trailing active, checking stop only")
+                    trailing_exit = await self._check_trailing_stop(symbol, product_id, current_price, avg_entry_price)
+                    if trailing_exit:
+                        exit_reason = f"TRAILING_STOP (P&L: {pnl_pct:.2%})"
+                else:
+                    # Trailing not active - check for activation or signal exit
+                    if pnl_pct >= self.trailing_activation_pct:
+                        # Activate trailing stop at +3.5%
+                        self.logger.info(
+                            f"[POS_MONITOR] {product_id} TRAILING ACTIVATED at P&L={pnl_pct:.2%} "
+                            f"(threshold: {self.trailing_activation_pct:.2%})"
+                        )
+                        # Initialize trailing stop
+                        await self._check_trailing_stop(symbol, product_id, current_price, avg_entry_price)
+                        # Mark as active
+                        if product_id in self.trailing_stops:
+                            self.trailing_stops[product_id]['trailing_active'] = True
+                        # Continue monitoring (don't exit yet, just activated)
+                        self.logger.debug(f"[POS_MONITOR] {product_id} trailing initialized, monitoring continues")
+                        return
+
+                    # Check signal-based exit (only if trailing not active AND P&L >= 0%)
+                    elif self.signal_exit_enabled:
+                        current_signal = self._get_current_signal(symbol)
+                        if current_signal == 'sell' and pnl_pct >= self.signal_exit_min_profit:
+                            exit_reason = f"SIGNAL_EXIT (P&L: {pnl_pct:.2%}, signal=SELL)"
+
+            # 3. FALLBACK: No trailing enabled, check old TP threshold
+            elif not self.trailing_enabled and pnl_pct >= self.min_profit_pct:
+                # Legacy take profit exit (if trailing disabled)
+                exit_reason = f"TAKE_PROFIT (P&L: {pnl_pct:.2%})"
 
             if not exit_reason:
-                self.logger.debug(f"[POS_MONITOR] {product_id} no threshold met, monitoring continues")
+                self.logger.debug(f"[POS_MONITOR] {product_id} no exit condition met, monitoring continues")
                 return  # No exit threshold met
 
             # Place exit order
@@ -271,6 +316,52 @@ class PositionMonitor:
         except Exception as e:
             self.logger.debug(f"[POS_MONITOR] Error checking open sell orders for {product_id}: {e}")
             return False
+
+    def _get_current_signal(self, symbol: str) -> Optional[str]:
+        """
+        Query current BUY/SELL signal from cached buy_sell_matrix.
+
+        Args:
+            symbol: Asset symbol (e.g., 'BTC')
+
+        Returns:
+            'buy', 'sell', or None if signal unavailable
+        """
+        try:
+            if not self.signal_exit_enabled:
+                return None
+
+            # Get cached buy_sell_matrix from shared_data
+            market_data = self.shared_data_manager.market_data or {}
+            buy_sell_matrix = market_data.get('buy_sell_matrix')
+
+            if buy_sell_matrix is None or buy_sell_matrix.empty:
+                self.logger.debug(f"[SIGNAL] buy_sell_matrix not available")
+                return None
+
+            # Check if symbol is in matrix
+            if symbol not in buy_sell_matrix.index:
+                self.logger.debug(f"[SIGNAL] {symbol} not in buy_sell_matrix")
+                return None
+
+            # Get signals (tuples: (decision, score, threshold, reason))
+            buy_signal = buy_sell_matrix.loc[symbol, 'Buy Signal']
+            sell_signal = buy_sell_matrix.loc[symbol, 'Sell Signal']
+
+            # Check which signal is active (decision == 1)
+            buy_active = buy_signal[0] == 1 if isinstance(buy_signal, tuple) and len(buy_signal) > 0 else False
+            sell_active = sell_signal[0] == 1 if isinstance(sell_signal, tuple) and len(sell_signal) > 0 else False
+
+            if sell_active:
+                return 'sell'
+            elif buy_active:
+                return 'buy'
+            else:
+                return None
+
+        except Exception as e:
+            self.logger.debug(f"[SIGNAL] Error getting signal for {symbol}: {e}")
+            return None
 
     async def _cancel_existing_orders(self, product_id: str):
         """
@@ -495,7 +586,8 @@ class PositionMonitor:
                 self.trailing_stops[product_id] = {
                     'last_high': current_price,
                     'stop_price': None,  # Will be set when position becomes profitable
-                    'last_atr': atr_pct
+                    'last_atr': atr_pct,
+                    'trailing_active': False  # Phase 5: tracks if trailing is activated
                 }
                 self.logger.info(
                     f"[TRAILING] {product_id}: Initialized trailing stop state | "
