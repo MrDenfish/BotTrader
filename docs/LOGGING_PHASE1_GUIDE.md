@@ -115,11 +115,12 @@ async def process_order(order):
 ## Configuration
 
 ### Development (Colored Console)
+
 ```python
 from Shared_Utils.logger import setup_structured_logging
 
 config = setup_structured_logging(
-    log_dir='logs',
+    log_dir='../logs',
     console_level='DEBUG',
     use_json=False  # Colored console output
 )

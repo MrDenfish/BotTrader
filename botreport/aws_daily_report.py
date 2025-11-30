@@ -714,7 +714,7 @@ def query_hodl_positions(conn):
 
 def run_queries(conn):
     errors = []
-    detect_notes = ["Build:v9"]  # Increment version
+    detect_notes = ["Build:v10"]  # Increment version
     fifo_health = None  # Store FIFO health metrics for HTML report
 
     # Realized PnL (windowed if timestamp exists)
