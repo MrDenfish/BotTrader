@@ -232,27 +232,41 @@ self.trailing_stops = {}  # {symbol: {last_high, stop_price, last_atr}}
 
 ---
 
-### Phase 5: Buy/Sell Matrix Integration ❌ NOT STARTED
+### Phase 5: Buy/Sell Matrix Integration ✅ COMPLETE (2025-11-30)
 
-**Required Work:**
-- Query `signal_manager.py` for current matrix signal on each position check
-- Exit logic when matrix flips to SELL:
-  - If position profitable → exit immediately
-  - If position at loss → apply threshold-based logic
+**Implementation:**
+- ✅ Cache `buy_sell_matrix` in `shared_data_manager` after signal calculation
+- ✅ Add `_get_current_signal()` method to query SELL signals from matrix
+- ✅ Add `trailing_active` flag to track per-position trailing state
+- ✅ Rewrite exit priority logic with signal integration
+- ✅ Activate trailing stop at +3.5% profit
+- ✅ Ignore SELL signals once trailing is active (let trends run)
 
-**Current Exit Triggers:**
-Position exits currently triggered ONLY by P&L thresholds:
-- Stop loss: -2.5%
-- Take profit: +3.5%
-- Hard stop: -5%
+**Exit Priority (New):**
+1. **Risk Exits**: Hard Stop (-5%) → Soft Stop (-2.5%)
+2. **Signal + Profit Exit**: SELL signal + P&L >= 0%
+3. **Profit Management**: Trailing activation at +3.5%
+4. **Once Trailing Active**: Ignore signals, only check trailing stop
 
-No consideration for active market signals yet.
+**Configuration:**
+```env
+TRAILING_ACTIVATION_PCT=0.035       # Activate trailing at +3.5%
+SIGNAL_EXIT_ENABLED=true            # Enable signal-based exits
+SIGNAL_EXIT_MIN_PROFIT_PCT=0.0      # Exit on SELL if P&L >= 0%
+```
+
+**Branch:** `feature/signal-based-exits`
+**Commits:**
+- `f9d5bdb`: Add buy_sell_matrix caching and Phase 5 documentation
+- `6b5ae01`: Implement Phase 5 signal-based exits with trailing activation
+
+**Status:** ✅ Ready for production deployment
 
 ---
 
 ## Implementation Summary
 
-**Overall Progress: ~95% Complete**
+**Overall Progress: 100% Complete** 🎉
 
 | Phase | Status | Completion | Key Files |
 |-------|--------|-----------|-----------|
@@ -260,7 +274,7 @@ No consideration for active market signals yet.
 | 2: Position Monitoring | Complete | 100% | `position_monitor.py`, `asset_monitor.py:1376-1378` |
 | 3: ATR-Based Trailing | Complete | 100% | `profit_data_manager.py:37-53`, `position_monitor.py:449-570` |
 | 4: Testing & Validation | Complete | 100% | `test_trailing_stop.py` (6/6 tests), production verified |
-| 5: Matrix Integration | Not Started | 0% | Would require `signal_manager.py` integration |
+| 5: Signal Integration | Complete | 100% | `position_monitor.py:285-329`, `sender.py:392-395` |
 
 **Recent Updates (2025-11-29):**
 - Commit `250d8bc`: Improved webhook health check to verify WebSocket connections
