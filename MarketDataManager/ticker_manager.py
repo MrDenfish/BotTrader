@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 import pandas as pd
@@ -590,9 +591,18 @@ class TickerManager:
             try:
                 self.logger.info(f"[ATR] Fetching 1h OHLCV for {product_id}")
                 # Fetch 1-hour OHLCV data (need 200+ candles for 14-period ATR)
+                # Calculate timestamps: 200 hours ~= 8.3 days ago
+                end_time = int(datetime.now(timezone.utc).timestamp())
+                start_time = end_time - (200 * 3600)  # 200 hours in seconds
+
                 ohlcv_response = await self.coinbase_api.fetch_ohlcv(
                     product_id,
-                    params={'granularity': 'ONE_HOUR', 'limit': 200}
+                    params={
+                        'start': start_time,
+                        'end': end_time,
+                        'granularity': 'ONE_HOUR',
+                        'limit': 200
+                    }
                 )
 
                 if not ohlcv_response or 'data' not in ohlcv_response:
