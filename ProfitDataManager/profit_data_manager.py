@@ -196,14 +196,23 @@ class ProfitDataManager:
             safe_base_deci = base_deci if base_deci is not None and isinstance(base_deci, int) else 8
             safe_quote_deci = quote_deci if quote_deci is not None and isinstance(quote_deci, int) else 2
 
+            # Helper function to safely round Decimal values
+            def safe_round(value, precision):
+                try:
+                    if value.is_finite():
+                        return round(value, precision)
+                except (decimal.InvalidOperation, AttributeError):
+                    pass
+                return Decimal(0)
+
             profit_data = {
                 'asset': asset,
-                'balance': round(asset_balance, safe_base_deci) if asset_balance.is_finite() else Decimal(0),
-                'price': round(current_price, safe_quote_deci) if current_price.is_finite() else Decimal(0),
-                'value': current_value if current_value.is_finite() else Decimal(0),
-                'cost_basis': round(cost_basis, safe_quote_deci) if cost_basis.is_finite() else Decimal(0),
-                'avg_price': round(avg_price, safe_quote_deci) if avg_price.is_finite() else Decimal(0),
-                'profit': profit if profit.is_finite() else Decimal(0),
+                'balance': safe_round(asset_balance, safe_base_deci),
+                'price': safe_round(current_price, safe_quote_deci),
+                'value': safe_round(current_value, safe_quote_deci),
+                'cost_basis': safe_round(cost_basis, safe_quote_deci),
+                'avg_price': safe_round(avg_price, safe_quote_deci),
+                'profit': safe_round(profit, safe_quote_deci),
                 'profit percent': f'{profit_percentage}%',
                 'status': required_prices.get('status', 'HDLG')
             }

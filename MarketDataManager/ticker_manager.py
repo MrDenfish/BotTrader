@@ -578,8 +578,14 @@ class TickerManager:
         atr_pct_cache = {}
         atr_price_cache = {}
 
+        # List of delisted/invalid products to skip
+        DELISTED_PRODUCTS = {'UNFI-USD'}  # Add more as needed
+
         # Only calculate ATR for products with active positions to minimize API calls
-        active_products = [f"{symbol}-USD" for symbol in spot_positions.keys() if symbol not in ['USD', 'USDC']]
+        active_products = [
+            f"{symbol}-USD" for symbol in spot_positions.keys()
+            if symbol not in ['USD', 'USDC'] and f"{symbol}-USD" not in DELISTED_PRODUCTS
+        ]
 
         if not active_products:
             self.logger.debug("[ATR] No active positions, skipping ATR calculation")
