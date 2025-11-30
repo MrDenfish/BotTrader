@@ -185,19 +185,25 @@ class ProfitDataManager:
             profit_percentage = (profit / cost_basis) * 100 if cost_basis > 0 else Decimal(0)
 
             # ✅ Rounding to Precision
-            profit_percentage = round(profit_percentage, 4)
-            current_value = round(current_value, quote_deci)
-            profit = round(profit, quote_deci)
+            # Guard against invalid Decimal values before rounding
+            safe_quote_deci_temp = quote_deci if quote_deci is not None and isinstance(quote_deci, int) else 2
+            profit_percentage = round(profit_percentage, 4) if profit_percentage.is_finite() else Decimal(0)
+            current_value = round(current_value, safe_quote_deci_temp) if current_value.is_finite() else Decimal(0)
+            profit = round(profit, safe_quote_deci_temp) if profit.is_finite() else Decimal(0)
 
             # ✅ Construct Profit Data
+            # Guard against invalid precision values
+            safe_base_deci = base_deci if base_deci is not None and isinstance(base_deci, int) else 8
+            safe_quote_deci = quote_deci if quote_deci is not None and isinstance(quote_deci, int) else 2
+
             profit_data = {
                 'asset': asset,
-                'balance': round(asset_balance, base_deci),
-                'price': round(current_price, quote_deci),
-                'value': current_value,
-                'cost_basis': round(cost_basis, quote_deci),
-                'avg_price': round(avg_price, quote_deci),
-                'profit': profit,
+                'balance': round(asset_balance, safe_base_deci) if asset_balance.is_finite() else Decimal(0),
+                'price': round(current_price, safe_quote_deci) if current_price.is_finite() else Decimal(0),
+                'value': current_value if current_value.is_finite() else Decimal(0),
+                'cost_basis': round(cost_basis, safe_quote_deci) if cost_basis.is_finite() else Decimal(0),
+                'avg_price': round(avg_price, safe_quote_deci) if avg_price.is_finite() else Decimal(0),
+                'profit': profit if profit.is_finite() else Decimal(0),
                 'profit percent': f'{profit_percentage}%',
                 'status': required_prices.get('status', 'HDLG')
             }
