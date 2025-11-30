@@ -584,10 +584,11 @@ class TickerManager:
             self.logger.debug("[ATR] No active positions, skipping ATR calculation")
             return atr_pct_cache, atr_price_cache
 
-        self.logger.info(f"[ATR] Calculating ATR for {len(active_products)} active positions")
+        self.logger.info(f"[ATR] Calculating ATR for {len(active_products)} active positions: {active_products}")
 
         for product_id in active_products:
             try:
+                self.logger.info(f"[ATR] Fetching 1h OHLCV for {product_id}")
                 # Fetch 1-hour OHLCV data (need 200+ candles for 14-period ATR)
                 ohlcv_response = await self.coinbase_api.fetch_ohlcv(
                     product_id,
@@ -595,12 +596,12 @@ class TickerManager:
                 )
 
                 if not ohlcv_response or 'data' not in ohlcv_response:
-                    self.logger.debug(f"[ATR] No OHLCV data for {product_id}")
+                    self.logger.info(f"[ATR] No OHLCV data for {product_id}")
                     continue
 
                 df = ohlcv_response['data']
                 if len(df) < period + 1:
-                    self.logger.debug(f"[ATR] Insufficient OHLCV data for {product_id}: {len(df)} candles")
+                    self.logger.info(f"[ATR] Insufficient OHLCV data for {product_id}: {len(df)} candles")
                     continue
 
                 # Calculate ATR using True Range
@@ -634,7 +635,7 @@ class TickerManager:
                     self.logger.debug(f"[ATR] {product_id}: ATR={float(atr_price):.4f}, ATR%={float(atr_pct)*100:.2f}%")
 
             except Exception as e:
-                self.logger.debug(f"[ATR] Calculation failed for {product_id}: {e}")
+                self.logger.info(f"[ATR] Calculation failed for {product_id}: {e}")
                 continue
 
         self.logger.info(f"[ATR] Cached ATR for {len(atr_pct_cache)}/{len(active_products)} products")
