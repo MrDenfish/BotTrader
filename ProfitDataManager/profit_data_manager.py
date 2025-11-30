@@ -3,7 +3,7 @@ import re
 import os
 import pandas as pd
 from inspect import stack  # debugging
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from webhook.webhook_validate_orders import OrderData
 from Config.config_manager import CentralConfig as config
@@ -201,7 +201,7 @@ class ProfitDataManager:
                 try:
                     if value.is_finite():
                         return round(value, precision)
-                except (decimal.InvalidOperation, AttributeError):
+                except (InvalidOperation, AttributeError):
                     pass
                 return Decimal(0)
 
