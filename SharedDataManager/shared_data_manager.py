@@ -288,7 +288,8 @@ class SharedDataManager:
             async with self.lock:
                 if new_market_data:
                     self.logger.debug(f"🧠 Updating market_data: Keys = {list(new_market_data.keys())}")
-                    self.market_data = new_market_data
+                    # Merge instead of replace to preserve keys like buy_sell_matrix from database
+                    self.market_data.update(new_market_data)
                 if new_order_management:
                     self.logger.debug(f"📦 Updating order_management: Keys = {list(new_order_management.keys())}")
                     self.order_management = new_order_management
