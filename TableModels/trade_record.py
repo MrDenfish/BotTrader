@@ -28,6 +28,7 @@ class TradeRecord(Base):
     net_sale_proceeds_usd = Column(Float, nullable=True)  # NEW: for performance tracking
     remaining_size = Column(Float, nullable=True)
     realized_profit = Column(Float, nullable=True)  # NEW: for performance tracking
+    exit_reason = Column(String, nullable=True)  # NEW: tracks which exit mechanism triggered (TP/SOFT_STOP/HARD_STOP/SIGNAL_EXIT/TRAILING_STOP/MANUAL)
     ingest_via = Column(String)
     last_reconciled_at = Column(DateTime(timezone=True))
     last_reconciled_via = Column(String)

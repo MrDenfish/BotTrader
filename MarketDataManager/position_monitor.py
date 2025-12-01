@@ -458,11 +458,27 @@ class PositionMonitor:
             highest_bid = Decimal(str(bid_ask.get('bid', current_price)))
             lowest_ask = Decimal(str(bid_ask.get('ask', current_price)))
 
-            # Build order data
+            # Build order data with exit_reason
             trigger = self.trade_order_manager.build_trigger(
                 "position_monitor_exit",
                 f"{reason} - exiting position"
             )
+            # Add exit_reason to trigger for database recording
+            # Extract clean exit_reason from the detailed reason string
+            if "HARD_STOP" in reason:
+                exit_reason_code = "HARD_STOP"
+            elif "SOFT_STOP" in reason:
+                exit_reason_code = "SOFT_STOP"
+            elif "SIGNAL_EXIT" in reason:
+                exit_reason_code = "SIGNAL_EXIT"
+            elif "TRAILING_STOP" in reason:
+                exit_reason_code = "TRAILING_STOP"
+            elif "TAKE_PROFIT" in reason:
+                exit_reason_code = "TAKE_PROFIT"
+            else:
+                exit_reason_code = "MANUAL"
+
+            trigger["exit_reason"] = exit_reason_code
 
             # For market orders (emergency exit), we'll still use LIMIT but at current bid
             # to ensure fill while maintaining some price control

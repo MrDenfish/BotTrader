@@ -367,6 +367,9 @@ class TradeRecorder:
                     # -----------------------------
                     # Build row
                     # -----------------------------
+                    # Extract exit_reason from trade_data (for SELL orders from position_monitor)
+                    exit_reason = trade_data.get("exit_reason") if side == "sell" else None
+
                     trade_dict = {
                         "order_id": order_id,
                         "parent_id": parent_id,
@@ -391,6 +394,8 @@ class TradeRecorder:
                         "remaining_size": float(amount) if side == "buy" else None,
                         # SELL realized_profit equals pnl_usd; BUY has None
                         "realized_profit": float(pnl_usd) if side == "sell" and pnl_usd is not None else None,
+                        # NEW: Exit mechanism tracking (SOFT_STOP, HARD_STOP, SIGNAL_EXIT, TRAILING_STOP, TAKE_PROFIT, MANUAL)
+                        "exit_reason": exit_reason,
                     }
 
                     if ingest_via:

@@ -761,7 +761,7 @@ def validate_on_import():
 # CLI for manual validation
 # ============================================================================
 
-if __main__ == "__main__":
+if __name__ == "__main__":
     """Run validation from command line: python -m Config.validators"""
     import sys
 

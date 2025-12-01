@@ -349,6 +349,11 @@ class WebSocketMarketManager:
             # Default for orders we don't have trigger info for
             trigger = {"trigger": "websocket", "trigger_note": "trigger unknown (order placed externally or before session start)"}
 
+        # Extract exit_reason from trigger if present (for SELL orders)
+        exit_reason = None
+        if side == "sell" and isinstance(trigger, dict):
+            exit_reason = trigger.get("exit_reason")
+
         return {
             "order_id": fill_order_id,
             "parent_id": parent_id,
@@ -361,6 +366,7 @@ class WebSocketMarketManager:
             "trigger": trigger,
             "source": "websocket",
             "total_fees": fee,  # (optional) consider aligning with `total_fees_usd`
+            "exit_reason": exit_reason,  # NEW: tracks which exit mechanism triggered
         }
 
     def _normalize_order_time(self, raw_time) -> str:
