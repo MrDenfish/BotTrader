@@ -1,5 +1,7 @@
 
 import asyncio
+import json
+import os
 from decimal import Decimal
 from decimal import ROUND_DOWN, InvalidOperation
 
@@ -44,6 +46,10 @@ class PortfolioManager:
         self._roc_buy_24h = Decimal(self.app_config.roc_buy_24h)
         self._roc_sell_24h = Decimal(self.app_config.roc_sell_24h)
         self.shill_coins = self.app_config.shill_coins
+
+        # Load symbol blacklist for entry filtering
+        self.symbol_blacklist = self._load_symbol_blacklist()
+
         # External dependencies
         self.exchange = exchange
         self.ccxt_api = ccxt_api
@@ -62,6 +68,24 @@ class PortfolioManager:
     def __repr__(self):
         """ Returns a string representation of the PortfolioManager instance. """
         return f"<PortfolioManager(exchange={self.exchange}, rate_limit={self.rate_limit})>"
+
+    def _load_symbol_blacklist(self):
+        """Load symbol blacklist from config file for entry filtering."""
+        try:
+            # Try to load from config/symbol_blacklist.json
+            blacklist_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'symbol_blacklist.json')
+            if os.path.exists(blacklist_path):
+                with open(blacklist_path, 'r') as f:
+                    data = json.load(f)
+                    blacklist = data.get('blacklist', [])
+                    self.logger.info(f"✅ Loaded {len(blacklist)} symbols from blacklist")
+                    return set(blacklist)  # Use set for O(1) lookups
+            else:
+                self.logger.info(f"ℹ️  No blacklist file found at {blacklist_path}, proceeding without blacklist")
+                return set()
+        except Exception as e:
+            self.logger.error(f"❌ Error loading symbol blacklist: {e}", exc_info=True)
+            return set()
 
     @property
     def market_data(self):
@@ -228,6 +252,14 @@ class PortfolioManager:
                     (abs(rows_to_add['price change %']) >= self.roc_sell_24h) &
                     (rows_to_add['quote volume'] >= self.min_quote_volume / 2)
                     ]
+
+                # Apply symbol blacklist filter
+                if self.symbol_blacklist and 'symbol' in filtered_df.columns:
+                    original_count = len(filtered_df)
+                    filtered_df = filtered_df[~filtered_df['symbol'].isin(self.symbol_blacklist)]
+                    blacklisted_count = original_count - len(filtered_df)
+                    if blacklisted_count > 0:
+                        self.logger.info(f"🚫 Filtered out {blacklisted_count} blacklisted symbols from buy_sell_matrix")
 
                 return filtered_df
 

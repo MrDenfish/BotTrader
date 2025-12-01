@@ -1,0 +1,40 @@
+{
+  "blacklist": [
+    "1INCH-USD",
+    "AAVE-USD",
+    "ADA-USD",
+    "AVAX-USD",
+    "AVNT-USD",
+    "BCH-USD",
+    "BONK-USD",
+    "BTC-USD",
+    "ENA-USD",
+    "HBAR-USD",
+    "LTC-USD",
+    "MLN-USD",
+    "MON-USD",
+    "MUSE-USD",
+    "NEAR-USD",
+    "ORCA-USD",
+    "PENGU-USD",
+    "SOL-USD",
+    "SUI-USD",
+    "SWFTC-USD",
+    "TAO-USD",
+    "TIA-USD",
+    "XAN-USD"
+  ],
+  "metadata": {
+    "created_date": "2025-11-30",
+    "analysis_period": "30 days",
+    "criteria": "Win rate < 20% with >= 5 trades",
+    "symbols_count": 23,
+    "expected_impact": {
+      "win_rate_improvement": 8.5,
+      "pnl_recovery_usd": 585.57,
+      "trades_filtered": 235
+    },
+    "last_reviewed": "2025-11-30",
+    "next_review": "2025-12-30"
+  }
+}
