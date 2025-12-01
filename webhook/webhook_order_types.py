@@ -700,7 +700,7 @@ class OrderTypeManager:
                         }
                 else:
                     filled_size = await self.shared_data_manager.trade_recorder.find_latest_filled_size(symbol, side='buy')
-                    if amount > filled_size:
+                    if filled_size is not None and amount > filled_size:
                         if attempts == 1:
                             amount = self.shared_utils_precision.compute_safe_base_size(
                                 order_data.available_to_trade_crypto,
