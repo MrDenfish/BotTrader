@@ -600,8 +600,10 @@ class SharedDataManager:
                     if self.market_data:
                         db_market_data = await self._fetch_data_in_transaction("market_data", session)
                         if db_market_data:
+                            # Preprocess DB data to handle DataFrames before merging
+                            db_market_data_preprocessed = preprocess_market_data(db_market_data)
                             # Merge: DB data first, then overlay with our changes
-                            merged_market_data = {**db_market_data, **saved_market_data}
+                            merged_market_data = {**db_market_data_preprocessed, **saved_market_data}
                             await self.update_data("market_data", merged_market_data, session)
                         else:
                             await self.update_data("market_data", saved_market_data, session)
