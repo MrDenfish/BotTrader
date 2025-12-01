@@ -7,11 +7,12 @@ from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from Shared_Utils.logger import get_logger
+from MarketDataManager.position_monitor import PositionMonitor
 
 # === Config knobs (put near other module-level constants or __init__) ===
-POSITIONS_EXIT_SWEEP_INTERVAL_SEC = 3       # how often you’ll call this (see B)
+POSITIONS_EXIT_SWEEP_INTERVAL_SEC = 3       # how often you'll call this (see B)
 POSITIONS_EXIT_OCO_GRACE_SEC      = 10      # grace after open before we (re)arm
-POSITIONS_EXIT_REARM              = True    # True = create OCO if missing; False = passive-only
+POSITIONS_EXIT_REARM              = False   # DISABLED: position_monitor now handles exits with P&L thresholds
 BRACKET_ADJUST_GRACE_SEC = 10  # do not cancel/adjust bracket legs in the first N seconds
 LIMIT_ADJUST_GRACE_SEC   = 10  # do not cancel/adjust plain limit sells in the first N seconds
 PASSIVE_EXIT_MODE = "market"        # "market" | "limit_at_bid"
@@ -49,6 +50,21 @@ class AssetMonitor:
         self.hodl = config.hodl
 
         self.order_tracker_lock = asyncio.Lock()
+
+        # Track OCO rearming attempts per symbol to prevent infinite loops
+        # Format: {symbol: {'attempts': int, 'last_attempt_time': datetime, 'backoff_until': datetime}}
+        self._oco_rearm_retries = {}
+        self._oco_max_retries = 5  # Stop retrying after 5 failed attempts
+        self._oco_backoff_minutes = 15  # Wait 15 minutes before allowing retry reset
+
+        # Initialize position monitor for smart LIMIT exits
+        self.position_monitor = PositionMonitor(
+            shared_data_manager=shared_data_manager,
+            trade_order_manager=trade_order_manager,
+            shared_utils_precision=shared_utils_precision,
+            logger=self.logger
+        )
+        self.logger.info(f"[ASSET_MONITOR] Position monitor initialized successfully: {type(self.position_monitor).__name__}")
 
     @property
     def non_zero_balances(self):
@@ -268,7 +284,39 @@ class AssetMonitor:
         Position-centric safety net:
           - If a live bracket child exists → delegate to _handle_active_tp_sl_decision.
           - Else → (re)arm a fresh protective bracket (no cancels).
+
+        Implements retry limit to prevent infinite loops when OCO placement repeatedly fails.
         """
+        # 0) Check retry limit and backoff period to prevent infinite loops
+        now = datetime.now(timezone.utc)
+        retry_data = self._oco_rearm_retries.get(symbol, {})
+        attempts = retry_data.get('attempts', 0)
+        backoff_until = retry_data.get('backoff_until')
+
+        # If we're in backoff period, skip with debug log
+        if backoff_until and now < backoff_until:
+            remaining_mins = (backoff_until - now).total_seconds() / 60
+            self.logger.debug(
+                f"[REARM_OCO] Skipping {symbol}: in backoff period for {remaining_mins:.1f} more minutes "
+                f"(failed {attempts} times)"
+            )
+            return
+
+        # If max retries exceeded and not in backoff, enter backoff period
+        if attempts >= self._oco_max_retries:
+            backoff_until = now + timedelta(minutes=self._oco_backoff_minutes)
+            self._oco_rearm_retries[symbol] = {
+                'attempts': attempts,
+                'last_attempt_time': now,
+                'backoff_until': backoff_until
+            }
+            self.logger.warning(
+                f"⚠️ [REARM_OCO] {symbol} hit max retry limit ({self._oco_max_retries} attempts). "
+                f"Backing off for {self._oco_backoff_minutes} minutes. "
+                f"OCO protection will NOT be placed until backoff expires."
+            )
+            return
+
         # 1) Try to locate a live child order for this symbol
         order_mgmt = self.shared_data_manager.order_management
         tracked = self._normalize_order_tracker_snapshot(order_mgmt)
@@ -307,6 +355,92 @@ class AssetMonitor:
                 return
 
         # 3) No live child → (re)arm protection (treat as EXIT; bypass entry gates/cooldowns)
+
+        # Pre-check: Validate available balance before attempting order placement
+        # This prevents "insufficient balance" loops when balance is locked in pending orders
+        try:
+            # spot_positions is keyed by asset (e.g., "AERO"), not symbol (e.g., "AERO-USD")
+            spot_pos = self.shared_data_manager.market_data.get("spot_positions", {}).get(asset, {})
+            available_crypto = Decimal(str(spot_pos.get("available_to_trade_crypto", "0")))
+            total_crypto = Decimal(str(spot_pos.get("total_balance_crypto", "0")))
+
+            # Debug: Log what we found
+            self.logger.debug(
+                f"[REARM_OCO] Balance check for {symbol}: asset={asset}, "
+                f"available={available_crypto}, total={total_crypto}"
+            )
+
+            # If available balance is too low, skip (likely locked in pending orders)
+            if available_crypto <= Decimal("0.001"):
+                if total_crypto > Decimal("0.001"):
+                    # Balance exists but is locked - this is the issue we're trying to prevent
+                    self.logger.warning(
+                        f"⚠️ [REARM_OCO] Skipping {symbol}: balance locked in pending orders "
+                        f"(total={total_crypto}, available={available_crypto}). "
+                        f"Will retry after balance frees up."
+                    )
+                else:
+                    # Dust or no balance at all
+                    self.logger.debug(
+                        f"[REARM_OCO] Skipping {symbol}: insufficient balance (total={total_crypto})"
+                    )
+                # Reset retry counter since this isn't a placement failure
+                if symbol in self._oco_rearm_retries:
+                    del self._oco_rearm_retries[symbol]
+                return
+        except Exception as e:
+            self.logger.debug(f"[REARM_OCO] Could not check available balance for {symbol}: {e}")
+
+        # Log position details for diagnostics
+        self.logger.debug(
+            f"[REARM_OCO] Attempting to arm {symbol}: qty={qty}, avg_entry={avg_entry}, "
+            f"profit_pct={profit_pct:.2%}, current_price={current_price}"
+        )
+
+        # NEW: Check for orphaned non-OCO orders and cancel them first
+        orphaned_orders = []
+        for oid, raw in tracked.items():
+            try:
+                if raw.get("symbol") == symbol or raw.get("product_id") == symbol:
+                    # Check if this is NOT an OCO order
+                    info = raw.get("info", {}) or {}
+                    ocfg = (info.get("order_configuration") or {})
+                    is_oco = "trigger_bracket_gtc" in ocfg
+
+                    if not is_oco and raw.get("status") in {"open", "OPEN", "new", "NEW"}:
+                        orphaned_orders.append((oid, raw))
+            except Exception as e:
+                self.logger.debug(f"Error checking order {oid}: {e}")
+                continue
+
+        # Cancel orphaned orders that are blocking OCO placement
+        if orphaned_orders:
+            self.logger.warning(
+                f"[UNTRACKED] Found {len(orphaned_orders)} orphaned non-OCO order(s) for {symbol}. "
+                f"Canceling to place protective OCO..."
+            )
+            for oid, order_info in orphaned_orders:
+                try:
+                    # Cancel the order on Coinbase using cancel_order (takes a list)
+                    cancel_resp = await self.trade_order_manager.coinbase_api.cancel_order([oid])
+
+                    # Check if cancellation was successful
+                    results = (cancel_resp or {}).get("results") or []
+                    entry = next((r for r in results if str(r.get("order_id")) == str(oid)), None)
+
+                    if entry and entry.get("success"):
+                        self.logger.info(f"[UNTRACKED] Canceled orphaned order {oid} for {symbol}")
+
+                        # Remove from order_tracker
+                        if oid in self.shared_data_manager.order_management.get('order_tracker', {}):
+                            del self.shared_data_manager.order_management['order_tracker'][oid]
+                            self.logger.info(f"[UNTRACKED] Removed order {oid} from order_tracker")
+                    else:
+                        failure_reason = entry.get("failure_reason") if entry else "No response entry"
+                        self.logger.warning(f"[UNTRACKED] Failed to cancel orphaned order {oid}: {failure_reason}")
+                except Exception as e:
+                    self.logger.error(f"[UNTRACKED] Failed to cancel orphaned order {oid}: {e}", exc_info=True)
+
         trigger = self.trade_order_manager.build_trigger(
             "rearm_oco_missing",
             f"arming protection for naked position qty={qty} avg={avg_entry}"
@@ -320,12 +454,35 @@ class AssetMonitor:
             # Leave price None; your builder should compute TP/SL legs from config & avg
         )
         if not new_order:
-            self.logger.warning(f"[UNTRACKED] Failed to build protective OCO for {symbol}; leaving as-is (still monitored)")
+            # Increment retry counter on build failure
+            self._oco_rearm_retries[symbol] = {
+                'attempts': attempts + 1,
+                'last_attempt_time': now,
+                'backoff_until': backoff_until
+            }
+            self.logger.warning(
+                f"[REARM_OCO] Failed to build protective OCO for {symbol} (attempt {attempts + 1}/{self._oco_max_retries}); "
+                f"will retry on next sweep"
+            )
             return
 
         success, resp = await self.trade_order_manager.place_order(new_order, precision_data)
-        log = self.logger.info if success else self.logger.warning
-        log(f"{'🛡️' if success else '⚠️'} Rearmed protection for {symbol} (untracked): {resp}")
+
+        if success:
+            # ✅ SUCCESS: Reset retry counter
+            if symbol in self._oco_rearm_retries:
+                del self._oco_rearm_retries[symbol]
+            self.logger.info(f"🛡️ Rearmed protection for {symbol} (untracked): {resp}")
+        else:
+            # ❌ FAILURE: Increment retry counter
+            self._oco_rearm_retries[symbol] = {
+                'attempts': attempts + 1,
+                'last_attempt_time': now,
+                'backoff_until': backoff_until
+            }
+            self.logger.warning(
+                f"⚠️ [REARM_OCO] Failed to place OCO for {symbol} (attempt {attempts + 1}/{self._oco_max_retries}): {resp}"
+            )
 
 
     def _extract_order_id(self, place_response: dict | None) -> str | None:
@@ -1216,6 +1373,10 @@ class AssetMonitor:
         Positions-first safety sweep with two-section locking and DAO fallback.
         """
         try:
+            # NEW: Run position monitor first (independent of position fetch)
+            self.logger.debug(f"[ASSET_MONITOR] About to call position_monitor.check_positions(), monitor object: {self.position_monitor}")
+            await self.position_monitor.check_positions()
+
             # ── Section 1: short snapshot of the in-memory order tracker ──
             async with self.order_tracker_lock:
                 tracker_snapshot = self._normalize_order_tracker_snapshot(

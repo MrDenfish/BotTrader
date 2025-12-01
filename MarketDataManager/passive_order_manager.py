@@ -345,6 +345,21 @@ class PassiveOrderManager:
                 self.logger.debug("⛔ No shared_data_manager; skipping passive orders.")
                 return
 
+            # Load HODL and SHILL_COINS lists from environment
+            hodl_list = os.getenv('HODL', '').split(',')
+            hodl_assets = {a.strip().upper() for a in hodl_list if a.strip()}
+
+            shill_list = os.getenv('SHILL_COINS', '').split(',')
+            shill_assets = {a.strip().upper() for a in shill_list if a.strip()}
+
+            # Check if this asset is in SHILL_COINS (only allow sells, no buys)
+            if asset.upper() in shill_assets:
+                self.logger.debug(
+                    f"⛔ PassiveMM:shill_coin {asset} - only sells allowed, skipping passive BUY placement"
+                )
+                # Note: We still allow through to potentially place SELL orders
+                # but we'll block BUY orders below
+
             # -------- 1) profitability/liquidity gate --------
             profitable = await self.shared_data_manager.fetch_profitable_symbols(
                 min_trades=2, min_pnl_usd=Decimal("0.0"), lookback_days=7,
@@ -486,6 +501,14 @@ class PassiveOrderManager:
 
             # -------- 9) submit BUY first (via order_amount_fiat) --------
             if place_buy:
+                # Block BUY for SHILL_COINS
+                if asset.upper() in shill_assets:
+                    self.logger.info(
+                        f"⛔ PassiveMM:blocking_buy {trading_pair} - {asset} is in SHILL_COINS (only sells allowed)"
+                    )
+                    place_buy = False
+
+            if place_buy:
                 try:
                     buy_od = copy.deepcopy(od)
                     buy_od.side = "buy"
@@ -532,6 +555,14 @@ class PassiveOrderManager:
                     self.logger.error(f"❌ Exception placing PASSIVE BUY for {trading_pair}: {e}", exc_info=True)
 
             # -------- 10) submit SELL (via base_avail_balance) --------
+            if place_sell:
+                # Block SELL for HODL assets
+                if asset.upper() in hodl_assets:
+                    self.logger.info(
+                        f"⛔ PassiveMM:blocking_sell {trading_pair} - {asset} is in HODL (only buys allowed)"
+                    )
+                    place_sell = False
+
             if place_sell:
                 try:
                     sell_od = copy.deepcopy(od)
@@ -594,7 +625,8 @@ class PassiveOrderManager:
             sell_od = self._clone_order_data(od, side="sell", trigger=f"passive_{reason}", source="passivemm")
             sell_od.type = "limit"
             sell_od.adjusted_price = price.quantize(Decimal(f'1e-{od.quote_decimal}'))
-            sell_od.adjusted_size = od.available_to_trade_crypto
+            # Use total_balance_crypto to sell entire position (no dust left behind)
+            sell_od.adjusted_size = od.total_balance_crypto
             sell_od.cost_basis = (sell_od.adjusted_price * sell_od.adjusted_size).quantize(
                 Decimal(f'1e-{od.quote_decimal}'), rounding=ROUND_HALF_UP
             )

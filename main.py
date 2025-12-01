@@ -637,6 +637,7 @@ def make_webhook_tasks(*, listener, logger_manager, websocket_manager, shared_da
         asyncio.create_task(websocket_manager.start_websockets(), name="Websocket Manager"), t_leaderboard_job, t_watchdog,
         asyncio.create_task(task_census(120)),
         asyncio.create_task(listener.asset_monitor.run_positions_exit_sentinel(3), name="Positions Exit Sentinel"),
+        asyncio.create_task(refresh_loop(shared_data_manager, interval=60), name="Shared Data Refresh Loop"),
     ]
 
     # 🔇 Optional: only add accumulation in non-webhook modes (or if explicitly enabled)

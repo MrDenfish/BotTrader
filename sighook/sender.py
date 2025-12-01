@@ -389,6 +389,14 @@ class TradeBot:
                 strategy_results, buy_sell_matrix = await self.trading_strategy.process_all_rows(filtered_ticker_cache,
                                                                                         buy_sell_matrix, open_orders)
 
+                # Cache buy_sell_matrix for position_monitor signal-based exits
+                if buy_sell_matrix is not None and not buy_sell_matrix.empty:
+                    self.shared_data_manager.market_data['buy_sell_matrix'] = buy_sell_matrix
+                    self.logger.debug(f"[SIGNAL_CACHE] Cached buy_sell_matrix with {len(buy_sell_matrix)} symbols")
+                    # Persist to database so webhook/position_monitor can access it
+                    await self.shared_data_manager.save_data()
+                    self.logger.debug(f"[SIGNAL_CACHE] Persisted buy_sell_matrix to database")
+
                 self.shared_utils_print.print_elapsed_time(self.start_time, '🟩   Part IV: Trading Strategies')
 
                 # PART V:

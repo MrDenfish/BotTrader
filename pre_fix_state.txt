@@ -1,0 +1,132 @@
+[INFO] Loaded environment from /Users/Manny/Python_Projects/BotTrader/.env
+
+================================================================================
+OCO ORDER PLACEMENT DIAGNOSTIC
+================================================================================
+Timestamp: 2025-11-22 17:46:18.079331
+
+Connecting to 127.0.0.1:5432/bot_trader_db as bot_user...
+
+================================================================================
+1. CHECK ORDER_TRACKER IN ORDER_MANAGEMENT
+================================================================================
+✓ Found 6 order(s) in order_tracker
+
+  Order ID: 38796938-71e0-4a1d-8923-ff7eb96c48b8
+    Symbol: TOWNS-USD
+    Side: SELL
+    Type: N/A
+    Status: OPEN
+
+  Order ID: 46d3a130-09b4-4198-a2c5-b33a849e9c7d
+    Symbol: ELA-USD
+    Side: SELL
+    Type: N/A
+    Status: OPEN
+
+  Order ID: a83047e9-24d0-47b3-a339-e38a9772b954
+    Symbol: CLANKER-USD
+    Side: SELL
+    Type: N/A
+    Status: OPEN
+
+  Order ID: 7a3ac5cf-f798-4ee7-9a5b-8e9bbb789d31
+    Symbol: ZORA-USD
+    Side: SELL
+    Type: N/A
+    Status: OPEN
+
+  Order ID: 5a18d962-f819-4446-a828-214ce2cd32ff
+    Symbol: UNI-USD
+    Side: SELL
+    Type: N/A
+    Status: OPEN
+
+  Order ID: 50965dcf-350b-4410-9263-657012d11b1d
+    Symbol: TRUST-USD
+    Side: SELL
+    Type: N/A
+    Status: OPEN
+
+================================================================================
+2. CHECK POSITIONS IN ORDER_MANAGEMENT
+================================================================================
+✓ No positions in order_management.positions
+
+================================================================================
+3. CHECK SPOT POSITIONS (HOLDINGS)
+================================================================================
+✓ Found 8 non-zero holdings:
+
+  TOWNS: total=536.600000, available=0.200000
+  UNI: total=4.158006, available=0.000002
+  ATOM: total=38.450000, available=0.000000
+  ELA: total=20.230000, available=1.750000
+  CLANKER: total=0.454200, available=0.000200
+  ZORA: total=497.000000, available=2.000000
+  UNFI: total=12.000000, available=0.000000
+  TRUST: total=94.400000, available=0.200000
+
+================================================================================
+4. CHECK FOR ORPHANED/STALE ORDERS
+================================================================================
+Checking if order_tracker contains orders for symbols with positions...
+
+⚠️  Found 8 untracked symbols (holdings without positions):
+  - TOWNS-USD
+    🔴 HAS OPEN ORDER: 38796938-71e0-4a1d-8923-ff7eb96c48b8 (side=SELL, status=OPEN)
+       THIS IS BLOCKING OCO PLACEMENT!
+  - UNI-USD
+    🔴 HAS OPEN ORDER: 5a18d962-f819-4446-a828-214ce2cd32ff (side=SELL, status=OPEN)
+       THIS IS BLOCKING OCO PLACEMENT!
+  - ATOM-USD
+    ✓ No open order blocking placement
+  - ELA-USD
+    🔴 HAS OPEN ORDER: 46d3a130-09b4-4198-a2c5-b33a849e9c7d (side=SELL, status=OPEN)
+       THIS IS BLOCKING OCO PLACEMENT!
+  - CLANKER-USD
+    🔴 HAS OPEN ORDER: a83047e9-24d0-47b3-a339-e38a9772b954 (side=SELL, status=OPEN)
+       THIS IS BLOCKING OCO PLACEMENT!
+  - ZORA-USD
+    🔴 HAS OPEN ORDER: 7a3ac5cf-f798-4ee7-9a5b-8e9bbb789d31 (side=SELL, status=OPEN)
+       THIS IS BLOCKING OCO PLACEMENT!
+  - UNFI-USD
+    ✓ No open order blocking placement
+  - TRUST-USD
+    🔴 HAS OPEN ORDER: 50965dcf-350b-4410-9263-657012d11b1d (side=SELL, status=OPEN)
+       THIS IS BLOCKING OCO PLACEMENT!
+
+================================================================================
+5. DIAGNOSIS SUMMARY
+================================================================================
+
+Root Cause Analysis:
+====================
+
+The asset_monitor detects untracked positions (holdings without protection) and
+attempts to place OCO orders. However, the order placement is blocked if:
+
+1. There's already an open order for that symbol in order_tracker
+2. This causes place_order() to return (False, validation_result)
+3. The validation succeeds ('is_valid': True) but the order isn't placed
+4. The position remains unprotected
+5. The cycle repeats every 60 seconds
+
+Solution:
+=========
+
+If orphaned/stale orders are found above, they need to be cleaned up. Options:
+
+A. Manual cleanup:
+   - Cancel the stale orders on Coinbase
+   - Remove them from order_tracker in shared_data
+
+B. Code fix:
+   - Modify asset_monitor to check if existing order is actually a protective OCO
+   - If not, cancel the old order and place the new OCO
+   - Or skip the has_open_order check for rearm_oco_missing triggers
+
+C. Investigate why orders are orphaned:
+   - Orders may have been placed but not tracked properly
+   - Or tracked orders weren't cleaned up after fills/cancels
+

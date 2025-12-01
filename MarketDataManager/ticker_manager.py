@@ -1,5 +1,6 @@
 import asyncio
 import os
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 import pandas as pd
@@ -159,6 +160,11 @@ class TickerManager:
                 o["id"]: o for o in open_orders if isinstance(o, dict) and "id" in o
             }
 
+            # Calculate ATR for active positions
+            product_ids = usd_pairs_cache["symbol"].tolist() if not usd_pairs_cache.empty else []
+            atr_pct_cache, atr_price_cache = await self._calculate_atr_for_products(
+                product_ids, spot_positions
+            )
 
             # Calculate average quote volume
             min_quote_volume = tickers_cache['24h_quote_volume'].min()
@@ -168,6 +174,8 @@ class TickerManager:
                 "filtered_vol": supported_vol_markets,
                 "usd_pairs_cache": usd_pairs_cache,
                 "bid_ask_spread": bid_ask_spread,
+                "atr_pct_cache": atr_pct_cache,
+                "atr_price_cache": atr_price_cache,
                 "avg_quote_volume": Decimal(min_quote_volume).quantize(Decimal('0')),
                 "spot_positions": spot_positions
             }, {"non_zero_balances": non_zero_balances, 'order_tracker': open_orders_dict}
@@ -195,7 +203,8 @@ class TickerManager:
         try:
             portfolio_data = await self.get_portfolio_breakdown(portfolio_uuid)
             if not portfolio_data:
-                raise ValueError("Portfolio breakdown data is empty or invalid.")
+                self.logger.warning("⚠️ Portfolio breakdown failed, attempting fallback to get_accounts()")
+                return await self._fetch_balances_from_accounts()
 
             spot_positions = portfolio_data.breakdown.spot_positions
             non_zero_balances = {}
@@ -252,6 +261,70 @@ class TickerManager:
 
         except Exception as e:
             self.logger.error(f"❌ Error in fetch_and_filter_balances: {e}", exc_info=True)
+            self.logger.warning("⚠️ Attempting fallback to get_accounts() due to error")
+            try:
+                return await self._fetch_balances_from_accounts()
+            except Exception as fallback_error:
+                self.logger.error(f"❌ Fallback also failed: {fallback_error}", exc_info=True)
+                return {}
+
+    async def _fetch_balances_from_accounts(self) -> dict:
+        """
+        Fallback method to fetch balances using get_accounts() API when
+        get_portfolio_breakdown() fails.
+
+        Returns balances in a compatible format (though without average_entry_price
+        and some other portfolio-specific fields).
+        """
+        self.logger.info("📞 Fetching balances from get_accounts() fallback")
+
+        try:
+            accounts_response = await asyncio.to_thread(self.rest_client.get_accounts)
+
+            if not accounts_response or not hasattr(accounts_response, 'accounts'):
+                self.logger.warning("⚠️ get_accounts() returned empty or invalid data")
+                return {}
+
+            non_zero_balances = {}
+
+            for account in accounts_response.accounts:
+                asset = account.currency
+                available_balance = Decimal(str(account.available_balance.value))
+                hold_balance = Decimal(str(account.hold.value))
+                total_balance_crypto = available_balance + hold_balance
+
+                # Skip if below minimum threshold (except USD)
+                # Note: We don't have fiat value here, so use a conservative crypto threshold
+                if total_balance_crypto <= Decimal('0.0001') and asset != 'USD':
+                    continue
+
+                # Create a simplified position dict compatible with process_spot_positions
+                # Note: Missing average_entry_price and unrealized_pnl - position_monitor will skip these
+                position = {
+                    'asset': asset,
+                    'total_balance_crypto': str(total_balance_crypto),
+                    'available_to_trade_crypto': str(available_balance),
+                    'total_balance_fiat': '0',  # Not available from get_accounts
+                    'available_to_trade_fiat': '0',
+                    'allocation': '0',
+                    'unrealized_pnl': {'value': '0', 'currency': 'USD'},  # Not available
+                    'cost_basis': {'value': '0', 'currency': 'USD'},  # Not available
+                    # Missing average_entry_price - will cause position_monitor to skip
+                    'precision': str(account.currency),
+                    'available_to_transfer_fiat': '0',
+                    'available_to_transfer_crypto': str(available_balance),
+                    'funding_pnl': {'value': '0', 'currency': 'USD'},
+                    'available_to_send_fiat': '0',
+                    'available_to_send_crypto': str(available_balance),
+                }
+
+                non_zero_balances[asset] = position
+
+            self.logger.info(f"✅ Fallback get_accounts() returned {len(non_zero_balances)} positions")
+            return non_zero_balances
+
+        except Exception as e:
+            self.logger.error(f"❌ Error in _fetch_balances_from_accounts: {e}", exc_info=True)
             return {}
 
     def process_spot_positions( self, non_zero_balances: dict,
@@ -489,6 +562,100 @@ class TickerManager:
         except Exception as e:
             self.logger.error(f"❌ Error in prepare_dataframe: {e}", exc_info=True)
             return pd.DataFrame()
+
+    async def _calculate_atr_for_products(self, product_ids: list, spot_positions: dict, period: int = 14) -> tuple:
+        """
+        Calculate ATR (Average True Range) for products with active positions.
+
+        Args:
+            product_ids: List of all product IDs
+            spot_positions: Dictionary of active positions {symbol: position_data}
+            period: ATR period (default: 14 candles)
+
+        Returns:
+            tuple: (atr_pct_cache, atr_price_cache) dictionaries
+        """
+        atr_pct_cache = {}
+        atr_price_cache = {}
+
+        # List of delisted/invalid products to skip
+        DELISTED_PRODUCTS = {'UNFI-USD'}  # Add more as needed
+
+        # Only calculate ATR for products with active positions to minimize API calls
+        active_products = [
+            f"{symbol}-USD" for symbol in spot_positions.keys()
+            if symbol not in ['USD', 'USDC'] and f"{symbol}-USD" not in DELISTED_PRODUCTS
+        ]
+
+        if not active_products:
+            self.logger.debug("[ATR] No active positions, skipping ATR calculation")
+            return atr_pct_cache, atr_price_cache
+
+        self.logger.info(f"[ATR] Calculating ATR for {len(active_products)} active positions: {active_products}")
+
+        for product_id in active_products:
+            try:
+                self.logger.info(f"[ATR] Fetching 1h OHLCV for {product_id}")
+                # Fetch 1-hour OHLCV data (need 200+ candles for 14-period ATR)
+                # Calculate timestamps: 200 hours ~= 8.3 days ago
+                end_time = int(datetime.now(timezone.utc).timestamp())
+                start_time = end_time - (200 * 3600)  # 200 hours in seconds
+
+                ohlcv_response = await self.coinbase_api.fetch_ohlcv(
+                    product_id,
+                    params={
+                        'start': start_time,
+                        'end': end_time,
+                        'granularity': 'ONE_HOUR',
+                        'limit': 200
+                    }
+                )
+
+                if not ohlcv_response or 'data' not in ohlcv_response:
+                    self.logger.info(f"[ATR] No OHLCV data for {product_id}")
+                    continue
+
+                df = ohlcv_response['data']
+                if len(df) < period + 1:
+                    self.logger.info(f"[ATR] Insufficient OHLCV data for {product_id}: {len(df)} candles")
+                    continue
+
+                # Calculate ATR using True Range
+                trs = []
+                prev_close = Decimal(str(df.iloc[0]['close']))
+
+                for idx in range(1, len(df)):
+                    row = df.iloc[idx]
+                    high = Decimal(str(row['high']))
+                    low = Decimal(str(row['low']))
+                    close = Decimal(str(row['close']))
+
+                    # True Range = max(high - low, |high - prev_close|, |prev_close - low|)
+                    tr = max(high - low, abs(high - prev_close), abs(prev_close - low))
+                    trs.append(tr)
+                    prev_close = close
+
+                    # Keep only last 'period' True Ranges
+                    if len(trs) > period:
+                        trs.pop(0)
+
+                # Calculate ATR and convert to percentage
+                if trs and prev_close > 0:
+                    atr_price = sum(trs) / Decimal(len(trs))
+                    atr_pct = atr_price / prev_close
+
+                    # Store in caches (as floats for JSON serialization)
+                    atr_price_cache[product_id] = float(atr_price)
+                    atr_pct_cache[product_id] = float(atr_pct)
+
+                    self.logger.debug(f"[ATR] {product_id}: ATR={float(atr_price):.4f}, ATR%={float(atr_pct)*100:.2f}%")
+
+            except Exception as e:
+                self.logger.info(f"[ATR] Calculation failed for {product_id}: {e}")
+                continue
+
+        self.logger.info(f"[ATR] Cached ATR for {len(atr_pct_cache)}/{len(active_products)} products")
+        return atr_pct_cache, atr_price_cache
 
     async def parallel_fetch_and_update(self, usd_pairs, df, update_type: str = "current_price"):
         """

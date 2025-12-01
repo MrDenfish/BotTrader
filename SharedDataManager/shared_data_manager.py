@@ -288,7 +288,8 @@ class SharedDataManager:
             async with self.lock:
                 if new_market_data:
                     self.logger.debug(f"🧠 Updating market_data: Keys = {list(new_market_data.keys())}")
-                    self.market_data = new_market_data
+                    # Merge instead of replace to preserve keys like buy_sell_matrix from database
+                    self.market_data.update(new_market_data)
                 if new_order_management:
                     self.logger.debug(f"📦 Updating order_management: Keys = {list(new_order_management.keys())}")
                     self.order_management = new_order_management
@@ -534,6 +535,22 @@ class SharedDataManager:
                 self.logger.error(f"❌ Error fetching snapshots: {e}", exc_info=True)
                 return {}, {}
 
+    async def _fetch_data_in_transaction(self, data_type: str, session: AsyncSession) -> dict:
+        """Fetch data from database within an existing transaction."""
+        try:
+            result = await session.execute(
+                select(SharedData).where(SharedData.data_type == data_type)
+            )
+            row = result.scalar_one_or_none()
+            if not row:
+                return {}
+
+            decoder_cls = getattr(self, "custom_json_decoder", json.JSONDecoder)
+            return json.loads(row.data, cls=decoder_cls)
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching {data_type} in transaction: {e}", exc_info=True)
+            return {}
+
     async def update_data(self, data_type: str, data: dict, session: AsyncSession):
         """Update shared data in the database using a pooled session."""
         try:
@@ -579,9 +596,18 @@ class SharedDataManager:
                         k: v for k, v in saved_order_management.items() if k != "passive_orders"
                     }
 
-                    # Write cleaned data
+                    # Merge with existing database data to preserve keys from other containers
                     if self.market_data:
-                        await self.update_data("market_data", saved_market_data, session)
+                        db_market_data = await self._fetch_data_in_transaction("market_data", session)
+                        if db_market_data:
+                            # Preprocess DB data to handle DataFrames before merging
+                            db_market_data_preprocessed = preprocess_market_data(db_market_data)
+                            # Merge: DB data first, then overlay with our changes
+                            merged_market_data = {**db_market_data_preprocessed, **saved_market_data}
+                            await self.update_data("market_data", merged_market_data, session)
+                        else:
+                            await self.update_data("market_data", saved_market_data, session)
+
                     if self.order_management:
                         await self.update_data("order_management", saved_order_management_clean, session)
 

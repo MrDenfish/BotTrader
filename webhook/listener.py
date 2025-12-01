@@ -684,10 +684,13 @@ class WebhookListener:
 
     async def _process_order_fill(self, source, order_data: OrderData):
         """
-        Process an order fill and place a corresponding trailing stop order.
+        Process an order fill and place a corresponding protective order.
+
+        For BUY fills: The asset_monitor will detect the new position and place protective OCO orders.
+        For SELL fills: Remove from tracking as position is closed.
 
         Args:
-            order_data (dict): Details of the filled order, including symbol, price, and size.
+            order_data: Details of the filled order, including symbol, price, and size.
         """
         self.structured_logger.info(
             "Processing order fill",
@@ -698,47 +701,47 @@ class WebhookListener:
                 if order_data.open_orders.get('open_order'):
                     return
 
-            # Use take profit stop loss
             order_data.source = source
-            if order_data.side == 'buy':
-                pass
-            order_success, response_msg = await self.trade_order_manager.place_order(order_data)
-            if response_msg:
-                response_data = response_msg
-                if response_data.get('error') == 'OPEN_ORDER':
-                    return
-            else:
+
+            # Handle BUY fills - let asset_monitor place protective OCO
+            if order_data.side.lower() == 'buy':
+                self.structured_logger.info(
+                    "BUY order filled - asset_monitor will place protective OCO",
+                    extra={'trading_pair': order_data.trading_pair, 'order_id': order_data.order_id}
+                )
+                # Remove the buy order from order_tracker (it's now a position)
+                if order_data.order_id in self.order_management.get('order_tracker', {}):
+                    del self.order_management['order_tracker'][order_data.order_id]
+                    self.structured_logger.info(
+                        "Removed filled buy order from order_tracker",
+                        extra={'order_id': order_data.order_id}
+                    )
+                # The asset_monitor's sweep_positions_for_exits will detect this new holding
+                # and place protective OCO orders automatically
                 return
 
-            if response_data:
-                if response_data.get('details', {}).get("Order_id"):
-                    pass
-                    self.structured_logger.warning("REVIEW CODE FOR TRAILING STOP ORDER - Line 1789")
-                    # Add the trailing stop order to the order_tracker
-                    self.order_management['order_tracker'][response_data["order_id"]] = {
-                        'symbol': order_data.trading_pair,
-                        'take_profit_price': order_data.take_profit_price,
-                        'purchase_price': order_data.average_price,
-                        'amount': order_data.order_amount_fiat,
-                        'stop_loss_price': order_data.stop_loss_price,
-                        'limit_price': order_data.limit_price * Decimal('1.002')  # Example limit price adjustment
-                    }
-                    order_id = response_data.get("order_id")
+            # Handle SELL fills - position closed, clean up tracking
+            if order_data.side.lower() == 'sell':
+                symbol = order_data.trading_pair
+                self.structured_logger.info(
+                    "SELL order filled - position closed",
+                    extra={'trading_pair': symbol, 'order_id': order_data.order_id}
+                )
+                # Remove from order_tracker
+                if order_data.order_id in self.order_management.get('order_tracker', {}):
+                    del self.order_management['order_tracker'][order_data.order_id]
                     self.structured_logger.info(
-                        "Order tracker updated with trailing stop order",
-                        extra={'order_id': order_id, 'trading_pair': order_data.trading_pair}
+                        "Removed filled sell order from order_tracker",
+                        extra={'order_id': order_data.order_id}
                     )
-
-                    # Remove the associated buy order from the order_tracker
-                    associated_buy_order_id = order_data.order_id
-                    if associated_buy_order_id in self.order_management['order_tracker']:
-                        del self.order_management['order_tracker'][associated_buy_order_id]
-                        self.structured_logger.info(
-                            "Removed associated buy order from order_tracker",
-                            extra={'buy_order_id': associated_buy_order_id}
-                        )
-            else:
-                self.structured_logger.warning("No response data received from order_type_manager.process_limit_and_tp_sl_orders")
+                # Remove from positions if tracked there
+                if symbol in self.order_management.get('positions', {}):
+                    del self.order_management['positions'][symbol]
+                    self.structured_logger.info(
+                        "Removed closed position from positions",
+                        extra={'symbol': symbol}
+                    )
+                return
 
         except Exception as e:
             self.logger.error(f"Error in _process_order_fill: {e}", exc_info=True)
@@ -1633,8 +1636,45 @@ class WebhookListener:
         return app
 
     async def health(self, request: web.Request) -> web.Response:
-        """Basic health check endpoint."""
-        return web.json_response({"status": "ok"})
+        """
+        Health check endpoint with WebSocket connection verification.
+
+        Returns:
+            200 OK if both user and market websockets are connected and healthy
+            503 Service Unavailable if websockets are still connecting or have issues
+        """
+        # Check user websocket
+        user_ws_healthy = (
+            hasattr(self.websocket_helper, 'user_ws') and
+            self.websocket_helper.user_ws is not None and
+            not self.websocket_helper.user_ws.closed
+        )
+
+        # Check market websocket
+        market_ws_healthy = (
+            hasattr(self.websocket_helper, 'market_ws') and
+            self.websocket_helper.market_ws is not None and
+            not self.websocket_helper.market_ws.closed
+        )
+
+        # Both must be healthy for service to be fully operational
+        if user_ws_healthy and market_ws_healthy:
+            return web.json_response({
+                "status": "ok",
+                "websockets": {
+                    "user": "connected",
+                    "market": "connected"
+                }
+            })
+        else:
+            # Service is degraded - still starting up or reconnecting
+            return web.json_response({
+                "status": "degraded",
+                "websockets": {
+                    "user": "connected" if user_ws_healthy else "connecting",
+                    "market": "connected" if market_ws_healthy else "connecting"
+                }
+            }, status=503)
 
     async def start(self, host: str = "127.0.0.1", port: int = 5003):
         """Start aiohttp server without blocking the event loop."""

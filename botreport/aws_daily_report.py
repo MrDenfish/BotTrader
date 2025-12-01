@@ -157,6 +157,10 @@ from Config.constants_report import (
     REPORT_USE_PT_DAY,
     STARTING_EQUITY_USD,
     TAKER_FEE,
+    USE_FIFO_ALLOCATIONS,
+    FIFO_ALLOCATION_VERSION,
+    FIFO_ALLOCATIONS_TABLE,
+    FIFO_HEALTH_VIEW,
     MAKER_FEE,
 )
 
@@ -438,44 +442,325 @@ def render_score_section_html(metrics: dict) -> str:
 
 
 # ============================================================================
+# FIFO Allocations Helpers
+# ============================================================================
+
+def query_fifo_pnl(conn, version: int):
+    """
+    Query total PnL from FIFO allocations table for a given version.
+
+    Returns:
+        (total_pnl, note) - Total PnL and descriptive note
+    """
+    try:
+        # Check if FIFO tables exist
+        cols = table_columns(conn, FIFO_ALLOCATIONS_TABLE)
+        if not cols:
+            return 0, f"FIFO table {FIFO_ALLOCATIONS_TABLE} not found"
+
+        # Get time window
+        ts_col = 'sell_time'  # FIFO allocations use sell_time
+        if ts_col in cols:
+            low_sql, high_sql = _time_window_sql(qident(ts_col))
+            q = f"""
+                SELECT COALESCE(SUM(pnl_usd), 0)
+                FROM {qualify(FIFO_ALLOCATIONS_TABLE)}
+                WHERE allocation_version = {version}
+                  AND {low_sql} {high_sql}
+            """
+            note = f"FIFO v{version} PnL (windowed by {ts_col})"
+        else:
+            q = f"""
+                SELECT COALESCE(SUM(pnl_usd), 0)
+                FROM {qualify(FIFO_ALLOCATIONS_TABLE)}
+                WHERE allocation_version = {version}
+            """
+            note = f"FIFO v{version} PnL (all-time, no time window)"
+
+        total_pnl = conn.run(q)[0][0]
+        return total_pnl, note
+
+    except Exception as e:
+        return 0, f"FIFO PnL query failed: {e}"
+
+
+def query_fifo_health(conn, version: int):
+    """
+    Query FIFO allocation health metrics for a given version.
+
+    Returns:
+        dict with health metrics or None if unavailable
+    """
+    try:
+        # Check if health view exists
+        q = f"""
+            SELECT
+                total_allocations,
+                sells_matched,
+                buys_used,
+                unmatched_sells,
+                total_pnl
+            FROM {qualify(FIFO_HEALTH_VIEW)}
+            WHERE allocation_version = {version}
+        """
+        rows = conn.run(q)
+        if not rows:
+            return None
+
+        row = rows[0]
+        return {
+            'version': version,
+            'total_allocations': row[0],
+            'sells_matched': row[1],
+            'buys_used': row[2],
+            'unmatched_sells': row[3],
+            'total_pnl': row[4],
+        }
+
+    except Exception as e:
+        return None
+
+
+def query_trigger_breakdown(conn):
+    """
+    Query PnL and order count grouped by trigger type.
+
+    Returns:
+        list of dicts: [{'trigger': str, 'order_count': int, 'total_pnl': float, 'win_count': int, 'loss_count': int}, ...]
+    """
+    try:
+        # Check if trigger column exists
+        cols = table_columns(conn, REPORT_TRADES_TABLE)
+        if 'trigger' not in cols:
+            return []
+
+        # Get time column for windowing
+        ts_col = pick_first_available(cols, ["order_time", "trade_time", "filled_at", "ts", "timestamp", "created_at"])
+        if not ts_col:
+            return []
+
+        time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
+
+        # Query trigger breakdown
+        q = f"""
+            SELECT
+                COALESCE(trigger->>'trigger', 'UNKNOWN') AS trigger_type,
+                COUNT(*) AS order_count,
+                COALESCE(SUM(realized_profit), 0) AS total_pnl,
+                COUNT(*) FILTER (WHERE realized_profit > 0) AS win_count,
+                COUNT(*) FILTER (WHERE realized_profit < 0) AS loss_count,
+                COUNT(*) FILTER (WHERE realized_profit = 0) AS breakeven_count
+            FROM {qualify(REPORT_TRADES_TABLE)}
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND side = 'sell'
+              AND status IN ('filled', 'done')
+            GROUP BY trigger_type
+            ORDER BY total_pnl DESC
+        """
+
+        rows = conn.run(q)
+        results = []
+        for row in rows:
+            results.append({
+                'trigger': row[0],
+                'order_count': row[1],
+                'total_pnl': float(row[2]),
+                'win_count': row[3],
+                'loss_count': row[4],
+                'breakeven_count': row[5]
+            })
+        return results
+
+    except Exception as e:
+        return []
+
+
+def query_source_statistics(conn):
+    """
+    Query order count and PnL grouped by source (webhook, sighook, manual, etc).
+
+    Returns:
+        list of dicts: [{'source': str, 'buy_count': int, 'sell_count': int, 'total_pnl': float}, ...]
+    """
+    try:
+        cols = table_columns(conn, REPORT_TRADES_TABLE)
+        if 'source' not in cols:
+            return []
+
+        ts_col = pick_first_available(cols, ["order_time", "trade_time", "filled_at", "ts", "timestamp", "created_at"])
+        if not ts_col:
+            return []
+
+        time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
+
+        q = f"""
+            SELECT
+                COALESCE(source, 'unknown') AS source_type,
+                COUNT(*) FILTER (WHERE side = 'buy') AS buy_count,
+                COUNT(*) FILTER (WHERE side = 'sell') AS sell_count,
+                COALESCE(SUM(realized_profit) FILTER (WHERE side = 'sell'), 0) AS total_pnl
+            FROM {qualify(REPORT_TRADES_TABLE)}
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND status IN ('filled', 'done')
+            GROUP BY source_type
+            ORDER BY (buy_count + sell_count) DESC
+        """
+
+        rows = conn.run(q)
+        results = []
+        for row in rows:
+            results.append({
+                'source': row[0],
+                'buy_count': row[1],
+                'sell_count': row[2],
+                'total_pnl': float(row[3])
+            })
+        return results
+
+    except Exception as e:
+        return []
+
+
+def query_hodl_positions(conn):
+    """
+    Query current positions for HODL assets (ETH, ATOM) with unrealized P&L.
+
+    Returns:
+        list of dicts: [{'symbol': str, 'qty': float, 'avg_price': float, 'current_value': float}, ...]
+    """
+    try:
+        # Get HODL assets from environment
+        hodl_str = os.getenv('HODL', 'ETH,ATOM')
+        hodl_assets = [asset.strip() for asset in hodl_str.split(',') if asset.strip()]
+
+        if not hodl_assets:
+            return []
+
+        # Build symbol list (e.g., ETH-USD, ATOM-USD)
+        hodl_symbols = [f"{asset}-USD" for asset in hodl_assets]
+        symbols_quoted = ', '.join([f"'{sym}'" for sym in hodl_symbols])
+
+        cols = table_columns(conn, REPORT_TRADES_TABLE)
+        ts_col = pick_first_available(cols, ["order_time", "trade_time", "filled_at", "ts", "timestamp", "created_at"])
+        if not ts_col:
+            return []
+
+        # Calculate positions from all-time trades (not windowed - HODL is long-term)
+        has_qty_signed = 'qty_signed' in cols
+
+        if has_qty_signed:
+            q = f"""
+                SELECT
+                    symbol,
+                    SUM(qty_signed) AS qty,
+                    AVG(price) AS avg_price
+                FROM {qualify(REPORT_TRADES_TABLE)}
+                WHERE symbol IN ({symbols_quoted})
+                  AND status IN ('filled', 'done')
+                GROUP BY symbol
+                HAVING ABS(SUM(qty_signed)) > 0.0001
+                ORDER BY symbol
+            """
+        else:
+            q = f"""
+                SELECT
+                    symbol,
+                    SUM(CASE
+                        WHEN LOWER(side::text) = 'buy' THEN size
+                        WHEN LOWER(side::text) = 'sell' THEN -size
+                        ELSE 0
+                    END) AS qty,
+                    AVG(price) AS avg_price
+                FROM {qualify(REPORT_TRADES_TABLE)}
+                WHERE symbol IN ({symbols_quoted})
+                  AND status IN ('filled', 'done')
+                GROUP BY symbol
+                HAVING ABS(SUM(CASE
+                    WHEN LOWER(side::text) = 'buy' THEN size
+                    ELSE -size
+                END)) > 0.0001
+                ORDER BY symbol
+            """
+
+        rows = conn.run(q)
+        results = []
+        for row in rows:
+            symbol = row[0]
+            qty = float(row[1])
+            avg_price = float(row[2])
+            current_value = abs(qty) * avg_price  # Will get updated with current price later
+
+            results.append({
+                'symbol': symbol,
+                'qty': qty,
+                'avg_price': avg_price,
+                'cost_basis': abs(qty) * avg_price,
+                'current_value': current_value,  # Placeholder, will be updated with live price
+                'unrealized_pnl': 0.0  # Will be calculated with live price
+            })
+
+        return results
+
+    except Exception as e:
+        return []
+
+
+# ============================================================================
 # SECTION 4: Core Queries
 # ============================================================================
 # Main query orchestrator, position/PnL/trade fetching
 
 def run_queries(conn):
     errors = []
-    detect_notes = ["Build:v8"]  # Increment version
+    detect_notes = ["Build:v10"]  # Increment version
+    fifo_health = None  # Store FIFO health metrics for HTML report
 
     # Realized PnL (windowed if timestamp exists)
     try:
-        tbl_pnl = REPORT_PNL_TABLE
-        cols_present = table_columns(conn, tbl_pnl)
-        if REPORT_DEBUG:
-            detect_notes.append(f"Columns({tbl_pnl}): {sorted(cols_present)}")
+        if USE_FIFO_ALLOCATIONS:
+            # Use FIFO allocations for PnL
+            total_pnl, fifo_note = query_fifo_pnl(conn, FIFO_ALLOCATION_VERSION)
+            detect_notes.append(fifo_note)
 
-        pnl_candidates = ["pnl_usd", "realized_pnl_usd", "realized_pnl", "pnl", "profit", "realized_profit"]
-        pnl_col = REPORT_COL_PNL if REPORT_COL_PNL else pick_first_available(cols_present, pnl_candidates)
-
-        if not pnl_col:
-            total_pnl = 0
-            detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
+            # Query FIFO health metrics
+            fifo_health = query_fifo_health(conn, FIFO_ALLOCATION_VERSION)
+            if fifo_health:
+                detect_notes.append(
+                    f"FIFO health: {fifo_health['total_allocations']} allocations, "
+                    f"{fifo_health['unmatched_sells']} unmatched sells"
+                )
         else:
-            ts_candidates = ["order_time", "exec_time", "time", "ts", "timestamp", "created_at", "updated_at"]
-            ts_col = pick_first_available(cols_present, ["order_time", "trade_time", "ts", "timestamp", "created_at", "updated_at"])
+            # Use existing trade_records.pnl_usd logic
+            tbl_pnl = REPORT_PNL_TABLE
+            cols_present = table_columns(conn, tbl_pnl)
+            if REPORT_DEBUG:
+                detect_notes.append(f"Columns({tbl_pnl}): {sorted(cols_present)}")
 
-            if ts_col:
-                low_sql, high_sql = _time_window_sql(qident(ts_col))
-                q = f"""
-                    SELECT COALESCE(SUM({qident(pnl_col)}), 0)
-                    FROM {qualify(tbl_pnl)}
-                    WHERE {low_sql} {high_sql}
-                """
-                detect_notes.append(f"PnL windowed: table=({tbl_pnl}) col={pnl_col} ts={ts_col}")
+            pnl_candidates = ["pnl_usd", "realized_pnl_usd", "realized_pnl", "pnl", "profit", "realized_profit"]
+            pnl_col = REPORT_COL_PNL if REPORT_COL_PNL else pick_first_available(cols_present, pnl_candidates)
+
+            if not pnl_col:
+                total_pnl = 0
+                detect_notes.append(f"No pnl-like column found on {tbl_pnl}")
             else:
-                q = f"SELECT COALESCE(SUM({qident(pnl_col)}), 0) FROM {qualify(tbl_pnl)}"
-                detect_notes.append(f"PnL ALL-TIME (no ts col): table=({tbl_pnl}) col={pnl_col}")
+                ts_candidates = ["order_time", "exec_time", "time", "ts", "timestamp", "created_at", "updated_at"]
+                ts_col = pick_first_available(cols_present, ["order_time", "trade_time", "ts", "timestamp", "created_at", "updated_at"])
 
-            total_pnl = conn.run(q)[0][0]
+                if ts_col:
+                    low_sql, high_sql = _time_window_sql(qident(ts_col))
+                    q = f"""
+                        SELECT COALESCE(SUM({qident(pnl_col)}), 0)
+                        FROM {qualify(tbl_pnl)}
+                        WHERE {low_sql} {high_sql}
+                    """
+                    detect_notes.append(f"PnL windowed: table=({tbl_pnl}) col={pnl_col} ts={ts_col}")
+                else:
+                    q = f"SELECT COALESCE(SUM({qident(pnl_col)}), 0) FROM {qualify(tbl_pnl)}"
+                    detect_notes.append(f"PnL ALL-TIME (no ts col): table=({tbl_pnl}) col={pnl_col}")
+
+                total_pnl = conn.run(q)[0][0]
     except Exception as e:
         total_pnl = 0
         errors.append(f"PnL query failed: {e}")
@@ -628,7 +913,34 @@ def run_queries(conn):
         except Exception as e:
             errors.append(f"Trades fallback query failed: {e}")
 
-    return total_pnl, open_pos, recent_trades, errors, detect_notes
+    # Query trigger breakdown
+    trigger_breakdown = []
+    try:
+        trigger_breakdown = query_trigger_breakdown(conn)
+        if trigger_breakdown:
+            detect_notes.append(f"Trigger breakdown: {len(trigger_breakdown)} trigger types")
+    except Exception as e:
+        errors.append(f"Trigger breakdown query failed: {e}")
+
+    # Query source statistics
+    source_stats = []
+    try:
+        source_stats = query_source_statistics(conn)
+        if source_stats:
+            detect_notes.append(f"Source statistics: {len(source_stats)} sources")
+    except Exception as e:
+        errors.append(f"Source statistics query failed: {e}")
+
+    # Query HODL positions
+    hodl_positions = []
+    try:
+        hodl_positions = query_hodl_positions(conn)
+        if hodl_positions:
+            detect_notes.append(f"HODL positions: {len(hodl_positions)} assets")
+    except Exception as e:
+        errors.append(f"HODL positions query failed: {e}")
+
+    return total_pnl, open_pos, recent_trades, errors, detect_notes, fifo_health, trigger_breakdown, source_stats, hodl_positions
 
 # ============================================================================
 # SECTION 5: Metric Calculations
@@ -1220,7 +1532,11 @@ def build_html(total_pnl,
                *,
                fees_html: str = "",
                tpsl_html: str = "",
-               score_section_html: str = ""
+               score_section_html: str = "",
+               fifo_health: Optional[dict] = None,
+               trigger_breakdown: Optional[list] = None,
+               source_stats: Optional[list] = None,
+               hodl_positions: Optional[list] = None
                ):
     def rows(rows_):
         if not rows_:
@@ -1318,6 +1634,26 @@ def build_html(total_pnl,
         </table>
         """
 
+    fifo_health_html = ""
+    if fifo_health and USE_FIFO_ALLOCATIONS:
+        status_color = "#0a0" if fifo_health['unmatched_sells'] == 0 else "#b80"
+        status_text = "✓ Healthy" if fifo_health['unmatched_sells'] == 0 else f"⚠ {fifo_health['unmatched_sells']} unmatched sells"
+        fifo_health_html = f"""
+        <h3>FIFO Allocation Health</h3>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Version</th><th>Total Allocations</th><th>Sells Matched</th><th>Buys Used</th><th>Status</th><th>Total PnL</th></tr>
+          <tr>
+            <td>{fifo_health['version']}</td>
+            <td>{fifo_health['total_allocations']:,}</td>
+            <td>{fifo_health['sells_matched']:,}</td>
+            <td>{fifo_health['buys_used']:,}</td>
+            <td style="color:{status_color};font-weight:bold">{status_text}</td>
+            <td>${fifo_health['total_pnl']:,.2f}</td>
+          </tr>
+        </table>
+        <p style="color:#666">PnL calculated using FIFO (First-In-First-Out) allocation method for accurate cost basis.</p>
+        """
+
     notes_html = ""
     if errors or detect_notes:
         items = "".join(f"<li>{e}</li>" for e in errors + detect_notes)
@@ -1336,15 +1672,104 @@ def build_html(total_pnl,
         </table>
         """
 
+    # Trigger Breakdown Section
+    trigger_html = ""
+    if trigger_breakdown:
+        total_trigger_pnl = sum(t['total_pnl'] for t in trigger_breakdown)
+        trigger_rows = ""
+        for t in trigger_breakdown:
+            win_rate_pct = (t['win_count'] / t['order_count'] * 100) if t['order_count'] > 0 else 0
+            pnl_color = "#0a0" if t['total_pnl'] > 0 else "#c00" if t['total_pnl'] < 0 else "#666"
+            trigger_rows += f"""
+            <tr>
+                <td>{t['trigger']}</td>
+                <td>{t['order_count']}</td>
+                <td>{t['win_count']}</td>
+                <td>{t['loss_count']}</td>
+                <td>{win_rate_pct:.1f}%</td>
+                <td style="color:{pnl_color};font-weight:bold">${t['total_pnl']:,.2f}</td>
+            </tr>
+            """
+        trigger_html = f"""
+        <h3>Trigger Breakdown (Windowed)</h3>
+        <p><b>Total PnL by Trigger:</b> ${total_trigger_pnl:,.2f}</p>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Trigger</th><th>Orders</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Total PnL</th></tr>
+          {trigger_rows}
+        </table>
+        <p style="color:#666;font-size:12px">Shows performance by exit trigger type (POSITION_MONITOR, REARM_OCO_MISSING, etc.)</p>
+        """
+
+    # Source Statistics Section
+    source_html = ""
+    if source_stats:
+        total_orders = sum(s['buy_count'] + s['sell_count'] for s in source_stats)
+        source_rows = ""
+        for s in source_stats:
+            total_count = s['buy_count'] + s['sell_count']
+            pct_of_total = (total_count / total_orders * 100) if total_orders > 0 else 0
+            pnl_color = "#0a0" if s['total_pnl'] > 0 else "#c00" if s['total_pnl'] < 0 else "#666"
+            source_rows += f"""
+            <tr>
+                <td>{s['source']}</td>
+                <td>{s['buy_count']}</td>
+                <td>{s['sell_count']}</td>
+                <td>{total_count}</td>
+                <td>{pct_of_total:.1f}%</td>
+                <td style="color:{pnl_color};font-weight:bold">${s['total_pnl']:,.2f}</td>
+            </tr>
+            """
+        source_html = f"""
+        <h3>Source Statistics (Windowed)</h3>
+        <p><b>Total Orders:</b> {total_orders}</p>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Source</th><th>Buys</th><th>Sells</th><th>Total</th><th>% of Total</th><th>PnL</th></tr>
+          {source_rows}
+        </table>
+        <p style="color:#666;font-size:12px">Shows activity by entry point (websocket, sighook, manual, reconciled)</p>
+        """
+
+    # HODL Positions Section
+    hodl_html = ""
+    if hodl_positions:
+        total_hodl_value = sum(abs(h['qty']) * h['avg_price'] for h in hodl_positions)
+        hodl_rows = ""
+        for h in hodl_positions:
+            side = "long" if h['qty'] > 0 else "short"
+            notional = abs(h['qty']) * h['avg_price']
+            # Note: unrealized_pnl will be 0 unless we fetch live prices
+            hodl_rows += f"""
+            <tr>
+                <td>{h['symbol']}</td>
+                <td>{side}</td>
+                <td>{h['qty']:.4f}</td>
+                <td>${h['avg_price']:.4f}</td>
+                <td>${notional:,.2f}</td>
+            </tr>
+            """
+        hodl_html = f"""
+        <h3>HODL Positions (Long-term Holdings)</h3>
+        <p><b>Total HODL Value:</b> ${total_hodl_value:,.2f}</p>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr><th>Symbol</th><th>Side</th><th>Quantity</th><th>Avg Cost</th><th>Notional Value</th></tr>
+          {hodl_rows}
+        </table>
+        <p style="color:#666;font-size:12px">These assets are marked as HODL and will not trigger automatic sells.</p>
+        """
+
     return f"""<html><body style="font-family:Arial,Helvetica,sans-serif">
         <h2>Daily Trading Bot Report</h2><p><b>As of:</b> {now_utc}</p>
         {key_metrics_html}
         {fees_html}
         {trade_stats_html}
         {risk_cap_html}
-        {score_section_html}  
+        {score_section_html}
+        {trigger_html}
+        {source_html}
         {exposure_html}
+        {hodl_html}
         {strat_html}
+        {fifo_health_html}
         {details_html}
         {notes_html}
         <p style="color:#666">CSV attachment includes these tables.</p>
@@ -1566,7 +1991,7 @@ def main():
 
     try:
         # Core queries (windowed where possible)
-        total_pnl, open_pos, recent_trades, errors, detect_notes = run_queries(conn)
+        total_pnl, open_pos, recent_trades, errors, detect_notes, fifo_health, trigger_breakdown, source_stats, hodl_positions = run_queries(conn)
 
         # Derived metrics
         unreal_pnl, unreal_notes = compute_unrealized_pnl(conn, open_pos)
@@ -1645,6 +2070,10 @@ def main():
         fees_html=fees_html,
         tpsl_html=tpsl_html,
         score_section_html=score_section_html,
+        fifo_health=fifo_health,
+        trigger_breakdown=trigger_breakdown,
+        source_stats=source_stats,
+        hodl_positions=hodl_positions,
     )
 
     # Near-instant roundtrips (≤60s) + CSV saved server-side when available

@@ -43,6 +43,7 @@ class CentralConfig:
         self.db_port = self.db_name = self._api_url = self._json_config = None
         self._phone = self._report_sender = self._smtp_password = self._report_recipients = self._email_alerts = None
         self._order_size_fiat = self._version = self._max_ohlcv_rows = self._async_mode = None
+        self._order_size_webhook = self._order_size_roc = self._order_size_passive = self._order_size_signal = None
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
         self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_of_crypto_to_buy_more = None
@@ -121,6 +122,10 @@ class CentralConfig:
             "_log_level": "LOG_LEVEL",
             "_quote_currency": "QUOTE_CURRENCY",
             "_order_size_fiat": "ORDER_SIZE_FIAT", # in USD
+            "_order_size_webhook": "ORDER_SIZE_WEBHOOK", # Webhook/external signals
+            "_order_size_roc": "ORDER_SIZE_ROC", # Rate of change triggers
+            "_order_size_passive": "ORDER_SIZE_PASSIVE", # Passive market making
+            "_order_size_signal": "ORDER_SIZE_SIGNAL", # Internal signals
             "_trailing_percentage": "TRAILING_PERCENTAGE",
             "_min_cooldown": "MIN_COOLDOWN", # in minutes
             "_min_order_amount_fiat":"MIN_ORDER_AMOUNT_FIAT", # in USD
@@ -395,15 +400,20 @@ class CentralConfig:
             _logger.info("Machine type determined: docker")
             return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         elif len(cwd_parts) > 2:
-
+            # Check for known local machine types
             if cwd_parts[2] == 'jack':
                 _logger.info("Machine type determined: Laptop",
                     extra={'machine_type': cwd_parts[2]})
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
-            else:
+            elif cwd_parts[2] == 'Manny':
                 _logger.info("Machine type determined: Desktop",
                     extra={'machine_type': cwd_parts[2]})
                 return cwd_parts[2], int(os.getenv('WEBHOOK_PORT', 5003))
+            else:
+                # Unknown path (e.g., /opt/bot on AWS) - assume docker/server
+                _logger.info("Machine type determined: docker (server deployment)",
+                    extra={'machine_type': 'docker', 'path': os.getcwd()})
+                return 'docker', int(os.getenv('WEBHOOK_PORT', 5003))
         else:
             raise ValueError(f"Invalid path {os.getcwd()}, unable to determine machine type.")
 
@@ -583,6 +593,22 @@ class CentralConfig:
     @property
     def order_size_fiat(self):
         return self._order_size_fiat
+
+    @property
+    def order_size_webhook(self):
+        return self._order_size_webhook
+
+    @property
+    def order_size_roc(self):
+        return self._order_size_roc
+
+    @property
+    def order_size_passive(self):
+        return self._order_size_passive
+
+    @property
+    def order_size_signal(self):
+        return self._order_size_signal
 
     @property
     def program_version(self):
