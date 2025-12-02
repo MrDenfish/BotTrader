@@ -340,11 +340,19 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                 SELL_RESET_FIX = f"""
                 WITH batch AS (
                   SELECT order_id FROM {TradeRecord.__tablename__}
-                  WHERE side='sell' AND (
-                    cost_basis_usd IS NULL OR sale_proceeds_usd IS NULL OR net_sale_proceeds_usd IS NULL OR
-                    pnl_usd IS NULL OR realized_profit IS NULL OR
-                    parent_id IS NULL OR parent_ids IS NULL OR cardinality(parent_ids) = 0
-                  )
+                  WHERE side='sell'
+                    -- Only reset SELLs that have SOME fields set but not ALL
+                    -- (i.e., partially processed SELLs that need reprocessing)
+                    AND (
+                      (cost_basis_usd IS NOT NULL OR sale_proceeds_usd IS NOT NULL OR
+                       net_sale_proceeds_usd IS NOT NULL OR pnl_usd IS NOT NULL OR
+                       realized_profit IS NOT NULL)
+                      AND (
+                        cost_basis_usd IS NULL OR sale_proceeds_usd IS NULL OR
+                        net_sale_proceeds_usd IS NULL OR pnl_usd IS NULL OR
+                        realized_profit IS NULL
+                      )
+                    )
                   ORDER BY order_time NULLS LAST
                   LIMIT {BATCH_LIMIT}
                 )
