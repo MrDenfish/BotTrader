@@ -309,6 +309,13 @@ class PositionMonitor:
                 if order_info.get('symbol') == product_id or order_info.get('product_id') == product_id:
                     if order_info.get('side', '').lower() == 'sell':
                         if order_info.get('status') in {'open', 'OPEN', 'new', 'NEW'}:
+                            # DEBUG: Log phantom order details
+                            self.logger.info(
+                                f"[POS_MONITOR] PHANTOM ORDER FOUND for {product_id}: "
+                                f"order_id={order_id}, status={order_info.get('status')}, "
+                                f"side={order_info.get('side')}, "
+                                f"source={order_info.get('source')}"
+                            )
                             return True
 
             return False
