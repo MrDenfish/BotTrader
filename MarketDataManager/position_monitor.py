@@ -212,11 +212,6 @@ class PositionMonitor:
                 f"balance={total_balance_crypto:.6f})"
             )
 
-            # Check if we already have an open sell order for this position
-            if await self._has_open_sell_order(product_id):
-                self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
-                return
-
             # Phase 5: New Exit Priority Logic
             # Priority: Hard Stop → Soft Stop → (Signal Exit OR Trailing Activation/Stop)
             exit_reason = None
@@ -228,6 +223,23 @@ class PositionMonitor:
                 use_market_order = True  # Emergency exit
             elif pnl_pct <= -self.max_loss_pct:
                 exit_reason = f"SOFT_STOP (P&L: {pnl_pct:.2%})"
+
+            # If HARD_STOP or SOFT_STOP triggered, cancel any existing orders first
+            # (they may be out-of-the-money limit orders that won't help)
+            if exit_reason and ('HARD_STOP' in exit_reason or 'SOFT_STOP' in exit_reason):
+                has_existing_order = await self._has_open_sell_order(product_id)
+                if has_existing_order:
+                    self.logger.warning(
+                        f"[POS_MONITOR] {product_id} {exit_reason} triggered with existing sell order - "
+                        f"canceling old order to place emergency exit"
+                    )
+                    await self._cancel_existing_orders(product_id)
+
+            # Check if we have an open sell order (after potential cancellation above)
+            # Only skip for non-emergency exits (trailing, signal, take_profit)
+            elif await self._has_open_sell_order(product_id):
+                self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
+                return
 
             # 2. PROFIT MANAGEMENT (only if no risk exit triggered)
             elif self.trailing_enabled:
