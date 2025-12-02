@@ -313,12 +313,15 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                 BUY_PARENT_FIX = f"""
                 WITH batch AS (
                   SELECT order_id FROM {TradeRecord.__tablename__}
-                  WHERE side='buy' AND (parent_id IS NULL OR parent_ids IS NULL OR array_length(parent_ids, 1) IS NULL)
+                  WHERE side='buy'
+                    AND (parent_id IS NULL
+                         OR parent_ids IS NULL
+                         OR cardinality(parent_ids) = 0)
                   ORDER BY order_time NULLS LAST
                   LIMIT {BATCH_LIMIT}
                 )
                 UPDATE {TradeRecord.__tablename__} t
-                SET parent_id = t.order_id, parent_ids = ARRAY[]::text[]
+                SET parent_id = t.order_id, parent_ids = ARRAY[t.order_id]::text[]
                 FROM batch WHERE t.order_id = batch.order_id
                 """
 
@@ -340,7 +343,7 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                   WHERE side='sell' AND (
                     cost_basis_usd IS NULL OR sale_proceeds_usd IS NULL OR net_sale_proceeds_usd IS NULL OR
                     pnl_usd IS NULL OR realized_profit IS NULL OR
-                    (parent_ids IS NULL OR array_length(parent_ids, 1) IS NULL) OR parent_id IS NULL
+                    parent_id IS NULL OR parent_ids IS NULL OR cardinality(parent_ids) = 0
                   )
                   ORDER BY order_time NULLS LAST
                   LIMIT {BATCH_LIMIT}
@@ -351,8 +354,8 @@ async def run_maintenance_if_needed(shared_data_manager, trade_recorder):
                     net_sale_proceeds_usd = NULL,
                     pnl_usd = NULL,
                     realized_profit = NULL,
-                    parent_ids = ARRAY[]::text[],
-                    parent_id = NULL
+                    parent_id = NULL,
+                    parent_ids = NULL
                 FROM batch WHERE t.order_id = batch.order_id
                 """
 
