@@ -218,27 +218,47 @@ class PositionMonitor:
             use_market_order = False
 
             # 1. RISK EXITS (always checked first)
+            self.logger.info(
+                f"[POS_MONITOR] 🔍 {product_id} checking exit conditions: P&L={pnl_pct:.2%}, "
+                f"hard_stop_threshold={-self.hard_stop_pct:.2%}, soft_stop_threshold={-self.max_loss_pct:.2%}"
+            )
+
             if pnl_pct <= -self.hard_stop_pct:
                 exit_reason = f"HARD_STOP (P&L: {pnl_pct:.2%})"
                 use_market_order = True  # Emergency exit
+                self.logger.warning(
+                    f"[POS_MONITOR] 🚨 {product_id} HARD_STOP triggered: {pnl_pct:.2%} <= {-self.hard_stop_pct:.2%}"
+                )
             elif pnl_pct <= -self.max_loss_pct:
                 exit_reason = f"SOFT_STOP (P&L: {pnl_pct:.2%})"
+                self.logger.warning(
+                    f"[POS_MONITOR] ⚠️  {product_id} SOFT_STOP triggered: {pnl_pct:.2%} <= {-self.max_loss_pct:.2%}"
+                )
+            else:
+                self.logger.debug(
+                    f"[POS_MONITOR] ✅ {product_id} P&L OK: {pnl_pct:.2%} > {-self.max_loss_pct:.2%} (no stop-loss needed)"
+                )
 
             # If HARD_STOP or SOFT_STOP triggered, cancel any existing orders first
             # (they may be out-of-the-money limit orders that won't help)
             if exit_reason and ('HARD_STOP' in exit_reason or 'SOFT_STOP' in exit_reason):
+                self.logger.info(f"[POS_MONITOR] 🔎 {product_id} checking for existing sell orders before emergency exit...")
                 has_existing_order = await self._has_open_sell_order(product_id)
+
                 if has_existing_order:
                     self.logger.warning(
-                        f"[POS_MONITOR] {product_id} {exit_reason} triggered with existing sell order - "
+                        f"[POS_MONITOR] 🗑️  {product_id} {exit_reason} triggered with existing sell order - "
                         f"canceling old order to place emergency exit"
                     )
                     await self._cancel_existing_orders(product_id)
+                    self.logger.info(f"[POS_MONITOR] ✅ {product_id} old orders cancelled, proceeding with emergency exit")
+                else:
+                    self.logger.info(f"[POS_MONITOR] ✅ {product_id} no existing orders, proceeding with emergency exit")
 
             # Check if we have an open sell order (after potential cancellation above)
             # Only skip for non-emergency exits (trailing, signal, take_profit)
             elif await self._has_open_sell_order(product_id):
-                self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
+                self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping (non-emergency)")
                 return
 
             # 2. PROFIT MANAGEMENT (only if no risk exit triggered)
@@ -316,24 +336,40 @@ class PositionMonitor:
         """
         try:
             order_tracker = self.shared_data_manager.order_management.get('order_tracker', {})
+            self.logger.info(f"[POS_MONITOR] 🔎 {product_id} checking order_tracker ({len(order_tracker)} total orders)")
 
+            matching_orders = []
             for order_id, order_info in order_tracker.items():
                 if order_info.get('symbol') == product_id or order_info.get('product_id') == product_id:
-                    if order_info.get('side', '').lower() == 'sell':
-                        if order_info.get('status') in {'open', 'OPEN', 'new', 'NEW'}:
-                            # DEBUG: Log phantom order details
-                            self.logger.info(
-                                f"[POS_MONITOR] PHANTOM ORDER FOUND for {product_id}: "
-                                f"order_id={order_id}, status={order_info.get('status')}, "
-                                f"side={order_info.get('side')}, "
-                                f"source={order_info.get('source')}"
+                    side = order_info.get('side', '').lower()
+                    status = order_info.get('status')
+                    if side == 'sell':
+                        matching_orders.append({
+                            'order_id': order_id,
+                            'status': status,
+                            'side': side,
+                            'created': order_info.get('datetime', 'unknown')
+                        })
+                        if status in {'open', 'OPEN', 'new', 'NEW'}:
+                            self.logger.warning(
+                                f"[POS_MONITOR] 👻 PHANTOM ORDER FOUND for {product_id}: "
+                                f"order_id={order_id}, status={status}, "
+                                f"side={side}, created={order_info.get('datetime', 'unknown')}"
                             )
                             return True
+
+            if matching_orders:
+                self.logger.info(
+                    f"[POS_MONITOR] {product_id} found {len(matching_orders)} matching sell orders "
+                    f"but none are OPEN: {matching_orders}"
+                )
+            else:
+                self.logger.info(f"[POS_MONITOR] ✅ {product_id} no sell orders in order_tracker")
 
             return False
 
         except Exception as e:
-            self.logger.debug(f"[POS_MONITOR] Error checking open sell orders for {product_id}: {e}")
+            self.logger.error(f"[POS_MONITOR] ❌ Error checking open sell orders for {product_id}: {e}", exc_info=True)
             return False
 
     def _get_current_signal(self, symbol: str) -> Optional[str]:
@@ -392,22 +428,29 @@ class PositionMonitor:
         """
         try:
             order_tracker = self.shared_data_manager.order_management.get('order_tracker', {})
+            self.logger.info(f"[POS_MONITOR] 🗑️  {product_id} _cancel_existing_orders() called, scanning {len(order_tracker)} orders...")
 
             # Find all orders for this product
             orders_to_cancel = []
             for oid, order_info in list(order_tracker.items()):
                 if order_info.get('symbol') == product_id or order_info.get('product_id') == product_id:
                     orders_to_cancel.append((oid, order_info))
+                    self.logger.info(
+                        f"[POS_MONITOR] 📋 {product_id} found order to cancel: {oid} "
+                        f"(side={order_info.get('side')}, status={order_info.get('status')}, "
+                        f"created={order_info.get('datetime')})"
+                    )
 
             if not orders_to_cancel:
-                self.logger.debug(f"[POS_MONITOR] No existing orders to cancel for {product_id}")
+                self.logger.warning(f"[POS_MONITOR] ⚠️  {product_id} _cancel_existing_orders() found NO orders to cancel!")
                 return
+
+            self.logger.info(f"[POS_MONITOR] 🗑️  {product_id} attempting to cancel {len(orders_to_cancel)} orders...")
 
             # Cancel each order
             for oid, order_info in orders_to_cancel:
                 self.logger.info(
-                    f"[POS_MONITOR] Canceling existing {order_info.get('side', 'unknown')} order "
-                    f"{oid} for {product_id} before placing exit order"
+                    f"[POS_MONITOR] 🔄 {product_id} canceling {order_info.get('side', 'unknown')} order {oid}..."
                 )
 
                 # Use the trade_order_manager's coinbase_api to cancel
