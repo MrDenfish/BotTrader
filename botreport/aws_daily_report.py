@@ -110,6 +110,11 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from botreport.metrics_compute import (load_score_jsonl, score_snapshot_metrics_from_jsonl, render_score_section_jsonl,
                               load_tpsl_jsonl, aggregate_tpsl, render_tpsl_section, render_tpsl_suggestions)
+from botreport.analysis_symbol_performance import (
+    compute_symbol_performance,
+    render_symbol_performance_html,
+    generate_symbol_suggestions
+)
 from botreport.emailer import send_email as send_email_via_ses  # uses lazy boto3
 from botreport.email_report_print_format import build_console_report
 
@@ -216,6 +221,11 @@ load_report_dotenv()
 
 if not SENDER or not RECIPIENTS:
     raise ValueError(f"Bad email config. REPORT_SENDER={SENDER!r}, REPORT_RECIPIENTS={os.getenv('REPORT_RECIPIENTS')!r}")
+
+# ============================================================================
+# Report Feature Flags
+# ============================================================================
+REPORT_INCLUDE_SYMBOL_PERFORMANCE = os.getenv('REPORT_INCLUDE_SYMBOL_PERFORMANCE', 'true').lower() == 'true'
 
 # Initialize structured logger for botreport
 logger = get_logger('botreport', context={'component': 'daily_report'})
@@ -2013,6 +2023,24 @@ def main():
         strat_rows, strat_notes = compute_strategy_breakdown_windowed(conn)
         detect_notes.extend(strat_notes)
 
+        # Symbol performance analysis (if enabled)
+        symbol_perf_html = ""
+        if REPORT_INCLUDE_SYMBOL_PERFORMANCE:
+            try:
+                symbol_perf_data = compute_symbol_performance(
+                    conn=get_sa_engine().connect(),
+                    hours_back=DEFAULT_LOOKBACK_HOURS,
+                    top_n=15,
+                    min_trades=3
+                )
+                symbol_perf_html = render_symbol_performance_html(symbol_perf_data, include_header=True)
+                symbol_suggestions = generate_symbol_suggestions(symbol_perf_data)
+                if symbol_suggestions:
+                    detect_notes.extend(symbol_suggestions)
+            except Exception as e:
+                symbol_perf_html = f"<!-- Symbol performance unavailable: {e} -->"
+                detect_notes.append(f"Symbol performance error: {e}")
+
         extras = derive_extra_metrics(
             win_rate_pct=win_rate,
             avg_win=avg_win,
@@ -2098,6 +2126,13 @@ def main():
             html = html.replace("</body></html>", tpsl_html + "\n</body></html>")
         else:
             html += "\n" + tpsl_html
+
+    # Add symbol performance section (if enabled)
+    if symbol_perf_html:
+        if "</body></html>" in html:
+            html = html.replace("</body></html>", symbol_perf_html + "\n</body></html>")
+        else:
+            html += "\n" + symbol_perf_html
 
     # Build CSV attachment / local artifact
     csvb = build_csv(
