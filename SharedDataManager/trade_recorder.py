@@ -878,6 +878,12 @@ class TradeRecorder:
             async with session.begin():
                 try:
                     base_deci, _, _, _ = self.shared_utils_precision.fetch_precision(symbol)
+
+                    # Validate base_deci to prevent quantize() errors
+                    if base_deci is None or not isinstance(base_deci, int) or base_deci < 0:
+                        self.logger.warning(f"⚠️ Invalid base_deci for {symbol}: {base_deci}, cannot quantize")
+                        return None
+
                     result = await session.execute(
                         select(TradeRecord)
                         .where(
