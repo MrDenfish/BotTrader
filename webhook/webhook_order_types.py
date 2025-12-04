@@ -587,6 +587,31 @@ class OrderTypeManager:
                     "TP/SL Order Placed Successfully",
                     extra={'order_id': order_id, 'trading_pair': trading_pair}
                 )
+
+                # ✅ Task 1: Store bracket order tracking for coordination
+                # Initialize bracket_orders dict if it doesn't exist
+                if 'bracket_orders' not in self.shared_data_manager.order_management:
+                    self.shared_data_manager.order_management['bracket_orders'] = {}
+
+                # Store bracket metadata for position monitor coordination
+                self.shared_data_manager.order_management['bracket_orders'][trading_pair] = {
+                    'entry_order_id': order_id,
+                    'stop_order_id': None,  # Will be populated from websocket fills
+                    'tp_order_id': None,    # Will be populated from websocket fills
+                    'stop_price': float(sl_price),
+                    'tp_price': float(tp_price),
+                    'entry_price': float(adjusted_price),
+                    'entry_time': datetime.now(timezone.utc),
+                    'side': order_data.side.upper(),
+                    'status': 'active',
+                    'source': order_data.source
+                }
+
+                self.logger.debug(
+                    f"[BRACKET_TRACK] {trading_pair} bracket stored: "
+                    f"entry={adjusted_price:.4f}, TP={tp_price:.4f}, SL={sl_price:.4f}"
+                )
+
                 return {
                     **response,
                     "status": "placed",

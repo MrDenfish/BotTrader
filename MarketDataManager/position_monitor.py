@@ -217,17 +217,53 @@ class PositionMonitor:
                 self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
                 return
 
-            # Phase 5: New Exit Priority Logic
-            # Priority: Hard Stop → Soft Stop → (Signal Exit OR Trailing Activation/Stop)
+            # ✅ Task 3: Check for active bracket orders (coordination)
+            bracket_info = await self._has_active_bracket_order(product_id)
+            has_bracket = bracket_info.get('has_bracket', False)
+
+            if has_bracket:
+                self.logger.debug(
+                    f"[POS_MONITOR] {product_id} has active bracket "
+                    f"(SL: ${bracket_info.get('stop_price'):.4f}, TP: ${bracket_info.get('tp_price'):.4f})"
+                )
+
+            # Phase 5: New Exit Priority Logic (with Bracket Coordination)
+            # Priority: Hard Stop → Soft Stop → (Check Bracket → Signal/Trailing)
             exit_reason = None
             use_market_order = False
+            override_bracket = False  # New flag for coordination
 
-            # 1. RISK EXITS (always checked first)
+            # 1. EMERGENCY HARD STOP (always override bracket)
             if pnl_pct <= -self.hard_stop_pct:
                 exit_reason = f"HARD_STOP (P&L: {pnl_pct:.2%})"
                 use_market_order = True  # Emergency exit
+                override_bracket = True  # Always override for emergency
+
+            # 2. SOFT STOP (coordinate with bracket)
             elif pnl_pct <= -self.max_loss_pct:
-                exit_reason = f"SOFT_STOP (P&L: {pnl_pct:.2%})"
+                if has_bracket:
+                    # Bracket exists - check if it's at same level
+                    bracket_sl_pct = (bracket_info['stop_price'] - avg_entry_price) / avg_entry_price
+
+                    if abs(bracket_sl_pct - (-self.max_loss_pct)) < 0.005:  # Within 0.5%
+                        # Bracket will handle it, don't place redundant order
+                        self.logger.debug(
+                            f"[POS_MONITOR] {product_id} SOFT_STOP level matches bracket "
+                            f"(bracket: {bracket_sl_pct:.2%}, monitor: {-self.max_loss_pct:.2%}), "
+                            f"deferring to bracket"
+                        )
+                        return  # Let bracket do its job
+                    else:
+                        # Bracket exists but at different level - log warning
+                        self.logger.warning(
+                            f"[POS_MONITOR] {product_id} SOFT_STOP mismatch! "
+                            f"Bracket SL: {bracket_sl_pct:.2%}, Monitor SL: {-self.max_loss_pct:.2%}"
+                        )
+                        exit_reason = f"SOFT_STOP (P&L: {pnl_pct:.2%}, overriding bracket)"
+                        override_bracket = True
+                else:
+                    # No bracket - position monitor handles exit
+                    exit_reason = f"SOFT_STOP (P&L: {pnl_pct:.2%}, no bracket)"
 
             # 2. PROFIT MANAGEMENT (only if no risk exit triggered)
             elif self.trailing_enabled:
@@ -264,14 +300,45 @@ class PositionMonitor:
                         if current_signal == 'sell' and pnl_pct >= self.signal_exit_min_profit:
                             exit_reason = f"SIGNAL_EXIT (P&L: {pnl_pct:.2%}, signal=SELL)"
 
-            # 3. FALLBACK: No trailing enabled, check old TP threshold
+            # 3. TAKE PROFIT (coordinate with bracket)
             elif not self.trailing_enabled and pnl_pct >= self.min_profit_pct:
-                # Legacy take profit exit (if trailing disabled)
-                exit_reason = f"TAKE_PROFIT (P&L: {pnl_pct:.2%})"
+                if has_bracket:
+                    # Check if bracket TP will handle it
+                    bracket_tp_pct = (bracket_info['tp_price'] - avg_entry_price) / avg_entry_price
+
+                    if abs(bracket_tp_pct - self.min_profit_pct) < 0.005:  # Within 0.5%
+                        self.logger.debug(
+                            f"[POS_MONITOR] {product_id} TP level matches bracket "
+                            f"(bracket: {bracket_tp_pct:.2%}, monitor: {self.min_profit_pct:.2%}), "
+                            f"deferring to bracket"
+                        )
+                        return  # Let bracket handle it
+                    else:
+                        # Bracket TP different - override
+                        exit_reason = f"TAKE_PROFIT (P&L: {pnl_pct:.2%}, overriding bracket)"
+                        override_bracket = True
+                else:
+                    # No bracket - position monitor handles exit
+                    exit_reason = f"TAKE_PROFIT (P&L: {pnl_pct:.2%}, no bracket)"
 
             if not exit_reason:
                 self.logger.debug(f"[POS_MONITOR] {product_id} no exit condition met, monitoring continues")
                 return  # No exit threshold met
+
+            # ✅ Task 3: Coordination decision logging
+            if override_bracket and has_bracket:
+                self.logger.warning(
+                    f"[COORD] {product_id} overriding bracket order: {exit_reason}"
+                )
+            elif has_bracket and not override_bracket:
+                self.logger.info(
+                    f"[COORD] {product_id} deferring to bracket order: {exit_reason}"
+                )
+                return  # Let bracket handle it
+            else:
+                self.logger.info(
+                    f"[COORD] {product_id} placing exit (no bracket): {exit_reason}"
+                )
 
             # Place exit order
             self.logger.info(
@@ -316,6 +383,43 @@ class PositionMonitor:
         except Exception as e:
             self.logger.debug(f"[POS_MONITOR] Error checking open sell orders for {product_id}: {e}")
             return False
+
+    async def _has_active_bracket_order(self, product_id: str) -> dict:
+        """
+        ✅ Task 2: Check if position has active bracket orders on exchange.
+
+        Args:
+            product_id: Trading pair (e.g., 'BTC-USD')
+
+        Returns:
+            dict with 'has_bracket', 'stop_price', 'tp_price', or empty dict if no bracket
+        """
+        try:
+            bracket_orders = self.shared_data_manager.order_management.get('bracket_orders', {})
+            bracket = bracket_orders.get(product_id)
+
+            if not bracket:
+                return {}
+
+            # Check if bracket is still active
+            if bracket.get('status') != 'active':
+                self.logger.debug(f"[BRACKET_CHECK] {product_id} bracket exists but not active (status: {bracket.get('status')})")
+                return {}
+
+            # Bracket exists and is active
+            return {
+                'has_bracket': True,
+                'stop_price': bracket.get('stop_price'),
+                'tp_price': bracket.get('tp_price'),
+                'entry_price': bracket.get('entry_price'),
+                'entry_order_id': bracket.get('entry_order_id'),
+                'stop_order_id': bracket.get('stop_order_id'),
+                'tp_order_id': bracket.get('tp_order_id')
+            }
+
+        except Exception as e:
+            self.logger.debug(f"[BRACKET_CHECK] Error checking bracket for {product_id}: {e}")
+            return {}
 
     def _get_current_signal(self, symbol: str) -> Optional[str]:
         """
