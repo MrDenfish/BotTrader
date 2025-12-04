@@ -47,6 +47,8 @@ from ProfitDataManager.profit_data_manager import ProfitDataManager
 from webhook.websocket_market_manager import WebSocketMarketManager
 from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK, InvalidStatusCode
 from Shared_Utils.logger import get_logger
+# ✅ Task 6: Import TP/SL validator (runs on module load)
+from Config import tpsl_validator  # noqa: F401
 
 
 
