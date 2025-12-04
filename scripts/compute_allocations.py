@@ -152,9 +152,11 @@ async def compute_allocations(args):
         """), {'version': args.version})
         existing_count = result.fetchone()[0]
 
-    if existing_count > 0 and not args.force:
+    # Allow incremental mode to proceed even if allocations exist
+    if existing_count > 0 and not args.force and not since_time:
         print(f"\n⚠️  Version {args.version} already has {existing_count:,} allocations!")
         print("    Use --force to recompute (will delete existing allocations)")
+        print("    Or use --since to compute only new trades incrementally")
         return
 
     if existing_count > 0 and args.force:
