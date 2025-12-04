@@ -353,11 +353,39 @@ main
 
 ---
 
-**Status:** Ready to implement
+**Status:** ⚠️ SUPERSEDED - See CRITICAL_BUG_ANALYSIS_FIFO.md
 **Estimated Time:** 4-6 hours (across multiple sessions)
 **Risk Level:** Medium (affecting core PnL calculation)
 **Mitigation:** Parallel operation, easy rollback, comprehensive testing
 
 ---
 
-**Next Step:** Start new Claude Code session, checkout new branch, begin Phase 1
+## 🚨 SESSION CLOSURE (Dec 4, 2025)
+
+**This session plan has been superseded by a more critical discovery.**
+
+During investigation of trade performance, we discovered that FIFO allocation is **fundamentally broken** - it's matching SELL orders to the wrong BUY orders (e.g., matching a Dec 3 SELL to a Sept 10 BUY instead of the Dec 3 BUY that's 2 minutes before it).
+
+**This is a more critical bug than the incremental computation optimization.**
+
+### New Priority Issue
+
+See: **`docs/CRITICAL_BUG_ANALYSIS_FIFO.md`** (created Dec 4, 2025)
+
+**Problem:** FIFO logic is ignoring `remaining_size` and matching to chronologically oldest BUYs regardless of availability.
+
+**Impact:**
+- All P&L calculations are wrong (100x errors in some cases)
+- All performance metrics are unreliable
+- Possibly affecting live trading decisions
+
+### Recommended Next Steps
+
+1. **First:** Fix the FIFO matching bug (CRITICAL_BUG_ANALYSIS_FIFO.md)
+2. **Then:** Return to this incremental computation optimization (this document)
+
+The incremental computation plan is still valid, but fixing the core FIFO logic takes priority.
+
+---
+
+**Next Step:** Start new session with `CRITICAL_BUG_ANALYSIS_FIFO.md` instead
