@@ -741,6 +741,38 @@ class WebhookListener:
                         "Removed closed position from positions",
                         extra={'symbol': symbol}
                     )
+
+                # ✅ Task 5: Clean up bracket tracking when SELL fills
+                bracket_orders = self.order_management.get('bracket_orders', {})
+                if symbol in bracket_orders:
+                    bracket = bracket_orders[symbol]
+
+                    # Determine which part of bracket filled and log exit source
+                    exit_source = 'UNKNOWN'
+                    if bracket.get('stop_order_id') == order_data.order_id:
+                        exit_source = 'EXCHANGE_BRACKET_STOP'
+                    elif bracket.get('tp_order_id') == order_data.order_id:
+                        exit_source = 'EXCHANGE_BRACKET_TP'
+                    elif bracket.get('entry_order_id') == order_data.order_id:
+                        # Entry order filled as SELL? Shouldn't happen, but handle it
+                        exit_source = 'EXCHANGE_BRACKET_ENTRY'
+                    else:
+                        # Manual sell or position monitor sell
+                        exit_source = 'MANUAL_OR_MONITOR'
+
+                    # Log exit source for performance tracking
+                    self.logger.info(
+                        f"[EXIT_SOURCE] {symbol} | Reason: BRACKET_FILL | "
+                        f"Source: {exit_source} | Order Type: LIMIT | "
+                        f"Order ID: {order_data.order_id}"
+                    )
+
+                    # Clean up bracket tracking
+                    del bracket_orders[symbol]
+                    self.logger.debug(f"[BRACKET] Removed bracket tracking for {symbol} (exit via {exit_source})")
+                else:
+                    self.logger.debug(f"[BRACKET] No bracket found for {symbol} SELL fill (likely position monitor exit)")
+
                 return
 
         except Exception as e:
