@@ -99,12 +99,40 @@ async def compute_allocations(args):
     """Main computation logic."""
     from fifo_engine import FifoAllocationEngine
     from sqlalchemy import text
+    from dateutil import parser as dateparser
+    from datetime import timedelta
+    import re
 
     print("=" * 80)
     print("FIFO ALLOCATION COMPUTATION")
     print("=" * 80)
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Version: {args.version}")
+
+    # Parse --since parameter for incremental mode
+    since_time = None
+    if args.since:
+        try:
+            # Handle relative times like "10 minutes ago"
+            match = re.match(r'(\d+)\s+(minute|hour|day)s?\s+ago', args.since, re.IGNORECASE)
+            if match:
+                amount = int(match.group(1))
+                unit = match.group(2).lower()
+                if unit == 'minute':
+                    since_time = datetime.now() - timedelta(minutes=amount)
+                elif unit == 'hour':
+                    since_time = datetime.now() - timedelta(hours=amount)
+                elif unit == 'day':
+                    since_time = datetime.now() - timedelta(days=amount)
+            else:
+                # Try parsing as absolute datetime
+                since_time = dateparser.parse(args.since)
+
+            print(f"Incremental Mode: Processing trades since {since_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        except Exception as e:
+            print(f"⚠️  Error parsing --since parameter '{args.since}': {e}")
+            print("    Falling back to full computation")
+            since_time = None
 
     # Initialize dependencies
     print("\n🔧 Initializing dependencies...")
@@ -134,11 +162,57 @@ async def compute_allocations(args):
 
     # Determine what to compute
     if args.all_symbols:
-        print(f"\n🚀 Computing allocations for ALL symbols...")
-        result = await engine.compute_all_symbols(
-            version=args.version,
-            triggered_by='manual'
-        )
+        # If incremental mode, find symbols with new trades
+        if since_time and not args.force:
+            print(f"\n🔍 Finding symbols with new trades since {since_time.strftime('%Y-%m-%d %H:%M:%S')}...")
+            async with db.async_session() as session:
+                result_query = await session.execute(text("""
+                    SELECT DISTINCT symbol
+                    FROM trade_records
+                    WHERE order_time >= :since_time
+                    ORDER BY symbol
+                """), {'since_time': since_time})
+                symbols_with_new_trades = [row[0] for row in result_query.fetchall()]
+
+            if not symbols_with_new_trades:
+                print("✅ No new trades found - nothing to compute")
+                print(f"\nFinished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                return
+
+            print(f"📊 Found {len(symbols_with_new_trades)} symbols with new trades:")
+            print(f"    {', '.join(symbols_with_new_trades[:10])}" +
+                  (f" ... and {len(symbols_with_new_trades) - 10} more" if len(symbols_with_new_trades) > 10 else ""))
+
+            # Compute each symbol individually (incremental doesn't use --force)
+            from fifo_engine.models import ComputationResult
+            all_allocations = 0
+            batch_id = result.batch_id if 'result' in locals() else None
+
+            for symbol in symbols_with_new_trades:
+                try:
+                    symbol_result = await engine.compute_symbol(
+                        symbol=symbol,
+                        version=args.version,
+                        batch_id=batch_id
+                    )
+                    if symbol_result.success:
+                        all_allocations += symbol_result.allocations_created
+                except Exception as e:
+                    print(f"⚠️  Error computing {symbol}: {e}")
+
+            # Create summary result
+            result = ComputationResult(
+                success=True,
+                version=args.version,
+                symbols_processed=symbols_with_new_trades,
+                allocations_created=all_allocations
+            )
+        else:
+            print(f"\n🚀 Computing allocations for ALL symbols...")
+            result = await engine.compute_all_symbols(
+                version=args.version,
+                triggered_by='manual'
+            )
     elif args.symbol:
         print(f"\n🚀 Computing allocations for {args.symbol}...")
         result = await engine.compute_symbol(
@@ -234,6 +308,12 @@ Version Guidelines:
         '--force',
         action='store_true',
         help='Force recomputation (delete existing allocations for this version)'
+    )
+
+    parser.add_argument(
+        '--since',
+        type=str,
+        help='Only process trades since this time (e.g., "10 minutes ago", "2025-12-04 10:00"). Enables incremental mode.'
     )
 
     args = parser.parse_args()
