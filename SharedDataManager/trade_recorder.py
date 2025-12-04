@@ -252,76 +252,27 @@ class TradeRecorder:
                     self.active_session = session
 
                     # -----------------------------
-                    # SELL: compute FIFO if possible
+                    # SELL: defer FIFO to external engine
                     # -----------------------------
                     if side == "sell":
                         if fees_override is not None:
                             total_fees = fees_override
 
-                        # Ensure there are enough eligible BUYs to cover SELL
-                        total_rem = Decimal("0")
-                        tolerance = timedelta(seconds=1)
-                        stmt = (
-                            select(TradeRecord)
-                            .where(
-                                TradeRecord.symbol == symbol,
-                                TradeRecord.side == "buy",
-                                TradeRecord.order_time <= order_time_utc + tolerance,
-                                or_(TradeRecord.remaining_size.is_(None), TradeRecord.remaining_size > 0),
-                                not_(TradeRecord.order_id.like('%-FILL-%')),
-                                not_(TradeRecord.order_id.like('%-FALLBACK'))
-                            )
-                            .order_by(TradeRecord.order_time.asc())
-                        )
-                        res = await session.execute(stmt)
-                        parents = res.scalars().all()
-                        for pt in parents:
-                            total_rem += Decimal(str(pt.remaining_size or pt.size or 0))
-
-                        if total_rem < amount:
-                            # Not enough inventory — save SELL without pnl/cost; maintenance will fix later
-                            self.logger.warning(
-                                f"[FIFO] Insufficient BUY liquidity for SELL {order_id} {symbol}. "
-                                f"Need {amount}, have {total_rem}. Deferring PnL computation."
-                            )
-                            parent_ids = None  # unknown yet
-                            update_instructions = []
-                        else:
-                            fifo_result = await self.compute_cost_basis_and_sale_proceeds(
-                                symbol=symbol,
-                                size=amount,
-                                sell_price=price,
-                                total_fees=total_fees,
-                                quote_q=quote_q,
-                                base_q=base_q,
-                                sell_time=order_time_utc,
-                                cost_basis_usd=None,
-                                preferred_parent_id=preferred_parent_id,
-                                sell_fills=None,
-                                gross_override=gross_override,
-                                sell_fee_total_override=total_fees
-                            )
-                            parent_ids = fifo_result["parent_ids"]
-                            cost_basis_usd = fifo_result["cost_basis_usd"]
-                            sale_proceeds_usd = fifo_result["sale_proceeds_usd"]
-                            net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
-                            pnl_usd = fifo_result["pnl_usd"]
-                            update_instructions = fifo_result["update_instructions"]
-                            # pick a canonical parent_id for the SELL row
-                            parent_id = (parent_ids[0] if parent_ids else parent_id)
-
-                            # Breakeven clamp
-                            BE_TOL_ABS = Decimal("0.01")  # $0.01
-                            BE_TOL_PCT = Decimal("0.0002")  # 0.02%
-                            if pnl_usd is not None and cost_basis_usd:
-                                pnl_d = Decimal(str(pnl_usd))
-                                cb_d = Decimal(str(cost_basis_usd))
-                                if pnl_d.copy_abs() < BE_TOL_ABS or (cb_d > 0 and (pnl_d.copy_abs() / cb_d) < BE_TOL_PCT):
-                                    pnl_usd = Decimal("0")
+                        # ✅ NEW APPROACH: Don't compute PnL inline
+                        # The FIFO engine (scripts/compute_allocations.py) will compute PnL
+                        # and populate the fifo_allocations table.
+                        parent_ids = None
+                        parent_id = None
+                        pnl_usd = None
+                        cost_basis_usd = None
+                        sale_proceeds_usd = None
+                        net_sale_proceeds_usd = None
+                        update_instructions = []
 
                         self.logger.info(
-                            f"[RECORD_TRADE DEBUG] SELL PnL={pnl_usd}, Parents={parent_ids}, "
-                            f"UpdateInstructions={update_instructions}"
+                            f"📝 SELL recorded: {symbol} {amount}@{price} | "
+                            f"PnL will be computed by FIFO engine (external process). "
+                            f"Order ID: {order_id}"
                         )
 
                     else:
@@ -456,14 +407,13 @@ class TradeRecorder:
                     # -----------------------------
                     # Update Parent BUYs (remaining_size + realized_profit)
                     # -----------------------------
-                    for instruction in update_instructions:
-                        parent_record = await session.get(TradeRecord, instruction["order_id"])
-                        if not parent_record:
-                            self.logger.warning(f"⚠️ Parent BUY not found for update: {instruction['order_id']}")
-                            continue
-                        parent_record.remaining_size = instruction["remaining_size"]
-                        # If you want BUY realized P&L accumulation, uncomment next line:
-                        # parent_record.realized_profit = instruction["realized_profit"]
+                    # ✅ DISABLED: FIFO engine will manage remaining_size updates
+                    # No inline updates needed since we're not computing FIFO here anymore
+                    if update_instructions:
+                        self.logger.debug(
+                            f"[FIFO] Skipping inline parent updates - FIFO engine will handle. "
+                            f"Would have updated {len(update_instructions)} parent records."
+                        )
 
                 self.logger.info(
                     f"✅ Trade recorded: {symbol} {side.upper()} {amount}@{price} | "
@@ -918,41 +868,18 @@ class TradeRecorder:
 
     async def backfill_trade_metrics(self):
         """
-        Recomputes PnL and parent linkages for all SELL trades using FIFO.
-        Skips trades seeded via reconciliation (source == 'reconciled').
+        DEPRECATED: This method used inline FIFO computation which caused dual-system conflicts.
+        Use the FIFO engine (scripts/compute_allocations.py) instead.
+
+        This method is kept for backwards compatibility but does nothing.
         """
         logger = self.logger
-        logger.info("🧮 Starting full backfill of trade metrics...")
-
-        try:
-            async with self.db_session_manager.async_session() as session:
-                async with session.begin():
-                    # ✅ Fetch all SELL trades needing PnL updates
-                    result = await session.execute(
-                        select(TradeRecord).where(
-                            TradeRecord.side == "sell",
-                            TradeRecord.source != "reconciled"
-                        )
-                    )
-                    sell_trades = result.scalars().all()
-
-                    total_trades = len(sell_trades)
-                    logger.info(f"🔄 Processing {total_trades} trades for backfill...")
-
-                    processed = 0
-                    for trade in sell_trades:
-                        try:
-                            await self._calculate_fifo_pnl(trade, session)
-                            processed += 1
-
-                            if processed % 500 == 0:
-                                logger.info(f"✅ Processed {processed}/{total_trades} trades...")
-                        except Exception as e:
-                            logger.error(f"❌ Error calculating PnL for trade {trade.order_id}: {e}", exc_info=True)
-
-                    logger.info(f"🎉 Backfill complete: {processed}/{total_trades} trades updated.")
-        except Exception as e:
-            logger.error(f"❌ Error during backfill: {e}", exc_info=True)
+        logger.warning(
+            "⚠️ backfill_trade_metrics() is deprecated. "
+            "Use scripts/compute_allocations.py instead to populate fifo_allocations table. "
+            "Inline FIFO computation has been disabled to prevent dual-system conflicts."
+        )
+        return
 
     async def _calculate_fifo_pnl(self, sell_trade: TradeRecord, session):
         try:
