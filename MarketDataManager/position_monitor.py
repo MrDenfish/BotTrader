@@ -633,6 +633,39 @@ class PositionMonitor:
                     f"[POS_MONITOR] ✅ Exit order placed for {product_id}: "
                     f"order_id={order_id}, price=${exit_price:.4f}, size={size:.6f}, reason={reason}"
                 )
+
+                # ✅ Task 4: Exit source logging and tracking
+                exit_source = 'EMERGENCY_STOP' if use_market else 'POSITION_MONITOR'
+                exit_type = 'MARKET' if use_market else 'LIMIT'
+
+                self.logger.info(
+                    f"[EXIT_SOURCE] {product_id} | Reason: {reason} | "
+                    f"Source: {exit_source} | Order Type: {exit_type} | "
+                    f"Order ID: {order_id}"
+                )
+
+                # Store exit metadata for reporting and analysis
+                from datetime import datetime, timezone
+                exit_metadata = {
+                    'product_id': product_id,
+                    'exit_source': exit_source,
+                    'exit_reason': reason,
+                    'exit_type': exit_type,
+                    'exit_time': datetime.now(timezone.utc),
+                    'exit_price': float(exit_price),
+                    'exit_size': float(size),
+                    'order_id': order_id
+                }
+
+                # Initialize exit_tracking dict if needed
+                if 'exit_tracking' not in self.shared_data_manager.order_management:
+                    self.shared_data_manager.order_management['exit_tracking'] = []
+
+                # Store for daily report analysis
+                self.shared_data_manager.order_management['exit_tracking'].append(exit_metadata)
+
+                self.logger.debug(f"[EXIT_TRACK] Stored exit metadata for {product_id}: {exit_metadata}")
+
             else:
                 self.logger.warning(
                     f"[POS_MONITOR] ❌ Exit order failed for {product_id}: {response.get('message', 'Unknown error')}"
