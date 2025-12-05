@@ -185,10 +185,26 @@ async def compute_allocations(args):
             print(f"    {', '.join(symbols_with_new_trades[:10])}" +
                   (f" ... and {len(symbols_with_new_trades) - 10} more" if len(symbols_with_new_trades) > 10 else ""))
 
-            # Compute each symbol individually (incremental doesn't use --force)
+            # Compute each symbol individually
+            # Note: Since compute_symbol() always recomputes ALL allocations for a symbol,
+            # we need to delete existing allocations for symbols with new trades to avoid duplicates
             from fifo_engine.models import ComputationResult
+            import uuid
+
             all_allocations = 0
-            batch_id = None  # Will be set from first symbol's result
+            batch_id = str(uuid.uuid4())  # Generate batch ID for this incremental run
+
+            # Delete existing allocations for symbols with new trades
+            async with db.async_session() as session:
+                for symbol in symbols_with_new_trades:
+                    delete_result = await session.execute(text("""
+                        DELETE FROM fifo_allocations
+                        WHERE symbol = :symbol AND allocation_version = :version
+                    """), {'symbol': symbol, 'version': args.version})
+                    await session.commit()
+                    deleted_count = delete_result.rowcount
+                    if deleted_count > 0:
+                        print(f"🗑️  Deleted {deleted_count} existing allocations for {symbol}")
 
             for symbol in symbols_with_new_trades:
                 try:
@@ -199,16 +215,14 @@ async def compute_allocations(args):
                     )
                     if symbol_result.success:
                         all_allocations += symbol_result.allocations_created
-                        # Reuse batch_id for all symbols in this run
-                        if batch_id is None and symbol_result.batch_id:
-                            batch_id = symbol_result.batch_id
                 except Exception as e:
                     print(f"⚠️  Error computing {symbol}: {e}")
 
-            # Create summary result
+            # Create summary result with all required fields
             result = ComputationResult(
                 success=True,
                 version=args.version,
+                batch_id=batch_id,
                 symbols_processed=symbols_with_new_trades,
                 allocations_created=all_allocations
             )
