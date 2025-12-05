@@ -1,9 +1,10 @@
 # FIFO Single Engine - Deployment Status
 
-**Date:** 2025-12-04
+**Date:** 2025-12-04 (Updated: 2025-12-04 20:06 PT)
 **Branch:** `bugfix/single-fifo-engine`
-**Status:** ✅ DEPLOYED TO PRODUCTION
+**Status:** ✅ FULLY TESTED & OPERATIONAL
 **Deployment Method:** Full rebuild via `docker compose down` + `build --no-cache` + `up`
+**Latest Fix:** Incremental mode fixes deployed and tested successfully (commits: dc7412d, 782064c)
 
 ---
 
@@ -210,6 +211,26 @@ ORDER BY tr.order_time DESC;
 
 ---
 
+## Fixes Applied After Initial Deployment
+
+### Fix 1: batch_id AttributeError (Commit: dc7412d)
+**Issue**: `AttributeError: 'CursorResult' object has no attribute 'batch_id'`
+**Root Cause**: Line 191 tried to access batch_id from SQL query result instead of FIFO result
+**Fix**: Initialize `batch_id = None` and set from first symbol's computation result
+**Status**: ✅ Fixed and deployed
+
+### Fix 2: Duplicate Key Violations + Missing batch_id Parameter (Commit: 782064c)
+**Issue 1**: Duplicate key constraint violation when processing symbols with existing allocations
+**Issue 2**: `TypeError: ComputationResult.__init__() missing 1 required positional argument: 'batch_id'`
+**Root Cause**:
+- Incremental mode only filtered which symbols to process, but compute_symbol() always recomputes ALL allocations for a symbol
+- ComputationResult summary was missing required batch_id parameter
+**Fix**:
+- Delete existing allocations for symbols before recomputing them
+- Generate UUID for batch_id and pass to ComputationResult
+**Test Results**: Successfully processed KAITO-USD (18 allocations) and SAPIEN-USD (99 allocations)
+**Status**: ✅ Fixed, deployed, and tested
+
 ## Known Issues
 
 ### Non-Critical
@@ -219,11 +240,14 @@ ORDER BY tr.order_time DESC;
    - Impact: Using fallback precision (1e-8 dust threshold)
    - Status: Acceptable for production, FIFO engine has built-in fallback
 
-2. **OCO Order Placement Failures**
-   - Some positions failing to place exchange-side stop losses
-   - Reason: "Insufficient balance to sell" errors
-   - Impact: Position monitor is sole protection for affected positions
-   - Status: Separate issue, not related to FIFO fix
+2. **Webhook Container Unhealthy Status**
+   - Coinbase websocket USER subscription failures
+   - Impact: Health check fails but trading functionality unaffected
+   - Status: Known Coinbase API issue, non-critical
+
+3. **XLM-USD Decimal Errors**
+   - Errors in find_latest_filled_size for XLM-USD
+   - Status: Unrelated to FIFO fix, separate issue to address
 
 ### Critical (None)
 
