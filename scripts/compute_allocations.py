@@ -188,7 +188,7 @@ async def compute_allocations(args):
             # Compute each symbol individually (incremental doesn't use --force)
             from fifo_engine.models import ComputationResult
             all_allocations = 0
-            batch_id = result.batch_id if 'result' in locals() else None
+            batch_id = None  # Will be set from first symbol's result
 
             for symbol in symbols_with_new_trades:
                 try:
@@ -199,6 +199,9 @@ async def compute_allocations(args):
                     )
                     if symbol_result.success:
                         all_allocations += symbol_result.allocations_created
+                        # Reuse batch_id for all symbols in this run
+                        if batch_id is None and symbol_result.batch_id:
+                            batch_id = symbol_result.batch_id
                 except Exception as e:
                     print(f"⚠️  Error computing {symbol}: {e}")
 
