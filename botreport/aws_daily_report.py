@@ -551,20 +551,31 @@ def query_trigger_breakdown(conn):
 
         time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
 
-        # Query trigger breakdown
+        # Query trigger breakdown using FIFO allocations
         q = f"""
+            WITH trigger_pnl AS (
+                SELECT
+                    COALESCE(tr.trigger->>'trigger', 'UNKNOWN') AS trigger_type,
+                    tr.order_id,
+                    COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+                FROM {qualify(REPORT_TRADES_TABLE)} tr
+                LEFT JOIN fifo_allocations fa
+                    ON fa.sell_order_id = tr.order_id
+                    AND fa.allocation_version = 2
+                WHERE {time_window_sql}
+                  {upper_bound_sql}
+                  AND tr.side = 'sell'
+                  AND tr.status IN ('filled', 'done')
+                GROUP BY tr.trigger->>'trigger', tr.order_id
+            )
             SELECT
-                COALESCE(trigger->>'trigger', 'UNKNOWN') AS trigger_type,
+                trigger_type,
                 COUNT(*) AS order_count,
-                COALESCE(SUM(realized_profit), 0) AS total_pnl,
-                COUNT(*) FILTER (WHERE realized_profit > 0) AS win_count,
-                COUNT(*) FILTER (WHERE realized_profit < 0) AS loss_count,
-                COUNT(*) FILTER (WHERE realized_profit = 0) AS breakeven_count
-            FROM {qualify(REPORT_TRADES_TABLE)}
-            WHERE {time_window_sql}
-              {upper_bound_sql}
-              AND side = 'sell'
-              AND status IN ('filled', 'done')
+                COALESCE(SUM(pnl), 0) AS total_pnl,
+                COUNT(*) FILTER (WHERE pnl > 0) AS win_count,
+                COUNT(*) FILTER (WHERE pnl < 0) AS loss_count,
+                COUNT(*) FILTER (WHERE pnl = 0) AS breakeven_count
+            FROM trigger_pnl
             GROUP BY trigger_type
             ORDER BY total_pnl DESC
         """
@@ -606,14 +617,17 @@ def query_source_statistics(conn):
 
         q = f"""
             SELECT
-                COALESCE(source, 'unknown') AS source_type,
-                COUNT(*) FILTER (WHERE side = 'buy') AS buy_count,
-                COUNT(*) FILTER (WHERE side = 'sell') AS sell_count,
-                COALESCE(SUM(realized_profit) FILTER (WHERE side = 'sell'), 0) AS total_pnl
-            FROM {qualify(REPORT_TRADES_TABLE)}
+                COALESCE(tr.source, 'unknown') AS source_type,
+                COUNT(*) FILTER (WHERE tr.side = 'buy') AS buy_count,
+                COUNT(*) FILTER (WHERE tr.side = 'sell') AS sell_count,
+                COALESCE(SUM(fa.pnl_usd) FILTER (WHERE tr.side = 'sell'), 0) AS total_pnl
+            FROM {qualify(REPORT_TRADES_TABLE)} tr
+            LEFT JOIN fifo_allocations fa
+                ON fa.sell_order_id = tr.order_id
+                AND fa.allocation_version = 2
             WHERE {time_window_sql}
               {upper_bound_sql}
-              AND status IN ('filled', 'done')
+              AND tr.status IN ('filled', 'done')
             GROUP BY source_type
             ORDER BY (buy_count + sell_count) DESC
         """

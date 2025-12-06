@@ -34,8 +34,10 @@ COL_PRICE           = os.getenv("REPORT_COL_PRICE")  or "price"
 COL_SIZE            = os.getenv("REPORT_COL_SIZE")   or "qty_signed"
 COL_TIME            = os.getenv("REPORT_COL_TIME")   or "ts"
 COL_POS_QTY         = os.getenv("REPORT_COL_POS_QTY") or "position_qty"
-COL_PNL             = os.getenv("REPORT_COL_PNL")    or "realized_profit"  # fallback "pnl_usd"
-COL_PNL_FALLBACK    = "pnl_usd"
+# Deprecated - use FIFO allocations table instead
+# COL_PNL             = os.getenv("REPORT_COL_PNL")    or "realized_profit"  # fallback "pnl_usd"
+# COL_PNL_FALLBACK    = "pnl_usd"
+FIFO_VERSION        = int(os.getenv("FIFO_ALLOCATION_VERSION", "2"))
 
 PRICE_COL           = os.getenv("REPORT_PRICE_COL")      or "price"
 PRICE_TIME_COL      = os.getenv("REPORT_PRICE_TIME_COL") or "ts"
@@ -106,23 +108,27 @@ def _table_exists(conn: Connection, fqtn: str) -> bool:
 def query_trade_pnls(engine_or_conn: Engine | Connection, start: datetime, end: datetime) -> Tuple[List[float], List[float], List[float], int]:
     """
     Pull closed-trade PnL from trade_records within [start, end).
-    - Uses realized_profit primarily; falls back to pnl_usd if realized_profit is NULL.
+    - Uses FIFO allocations table (allocation_version=2)
     - Breakevens counted with an epsilon to avoid float noise.
     """
     eps = float(os.getenv("BREAKEVEN_EPS", "1e-9"))
 
-    # COALESCE(realized_profit, pnl_usd) covers both older and newer rows
+    # Query FIFO allocations for P&L
     sql = text(f"""
-        SELECT COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) AS pnl
-        FROM {TRADES_TABLE}
-        WHERE {COL_TIME} >= :start
-          AND {COL_TIME} <  :end
-          AND COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) IS NOT NULL
+        SELECT COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+        FROM {TRADES_TABLE} tr
+        LEFT JOIN fifo_allocations fa
+            ON fa.sell_order_id = tr.order_id
+            AND fa.allocation_version = :fifo_version
+        WHERE tr.{COL_TIME} >= :start
+          AND tr.{COL_TIME} <  :end
+          AND tr.side = 'sell'
+        GROUP BY tr.order_id
     """)
 
     conn, own = _ensure_conn(engine_or_conn)
     try:
-        rows = conn.execute(sql, {"start": start, "end": end}).fetchall()
+        rows = conn.execute(sql, {"start": start, "end": end, "fifo_version": FIFO_VERSION}).fetchall()
     finally:
         if own: conn.close()
 
@@ -619,9 +625,15 @@ def compute_windowed_metrics(engine_or_conn: Engine | Connection,
 
 TRADE_STATS_SQL_TR = sqlalchemy.text("""
 WITH trades AS (
-  SELECT COALESCE(realized_profit, pnl_usd)::numeric AS pnl
+  SELECT COALESCE(
+    (SELECT SUM(fa.pnl_usd)
+     FROM fifo_allocations fa
+     WHERE fa.sell_order_id = trade_records.order_id
+       AND fa.allocation_version = 2), 0
+  )::numeric AS pnl
   FROM public.trade_records
   WHERE order_time >= :start_ts AND order_time < :end_ts
+    AND side = 'sell'
 )
 SELECT
   COUNT(*)                                                   AS n_total,
@@ -704,9 +716,15 @@ async def fetch_trade_stats(
 
 SHARPE_TRADE_SQL_TR = sqlalchemy.text("""
 WITH t AS (
-  SELECT realized_profit::numeric AS pnl
+  SELECT COALESCE(
+    (SELECT SUM(fa.pnl_usd)
+     FROM fifo_allocations fa
+     WHERE fa.sell_order_id = trade_records.order_id
+       AND fa.allocation_version = 2), 0
+  )::numeric AS pnl
   FROM public.trade_records
   WHERE order_time >= :start_ts AND order_time < :end_ts
+    AND side = 'sell'
 )
 SELECT AVG(pnl) AS mean_pnl, STDDEV_SAMP(pnl) AS stdev_pnl FROM t
 """)
@@ -745,9 +763,15 @@ async def fetch_sharpe_trade(
 
 MDD_SQL_TR = sqlalchemy.text("""
 WITH t AS (
-  SELECT order_time AS ts, realized_profit::numeric AS pnl
+  SELECT order_time AS ts, COALESCE(
+    (SELECT SUM(fa.pnl_usd)
+     FROM fifo_allocations fa
+     WHERE fa.sell_order_id = trade_records.order_id
+       AND fa.allocation_version = 2), 0
+  )::numeric AS pnl
   FROM public.trade_records
   WHERE order_time >= :start_ts AND order_time < :end_ts
+    AND side = 'sell'
   ORDER BY ts
 ),
 curve AS (

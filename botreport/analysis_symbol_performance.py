@@ -23,9 +23,10 @@ from decimal import Decimal
 
 TRADES_TABLE = os.getenv("REPORT_TRADES_TABLE", "public.trade_records")
 COL_SYMBOL = os.getenv("REPORT_COL_SYMBOL", "symbol")
-COL_PNL = os.getenv("REPORT_COL_PNL", "realized_profit")
-COL_PNL_FALLBACK = "pnl_usd"
 COL_TIME = os.getenv("REPORT_COL_TIME", "ts")
+
+# FIFO allocation version for P&L queries
+FIFO_VERSION = int(os.getenv("FIFO_ALLOCATION_VERSION", "2"))
 
 # Display configuration
 DEFAULT_TOP_SYMBOLS = int(os.getenv("REPORT_TOP_SYMBOLS", "15"))
@@ -87,29 +88,38 @@ def compute_symbol_performance(
     now = datetime.now(timezone.utc)
     start = now - timedelta(hours=hours_back)
 
-    # Query per-symbol performance
+    # Query per-symbol performance using FIFO allocations
+    # Note: We query trade_records for trade counts, then JOIN fifo_allocations for P&L
     query = text(f"""
+        WITH trade_pnl AS (
+            SELECT
+                tr.{COL_SYMBOL} AS symbol,
+                tr.order_id,
+                COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+            FROM {TRADES_TABLE} tr
+            LEFT JOIN fifo_allocations fa
+                ON fa.sell_order_id = tr.order_id
+                AND fa.allocation_version = :fifo_version
+            WHERE tr.{COL_TIME} >= :start
+              AND tr.{COL_TIME} < :end
+              AND tr.{COL_SYMBOL} IS NOT NULL
+              AND tr.side = 'sell'
+            GROUP BY tr.{COL_SYMBOL}, tr.order_id
+        )
         SELECT
-            {COL_SYMBOL} AS symbol,
+            symbol,
             COUNT(*) AS total_trades,
-            COUNT(*) FILTER (WHERE COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) > 0) AS wins,
-            COUNT(*) FILTER (WHERE COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) < 0) AS losses,
-            COUNT(*) FILTER (WHERE COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) = 0) AS breakevens,
-            COALESCE(SUM(COALESCE({COL_PNL}, {COL_PNL_FALLBACK})), 0) AS total_pnl,
-            AVG(CASE WHEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) > 0
-                     THEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) END) AS avg_win,
-            AVG(CASE WHEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) < 0
-                     THEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) END) AS avg_loss,
-            SUM(CASE WHEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) > 0
-                     THEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) ELSE 0 END) AS gross_profit,
-            SUM(CASE WHEN COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) < 0
-                     THEN -COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) ELSE 0 END) AS gross_loss
-        FROM {TRADES_TABLE}
-        WHERE {COL_TIME} >= :start
-          AND {COL_TIME} < :end
-          AND {COL_SYMBOL} IS NOT NULL
-          AND COALESCE({COL_PNL}, {COL_PNL_FALLBACK}) IS NOT NULL
-        GROUP BY {COL_SYMBOL}
+            COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+            COUNT(*) FILTER (WHERE pnl < 0) AS losses,
+            COUNT(*) FILTER (WHERE pnl = 0) AS breakevens,
+            COALESCE(SUM(pnl), 0) AS total_pnl,
+            AVG(CASE WHEN pnl > 0 THEN pnl END) AS avg_win,
+            AVG(CASE WHEN pnl < 0 THEN pnl END) AS avg_loss,
+            SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) AS gross_profit,
+            SUM(CASE WHEN pnl < 0 THEN -pnl ELSE 0 END) AS gross_loss
+        FROM trade_pnl
+        WHERE symbol IS NOT NULL
+        GROUP BY symbol
         HAVING COUNT(*) >= :min_trades
         ORDER BY total_pnl DESC
         LIMIT :top_n
@@ -120,7 +130,8 @@ def compute_symbol_performance(
             "start": start,
             "end": now,
             "min_trades": min_trades,
-            "top_n": top_n * 2  # Fetch more, we'll sort and filter
+            "top_n": top_n * 2,  # Fetch more, we'll sort and filter
+            "fifo_version": FIFO_VERSION
         }).fetchall()
     except Exception as e:
         notes.append(f"Query failed: {e}")

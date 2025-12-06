@@ -340,8 +340,9 @@ class TradeRecorder:
                         "net_sale_proceeds_usd": float(net_sale_proceeds_usd) if net_sale_proceeds_usd is not None else None,
                         # BUY remaining_size initialized to full amount; SELL None
                         "remaining_size": float(amount) if side == "buy" else None,
-                        # SELL realized_profit equals pnl_usd; BUY has None
-                        "realized_profit": float(pnl_usd) if side == "sell" and pnl_usd is not None else None,
+                        # SELL realized_profit deprecated - use fifo_allocations table
+                        # Set to None; will be backfilled from FIFO for historical accuracy
+                        "realized_profit": None,
                     }
 
                     if ingest_via:
