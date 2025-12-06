@@ -1085,70 +1085,104 @@ def compute_unrealized_pnl(conn, open_pos):
     return unreal, notes
 
 def compute_win_rate(conn):
+    """
+    Compute win rate using FIFO allocations table.
+    Returns: (win_rate_pct, wins_count, total_count, notes)
+    """
     notes = []
     tbl = REPORT_WINRATE_TABLE or REPORT_TRADES_TABLE
     cols = table_columns(conn, tbl)
     if not cols:
         return 0.0, 0, 0, [f"WinRate: table not found: {tbl}"]
 
-    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
-    if not pnl_col:
-        return 0.0, 0, 0, [f"WinRate: no pnl-like column found on {tbl}"]
-
+    # Check if we have required columns for FIFO join
     ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
     if not ts_col:
         return 0.0, 0, 0, [f"WinRate: no time-like column on {tbl}"]
 
+    # Verify side column exists
+    if 'side' not in cols:
+        return 0.0, 0, 0, [f"WinRate: 'side' column not found on {tbl}"]
+
     ts_expr = qident(ts_col)
     time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
 
+    # Use FIFO allocations for P&L calculation
     q = f"""
+        WITH trade_pnl AS (
+            SELECT
+                tr.order_id,
+                COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+            FROM {qualify(tbl)} tr
+            LEFT JOIN fifo_allocations fa
+                ON fa.sell_order_id = tr.order_id
+                AND fa.allocation_version = {FIFO_ALLOCATION_VERSION}
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND tr.side = 'sell'
+              AND tr.status IN ('filled', 'done')
+            GROUP BY tr.order_id
+        )
         SELECT
-            COUNT(*) FILTER (WHERE {qident(pnl_col)} > 0) AS wins,
-            COUNT(*) FILTER (WHERE {qident(pnl_col)} < 0) AS losses,
+            COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+            COUNT(*) FILTER (WHERE pnl < 0) AS losses,
             COUNT(*) AS total
-        FROM {qualify(tbl)}
-        WHERE {time_window_sql}
-          {upper_bound_sql}
-          AND {qident(pnl_col)} IS NOT NULL
+        FROM trade_pnl
     """
     wins, losses, total = conn.run(q)[0]
     total = int(total or 0)
     wins = int(wins or 0)
     win_rate = (wins / total * 100.0) if total > 0 else 0.0
 
-    notes.append(f"WinRate source: {tbl} pnl_col={pnl_col} ts_col={ts_col} (denominator includes breakeven)")
+    notes.append(f"WinRate source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col} (denominator includes breakeven)")
     return win_rate, wins, total, notes
 
 def compute_trade_stats_windowed(conn):
+    """
+    Compute trade statistics using FIFO allocations table.
+    Returns: (avg_win, avg_loss_neg, profit_factor, notes)
+    """
     notes = []
     tbl = REPORT_WINRATE_TABLE or REPORT_TRADES_TABLE
     cols = table_columns(conn, tbl)
     if not cols:
         return 0.0, 0.0, None, [f"TradeStats: table not found: {tbl}"]
 
-    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
-    if not pnl_col:
-        return 0.0, 0.0, None, [f"TradeStats: no pnl-like column found on {tbl}"]
-
+    # Check if we have required columns for FIFO join
     ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
     if not ts_col:
         return 0.0, 0.0, None, [f"TradeStats: no time-like column on {tbl}"]
 
+    # Verify side column exists
+    if 'side' not in cols:
+        return 0.0, 0.0, None, [f"TradeStats: 'side' column not found on {tbl}"]
+
     ts_expr = qident(ts_col)
     time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
 
+    # Use FIFO allocations for P&L calculation
     # NOTE: No ROUND() with double+int; compute raw aggregates and format at the edge
     q = f"""
+        WITH trade_pnl AS (
+            SELECT
+                tr.order_id,
+                COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+            FROM {qualify(tbl)} tr
+            LEFT JOIN fifo_allocations fa
+                ON fa.sell_order_id = tr.order_id
+                AND fa.allocation_version = {FIFO_ALLOCATION_VERSION}
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND tr.side = 'sell'
+              AND tr.status IN ('filled', 'done')
+            GROUP BY tr.order_id
+        )
         SELECT
-          AVG(CASE WHEN {qident(pnl_col)} > 0 THEN {qident(pnl_col)} END) AS avg_win,
-          AVG(CASE WHEN {qident(pnl_col)} < 0 THEN {qident(pnl_col)} END) AS avg_loss_neg,
-          SUM(CASE WHEN {qident(pnl_col)} > 0 THEN {qident(pnl_col)} ELSE 0 END) AS gross_profit,
-          SUM(CASE WHEN {qident(pnl_col)} < 0 THEN -{qident(pnl_col)} ELSE 0 END) AS gross_loss_abs
-        FROM {qualify(tbl)}
-        WHERE {time_window_sql}
-          {upper_bound_sql}
-          AND {qident(pnl_col)} IS NOT NULL
+          AVG(CASE WHEN pnl > 0 THEN pnl END) AS avg_win,
+          AVG(CASE WHEN pnl < 0 THEN pnl END) AS avg_loss_neg,
+          SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) AS gross_profit,
+          SUM(CASE WHEN pnl < 0 THEN -pnl ELSE 0 END) AS gross_loss_abs
+        FROM trade_pnl
     """
     avg_win, avg_loss_neg, gross_profit, gross_loss_abs = conn.run(q)[0]
     avg_win = float(avg_win or 0.0)
@@ -1159,24 +1193,28 @@ def compute_trade_stats_windowed(conn):
     except Exception:
         pf = None
 
-    notes.append(f"TradeStats source: {tbl} pnl_col={pnl_col} ts_col={ts_col}")
+    notes.append(f"TradeStats source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col}")
     return avg_win, avg_loss_neg, pf, notes
 
 def compute_max_drawdown(conn):
+    """
+    Compute max drawdown using FIFO allocations table.
+    Returns: (dd_pct, dd_abs, peak_equity, trough_equity, notes)
+    """
     notes = []
     tbl = REPORT_PNL_TABLE
     cols = table_columns(conn, tbl)
     if not cols:
         return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: table not found: {tbl}"]
 
-    pnl_col = REPORT_COL_PNL if (REPORT_COL_PNL and REPORT_COL_PNL in cols) else \
-              pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
-    if not pnl_col:
-        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no pnl-like column on {tbl}"]
-
+    # Check if we have required columns for FIFO join
     ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
     if not ts_col:
         return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: no time-like column on {tbl}"]
+
+    # Verify side column exists
+    if 'side' not in cols:
+        return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: 'side' column not found on {tbl}"]
 
     # New: allow ignoring the early 'flat bank' region to avoid % blowups
     try:
@@ -1184,13 +1222,24 @@ def compute_max_drawdown(conn):
     except Exception:
         min_start_equity = 500.0
 
-    # Build cumulative equity and running peak; then anchor at first equity >= threshold
+    # Build cumulative equity and running peak using FIFO allocations; then anchor at first equity >= threshold
     q = f"""
-        WITH t AS (
-          SELECT {qident(ts_col)}::timestamptz AS ts,
-                 COALESCE({qident(pnl_col)}, 0)::numeric AS pnl
-          FROM {qualify(tbl)}
-          WHERE {qident(pnl_col)} IS NOT NULL
+        WITH trade_pnl AS (
+          SELECT
+              tr.{qident(ts_col)}::timestamptz AS ts,
+              tr.order_id,
+              COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+          FROM {qualify(tbl)} tr
+          LEFT JOIN fifo_allocations fa
+              ON fa.sell_order_id = tr.order_id
+              AND fa.allocation_version = {FIFO_ALLOCATION_VERSION}
+          WHERE tr.side = 'sell'
+            AND tr.status IN ('filled', 'done')
+          GROUP BY tr.{qident(ts_col)}, tr.order_id
+        ),
+        t AS (
+          SELECT ts, pnl::numeric AS pnl
+          FROM trade_pnl
         ),
         c AS (  -- equity curve
           SELECT ts,
@@ -1229,7 +1278,7 @@ def compute_max_drawdown(conn):
 
     dd_abs = abs(float(min_abs or 0.0))
     notes.append(
-        f"Drawdown source: {tbl} pnl_col={pnl_col} ts_col={ts_col} "
+        f"Drawdown source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col} "
         f"min_start_equity={min_start_equity}"
     )
     return dd_pct, dd_abs, float(peak_eq or 0.0), float(trough_eq or 0.0), notes
@@ -1878,6 +1927,10 @@ def build_csv(total_pnl,
 # -------------------------
 
 def compute_strategy_breakdown_windowed(conn):
+    """
+    Compute strategy breakdown using FIFO allocations table.
+    Returns: (breakdown_list, notes)
+    """
     tbl = REPORT_TRADES_TABLE
     cols = table_columns(conn, tbl)
     out = []
@@ -1886,28 +1939,47 @@ def compute_strategy_breakdown_windowed(conn):
         return out, ["Strategy: table not found"]
 
     strat_col = pick_first_available(cols, ["strategy","module","algo","tag"])
-    pnl_col = pick_first_available(cols, ["realized_profit","realized_pnl","pnl","profit"])
     ts_col = pick_first_available(cols, ["trade_time","filled_at","completed_at","order_time","ts","created_at","executed_at"])
-    if not strat_col or not pnl_col or not ts_col:
+
+    if not strat_col or not ts_col:
         miss = []
         if not strat_col: miss.append("strategy-like column")
-        if not pnl_col: miss.append("pnl-like column")
         if not ts_col: miss.append("time-like column")
         notes.append("Strategy: missing " + ", ".join(miss))
         return out, notes
 
+    # Verify side column exists
+    if 'side' not in cols:
+        notes.append("Strategy: 'side' column not found")
+        return out, notes
+
     ts_expr = qident(ts_col)
     time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
+
+    # Use FIFO allocations for P&L calculation
     q = f"""
-        SELECT {qident(strat_col)} AS strat,
+        WITH trade_pnl AS (
+            SELECT
+                tr.{qident(strat_col)} AS strat,
+                tr.order_id,
+                COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+            FROM {qualify(tbl)} tr
+            LEFT JOIN fifo_allocations fa
+                ON fa.sell_order_id = tr.order_id
+                AND fa.allocation_version = {FIFO_ALLOCATION_VERSION}
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND tr.side = 'sell'
+              AND tr.status IN ('filled', 'done')
+            GROUP BY tr.{qident(strat_col)}, tr.order_id
+        )
+        SELECT strat,
                COUNT(*) AS total,
-               COUNT(*) FILTER (WHERE {qident(pnl_col)} > 0) AS wins,
-               COALESCE(SUM({qident(pnl_col)}),0) AS pnl
-        FROM {qualify(tbl)}
-        WHERE {time_window_sql}
-          {upper_bound_sql}
-          AND {qident(pnl_col)} IS NOT NULL
-        GROUP BY {qident(strat_col)}
+               COUNT(*) FILTER (WHERE pnl > 0) AS wins,
+               COALESCE(SUM(pnl), 0) AS pnl
+        FROM trade_pnl
+        WHERE strat IS NOT NULL
+        GROUP BY strat
         ORDER BY total DESC
         LIMIT 20
     """
@@ -1916,7 +1988,7 @@ def compute_strategy_breakdown_windowed(conn):
         wins = int(wins or 0)
         wr = (wins / total * 100.0) if total > 0 else 0.0
         out.append({"strategy": strat, "total": total, "wins": wins, "win_rate": wr, "pnl": float(pnl or 0.0)})
-    notes.append(f"Strategy source: {tbl} strat_col={strat_col} pnl_col={pnl_col} ts_col={ts_col}")
+    notes.append(f"Strategy source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} strat_col={strat_col} ts_col={ts_col}")
     return out, notes
 
 
