@@ -302,6 +302,7 @@ class ProfitDataManager:
                 fixed = getattr(self, "stop_loss", None)
                 fixed = Decimal(str(fixed)) if fixed is not None else _env_pct("STOP_LOSS", 0.01)
                 base_pct = abs(fixed)
+                atr_pct = Decimal("0")  # not using ATR in fixed mode
 
             stop_pct = base_pct + spread_pct + fee_pct
             sl_raw = entry * (Decimal("1") - stop_pct)
@@ -320,16 +321,15 @@ class ProfitDataManager:
             except Exception:
                 pass
 
-            # recompute the components you use (or pass them in):
+            # Prepare logging metrics using calculated values
             fee_side = "taker"  # or detect maker/taker used in calc
-            fee_pct = float(order_data.taker) if fee_side == "taker" else float(order_data.maker)
-            atr_pct = float(getattr(order_data, "atr_pct", 0) or 0.0)
-            spr_pct = float(getattr(order_data, "spread_pct", 0) or 0.0)
-
+            fee_pct_logged = float(order_data.taker) if fee_side == "taker" else float(order_data.maker)
+            atr_pct_logged = float(atr_pct)  # use calculated local variable
+            spr_pct_logged = float(spread_pct)  # use calculated local variable
 
             rr = float((tp_adj - entry) / max(Decimal("1e-12"), (entry - sl_adj)))  # avoid div-by-zero
-            stop_pct = float((entry - sl_adj) / entry) if entry else None
-            tp_pct = float((tp_adj - entry) / entry) if entry else None
+            stop_pct_logged = float((entry - sl_adj) / entry) if entry else None
+            tp_pct_logged = float((tp_adj - entry) / entry) if entry else None
 
             self.shared_utils_utility.write_jsonl(TP_SL_LOG_PATH, {
                 "ts": datetime.now(timezone.utc).isoformat(),
@@ -338,12 +338,12 @@ class ProfitDataManager:
                 "tp": float(tp_adj),
                 "sl": float(sl_adj),
                 "rr": rr,  # risk:reward at entry time
-                "tp_pct": tp_pct,  # +% target
-                "stop_pct": stop_pct,  # -% stop
-                "stop_mode": getattr(self, "stop_mode", "atr"),
-                "atr_pct": atr_pct,
-                "cushion_spread": spr_pct,
-                "cushion_fee": fee_pct,
+                "tp_pct": tp_pct_logged,  # +% target
+                "stop_pct": stop_pct_logged,  # -% stop
+                "stop_mode": mode,  # use calculated mode variable
+                "atr_pct": atr_pct_logged,  # use calculated ATR value
+                "cushion_spread": spr_pct_logged,  # use calculated spread value
+                "cushion_fee": fee_pct_logged,
                 "fee_side": fee_side
             })
 

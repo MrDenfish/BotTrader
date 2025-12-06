@@ -552,10 +552,15 @@ def query_trigger_breakdown(conn):
         time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
 
         # Query trigger breakdown using FIFO allocations
+        # Handle both JSON format {"trigger": "LIMIT"} and plain string "limit"
         q = f"""
             WITH trigger_pnl AS (
                 SELECT
-                    COALESCE(tr.trigger->>'trigger', 'UNKNOWN') AS trigger_type,
+                    UPPER(COALESCE(
+                        tr.trigger->>'trigger',  -- JSON format: {{"trigger": "LIMIT"}}
+                        TRIM(BOTH '"' FROM tr.trigger::text),  -- Plain string: "limit"
+                        'UNKNOWN'
+                    )) AS trigger_type,
                     tr.order_id,
                     COALESCE(SUM(fa.pnl_usd), 0) AS pnl
                 FROM {qualify(REPORT_TRADES_TABLE)} tr
@@ -566,7 +571,7 @@ def query_trigger_breakdown(conn):
                   {upper_bound_sql}
                   AND tr.side = 'sell'
                   AND tr.status IN ('filled', 'done')
-                GROUP BY tr.trigger->>'trigger', tr.order_id
+                GROUP BY trigger_type, tr.order_id
             )
             SELECT
                 trigger_type,
