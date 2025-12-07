@@ -747,7 +747,7 @@ class OrderManager:
             "limit_price": price,
             "origin": "SIGHOOK",
             "source": source,
-            "trigger": trigger,
+            "trigger": {"trigger": trigger} if isinstance(trigger, str) else trigger,
             "score": score,
             "verified": valid_order
         }

@@ -457,7 +457,8 @@ class WebhookListener:
                                                                   self.shared_utils_precision,
                                                                   self.shared_utils_print,
                                                                   self.shared_data_manager,
-                                                                  self.logger_manager)
+                                                                  self.logger_manager,
+                                                                  self.market_data_updater)
 
         self.order_book_manager = order_book_manager
 

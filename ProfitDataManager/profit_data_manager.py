@@ -55,15 +55,15 @@ def _atr_pct_from_ohlcv(ohlcv: list | None, entry_price: Decimal, period: int = 
 class ProfitDataManager:
     _instance = None
     @classmethod
-    def get_instance(cls, shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
+    def get_instance(cls, shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager, market_data_updater=None):
         """
         Singleton method to ensure only one instance of ProfitDataManager exists.
         """
         if cls._instance is None:
-            cls._instance = cls( shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager)
+            cls._instance = cls( shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager, market_data_updater)
         return cls._instance
 
-    def __init__(self, shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager):
+    def __init__(self, shared_utils_utility, shared_utils_precision, shared_utils_print_data, shared_data_manager, logger_manager, market_data_updater=None):
         self.config = config()
         self._hodl = self.config.hodl
         self._stop_loss = Decimal(self.config.stop_loss)
@@ -76,6 +76,7 @@ class ProfitDataManager:
         self.shared_utils_utility = shared_utils_utility
         self.shared_utils_print_data = shared_utils_print_data
         self.shared_utils_precision = shared_utils_precision
+        self.market_data_updater = market_data_updater
         self.start_time = None
 
     @property
