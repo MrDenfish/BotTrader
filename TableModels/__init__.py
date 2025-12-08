@@ -4,3 +4,4 @@ from .market_snapshot import MarketDataSnapshot
 from .order_management import OrderManagementSnapshot
 from .ohlcv_data import OHLCVData
 from .trade_record import TradeRecord
+from .cash_transaction import CashTransaction
