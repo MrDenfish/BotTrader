@@ -743,7 +743,7 @@ def query_hodl_positions(conn):
 
 def run_queries(conn):
     errors = []
-    detect_notes = ["Build:v10"]  # Increment version
+    detect_notes = ["Build:v11"]  # Increment version
     fifo_health = None  # Store FIFO health metrics for HTML report
 
     # Realized PnL (windowed if timestamp exists)
@@ -1203,7 +1203,7 @@ def compute_trade_stats_windowed(conn):
 
 def compute_max_drawdown(conn):
     """
-    Compute max drawdown using FIFO allocations table.
+    Compute max drawdown using FIFO allocations + starting cash balance.
     Returns: (dd_pct, dd_abs, peak_equity, trough_equity, notes)
     """
     notes = []
@@ -1221,13 +1221,38 @@ def compute_max_drawdown(conn):
     if 'side' not in cols:
         return 0.0, 0.0, 0.0, 0.0, [f"Drawdown: 'side' column not found on {tbl}"]
 
-    # New: allow ignoring the early 'flat bank' region to avoid % blowups
-    try:
-        min_start_equity = float(os.getenv("REPORT_MDD_MIN_START_EQUITY", "500"))
-    except Exception:
-        min_start_equity = 500.0
+    # Get starting cash balance from cash_transactions
+    starting_cash_query = f"""
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN normalized_type = 'deposit' THEN amount_usd
+                WHEN normalized_type = 'withdrawal' THEN -amount_usd
+                ELSE 0
+            END
+        ), 0) as starting_cash
+        FROM public.cash_transactions
+        WHERE transaction_date <= (
+            SELECT MIN({qident(ts_col)})
+            FROM {qualify(tbl)}
+            WHERE side = 'sell' AND status IN ('filled', 'done')
+        )
+    """
 
-    # Build cumulative equity and running peak using FIFO allocations; then anchor at first equity >= threshold
+    try:
+        starting_cash_result = conn.run(starting_cash_query)[0]
+        starting_cash = float(starting_cash_result[0] if starting_cash_result else 0.0)
+    except Exception as e:
+        notes.append(f"Drawdown: error querying cash_transactions: {e}")
+        starting_cash = 0.0
+
+    # If no cash transactions or no trades yet, use fallback
+    if starting_cash == 0:
+        try:
+            starting_cash = float(os.getenv("STARTING_EQUITY_USD", "1906.54"))
+        except Exception:
+            starting_cash = 1906.54
+
+    # Build equity curve: starting_cash + cumulative_pnl
     q = f"""
         WITH trade_pnl AS (
           SELECT
@@ -1246,26 +1271,15 @@ def compute_max_drawdown(conn):
           SELECT ts, pnl::numeric AS pnl
           FROM trade_pnl
         ),
-        c AS (  -- equity curve
+        c AS (  -- equity curve with starting cash
           SELECT ts,
-                 SUM(pnl) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS equity
+                 {starting_cash} + SUM(pnl) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS equity
           FROM t
         ),
-        anchor AS (  -- first time equity exceeds threshold
-          SELECT MIN(ts) AS ts_anchor
-          FROM c
-          WHERE equity >= {min_start_equity}
-        ),
-        c2 AS (  -- filtered equity after anchor (fallback to all if never reached)
-          SELECT c.*
-          FROM c
-          LEFT JOIN anchor a ON TRUE
-          WHERE a.ts_anchor IS NULL OR c.ts >= a.ts_anchor
-        ),
-        d AS (  -- running peak and drawdowns on filtered curve
+        d AS (  -- running peak and drawdowns
           SELECT ts, equity,
                  MAX(equity) OVER (ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS run_max
-          FROM c2
+          FROM c
         )
         SELECT
           MIN( (equity - run_max) / NULLIF(run_max, 0.0) ) AS min_frac,
@@ -1284,40 +1298,61 @@ def compute_max_drawdown(conn):
     dd_abs = abs(float(min_abs or 0.0))
     notes.append(
         f"Drawdown source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col} "
-        f"min_start_equity={min_start_equity}"
+        f"starting_cash=${starting_cash:.2f}"
     )
     return dd_pct, dd_abs, float(peak_eq or 0.0), float(trough_eq or 0.0), notes
 
 
 def compute_cash_vs_invested(conn, exposures):
+    """
+    Calculate cash balance and invested percentage using cash_transactions.
+    Formula: Cash = Net deposits + Realized PnL - Invested Notional
+    """
     invested = float(exposures.get("total_notional", 0.0) if exposures else 0.0)
     notes = []
-    tbl = REPORT_BALANCES_TABLE
-    cols = table_columns(conn, tbl)
-    if not cols:
-        notes.append(f"Cash: table not found: {tbl}")
-        return 0.0, invested, 0.0, notes
 
-    sym_col = REPORT_CASH_SYM_COL if (REPORT_CASH_SYM_COL and REPORT_CASH_SYM_COL in cols) else \
-              pick_first_available(cols, ["currency","asset","symbol","coin"])
-    amt_col = REPORT_CASH_AMT_COL if (REPORT_CASH_AMT_COL and REPORT_CASH_AMT_COL in cols) else \
-              pick_first_available(cols, ["available","balance","free","amount","qty","quantity"])
-
-    if not sym_col or not amt_col:
-        notes.append(f"Cash: missing sym/amt columns on {tbl}")
-        return 0.0, invested, 0.0, notes
-
-    syms_list = ",".join(f"{_sql_str(s)}" for s in REPORT_CASH_SYMBOLS)
-    q = f"""
-        SELECT SUM({qident(amt_col)})
-        FROM {qualify(tbl)}
-        WHERE UPPER({qident(sym_col)}) IN ({syms_list})
+    # Get net cash flow from deposits/withdrawals
+    cash_flow_query = """
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN normalized_type = 'deposit' THEN amount_usd
+                WHEN normalized_type = 'withdrawal' THEN -amount_usd
+                ELSE 0
+            END
+        ), 0) as net_cash_flow
+        FROM public.cash_transactions
     """
-    row = conn.run(q)[0][0] if cols else 0
-    cash = float(row or 0.0)
-    total_cap = cash + invested
-    invested_pct = (invested / total_cap * 100.0) if total_cap > 0 else 0.0
-    notes.append(f"Cash source: {tbl} sym_col={sym_col} amt_col={amt_col} symbols={REPORT_CASH_SYMBOLS}")
+
+    try:
+        cash_flow_result = conn.run(cash_flow_query)[0]
+        net_cash_flow = float(cash_flow_result[0] if cash_flow_result else 0.0)
+    except Exception as e:
+        notes.append(f"Cash: error querying cash_transactions: {e}")
+        return 0.0, invested, 0.0, notes
+
+    # Get realized PnL from FIFO allocations
+    pnl_query = f"""
+        SELECT COALESCE(SUM(pnl_usd), 0) as realized_pnl
+        FROM fifo_allocations
+        WHERE allocation_version = {FIFO_ALLOCATION_VERSION}
+    """
+
+    try:
+        pnl_result = conn.run(pnl_query)[0]
+        realized_pnl = float(pnl_result[0] if pnl_result else 0.0)
+    except Exception as e:
+        notes.append(f"Cash: error querying FIFO allocations: {e}")
+        realized_pnl = 0.0
+
+    # Calculate cash: net deposits + realized_pnl - invested
+    cash = net_cash_flow + realized_pnl - invested
+
+    # Calculate invested percentage
+    total_equity = cash + invested
+    invested_pct = (invested / total_equity * 100.0) if total_equity > 0 else 0.0
+
+    notes.append(f"Cash source: computed from cash_transactions (net flow: ${net_cash_flow:.2f}, realized PnL: ${realized_pnl:.2f})")
+
     return cash, invested, invested_pct, notes
 
 # ============================================================================
