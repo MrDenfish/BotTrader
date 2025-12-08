@@ -66,6 +66,7 @@ class CentralConfig:
         self._allow_buys_on_red_day = self._flip_hysteresis_pct = self._cooldown_bars = self._enrich_limit =  None
         self._sl_limit_offset_ticks = self._min_l1_notional_usd = self._pre_bracket_sigma_ratio = None
         self._aws_region = self._score_jsonl_path = self._tp_sl_log_path = self._report_lookback_minutes = None
+        self._min_indicators_required = self._excluded_symbols = None
         self.exchange: Optional[Any] = None
 
         # Default values
@@ -159,6 +160,8 @@ class CentralConfig:
             "_allow_buys_on_red_day": "ALLOW_BUYS_ON_RED_DAY",
             "_flip_hysteresis_pct": "FLIP_HYSTERESIS_PCT",
             "_cooldown_bars": "COOLDOWN_BARS",
+            "_min_indicators_required": "MIN_INDICATORS_REQUIRED",
+            "_excluded_symbols": "EXCLUDED_SYMBOLS",
             "_version": "VERSION",
             "_bb_window": "BB_WINDOW",
             "_bb_std": "BB_STD",
@@ -792,6 +795,25 @@ class CentralConfig:
             return int(self._cooldown_bars) if self._cooldown_bars is not None else 7
         except Exception:
             return 7
+
+    @property
+    def min_indicators_required(self) -> int:
+        try:
+            return int(self._min_indicators_required) if self._min_indicators_required is not None else 2
+        except Exception:
+            return 2
+
+    @property
+    def excluded_symbols(self) -> list:
+        try:
+            if self._excluded_symbols is None:
+                return ['A8-USD', 'PENGU-USD']
+            # Handle both string (comma-separated) and list formats
+            if isinstance(self._excluded_symbols, str):
+                return [s.strip() for s in self._excluded_symbols.split(',') if s.strip()]
+            return list(self._excluded_symbols)
+        except Exception:
+            return ['A8-USD', 'PENGU-USD']
 
 
     def _strip_path(self, url: str) -> str:
