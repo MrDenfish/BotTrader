@@ -9,7 +9,7 @@
 
 CREATE TABLE IF NOT EXISTS strategy_snapshots (
     id SERIAL PRIMARY KEY,
-    snapshot_id UUID NOT NULL DEFAULT gen_random_uuid(),
+    snapshot_id UUID NOT NULL DEFAULT gen_random_uuid() UNIQUE,
     active_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     active_until TIMESTAMPTZ,  -- NULL = currently active
 

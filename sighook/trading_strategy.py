@@ -46,6 +46,9 @@ class TradingStrategy:
         self._hodl = self.config._hodl
         self.start_time = None
 
+        # ✅ Symbol blacklist (consistent losers, high spreads)
+        self.excluded_symbols = getattr(self.config, 'excluded_symbols', ['A8-USD', 'PENGU-USD'])
+
     # ---------------------------
     # ✅ Properties
     # ---------------------------
@@ -86,6 +89,12 @@ class TradingStrategy:
 
             for symbol in valid_symbols:
                 asset = symbol.replace("/", "-").split("-")[0]
+
+                # ✅ Skip blacklisted symbols (consistent losers, high spreads)
+                if symbol in self.excluded_symbols:
+                    self.logger.info(f"⛔ Skipping blacklisted symbol: {symbol}")
+                    skipped_symbols.append(symbol)
+                    continue
 
                 ohlcv_df = ohlcv_data_dict[symbol]
                 if ohlcv_df is None or ohlcv_df.empty:

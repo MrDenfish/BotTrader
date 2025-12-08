@@ -37,8 +37,8 @@ class SignalManager:
         # ✅ Buy/Sell Scoring Thresholds (as Decimals)
         self.roc_buy_threshold = Decimal(str(self.config.roc_buy_24h or 3.0))
         self.roc_sell_threshold = Decimal(str(self.config.roc_sell_24h or -2.0))
-        self.rsi_buy = Decimal(str(self.config.rsi_buy or 30))
-        self.rsi_sell = Decimal(str(self.config.rsi_sell or 70))
+        self.rsi_buy = Decimal(str(self.config.rsi_buy or 20))  # ← Tightened from 30 (more selective)
+        self.rsi_sell = Decimal(str(self.config.rsi_sell or 80))  # ← Tightened from 70 (more selective)
         self.buy_target = float(self.config.buy_ratio or 0.0)
         self.sell_target = float(self.config.sell_ratio or 0.0)
 
@@ -62,11 +62,14 @@ class SignalManager:
 
         # ✅ Strategy Weights
         self.strategy_weights = self.indicators.strategy_weights or {
-            'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 2.5,
+            'Buy Ratio': 1.2, 'Buy Touch': 1.5, 'W-Bottom': 2.0, 'Buy RSI': 1.5,  # ← Reduced from 2.5
             'Buy ROC': 2.0, 'Buy MACD': 1.8, 'Buy Swing': 2.2,
-            'Sell Ratio': 1.2, 'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 2.5,
+            'Sell Ratio': 1.2, 'Sell Touch': 1.5, 'M-Top': 2.0, 'Sell RSI': 1.5,  # ← Reduced from 2.5
             'Sell ROC': 2.0, 'Sell MACD': 1.8, 'Sell Swing': 2.2
         }
+
+        # ✅ Multi-Indicator Confirmation (NEW)
+        self.min_indicators_required = int(self.config.min_indicators_required or 2)
 
         # --- Runtime directories (single source of truth) -----------------
 
@@ -392,6 +395,26 @@ class SignalManager:
                 if sell_score >= self.score_sell_target else
                 (0, round(sell_score, 3), self.score_sell_target)
             )
+
+            # ✅ Multi-Indicator Confirmation (NEW)
+            # Count how many indicators actually fired (decision == 1)
+            buy_indicators_fired = sum(
+                1 for indicator in self.strategy_weights.keys()
+                if indicator.startswith("Buy") and last_row.get(indicator, (0,))[0] == 1
+            )
+            sell_indicators_fired = sum(
+                1 for indicator in self.strategy_weights.keys()
+                if indicator.startswith("Sell") and last_row.get(indicator, (0,))[0] == 1
+            )
+
+            # Suppress signal if insufficient indicators
+            if buy_signal[0] == 1 and buy_indicators_fired < self.min_indicators_required:
+                guardrail_note = f"buy_suppressed_insufficient_indicators_{buy_indicators_fired}_of_{self.min_indicators_required}"
+                buy_signal = (0, buy_signal[1], buy_signal[2])
+
+            if sell_signal[0] == 1 and sell_indicators_fired < self.min_indicators_required:
+                guardrail_note = f"sell_suppressed_insufficient_indicators_{sell_indicators_fired}_of_{self.min_indicators_required}"
+                sell_signal = (0, sell_signal[1], sell_signal[2])
 
             # --- Guardrails: hysteresis & cooldown (per symbol) ---
             # Use the DataFrame index as a bar counter for cooldown
