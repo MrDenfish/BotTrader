@@ -1305,53 +1305,84 @@ def compute_max_drawdown(conn):
 
 def compute_cash_vs_invested(conn, exposures):
     """
-    Calculate cash balance and invested percentage using cash_transactions.
-    Formula: Cash = Net deposits + Realized PnL - Invested Notional
+    Calculate cash balance and invested percentage using actual Coinbase account balance.
+    Queries Coinbase REST API to get real-time USD balance.
     """
     invested = float(exposures.get("total_notional", 0.0) if exposures else 0.0)
     notes = []
+    cash = 0.0
 
-    # Get net cash flow from deposits/withdrawals
-    cash_flow_query = """
-        SELECT COALESCE(SUM(
-            CASE
-                WHEN normalized_type = 'deposit' THEN amount_usd
-                WHEN normalized_type = 'withdrawal' THEN -amount_usd
-                ELSE 0
-            END
-        ), 0) as net_cash_flow
-        FROM public.cash_transactions
-    """
-
+    # Try to get actual USD balance from Coinbase API
     try:
-        cash_flow_result = conn.run(cash_flow_query)[0]
-        net_cash_flow = float(cash_flow_result[0] if cash_flow_result else 0.0)
+        from coinbase.rest import RESTClient
+        import os
+
+        # Load credentials from environment
+        api_key = os.getenv("COINBASE_API_KEY_NAME")
+        api_secret = os.getenv("COINBASE_API_SIGNING_KEY")
+
+        if not api_key or not api_secret:
+            raise ValueError("Missing Coinbase API credentials")
+
+        # Initialize Coinbase REST client
+        client = RESTClient(api_key=api_key, api_secret=api_secret)
+
+        # Get all accounts
+        accounts_response = client.get_accounts()
+
+        if accounts_response and hasattr(accounts_response, 'accounts'):
+            # Find USD account and sum all USD balances
+            usd_balance = 0.0
+            for account in accounts_response.accounts:
+                if account.currency in ['USD', 'USDC', 'USDT']:
+                    available = float(account.available_balance.value) if hasattr(account, 'available_balance') else 0.0
+                    hold = float(account.hold.value) if hasattr(account, 'hold') else 0.0
+                    usd_balance += (available + hold)
+
+            cash = usd_balance
+            notes.append(f"Cash source: Coinbase API (real-time USD balance)")
+        else:
+            raise ValueError("Empty or invalid response from Coinbase API")
+
     except Exception as e:
-        notes.append(f"Cash: error querying cash_transactions: {e}")
-        return 0.0, invested, 0.0, notes
+        # Fallback to old calculation method if API call fails
+        notes.append(f"Cash: Coinbase API failed ({e}), using fallback calculation")
 
-    # Get realized PnL from FIFO allocations
-    pnl_query = f"""
-        SELECT COALESCE(SUM(pnl_usd), 0) as realized_pnl
-        FROM fifo_allocations
-        WHERE allocation_version = {FIFO_ALLOCATION_VERSION}
-    """
+        try:
+            # Get net cash flow from deposits/withdrawals
+            cash_flow_query = """
+                SELECT COALESCE(SUM(
+                    CASE
+                        WHEN normalized_type = 'deposit' THEN amount_usd
+                        WHEN normalized_type = 'withdrawal' THEN -amount_usd
+                        ELSE 0
+                    END
+                ), 0) as net_cash_flow
+                FROM public.cash_transactions
+            """
+            cash_flow_result = conn.run(cash_flow_query)[0]
+            net_cash_flow = float(cash_flow_result[0] if cash_flow_result else 0.0)
 
-    try:
-        pnl_result = conn.run(pnl_query)[0]
-        realized_pnl = float(pnl_result[0] if pnl_result else 0.0)
-    except Exception as e:
-        notes.append(f"Cash: error querying FIFO allocations: {e}")
-        realized_pnl = 0.0
+            # Get realized PnL from FIFO allocations
+            pnl_query = f"""
+                SELECT COALESCE(SUM(pnl_usd), 0) as realized_pnl
+                FROM fifo_allocations
+                WHERE allocation_version = {FIFO_ALLOCATION_VERSION}
+            """
+            pnl_result = conn.run(pnl_query)[0]
+            realized_pnl = float(pnl_result[0] if pnl_result else 0.0)
 
-    # Calculate cash: net deposits + realized_pnl - invested
-    cash = net_cash_flow + realized_pnl - invested
+            # Fallback calculation (known to be buggy, but better than nothing)
+            cash = net_cash_flow + realized_pnl - invested
+            notes.append(f"Cash source: FALLBACK calculation (net flow: ${net_cash_flow:.2f}, realized PnL: ${realized_pnl:.2f})")
+
+        except Exception as fallback_error:
+            notes.append(f"Cash: fallback also failed: {fallback_error}")
+            cash = 0.0
 
     # Calculate invested percentage
     total_equity = cash + invested
     invested_pct = (invested / total_equity * 100.0) if total_equity > 0 else 0.0
-
-    notes.append(f"Cash source: computed from cash_transactions (net flow: ${net_cash_flow:.2f}, realized PnL: ${realized_pnl:.2f})")
 
     return cash, invested, invested_pct, notes
 
