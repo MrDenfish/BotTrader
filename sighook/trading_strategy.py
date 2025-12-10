@@ -46,8 +46,16 @@ class TradingStrategy:
         self._hodl = self.config._hodl
         self.start_time = None
 
-        # ✅ Symbol blacklist (consistent losers, high spreads)
-        self.excluded_symbols = getattr(self.config, 'excluded_symbols', ['A8-USD', 'PENGU-USD'])
+        # ✅ Symbol blacklist (consistent losers, high spreads) - Updated Dec 10, 2025
+        self.excluded_symbols = getattr(self.config, 'excluded_symbols', [
+            'A8-USD', 'PENGU-USD',  # Original blacklist
+            # Top losers from 30-day analysis (Dec 10, 2025):
+            'ELA-USD', 'ALCX-USD', 'UNI-USD', 'CLANKER-USD', 'ZORA-USD',
+            'DASH-USD', 'BCH-USD', 'AVAX-USD', 'SWFTC-USD', 'AVNT-USD',
+            'PRIME-USD', 'ICP-USD', 'KAITO-USD', 'IRYS-USD', 'TIME-USD',
+            'NMR-USD', 'NEON-USD', 'QNT-USD', 'PERP-USD', 'BOBBOB-USD',
+            'OMNI-USD', 'TIA-USD', 'IP-USD'
+        ])
 
     # ---------------------------
     # ✅ Properties
