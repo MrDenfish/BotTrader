@@ -751,12 +751,19 @@ class OrderTypeManager:
                 if side == 'BUY':
                     price = min(latest_ask * (1 - price_buffer_pct), latest_ask - min_buffer)
                 else:
-                    price = max(latest_bid * (1 + price_buffer_pct), latest_bid + min_buffer)
+                    # ✅ FIX: For sell orders, price must be AT OR BELOW bid to fill
+                    # Subtract buffer to ensure immediate fill (not add!)
+                    price = min(latest_bid * (1 - price_buffer_pct), latest_bid - min_buffer)
 
                 price = price.quantize(Decimal(f'1e-{order_data.quote_decimal}'), rounding=ROUND_DOWN if side == 'BUY' else ROUND_UP)
 
                 formatted_price = f"{price:.{order_data.quote_decimal}f}"
                 formatted_amount = f"{amount:.{order_data.base_decimal}f}"
+
+                # ✅ FIX: Disable post_only for position monitor exits to allow immediate fills
+                # Post-only prevents orders that cross the spread, but emergency exits NEED to cross
+                use_post_only = order_data.source != 'position_monitor'
+
                 payload = {
                     "client_order_id": f"{order_data.source}-{uuid.uuid4().hex[:8]}",
                     "product_id": symbol,
@@ -765,7 +772,7 @@ class OrderTypeManager:
                         "limit_limit_gtc": {
                             "base_size": formatted_amount,
                             "limit_price": formatted_price,
-                            "post_only": True
+                            "post_only": use_post_only
                         }
                     }
                 }
