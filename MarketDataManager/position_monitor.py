@@ -241,6 +241,14 @@ class PositionMonitor:
 
             # 2. SOFT STOP (coordinate with bracket)
             elif pnl_pct <= -self.max_loss_pct:
+                # ✅ FIX: Use market orders for severe SOFT_STOP losses (> -3%) to ensure execution
+                if pnl_pct <= Decimal("-0.03"):  # Loss worse than -3%
+                    use_market_order = True
+                    self.logger.warning(
+                        f"[POS_MONITOR] {product_id} SEVERE LOSS detected (P&L: {pnl_pct:.2%}). "
+                        f"Using MARKET order for immediate exit."
+                    )
+
                 if has_bracket:
                     # Bracket exists - check if it's at same level
                     bracket_sl_pct = (bracket_info['stop_price'] - avg_entry_price) / avg_entry_price

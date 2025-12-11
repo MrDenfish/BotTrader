@@ -302,6 +302,20 @@ class AssetMonitor:
             )
             return
 
+        # ✅ FIX: Reset retry counter after backoff expires
+        if backoff_until and now >= backoff_until:
+            self.logger.info(
+                f"[REARM_OCO] {symbol} backoff expired after {attempts} failures. "
+                f"Resetting retry counter and allowing new attempt."
+            )
+            # Reset to clean slate
+            self._oco_rearm_retries[symbol] = {
+                'attempts': 0,
+                'last_attempt_time': now,
+                'backoff_until': None
+            }
+            attempts = 0  # Update local variable for this execution
+
         # If max retries exceeded and not in backoff, enter backoff period
         if attempts >= self._oco_max_retries:
             backoff_until = now + timedelta(minutes=self._oco_backoff_minutes)
