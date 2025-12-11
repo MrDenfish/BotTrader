@@ -679,6 +679,20 @@ class OrderTypeManager:
                 order_data.quote_decimal
             )
             available_crypto = self.shared_utils_precision.safe_convert(order_data.available_to_trade_crypto, order_data.base_decimal)
+
+            # ✅ FIX: For SELL orders, reduce amount slightly to avoid precision/rounding errors
+            # Coinbase balance (130.332271) might differ from DB value (130.33228) by tiny amounts
+            # Apply 0.01% buffer to ensure we never exceed available balance
+            if side == 'SELL' and available_crypto > 0:
+                precision_buffer = Decimal('0.9999')  # 0.01% buffer
+                max_safe_amount = available_crypto * precision_buffer
+                if amount > max_safe_amount:
+                    self.structured_logger.debug(
+                        f"Reducing sell amount from {amount} to {max_safe_amount} "
+                        f"(0.01% buffer to avoid INSUFFICIENT_FUND precision errors)",
+                        extra={'symbol': symbol, 'original_amount': str(amount), 'adjusted_amount': str(max_safe_amount)}
+                    )
+                    amount = max_safe_amount
             usd_available = self.shared_utils_precision.safe_convert(order_data.usd_balance, order_data.quote_decimal)
 
             attempts = 0
