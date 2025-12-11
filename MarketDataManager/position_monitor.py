@@ -576,14 +576,18 @@ class PositionMonitor:
                 f"{reason} - exiting position"
             )
 
-            # For market orders (emergency exit), we'll still use LIMIT but at current bid
-            # to ensure fill while maintaining some price control
+            # ✅ FIX: For sell orders, price must be AT OR BELOW bid to fill immediately
+            # Setting above bid causes orders to chase the price down and never fill
             if use_market:
-                # Place limit slightly below bid to ensure fill
-                exit_price = highest_bid * Decimal('0.999')  # 0.1% below bid
+                # Emergency exit: Place well below bid to ensure immediate fill
+                exit_price = highest_bid * Decimal('0.995')  # 0.5% below bid for guaranteed fill
+                self.logger.warning(
+                    f"[POS_MONITOR] {product_id} using aggressive limit price "
+                    f"(0.5% below bid) for emergency exit"
+                )
             else:
-                # Place limit at or slightly above bid for better fill rate
-                exit_price = highest_bid * Decimal('1.0001')  # Just above bid
+                # Regular exit: Place slightly below bid for quick fill
+                exit_price = highest_bid * Decimal('0.9995')  # 0.05% below bid
 
             # Adjust precision
             exit_price = self.shared_utils_precision.adjust_precision(
