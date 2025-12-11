@@ -212,11 +212,6 @@ class PositionMonitor:
                 f"balance={total_balance_crypto:.6f})"
             )
 
-            # Check if we already have an open sell order for this position
-            if await self._has_open_sell_order(product_id):
-                self.logger.debug(f"[POS_MONITOR] {product_id} already has open sell order, skipping")
-                return
-
             # ✅ Task 3: Check for active bracket orders (coordination)
             bracket_info = await self._has_active_bracket_order(product_id)
             has_bracket = bracket_info.get('has_bracket', False)
