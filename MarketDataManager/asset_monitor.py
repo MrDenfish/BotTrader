@@ -1340,7 +1340,7 @@ class AssetMonitor:
 
                     # Cancel the order
                     try:
-                        await self.trade_order_manager.cancel_order(order_id)
+                        await self.order_manager.cancel_order(order_id, symbol, cancel_tag="stale_order_cleanup")
                         cancelled_count += 1
                         self.logger.info(f"[STALE_ORDER_CLEANUP] ✅ Successfully cancelled stale order {order_id}")
                     except Exception as e:
