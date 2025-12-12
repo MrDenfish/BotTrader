@@ -646,6 +646,33 @@ class TradeRecorder:
                 self.logger.error(f"❌ Error fetching recent trades: {e}", exc_info=True)
             return []
 
+    async def fetch_active_trades_for_symbol(self, symbol: str):
+        """
+        Fetch only active trades for a specific symbol (optimized for TP/SL calculations).
+
+        This method replaces the inefficient fetch_all_trades() pattern that was causing
+        database timeouts by fetching ALL 7000+ trades and filtering in Python.
+
+        Args:
+            symbol: Trading pair (e.g., "BTC-USD")
+
+        Returns:
+            List of TradeRecord objects with remaining_size > 0 for the specified symbol
+        """
+        try:
+            async with self.db_session_manager.async_session() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        select(TradeRecord)
+                        .where(TradeRecord.symbol == symbol)
+                        .where(TradeRecord.remaining_size > 0)
+                    )
+                    return result.scalars().all()
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"❌ Error fetching active trades for {symbol}: {e}", exc_info=True)
+            return []
+
     async def delete_trade(self, order_id: str):
         """
         Deletes a trade from the database by its order_id.
