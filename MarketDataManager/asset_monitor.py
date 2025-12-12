@@ -1310,6 +1310,10 @@ class AssetMonitor:
                     # bid_ask_spread can return a dict with 'bid' and 'ask' keys
                     current_price = current_price.get("bid", Decimal("0"))
 
+                # Convert to Decimal if it's a float/int
+                if not isinstance(current_price, Decimal):
+                    current_price = Decimal(str(current_price))
+
                 if not current_price or current_price == 0:
                     continue
 
