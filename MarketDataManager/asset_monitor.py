@@ -24,7 +24,11 @@ ADX_STRONG_MIN    = 25            # ≥25 considered strong trend
 DI_DOMINANCE_MIN  = 2             # +DI must exceed −DI by at least this many points
 TP_MOMENTUM_MODE  = "hold"        # "hold" | "ratchet"
 TP_RATCHET_BPS    = 100           # if ratchet: raise TP ~ +1.00% (100 bps) above current price
-ADX_CACHE_SEC     = 5             # don’t recompute more than once per symbol per 5s
+ADX_CACHE_SEC     = 5             # don't recompute more than once per symbol per 5s
+# ── Stale Order Cleanup config ──
+STALE_ORDER_MAX_AGE_MINUTES = 30       # Cancel orders older than 30 minutes
+STALE_ORDER_PRICE_DISTANCE_PCT = Decimal("0.015")  # Cancel if price moved 1.5% away
+STALE_ORDER_CLEANUP_INTERVAL_SEC = 300  # Run cleanup every 5 minutes
 
 _adx_cache_local = {}  # {(symbol): (timestamp, (adx, plus_di, minus_di))}
 
@@ -56,6 +60,9 @@ class AssetMonitor:
         self._oco_rearm_retries = {}
         self._oco_max_retries = 5  # Stop retrying after 5 failed attempts
         self._oco_backoff_minutes = 15  # Wait 15 minutes before allowing retry reset
+
+        # Track last stale order cleanup time to run periodically
+        self._last_stale_order_cleanup = None
 
         # Initialize position monitor for smart LIMIT exits
         self.position_monitor = PositionMonitor(
@@ -91,6 +98,9 @@ class AssetMonitor:
         return self.shared_data_manager.market_data.get("usd_pairs_cache", {})
 
     async def monitor_all_orders(self):
+        # Run stale order cleanup periodically (every 5 minutes)
+        await self.cleanup_stale_orders()
+
         await self.monitor_orders_and_assets()
         await self.monitor_untracked_assets()
 
@@ -1228,6 +1238,118 @@ class AssetMonitor:
             return None
 
     # ==================== > Main Monitors < =================#
+
+    async def cleanup_stale_orders(self):
+        """
+        Cancel orders that are stale based on:
+        1. Time: Order older than STALE_ORDER_MAX_AGE_MINUTES
+        2. Price Distance: Current price moved > STALE_ORDER_PRICE_DISTANCE_PCT away from order price
+
+        Prevents capital from being locked in unfillable orders (e.g., TAO-USD buy @ $294.87 when price is now $301).
+        """
+        now = datetime.now(timezone.utc)
+
+        # Check if we need to run cleanup (every STALE_ORDER_CLEANUP_INTERVAL_SEC)
+        if self._last_stale_order_cleanup:
+            seconds_since_last_cleanup = (now - self._last_stale_order_cleanup).total_seconds()
+            if seconds_since_last_cleanup < STALE_ORDER_CLEANUP_INTERVAL_SEC:
+                return  # Not time yet
+
+        self._last_stale_order_cleanup = now
+        self.logger.info("[STALE_ORDER_CLEANUP] Starting periodic stale order cleanup")
+
+        order_tracker = self.open_orders
+        if not order_tracker:
+            self.logger.debug("[STALE_ORDER_CLEANUP] No open orders to check")
+            return
+
+        cancelled_count = 0
+        checked_count = 0
+
+        for order_id, raw_order in order_tracker.items():
+            try:
+                checked_count += 1
+
+                # Extract order details
+                info = raw_order.get("info", {})
+                symbol = raw_order.get("symbol", "")
+                side = raw_order.get("side", "").upper()
+
+                # Get order creation time
+                order_time_str = info.get("created_time", raw_order.get("datetime", ""))
+                if not order_time_str:
+                    continue
+
+                # Parse order time
+                if order_time_str.endswith('Z'):
+                    order_time_str = order_time_str.replace('Z', '+00:00')
+                order_time = datetime.fromisoformat(order_time_str)
+
+                # Calculate order age in minutes
+                order_age_minutes = (now - order_time).total_seconds() / 60
+
+                # Get order price
+                order_price = None
+                if "order_configuration" in info:
+                    config = info["order_configuration"]
+                    if "limit_limit_gtc" in config:
+                        order_price = Decimal(config["limit_limit_gtc"].get("limit_price", "0"))
+                    elif "trigger_bracket_gtc" in config:
+                        order_price = Decimal(config["trigger_bracket_gtc"].get("limit_price", "0"))
+
+                if not order_price or order_price == 0:
+                    # Try fallback to raw_order price
+                    order_price = Decimal(str(raw_order.get("price", "0")))
+
+                if not order_price or order_price == 0:
+                    continue
+
+                # Get current market price
+                current_price = self.bid_ask_spread.get(symbol, Decimal("0"))
+                if current_price == 0:
+                    continue
+
+                # Calculate price distance percentage
+                price_distance_pct = abs((current_price - order_price) / order_price)
+
+                # Determine if order is stale
+                is_stale_by_age = order_age_minutes >= STALE_ORDER_MAX_AGE_MINUTES
+                is_stale_by_price = price_distance_pct >= STALE_ORDER_PRICE_DISTANCE_PCT
+
+                if is_stale_by_age or is_stale_by_price:
+                    reason = []
+                    if is_stale_by_age:
+                        reason.append(f"age={order_age_minutes:.1f}min (max {STALE_ORDER_MAX_AGE_MINUTES}min)")
+                    if is_stale_by_price:
+                        reason.append(f"price distance={price_distance_pct:.2%} (max {STALE_ORDER_PRICE_DISTANCE_PCT:.2%})")
+
+                    reason_str = ", ".join(reason)
+
+                    self.logger.info(
+                        f"[STALE_ORDER_CLEANUP] Cancelling stale {side} order for {symbol}: "
+                        f"order_price=${order_price}, current_price=${current_price}, {reason_str}"
+                    )
+
+                    # Cancel the order
+                    try:
+                        await self.trade_order_manager.cancel_order(order_id)
+                        cancelled_count += 1
+                        self.logger.info(f"[STALE_ORDER_CLEANUP] ✅ Successfully cancelled stale order {order_id}")
+                    except Exception as e:
+                        self.logger.warning(
+                            f"[STALE_ORDER_CLEANUP] ⚠️ Failed to cancel stale order {order_id}: {e}"
+                        )
+
+            except Exception as e:
+                self.logger.warning(
+                    f"[STALE_ORDER_CLEANUP] Error processing order {order_id}: {e}",
+                    exc_info=True
+                )
+
+        self.logger.info(
+            f"[STALE_ORDER_CLEANUP] Cleanup complete: checked {checked_count} orders, cancelled {cancelled_count} stale orders"
+        )
+
     async def run_positions_exit_sentinel(self, interval_sec: int = 3):
         while True:
             try:
