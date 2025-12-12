@@ -1306,7 +1306,11 @@ class AssetMonitor:
 
                 # Get current market price
                 current_price = self.bid_ask_spread.get(symbol, Decimal("0"))
-                if current_price == 0:
+                if isinstance(current_price, dict):
+                    # bid_ask_spread can return a dict with 'bid' and 'ask' keys
+                    current_price = current_price.get("bid", Decimal("0"))
+
+                if not current_price or current_price == 0:
                     continue
 
                 # Calculate price distance percentage
