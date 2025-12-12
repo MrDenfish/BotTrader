@@ -556,6 +556,10 @@ class OrderTypeManager:
                 sl_limit = self.shared_utils_precision.safe_quantize(adj["sl_limit"], quote_quantizer)
                 tp_post_only = adj["post_only"]
 
+            # ✅ FIX: Disable post_only for websocket/position_monitor OCO rearm orders
+            # These are protective orders that must fill immediately
+            use_post_only = order_data.source not in ('websocket', 'position_monitor')
+
             order_payload = {
                 "client_order_id": client_order_id,
                 "product_id": trading_pair,
@@ -563,7 +567,8 @@ class OrderTypeManager:
                 "order_configuration": {
                     "limit_limit_gtc": {
                         "base_size": str(adjusted_size),
-                        "limit_price": str(adjusted_price)
+                        "limit_price": str(adjusted_price),
+                        "post_only": use_post_only
                     }
                 },
                 "attached_order_configuration": {
