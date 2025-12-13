@@ -934,11 +934,21 @@ class TradeOrderManager:
             return validation_result
 
     def get_post_only_price(self, highest_bid, lowest_ask, quote_increment, side):
+        """
+        Calculate post-only limit price for maker orders.
+
+        For BUY: Place just above the current bid (competitive maker, not crossing spread)
+        For SELL: Place just below the current ask (competitive maker, not crossing spread)
+
+        This ensures orders act as makers and capture spread instead of paying it.
+        """
         adjustment = quote_increment * 2  # or 1 if tighter spacing is acceptable
         if side == 'buy':
-            return (lowest_ask - adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
-        else:
+            # BUY: Place just ABOVE the bid to be a competitive maker
             return (highest_bid + adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
+        else:  # sell
+            # SELL: Place just BELOW the ask to be a competitive maker
+            return (lowest_ask - adjustment).quantize(quote_increment, rounding=ROUND_HALF_UP)
 
 
 
