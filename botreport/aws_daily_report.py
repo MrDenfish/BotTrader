@@ -1092,7 +1092,8 @@ def compute_unrealized_pnl(conn, open_pos):
 def compute_win_rate(conn):
     """
     Compute win rate using FIFO allocations table.
-    Returns: (win_rate_pct, wins_count, total_count, notes)
+    Returns: (win_rate_pct, wins_count, decisive_trades_count, notes)
+    Note: Win rate is calculated as wins / (wins + losses), excluding break-even trades
     """
     notes = []
     tbl = REPORT_WINRATE_TABLE or REPORT_TRADES_TABLE
@@ -1137,10 +1138,15 @@ def compute_win_rate(conn):
     wins, losses, total = conn.run(q)[0]
     total = int(total or 0)
     wins = int(wins or 0)
-    win_rate = (wins / total * 100.0) if total > 0 else 0.0
+    losses = int(losses or 0)
 
-    notes.append(f"WinRate source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col} (denominator includes breakeven)")
-    return win_rate, wins, total, notes
+    # Calculate win rate excluding break-even trades
+    decisive_trades = wins + losses
+    win_rate = (wins / decisive_trades * 100.0) if decisive_trades > 0 else 0.0
+
+    breakeven_count = total - decisive_trades
+    notes.append(f"WinRate source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col} (denominator excludes {breakeven_count} breakeven trades)")
+    return win_rate, wins, decisive_trades, notes
 
 def compute_trade_stats_windowed(conn):
     """

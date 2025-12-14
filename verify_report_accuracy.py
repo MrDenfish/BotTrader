@@ -104,10 +104,12 @@ def verify_report(hours_back=24):
             be = int(result[3] or 0)
             trade_pnl = float(result[4] or 0)
 
-            trade_win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+            # Calculate win rate excluding break-even trades
+            decisive_trades = wins + losses
+            trade_win_rate = (wins / decisive_trades * 100) if decisive_trades > 0 else 0
 
             print(f"Total Sell Orders: {total_trades} (W:{wins} L:{losses} BE:{be})")
-            print(f"Win Rate:          {trade_win_rate:.1f}% ({wins}/{total_trades})")
+            print(f"Win Rate:          {trade_win_rate:.1f}% ({wins}/{decisive_trades})")
             print(f"Total PnL:         ${trade_pnl:,.4f}")
 
             # 3. Comparison
@@ -124,7 +126,7 @@ def verify_report(hours_back=24):
 
             print(f"\nExpected Report Values:")
             print(f"  Realized PnL:    ${total_pnl:,.2f}")
-            print(f"  Win Rate:        {trade_win_rate:.1f}% ({wins}/{total_trades})")
+            print(f"  Win Rate:        {trade_win_rate:.1f}% ({wins}/{decisive_trades})")
 
             # 4. Symbol breakdown (top performers)
             print(f"\n4. Top Symbol Performance")
