@@ -542,11 +542,11 @@ class WebSocketHelper:
                 new_channels = set(self.user_channels) - self.subscribed_channels
                 if not new_channels:
                     self.logger.info("⚠💚💚 No new channels to subscribe. Ensure subscribed_channels was cleared after reconnect. 💚💚")
-                    return
+                    return True  # ✅ Already subscribed, consider it success
 
                 if not hasattr(self, "user_ws") or self.user_ws is None:
                     self.logger.error("🚫 User WebSocket is not initialized. Subscription aborted.")
-                    return
+                    return False  # ✅ Can't subscribe without WebSocket
 
                 # 🔐 Generate JWT token
                 jwt_token = await self.generate_jwt()
@@ -563,7 +563,7 @@ class WebSocketHelper:
 
                 if not self.product_ids:
                     self.logger.error("🚫 Subscription aborted — product_ids list is empty.")
-                    return
+                    return False  # ✅ Can't subscribe without product IDs
 
                 # print(f"📦 Subscribing with product_ids: {self.product_ids} DEBUG") #debug
 
@@ -578,6 +578,7 @@ class WebSocketHelper:
                     self.logger.info(f"💚💚 Subscribed to user channel: {channel} 💚💚")
 
                 self.subscribed_channels.update(new_channels)
+                return True  # ✅ FIX: Return True on successful subscription
 
 
         except asyncio.CancelledError:
@@ -588,6 +589,7 @@ class WebSocketHelper:
                 self.logger.warning(f"⚠️ Clean close during subscription to {channel} (normal reconnect).")
             else:
                 self.logger.error(f"❌ Failed to subscribe to {channel}: {e}", exc_info=True)
+            return False  # ✅ FIX: Return False on exception
 
     async def _handle_subscription_error(self):
         """
