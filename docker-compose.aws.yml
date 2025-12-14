@@ -90,6 +90,7 @@ services:
       TZ: ${TZ}
       RUN_MODE: sighook
       WEBHOOK_BASE_URL: "http://webhook:5003"
+      IN_DOCKER: "true"
       PYTHONUNBUFFERED: "1"        # NEW: live stdout
       PYTHONFAULTHANDLER: "1"      # NEW
       LOG_LEVEL: ${LOG_LEVEL}      # Read from .env (DEBUG or INFO)
