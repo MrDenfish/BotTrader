@@ -329,12 +329,17 @@ class OrderTypeManager:
         sl_price: Decimal,
         order_book: dict,
         tick_size: Decimal,
+        source: str = None,
         min_tp_ticks: int = 2,
         sl_limit_offset_ticks: int = 1,
     ) -> dict:
         """
         Enforce 'resting' TP and a stop-limit with small offset to avoid instant swipes.
-        Returns dict with 'tp_price','sl_stop','sl_limit','post_only':True
+        Returns dict with 'tp_price','sl_stop','sl_limit','post_only'
+
+        Args:
+            source: Order source - if 'websocket' or 'position_monitor', disables post_only
+                   to allow protective orders to cross the spread
         """
         bid = Decimal(str(order_book["bid"])); ask = Decimal(str(order_book["ask"]))
         one = tick_size
@@ -350,11 +355,15 @@ class OrderTypeManager:
             sl_stop = sl_price
             sl_limit = sl_price + (one * sl_limit_offset_ticks)
 
+        # ✅ FIX: Disable post_only for protective OCO rearm orders
+        # These orders need to fill immediately even if they cross the spread
+        use_post_only = source not in ('websocket', 'position_monitor')
+
         return {
             "tp_price": tp_price,
             "sl_stop": sl_stop,
             "sl_limit": sl_limit,
-            "post_only": True,
+            "post_only": use_post_only,
         }
 
     async def process_limit_and_tp_sl_orders(
@@ -548,6 +557,7 @@ class OrderTypeManager:
                     sl_price=sl_price,
                     order_book={"bid": best_bid, "ask": best_ask},
                     tick_size=quote_increment,
+                    source=order_data.source,
                     min_tp_ticks=self.tp_min_ticks,
                     sl_limit_offset_ticks=self.sl_limit_offset_ticks,
                 )

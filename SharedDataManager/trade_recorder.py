@@ -886,9 +886,27 @@ class TradeRecorder:
                         result = await self.coinbase_api.get_historical_orders_batch(params)
                         for order in result.get("orders", []):
                             if order["status"] == "FILLED":
-                                base_size = Decimal(order.get("filled_size", "0"))
-                                price = Decimal(order.get("average_filled_price", "0"))
-                                return base_size.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
+                                try:
+                                    filled_size_str = order.get("filled_size", "0")
+                                    base_size = Decimal(str(filled_size_str))
+
+                                    # Validate base_size before quantizing
+                                    if not base_size.is_finite():
+                                        self.logger.warning(f"⚠️ Invalid base_size for {symbol}: {base_size}, skipping")
+                                        continue
+
+                                    # Re-validate base_deci (defensive programming)
+                                    if base_deci is None or not isinstance(base_deci, int) or base_deci < 0:
+                                        self.logger.warning(f"⚠️ Invalid base_deci for {symbol}: {base_deci}, returning unquantized")
+                                        return base_size
+
+                                    return base_size.quantize(Decimal(f'1e-{base_deci}'), rounding=ROUND_DOWN)
+                                except (ValueError, ArithmeticError, InvalidOperation) as decimal_err:
+                                    self.logger.warning(
+                                        f"⚠️ Decimal error quantizing filled_size for {symbol}: "
+                                        f"filled_size={filled_size_str}, base_deci={base_deci}, error={decimal_err}"
+                                    )
+                                    continue
 
                 except Exception as e:
                     self.logger.error(f"❌ Error in find_latest_filled_size for {symbol}: {e}", exc_info=True)
