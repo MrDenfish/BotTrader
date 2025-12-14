@@ -134,10 +134,8 @@ start_app() {
 log "BotTrader starting..."
 
 # 1) Export env from the unified .env file (read-only safe)
-# Skip if IN_DOCKER is already set (docker-compose environment takes precedence)
-if [[ "${IN_DOCKER:-}" == "true" ]]; then
-  log "IN_DOCKER=true detected; skipping .env file load (using docker-compose environment)"
-elif [ -f /app/.env ]; then
+# Docker-compose environment variables will override these values
+if [ -f /app/.env ]; then
   export_env_file_ro "/app/.env"
 else
   warn "No .env file found under /app; continuing with existing env only."
