@@ -182,7 +182,7 @@ class WebSocketManager:
                 async with websockets.connect(
                         ws_url,
                         ping_interval=20,
-                        ping_timeout=20,
+                        ping_timeout=60,  # Increased from 20 to tolerate network latency/server delays
                         open_timeout=10,
                         close_timeout=5,
                         max_queue=2048,
