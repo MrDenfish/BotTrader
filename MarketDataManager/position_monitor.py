@@ -202,12 +202,25 @@ class PositionMonitor:
                 )
                 return
 
-            # Calculate P&L
-            pnl_pct = (current_price - avg_entry_price) / avg_entry_price
+            # Calculate P&L (RAW - no fees)
+            pnl_pct_raw = (current_price - avg_entry_price) / avg_entry_price
 
-            # Log position status
+            # ✅ FIX: Calculate FEE-AWARE P&L for exit decisions
+            # Assumes: entry was maker (0.25%), exit will be taker (0.50%)
+            # Total round-trip fee: 0.75%
+            entry_fee_pct = Decimal('0.0025')  # 0.25% maker fee on entry
+            exit_fee_pct = Decimal('0.0050')   # 0.50% taker fee on exit
+
+            # Entry cost including fee: entry_price * (1 + entry_fee)
+            # Exit revenue after fee: current_price * (1 - exit_fee)
+            # Net P&L % = (exit_revenue - entry_cost) / entry_cost
+            entry_cost_per_unit = avg_entry_price * (Decimal('1') + entry_fee_pct)
+            exit_revenue_per_unit = current_price * (Decimal('1') - exit_fee_pct)
+            pnl_pct = (exit_revenue_per_unit - entry_cost_per_unit) / entry_cost_per_unit
+
+            # Log position status with both raw and fee-aware P&L
             self.logger.debug(
-                f"[POS_MONITOR] {product_id}: P&L={pnl_pct:.2%} "
+                f"[POS_MONITOR] {product_id}: P&L_raw={pnl_pct_raw:.2%}, P&L_net={pnl_pct:.2%} "
                 f"(entry=${avg_entry_price:.4f}, current=${current_price:.4f}, "
                 f"balance={total_balance_crypto:.6f})"
             )
