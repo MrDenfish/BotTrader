@@ -128,6 +128,36 @@ class PassiveOrderManager:
             entry = self.passive_order_tracker.get(symbol, {})
             peak_price = entry.get("peak_price", od.limit_price)
 
+            # ✅ Time-based stale position check (NEW)
+            hold_time = time.time() - entry.get("timestamp", time.time())
+            if hold_time > self._max_lifetime:
+                # Position held too long - evaluate exit
+                be_maker, be_taker = self._break_even_prices(od.limit_price)
+
+                if current_price >= be_maker:
+                    # Can exit at break-even or profit
+                    profit_pct = ((current_price - od.limit_price) / od.limit_price) * Decimal("100")
+                    self.logger.warning(
+                        f"⏰ Max lifetime ({self._max_lifetime}s) reached for {symbol}, "
+                        f"exiting at/above break-even @ {current_price} (Profit: {profit_pct:.2f}%)"
+                    )
+                    await self._submit_passive_sell(
+                        symbol, od, current_price, reason="max_lifetime",
+                        note=f"HoldTime:{hold_time:.0f}s,BE:{be_maker:.4f},Profit:{profit_pct:.2f}%"
+                    )
+                else:
+                    # Below break-even - take small loss rather than hold forever
+                    loss_pct = ((current_price - od.limit_price) / od.limit_price) * Decimal("100")
+                    self.logger.error(
+                        f"⏰ Max lifetime + underwater for {symbol}, forced exit @ {current_price} "
+                        f"(Loss: {loss_pct:.2f}%)"
+                    )
+                    await self._submit_passive_sell(
+                        symbol, od, current_price, reason="timeout_loss",
+                        note=f"HoldTime:{hold_time:.0f}s,BE:{be_maker:.4f},Loss:{loss_pct:.2f}%"
+                    )
+                return
+
             # ✅ NEW: Volatility factor (spread as proxy, can later replace w/ ATR)
             normalized_spread_pct = (
                 od.spread / od.limit_price if od.limit_price and od.spread else Decimal("0")
@@ -159,6 +189,25 @@ class PassiveOrderManager:
                 )
                 await self._submit_passive_sell(
                     symbol, od, current_price, reason="stop_loss", note=f"SL:{stop_price}"
+                )
+                return
+
+            # ✅ Break-Even Exit Logic (NEW)
+            # Calculate fee-aware break-even prices
+            be_maker, be_taker = self._break_even_prices(od.limit_price)
+            # Require 0.2% buffer above maker break-even to avoid marginal exits
+            min_profit_buffer = od.limit_price * Decimal("0.002")
+            profitable_exit_price = be_maker + min_profit_buffer
+
+            if current_price >= profitable_exit_price:
+                profit_pct = ((current_price - od.limit_price) / od.limit_price) * Decimal("100")
+                self.logger.info(
+                    f"💰 Break-even+ exit for {symbol} @ {current_price} "
+                    f"(Entry: {od.limit_price}, BE: {be_maker:.4f}, Profit: {profit_pct:.2f}%)"
+                )
+                await self._submit_passive_sell(
+                    symbol, od, current_price, reason="break_even_plus",
+                    note=f"Entry:{od.limit_price},BE:{be_maker:.4f},Profit:{profit_pct:.2f}%"
                 )
                 return
 
@@ -443,6 +492,34 @@ class PassiveOrderManager:
 
                 return
             self.logger.info(f"🧭 PassiveMM:spread_ok {product_id} {(spread_pct * 100):.3f}% >= req {(min_spread_req * 100):.3f}%")
+
+            # -------- 5b) Pre-entry volatility check (NEW) --------
+            # Check recent price movement to avoid trading flat/low-volatility symbols
+            try:
+                ohlcv = await self.ohlcv_manager.fetch_last_5min_ohlcv(trading_pair)
+                if ohlcv and len(ohlcv) >= 5:
+                    recent_candles = ohlcv[-5:]  # Last 5 candles (25 minutes)
+                    recent_high = max([float(c[2]) for c in recent_candles])
+                    recent_low = min([float(c[3]) for c in recent_candles])
+                    recent_mid = (recent_high + recent_low) / 2
+                    recent_range_pct = Decimal(str((recent_high - recent_low) / recent_mid))
+
+                    # Require volatility >= spread requirement (ensures price actually moves)
+                    if recent_range_pct < min_spread_req:
+                        self.logger.info(
+                            f"⛔ passivemm:insufficient_volatility {trading_pair} "
+                            f"recent_range={(recent_range_pct * 100):.3f}% < required={(min_spread_req * 100):.3f}% "
+                            f"(last 25min: high={recent_high:.4f}, low={recent_low:.4f})"
+                        )
+                        return
+                    else:
+                        self.logger.info(
+                            f"✅ passivemm:volatility_ok {trading_pair} "
+                            f"recent_range={(recent_range_pct * 100):.3f}% >= required={(min_spread_req * 100):.3f}%"
+                        )
+            except Exception as e:
+                self.logger.debug(f"⚠️ Could not fetch OHLCV for volatility check on {trading_pair}: {e}")
+                # Continue without volatility check if OHLCV unavailable
 
             # -------- 6) compute maker quotes --------
             buy_px = _to_step(best_bid + price_step, price_step, ROUND_DOWN)
