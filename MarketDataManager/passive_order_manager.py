@@ -33,6 +33,7 @@ from datetime import datetime, timedelta, timezone
 from webhook.webhook_validate_orders import OrderData
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from Shared_Utils.logger import get_logger
+from Shared_Utils.dynamic_symbol_filter import DynamicSymbolFilter
 
 
 
@@ -86,6 +87,13 @@ class PassiveOrderManager:
 
         # Data managers
         self.ohlcv_manager = ohlcv_manager
+
+        # ✅ Dynamic Symbol Filter for passive MM
+        self.dynamic_filter = DynamicSymbolFilter(
+            shared_data_manager=shared_data_manager,
+            config=config,
+            logger_manager=logger_manager
+        )
 
         # ✅ Cache structure (class-level or init-level)
         self._profitable_symbols_cache = {
@@ -424,7 +432,17 @@ class PassiveOrderManager:
                                 extra={'trading_pair': trading_pair, 'min_quote_volume': str(self._min_quote_volume)})
                 return
 
-            # -------- 2) active_symbols gate --------
+            # -------- 2) dynamic exclusion check --------
+            try:
+                excluded_symbols = await self.dynamic_filter.get_excluded_symbols()
+                if trading_pair in excluded_symbols:
+                    self.logger.debug(f"⛔ Skipping {trading_pair} — dynamically excluded (poor performance)")
+                    return
+            except Exception as e:
+                self.logger.warning(f"⚠️ Dynamic filter check failed for {trading_pair}: {e}")
+                # Continue without dynamic filter if it fails
+
+            # -------- 3) active_symbols gate (leaderboard) --------
             try:
                 active_syms = await self.shared_data_manager.fetch_active_symbols(as_of_max_age_sec=6 * 3600)
             except Exception as e:

@@ -8,6 +8,7 @@ from Config.config_manager import CentralConfig
 from sighook.signal_manager import SignalManager
 from sighook.indicators import Indicators
 from TableModels.ohlcv_data import OHLCVData
+from Shared_Utils.dynamic_symbol_filter import DynamicSymbolFilter
 
 
 class TradingStrategy:
@@ -46,16 +47,25 @@ class TradingStrategy:
         self._hodl = self.config._hodl
         self.start_time = None
 
-        # ✅ Symbol blacklist (consistent losers, high spreads) - Updated Dec 10, 2025
-        self.excluded_symbols = getattr(self.config, 'excluded_symbols', [
-            'A8-USD', 'PENGU-USD',  # Original blacklist
+        # ✅ Dynamic Symbol Filter (replaces hardcoded exclusion list)
+        # Automatically excludes poor performers based on rolling metrics
+        # Fallback to static list if dynamic filtering disabled
+        self.dynamic_filter = DynamicSymbolFilter(
+            shared_data_manager=shared_data_manager,
+            config=self.config,
+            logger_manager=logger_manager
+        )
+
+        # Static fallback list (used only if dynamic filtering fails or is disabled)
+        self._fallback_excluded_symbols = [
+            'A8-USD', 'PENGU-USD',  # Original blacklist (Dec 2024)
             # Top losers from 30-day analysis (Dec 10, 2025):
             'ELA-USD', 'ALCX-USD', 'UNI-USD', 'CLANKER-USD', 'ZORA-USD',
             'DASH-USD', 'BCH-USD', 'AVAX-USD', 'SWFTC-USD', 'AVNT-USD',
             'PRIME-USD', 'ICP-USD', 'KAITO-USD', 'IRYS-USD', 'TIME-USD',
             'NMR-USD', 'NEON-USD', 'QNT-USD', 'PERP-USD', 'BOBBOB-USD',
-            'OMNI-USD', 'TIA-USD', 'IP-USD'
-        ])
+            'OMNI-USD', 'TIA-USD', 'IP-USD', 'TNSR-USD'  # Added Dec 15, 2025
+        ]
 
     # ---------------------------
     # ✅ Properties
@@ -95,12 +105,19 @@ class TradingStrategy:
             ohlcv_data_dict = await self.fetch_valid_ohlcv_batches(filtered_ticker_cache)
             valid_symbols = list(ohlcv_data_dict.keys())
 
+            # Get dynamically excluded symbols (cached, refreshed hourly)
+            try:
+                excluded_symbols = await self.dynamic_filter.get_excluded_symbols()
+            except Exception as e:
+                self.logger.error(f"Dynamic filter failed, using fallback list: {e}", exc_info=True)
+                excluded_symbols = set(self._fallback_excluded_symbols)
+
             for symbol in valid_symbols:
                 asset = symbol.replace("/", "-").split("-")[0]
 
-                # ✅ Skip blacklisted symbols (consistent losers, high spreads)
-                if symbol in self.excluded_symbols:
-                    self.logger.info(f"⛔ Skipping blacklisted symbol: {symbol}")
+                # ✅ Skip blacklisted symbols (dynamic + permanent exclusions)
+                if symbol in excluded_symbols:
+                    self.logger.info(f"⛔ Skipping excluded symbol: {symbol}")
                     skipped_symbols.append(symbol)
                     continue
 
