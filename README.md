@@ -140,9 +140,9 @@ See `.env.dynamic_filter_example` for complete configuration options.
 - [AWS Troubleshooting](docs/active/deployment/AWS_POSTGRES_TROUBLESHOOTING.md)
 
 **For Features:**
-- [Dynamic Symbol Filter](DYNAMIC_FILTER_DOCUMENTATION.md) - Data-driven symbol filtering
-- [Passive Market Making](PASSIVE_MM_FIXES_SESSION.md) - Break-even exits and volatility checks
-- [Session Summary](SESSION_SUMMARY_DEC15_2025.md) - Latest improvements (Dec 15, 2025)
+- [Dynamic Symbol Filter](docs/active/features/DYNAMIC_FILTER_DOCUMENTATION.md) - Data-driven symbol filtering
+- [Passive Market Making](docs/archive/sessions/PASSIVE_MM_FIXES_SESSION.md) - Break-even exits and volatility checks
+- [Session Summary](docs/archive/sessions/SESSION_SUMMARY_DEC15_2025.md) - Latest improvements (Dec 15, 2025)
 
 **Documentation Index:**
 - [Full Documentation Index](docs/README.md)
