@@ -126,6 +126,7 @@ class SharedDataManager:
 
         self.db_semaphore = asyncio.Semaphore(10)
         self.logger = get_logger('shared_data_manager', context={'component': 'shared_data_manager'})
+        self.logger_manager = logger_manager
 
         self.shared_utils_utility = shared_utils_utility
         self.database_session_manager = database_session_manager
@@ -1019,7 +1020,12 @@ class SharedDataManager:
         async with self.database_session_manager.async_session() as session:
             async with session.begin():
                 # Note: function itself commits; we start a tx for safety in your manager style
-                await recompute_and_upsert_active_symbols(session, cfg)
+                await recompute_and_upsert_active_symbols(
+                    session,
+                    cfg,
+                    self.shared_utils_precision.fetch_precision,
+                    self.shared_utils_precision.adjust_precision
+                )
 
     async def fetch_active_symbols(self, as_of_max_age_sec: int = 6*3600) -> set[str]:
         """
