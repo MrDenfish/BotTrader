@@ -101,6 +101,30 @@ def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
 
 ---
 
+### 5. Dynamic Symbol Filter - Wrong Attribute Name
+
+**Symptom:** Error in both webhook and sighook logs:
+```
+AttributeError: 'SharedDataManager' object has no attribute 'db_session_manager'
+```
+
+**Root Cause:** `dynamic_symbol_filter.py` was using incorrect attribute name and method:
+```python
+# BEFORE (broken):
+async with self.shared_data_manager.db_session_manager.session() as session:
+```
+
+**Fix Applied:**
+```python
+# AFTER (fixed):
+async with self.shared_data_manager.database_session_manager.async_session() as session:
+```
+
+**File:** `Shared_Utils/dynamic_symbol_filter.py:190` (2 occurrences)
+**Commit:** `db152ee`
+
+---
+
 ## Deployment Steps Performed
 
 1. **Local commits:**
@@ -151,6 +175,7 @@ sighook   Up (healthy)
 |------|--------|
 | `sighook/signal_manager.py` | Negated ROC sell threshold |
 | `botreport/aws_daily_report.py` | Fixed CSV save path to /app/logs |
+| `Shared_Utils/dynamic_symbol_filter.py` | Fixed db session manager attribute name |
 | Root crontab (AWS) | Changed .env_runtime to .env |
 
 ---
@@ -182,7 +207,9 @@ ssh bottrader-aws 'cd /opt/bot && git pull && docker compose -f docker-compose.a
 - **19:45 PT** - Found CSV save path bug (/tmp instead of /app/logs)
 - **19:50 PT** - Fixed and deployed CSV path fix
 - **19:55 PT** - Verified email received, CSV created
-- **20:00 PT** - Session complete, all fixes verified
+- **20:00 PT** - Session documented, all fixes verified
+- **20:20 PT** - Found dynamic_symbol_filter db_session_manager error
+- **20:22 PT** - Fixed attribute name, deployed to AWS, verified no errors
 
 ---
 
