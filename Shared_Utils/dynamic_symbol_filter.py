@@ -187,7 +187,7 @@ class DynamicSymbolFilter:
             perm_list = "''"
 
         try:
-            async with self.shared_data_manager.db_session_manager.session() as session:
+            async with self.shared_data_manager.database_session_manager.async_session() as session:
                 result = await session.execute(
                     query % (self.lookback_days, perm_list, self.min_trades_required)
                 )
@@ -285,7 +285,7 @@ class DynamicSymbolFilter:
         """
 
         try:
-            async with self.shared_data_manager.db_session_manager.session() as session:
+            async with self.shared_data_manager.database_session_manager.async_session() as session:
                 result = await session.execute(query, (symbol, self.lookback_days))
                 row = result.fetchone()
 
