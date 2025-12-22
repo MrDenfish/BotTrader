@@ -2129,7 +2129,7 @@ def derive_extra_metrics(win_rate_pct: float | None,
         "sharpe_like": sharpe_like,
     }
 
-def save_report_copy(csv_bytes: bytes, out_dir="/tmp"):  # was "/app/logs"
+def save_report_copy(csv_bytes: bytes, out_dir="/app/logs"):
     os.makedirs(out_dir, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S_UTC")
     with open(os.path.join(out_dir, f"trading_report_{ts}.csv"), "wb") as f:
