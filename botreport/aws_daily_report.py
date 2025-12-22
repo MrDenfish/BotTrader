@@ -1322,13 +1322,28 @@ def compute_cash_vs_invested(conn, exposures):
     try:
         from coinbase.rest import RESTClient
         import os
+        import json
 
-        # Load credentials from environment
+        # Load credentials from JSON file (same as webhook/sighook use)
         api_key = os.getenv("COINBASE_API_KEY_NAME")
         api_secret = os.getenv("COINBASE_API_SIGNING_KEY")
 
+        # Fallback to JSON file if env vars not set
         if not api_key or not api_secret:
-            raise ValueError("Missing Coinbase API credentials")
+            api_key_paths = [
+                "/app/Config/webhook_api_key.json",
+                os.path.join(os.path.dirname(__file__), "..", "Config", "webhook_api_key.json"),
+            ]
+            for path in api_key_paths:
+                if os.path.exists(path):
+                    with open(path, 'r') as f:
+                        creds = json.load(f)
+                        api_key = creds.get("name")
+                        api_secret = creds.get("privateKey")
+                        break
+
+        if not api_key or not api_secret:
+            raise ValueError("Missing Coinbase API credentials (checked env vars and JSON files)")
 
         # Initialize Coinbase REST client
         client = RESTClient(api_key=api_key, api_secret=api_secret)
