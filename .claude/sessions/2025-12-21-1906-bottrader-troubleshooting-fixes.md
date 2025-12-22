@@ -125,6 +125,78 @@ async with self.shared_data_manager.database_session_manager.async_session() as 
 
 ---
 
+### 6. Dynamic Symbol Filter - SQL text() Wrapper Required
+
+**Symptom:** Error in sighook logs:
+```
+sqlalchemy.exc.ArgumentError: Textual SQL expression '...' should be explicitly declared as text('...')
+```
+
+**Root Cause:** SQLAlchemy async sessions require raw SQL to be wrapped with `text()`:
+```python
+# BEFORE (broken):
+result = await session.execute(query % (params...))
+```
+
+**Fix Applied:**
+```python
+# AFTER (fixed):
+from sqlalchemy import text
+result = await session.execute(text(formatted_query))
+```
+
+**File:** `Shared_Utils/dynamic_symbol_filter.py` (2 query locations)
+**Commit:** `7f95e38`
+
+---
+
+### 7. TP_SL_LOG_PATH - Wrong Path in AWS .env
+
+**Symptom:** Error in webhook logs:
+```
+PermissionError: [Errno 13] Permission denied: '/Users'
+```
+
+**Root Cause:** AWS `.env` file had a local Mac path instead of Docker path:
+```bash
+# BEFORE (broken):
+TP_SL_LOG_PATH=/Users/Manny/Python_Projects/BotTrader/.bottrader/cache/tpsl.jsonl
+```
+
+**Fix Applied:** Updated directly on AWS:
+```bash
+# AFTER (fixed):
+TP_SL_LOG_PATH=/app/logs/tpsl.jsonl
+```
+
+**File:** `/opt/bot/.env` (AWS only)
+
+---
+
+### 8. Order Manager - Wrong Method Call
+
+**Symptom:** Error in webhook logs:
+```
+TypeError: TradeOrderManager._compute_tp_price_long() takes 2 positional arguments but 4 were given
+```
+
+**Root Cause:** Wrong method being called for stop loss calculation:
+```python
+# BEFORE (broken):
+stop_pct = self._compute_tp_price_long(entry, ohlcv, order_book)
+```
+
+**Fix Applied:**
+```python
+# AFTER (fixed):
+stop_pct = self._compute_stop_pct_long(entry, ohlcv, order_book)
+```
+
+**File:** `webhook/webhook_order_manager.py:774`
+**Commit:** `7f95e38`
+
+---
+
 ## Deployment Steps Performed
 
 1. **Local commits:**
@@ -175,8 +247,10 @@ sighook   Up (healthy)
 |------|--------|
 | `sighook/signal_manager.py` | Negated ROC sell threshold |
 | `botreport/aws_daily_report.py` | Fixed CSV save path to /app/logs |
-| `Shared_Utils/dynamic_symbol_filter.py` | Fixed db session manager attribute name |
+| `Shared_Utils/dynamic_symbol_filter.py` | Fixed db session manager + added text() wrapper |
+| `webhook/webhook_order_manager.py` | Fixed method call _compute_tp_price_long -> _compute_stop_pct_long |
 | Root crontab (AWS) | Changed .env_runtime to .env |
+| `/opt/bot/.env` (AWS) | Fixed TP_SL_LOG_PATH to /app/logs/tpsl.jsonl |
 
 ---
 
@@ -210,6 +284,8 @@ ssh bottrader-aws 'cd /opt/bot && git pull && docker compose -f docker-compose.a
 - **20:00 PT** - Session documented, all fixes verified
 - **20:20 PT** - Found dynamic_symbol_filter db_session_manager error
 - **20:22 PT** - Fixed attribute name, deployed to AWS, verified no errors
+- **20:40 PT** - Found 3 more errors: SQL text() wrapper, TP_SL_LOG_PATH, wrong method call
+- **20:45 PT** - Fixed all 3 issues, deployed to AWS, all containers healthy
 
 ---
 
