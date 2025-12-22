@@ -301,3 +301,98 @@ ssh bottrader-aws 'cd /opt/bot && git pull && docker compose -f docker-compose.a
    ```bash
    ssh bottrader-aws 'docker exec webhook curl -s http://127.0.0.1:5003/health'
    ```
+
+5. **SQLAlchemy Async Sessions:** Raw SQL queries must be wrapped with `text()` when using async sessions.
+
+6. **AWS .env Paths:** Always verify paths in AWS `.env` use Docker paths (`/app/...`) not local Mac paths (`/Users/...`).
+
+---
+
+## Session End Summary
+
+**Ended:** 2025-12-21 20:55 PT (2025-12-22 04:55 UTC)
+**Duration:** ~1 hour 50 minutes
+
+### Git Summary
+
+**Commits Made:** 8
+```
+60b4e2c docs: Update session with fixes #6-8
+7f95e38 fix: Multiple error fixes for dynamic filter and order manager
+d3b97c8 docs: Update session with dynamic_symbol_filter fix
+db152ee fix: Correct database session manager attribute name in dynamic_symbol_filter
+fbf29b2 docs: Add troubleshooting session for Dec 21 fixes
+4bb24a0 fix: Restore CSV report save path to /app/logs
+bc3b532 fix: Negate ROC sell threshold to prevent constant sell signals
+5459c46 fix: Pass precision functions to recompute_and_upsert_active_symbols
+```
+
+**Files Changed:** 8 files (+329, -362 lines)
+| File | Change Type |
+|------|-------------|
+| `sighook/signal_manager.py` | Modified |
+| `botreport/aws_daily_report.py` | Modified |
+| `Shared_Utils/dynamic_symbol_filter.py` | Modified |
+| `webhook/webhook_order_manager.py` | Modified |
+| `SharedDataManager/shared_data_manager.py` | Modified |
+| `SharedDataManager/leader_board.py` | Modified |
+| `.claude/sessions/2025-12-21-1906-...` | Added |
+| `.claude/sessions/2025-12-14-1930-...` | Modified |
+
+**Final Git Status:** Clean (only IDE files uncommitted)
+
+### Tasks Completed
+
+- [x] Investigate why no trades for 6+ days
+- [x] Fix ROC sell threshold bug
+- [x] Fix daily email report not sending
+- [x] Fix cron jobs (.env_runtime → .env)
+- [x] Fix CSV report save path
+- [x] Fix dynamic_symbol_filter db session manager
+- [x] Fix dynamic_symbol_filter SQL text() wrapper
+- [x] Fix TP_SL_LOG_PATH in AWS .env
+- [x] Fix webhook_order_manager wrong method call
+- [x] Deploy all fixes to AWS
+- [x] Verify all containers healthy
+- [x] Verify email report received
+
+### Key Accomplishments
+
+1. **Restored Trading Capability**: Bot can now generate proper buy signals (was blocked for 6+ days)
+2. **Restored Email Reports**: Daily reports now send on schedule (4x daily)
+3. **Fixed 8 Bugs**: Mix of critical (no trades) and operational (logging, TP/SL) issues
+4. **Full AWS Deployment**: All fixes deployed and verified in production
+
+### Problems Encountered & Solutions
+
+| Problem | Solution |
+|---------|----------|
+| No trades for 6 days | ROC threshold was positive instead of negative |
+| Cron jobs failing silently | `.env_runtime` file deleted, updated to use `.env` |
+| CSV reports not saved | Save path was `/tmp` (ephemeral), changed to `/app/logs` |
+| DB session attribute error | Wrong attribute name `db_session_manager` → `database_session_manager` |
+| SQL execution error | Missing `text()` wrapper for SQLAlchemy async |
+| Permission denied `/Users` | AWS .env had local Mac path for TP_SL_LOG_PATH |
+| Wrong method call | `_compute_tp_price_long` → `_compute_stop_pct_long` |
+
+### Configuration Changes (AWS)
+
+1. Root crontab: `.env_runtime` → `.env`
+2. `/opt/bot/.env`: `TP_SL_LOG_PATH=/app/logs/tpsl.jsonl`
+
+### What Wasn't Completed
+
+- None. All identified issues were fixed.
+
+### Tips for Future Developers
+
+1. **Check cron logs first** when scheduled jobs fail: `/opt/bot/logs/bot_report.log`
+2. **Verify .env paths** when deploying - Mac paths won't work in Docker
+3. **Use `text()` wrapper** for raw SQL in SQLAlchemy async sessions
+4. **Negate threshold values** when config stores positive numbers for negative thresholds
+5. **Monitor container health** with `docker compose ps` after deployments
+6. **Test email manually** with: `docker compose run --rm report-job`
+
+---
+
+**Session Status:** ✅ Complete
