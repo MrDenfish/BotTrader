@@ -771,7 +771,7 @@ class TradeOrderManager:
 
                         # Long-only here (if you support shorts, mirror the sign)
                         tp_price = self._compute_tp_price_long(entry)
-                        stop_pct = self._compute_tp_price_long(entry, ohlcv, order_book)
+                        stop_pct = self._compute_stop_pct_long(entry, ohlcv, order_book)
                         sl_price = entry * (Decimal("1") - stop_pct)
 
                         # Precision
