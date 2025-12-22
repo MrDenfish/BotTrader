@@ -101,6 +101,9 @@ From `PERFORMANCE_ANALYSIS_2025-12-03.md`:
 - **08:30 PT** - Analyzed performance data, found P&L not being recorded since Dec 21
 - **08:40 PT** - Fixed FIFO script permissions (was 700, now 755)
 - **08:45 PT** - Ran FIFO computation, verified P&L in fifo_allocations table
+- **09:00 PT** - Fixed Dockerfile permissions, added scripts/__init__.py
+- **09:05 PT** - Lowered TRAILING_ACTIVATION_PCT from 3.5% to 2%
+- **09:10 PT** - Deployed to AWS, all containers healthy
 
 ---
 
