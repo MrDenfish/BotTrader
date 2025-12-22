@@ -104,6 +104,10 @@ From `PERFORMANCE_ANALYSIS_2025-12-03.md`:
 - **09:00 PT** - Fixed Dockerfile permissions, added scripts/__init__.py
 - **09:05 PT** - Lowered TRAILING_ACTIVATION_PCT from 3.5% to 2%
 - **09:10 PT** - Deployed to AWS, all containers healthy
+- **15:00 PT** - Fixed report cash calculation (was showing $3,887.96, now correctly $129.70)
+  - Root cause: Coinbase `get_accounts()` API only returns crypto wallets, not fiat
+  - Fix: Use `order_management_snapshots` table (stored by webhook) as primary source
+  - Commit: 3bb2159
 
 ---
 
