@@ -382,3 +382,142 @@ ssh bottrader-aws 'cd /opt/bot && docker compose -f docker-compose.aws.yml resta
 - Need to distinguish between bugs vs. strategy/configuration issues
 - Any changes should be testable in isolation before production deployment
 - **Phase 1 changes are reversible via env vars - low risk to try immediately**
+
+---
+
+## Session End Summary
+**Ended:** 2025-12-23 05:30 PT (2025-12-23 13:30 UTC)
+**Duration:** ~21.5 hours (with breaks)
+
+---
+
+### Git Summary
+
+**Commits Made:** 5
+| Commit | Description |
+|--------|-------------|
+| `f7076c7` | docs: Finalize session with end summary |
+| `1640bba` | fix: Fix FIFO cron permissions and lower trailing stop activation |
+| `58746a5` | fix: Load Coinbase API credentials from JSON file in report |
+| `3bb2159` | fix: Use DB snapshot for USD balance in report instead of broken fallback |
+| `cd2826c` | docs: Update session with report cash fix |
+
+**Files Changed:** 18 total (1378 insertions, 1786 deletions)
+
+| File | Change Type |
+|------|-------------|
+| `.claude/sessions/2025-12-22-0800-follow-up-bottrader-performance-analysis.md` | Added |
+| `.claude/sessions/2025-12-21-1906-bottrader-troubleshooting-fixes.md` | Added |
+| `botreport/aws_daily_report.py` | Modified |
+| `docker/Dockerfile.bot` | Modified |
+| `scripts/__init__.py` | Added |
+| `Daily Trading Bot Report.eml` | Added |
+| `botreport/trading_report_local.csv` | Added |
+| `SharedDataManager/leader_board.py` | Modified |
+| `SharedDataManager/shared_data_manager.py` | Modified |
+| `Shared_Utils/dynamic_symbol_filter.py` | Modified |
+| `sighook/signal_manager.py` | Modified |
+| `webhook/webhook_order_manager.py` | Modified |
+| `data/sample_reports/*.eml` | Deleted (3 files) |
+
+**Final Git Status:** Clean (1 untracked email file)
+
+---
+
+### Key Accomplishments
+
+1. **Fixed FIFO Cron Job Permissions**
+   - Problem: `/app/scripts/` had 700 permissions, cron couldn't read
+   - Solution: Added `chmod -R 755 /app/scripts` to Dockerfile.bot
+   - Added `scripts/__init__.py` for module imports
+
+2. **Lowered Trailing Stop Activation**
+   - Changed `TRAILING_ACTIVATION_PCT` from 3.5% to 2%
+   - Allows trailing stops to engage earlier for smaller moves
+
+3. **Fixed Daily Report Cash Calculation (Critical)**
+   - Problem: Report showed $3,887.96 instead of actual $129.70
+   - Root cause: Coinbase `get_accounts()` API only returns crypto, not fiat
+   - Solution: Use `order_management_snapshots` table as primary USD source
+   - Fallback: Coinbase portfolio breakdown API
+
+4. **Fixed Stale Container Issue**
+   - Problem: Cron job used `--no-recreate`, reusing old container
+   - Solution: Removed stale `bottrader-report` container
+
+---
+
+### Problems Encountered & Solutions
+
+| Problem | Solution |
+|---------|----------|
+| FIFO cron failing silently | Fixed Dockerfile permissions + added __init__.py |
+| Report cash value wrong ($3,887 vs $129) | Query `order_management_snapshots` table instead of Coinbase API |
+| Coinbase API returns 0 USD | `get_accounts()` only returns crypto wallets; use portfolio breakdown for fiat |
+| Cron using stale container | Removed old container; `--no-recreate` will now create fresh one |
+| Report fix not applied | Container was cached; rebuilt image and removed old container |
+
+---
+
+### Configuration Changes
+
+| Setting | Old | New | Location |
+|---------|-----|-----|----------|
+| `TRAILING_ACTIVATION_PCT` | 0.035 (3.5%) | 0.02 (2%) | AWS `.env` |
+| Scripts directory permissions | 700 | 755 | `docker/Dockerfile.bot` |
+
+---
+
+### Deployment Steps Taken
+
+1. Committed and pushed all fixes to main
+2. SSH to AWS, pulled latest code
+3. Rebuilt sighook, webhook, report-job containers
+4. Verified FIFO cron job runs successfully
+5. Removed stale report container for cron job
+6. Tested report generation - cash value now correct
+
+---
+
+### Important Findings
+
+1. **Coinbase API Limitation:** `get_accounts()` only returns crypto wallets, not fiat accounts. For USD balance, must use:
+   - `order_management_snapshots` table (populated by webhook)
+   - Or `get_portfolio_breakdown()` API with portfolio UUID
+
+2. **Cron Job Caching:** The `--no-recreate` flag in cron job causes it to reuse old containers. When deploying fixes to report-job, must manually remove old container.
+
+3. **USD Balance Location:** Real USD balance is stored in `order_management_snapshots.data->'non_zero_balances'->'USD'->'total_balance_fiat'`
+
+---
+
+### What Wasn't Completed
+
+- [ ] Phase 2-5 of performance improvement plan (signal exits, ATR-based stops, R:R improvements)
+- [ ] Long-term performance monitoring (need 7+ days of data)
+- [ ] Entry quality improvements (higher score threshold, volume confirmation)
+
+---
+
+### Tips for Future Developers
+
+1. **Report Cash Issues:** Check `order_management_snapshots` table first - it has the real USD balance stored by webhook
+
+2. **Cron Container Caching:** After deploying report-job fixes, run:
+   ```bash
+   ssh bottrader-aws 'docker rm bottrader-report'
+   ```
+
+3. **FIFO Permissions:** If FIFO cron fails with "No module named scripts", check:
+   ```bash
+   docker exec sighook ls -la /app/scripts
+   ```
+   Should be 755, not 700
+
+4. **Coinbase API Quirk:** `get_accounts()` returns crypto only. For fiat, use `get_portfolio_breakdown()`
+
+5. **Testing Reports:** Run manually to verify:
+   ```bash
+   ssh bottrader-aws 'cd /opt/bot && docker compose -f docker-compose.aws.yml run --rm report-job'
+   cat $(ls -t /opt/bot/logs/trading_report*.csv | head -1)
+   ```
