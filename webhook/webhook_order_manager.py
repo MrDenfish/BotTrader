@@ -215,9 +215,10 @@ class TradeOrderManager:
         atr = sum(trs) / Decimal(len(trs))
         return atr / entry_price
 
-    def _compute_stop_pct_long(self,entry_price: Decimal, ohlcv: Optional[list], order_book: Optional[dict]) -> Decimal:
+    def _compute_stop_pct_long(self, entry_price: Decimal, ohlcv: Optional[list], order_book: Optional[dict], trigger: dict = None) -> Decimal:
         """
         Percent (fraction) below entry for a LONG stop, including cushions.
+        Applies trigger-specific multipliers for momentum trades (ROC_MOMO).
         """
         mode = self._read_stop_mode()
         fee_pct = self._fee_pct_for_side()
@@ -233,15 +234,67 @@ class TradeOrderManager:
             fixed = abs(self._get_env_pct("STOP_LOSS", 0.01))
             base_pct = fixed
 
+        # Apply trigger-specific multiplier for momentum trades
+        sl_multiplier = self._get_trigger_sl_multiplier(trigger)
+        base_pct = base_pct * sl_multiplier
+
         # cushions: spread + one side fee (likely taker)
         stop_pct = base_pct + spread_pct + fee_pct
         return max(Decimal("0"), stop_pct)
 
-    def _compute_tp_price_long(self, entry_price: Decimal) -> Decimal:
-        # existing env TAKE_PROFIT used as (1 + TAKE_PROFIT)
-        tp = self._get_env_pct("TAKE_PROFIT", 0.025)
+    def _compute_tp_price_long(self, entry_price: Decimal, trigger: dict = None) -> Decimal:
+        """
+        Compute take profit price for long positions.
+        Applies trigger-specific multipliers for momentum trades (ROC_MOMO).
+        """
+        base_tp = self._get_env_pct("TAKE_PROFIT", 0.025)
+
+        # Apply trigger-specific multiplier for momentum trades
+        tp_multiplier = self._get_trigger_tp_multiplier(trigger)
+        tp = base_tp * tp_multiplier
+
         return entry_price * (Decimal("1") + tp)
 
+    def _get_trigger_tp_multiplier(self, trigger: dict = None) -> Decimal:
+        """
+        Get TP multiplier based on trigger type.
+        ROC momentum trades need wider TP to capture full momentum.
+
+        Returns:
+            Decimal multiplier (1.0 = no change, 2.0 = double TP)
+        """
+        if not trigger:
+            return Decimal("1.0")
+
+        trigger_type = trigger.get("trigger", "").upper()
+
+        # ROC momentum triggers need wider TP to let trades run
+        # These trades are capturing momentum that can move 10-50%+
+        if trigger_type in ("ROC_MOMO", "ROC_MOMO_OVERRIDE", "ROC"):
+            # Use env var if set, otherwise default to 3x for momentum trades
+            return self._get_env_pct("ROC_TP_MULTIPLIER", 3.0)
+
+        return Decimal("1.0")
+
+    def _get_trigger_sl_multiplier(self, trigger: dict = None) -> Decimal:
+        """
+        Get SL multiplier based on trigger type.
+        ROC momentum trades need wider SL to avoid getting stopped out early.
+
+        Returns:
+            Decimal multiplier (1.0 = no change, 2.0 = double SL distance)
+        """
+        if not trigger:
+            return Decimal("1.0")
+
+        trigger_type = trigger.get("trigger", "").upper()
+
+        # ROC momentum triggers need wider SL to allow for volatility
+        if trigger_type in ("ROC_MOMO", "ROC_MOMO_OVERRIDE", "ROC"):
+            # Use env var if set, otherwise default to 2x for momentum trades
+            return self._get_env_pct("ROC_SL_MULTIPLIER", 2.0)
+
+        return Decimal("1.0")
 
     async def build_order_data(
             self,
@@ -770,17 +823,25 @@ class TradeOrderManager:
                                 self.logger.debug(f"OHLCV fetch failed for {order_data.trading_pair}: {e}")
 
                         # Long-only here (if you support shorts, mirror the sign)
-                        tp_price = self._compute_tp_price_long(entry)
-                        stop_pct = self._compute_stop_pct_long(entry, ohlcv, order_book)
+                        # Pass trigger for trigger-specific TP/SL (e.g., wider for ROC_MOMO)
+                        trigger_dict = order_data.trigger if isinstance(order_data.trigger, dict) else {}
+                        tp_price = self._compute_tp_price_long(entry, trigger_dict)
+                        stop_pct = self._compute_stop_pct_long(entry, ohlcv, order_book, trigger_dict)
                         sl_price = entry * (Decimal("1") - stop_pct)
 
                         # Precision
                         tp = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, tp_price, convert="quote")
                         sl = self.shared_utils_precision.adjust_precision(base_deci, quote_deci, sl_price, convert="quote")
 
+                        # Log trigger-specific multipliers if applied
+                        tp_mult = self._get_trigger_tp_multiplier(trigger_dict)
+                        sl_mult = self._get_trigger_sl_multiplier(trigger_dict)
+                        trigger_type = trigger_dict.get("trigger", "score")
+
                         self.logger.info(
                             f"tp/sl calc {order_data.trading_pair} side={side} mode={self._read_stop_mode()} "
-                            f"entry={entry} tp={tp} sl={sl} "
+                            f"entry={entry} tp={tp} sl={sl} trigger={trigger_type} "
+                            f"tp_mult={tp_mult} sl_mult={sl_mult} "
                             f"spread%={self._infer_spread_pct_from_orderbook(order_book):.5f} "
                             f"fee%={self._fee_pct_for_side():.5f}"
                         )

@@ -254,6 +254,7 @@ class ProfitDataManager:
         """
         TP/SL with ATR-or-fixed stop + spread/fee cushions.
         TP uses your existing 'Option A' (apply fee on top).
+        Supports trigger-specific multipliers for momentum trades (ROC_MOMO).
         """
         try:
             # --- email reports
@@ -267,6 +268,14 @@ class ProfitDataManager:
                 tp_pct = _env_pct("TAKE_PROFIT", 0.025)       # 2.5% default
             else:
                 tp_pct = Decimal(str(tp_pct))
+
+            # Get trigger-specific multipliers for momentum trades
+            trigger_dict = order_data.trigger if isinstance(order_data.trigger, dict) else {}
+            trigger_type = trigger_dict.get("trigger", "score")
+            tp_mult, sl_mult = self._get_trigger_multipliers(trigger_type)
+
+            # Apply trigger multiplier to TP
+            tp_pct = tp_pct * tp_mult
 
             # ---- TP (unchanged "Option A"): price target then add fee
             tp_raw = entry * (Decimal("1") + tp_pct)
@@ -304,6 +313,9 @@ class ProfitDataManager:
                 fixed = Decimal(str(fixed)) if fixed is not None else _env_pct("STOP_LOSS", 0.01)
                 base_pct = abs(fixed)
                 atr_pct = Decimal("0")  # not using ATR in fixed mode
+
+            # Apply trigger multiplier to SL (wider stops for momentum trades)
+            base_pct = base_pct * sl_mult
 
             stop_pct = base_pct + spread_pct + fee_pct
             sl_raw = entry * (Decimal("1") - stop_pct)
@@ -345,7 +357,10 @@ class ProfitDataManager:
                 "atr_pct": atr_pct_logged,  # use calculated ATR value
                 "cushion_spread": spr_pct_logged,  # use calculated spread value
                 "cushion_fee": fee_pct_logged,
-                "fee_side": fee_side
+                "fee_side": fee_side,
+                "trigger": trigger_type,  # trigger type for analysis
+                "tp_mult": float(tp_mult),  # TP multiplier applied
+                "sl_mult": float(sl_mult)   # SL multiplier applied
             })
 
             return tp_adj, sl_adj
@@ -353,6 +368,29 @@ class ProfitDataManager:
         except Exception as e:
             self.logger.error(f"❌️ Error in calculate_tp_sl: {e}", exc_info=True)
             return None, None
+
+    def _get_trigger_multipliers(self, trigger_type: str) -> tuple:
+        """
+        Get TP and SL multipliers based on trigger type.
+        ROC momentum trades need wider TP/SL to let trades run.
+
+        Args:
+            trigger_type: The trigger type string (e.g., "roc_momo_override")
+
+        Returns:
+            tuple: (tp_multiplier, sl_multiplier) as Decimals
+        """
+        trigger_upper = (trigger_type or "").upper()
+
+        # ROC momentum triggers need wider TP/SL
+        if trigger_upper in ("ROC_MOMO", "ROC_MOMO_OVERRIDE", "ROC"):
+            # Use env vars if set, otherwise defaults for momentum trades
+            tp_mult = _env_pct("ROC_TP_MULTIPLIER", 3.0)  # 3x TP for momentum
+            sl_mult = _env_pct("ROC_SL_MULTIPLIER", 2.0)  # 2x SL for momentum
+            return tp_mult, sl_mult
+
+        # Default: no multiplier
+        return Decimal("1.0"), Decimal("1.0")
 
     def should_place_sell_order(self, holding, current_price):
         """ PART VI: Profitability Analysis and Order Generation used in Sighook operates directly on a holding object (an instance from
