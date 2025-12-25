@@ -613,9 +613,10 @@ async def leaderboard_job(shared_data_manager, logger_manager, interval_sec=600,
         try:
             async with shared_data_manager.database_session_manager.async_session() as session:
                 precision = PrecisionUtils.get_instance(logger_manager, shared_data_manager)
-                upserted = await recompute_and_upsert_active_symbols(session, lb_cfg, logger_manager,
+                upserted = await recompute_and_upsert_active_symbols(session, lb_cfg,
                                                                      precision.fetch_precision,
-                                                                     precision.adjust_precision)
+                                                                     precision.adjust_precision,
+                                                                     logger_manager)
                 log.info("leaderboard upserted=%s (lookback=%sh, n≥%s, win≥%.2f, pf≥%.2f)",
                          upserted, lb_cfg.lookback_hours, lb_cfg.min_n_24h, lb_cfg.win_rate_min, lb_cfg.pf_min)
         except Exception:
