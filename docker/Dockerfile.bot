@@ -42,6 +42,8 @@ WORKDIR /app
 COPY . /app
 # Remove any legacy env files from old multi-env system
 RUN rm -f /app/.env_tradebot /app/.env_tradebot_sensitive || true
+# Fix scripts directory permissions (ensure cron jobs can execute)
+RUN chmod -R 755 /app/scripts || true
 
 # ensure entrypoint has LF endings and is executable
 # (sed removes CR if file was committed with CRLF)

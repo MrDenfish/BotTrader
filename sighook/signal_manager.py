@@ -36,7 +36,8 @@ class SignalManager:
 
         # ✅ Buy/Sell Scoring Thresholds (as Decimals)
         self.roc_buy_threshold = Decimal(str(self.config.roc_buy_24h or 3.0))
-        self.roc_sell_threshold = Decimal(str(self.config.roc_sell_24h or -2.0))
+        # ROC_SELL_24H is stored as positive in config, negate for sell threshold
+        self.roc_sell_threshold = -Decimal(str(self.config.roc_sell_24h or 2.0))
         self.rsi_buy = Decimal(str(self.config.rsi_buy or 20))  # ← Tightened from 30 (more selective)
         self.rsi_sell = Decimal(str(self.config.rsi_sell or 80))  # ← Tightened from 70 (more selective)
         self.buy_target = float(self.config.buy_ratio or 0.0)

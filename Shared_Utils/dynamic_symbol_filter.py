@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from collections import defaultdict
 
+from sqlalchemy import text
 from Shared_Utils.logger import get_logger
 
 
@@ -187,10 +188,9 @@ class DynamicSymbolFilter:
             perm_list = "''"
 
         try:
-            async with self.shared_data_manager.db_session_manager.session() as session:
-                result = await session.execute(
-                    query % (self.lookback_days, perm_list, self.min_trades_required)
-                )
+            async with self.shared_data_manager.database_session_manager.async_session() as session:
+                formatted_query = query % (self.lookback_days, perm_list, self.min_trades_required)
+                result = await session.execute(text(formatted_query))
                 rows = result.fetchall()
         except Exception as e:
             self.logger.error(f"Database query failed for performance exclusions: {e}", exc_info=True)
@@ -279,14 +279,17 @@ class DynamicSymbolFilter:
             MAX(order_time) as last_trade,
             COUNT(DISTINCT DATE(order_time)) as active_days
         FROM trade_records
-        WHERE symbol = %s
-          AND order_time >= NOW() - INTERVAL '%s days'
+        WHERE symbol = :symbol
+          AND order_time >= NOW() - INTERVAL ':days days'
           AND pnl_usd IS NOT NULL
         """
 
         try:
-            async with self.shared_data_manager.db_session_manager.session() as session:
-                result = await session.execute(query, (symbol, self.lookback_days))
+            async with self.shared_data_manager.database_session_manager.async_session() as session:
+                result = await session.execute(
+                    text(query.replace(':days', str(self.lookback_days))),
+                    {'symbol': symbol}
+                )
                 row = result.fetchone()
 
                 if not row or row[0] < self.min_trades_required:

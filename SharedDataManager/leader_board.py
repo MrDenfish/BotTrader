@@ -102,8 +102,9 @@ def _fold_metrics(rows):
         })
     return out
 
-async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: LeaderboardConfig, logger_manager: LoggerManager,
-                                              fetch_precision: FetchPrecisionFn, adjust_precision: Optional[AdjustPrecisionFn] = None) -> None:
+async def recompute_and_upsert_active_symbols(session: AsyncSession, cfg: LeaderboardConfig,
+                                              fetch_precision: FetchPrecisionFn, adjust_precision: Optional[AdjustPrecisionFn] = None,
+                                              logger_manager: Optional[LoggerManager] = None) -> None:
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=cfg.lookback_hours)

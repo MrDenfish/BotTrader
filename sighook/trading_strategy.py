@@ -132,6 +132,9 @@ class TradingStrategy:
                 if ohlcv_df is None or ohlcv_df.empty:
                     continue
 
+                # ✅ Cache ATR for this symbol (enables ATR-based TP/SL for new buys)
+                self._cache_atr_for_symbol(symbol.replace("/", "-"), ohlcv_df)
+
                 # ✅ Decide Action (Buy/Sell/TP/SL)
                 trade_decision = await self.decide_action(ohlcv_df, symbol)
                 strategy_results.append({'asset': asset, 'symbol': symbol, **trade_decision})
@@ -200,6 +203,62 @@ class TradingStrategy:
             'sell_cond': None,
             'value': None
         }
+
+    # =========================================================
+    # ✅ ATR Caching (for webhook TP/SL calculations)
+    # =========================================================
+    def _cache_atr_for_symbol(self, product_id: str, ohlcv_df: pd.DataFrame, period: int = 14):
+        """
+        Calculate proper True Range ATR and cache it for webhook TP/SL calculations.
+        This ensures ATR is available for NEW buys (not just existing positions).
+
+        Args:
+            product_id: Trading pair (e.g., "BTC-USD")
+            ohlcv_df: DataFrame with OHLCV data
+            period: ATR lookback period (default: 14)
+        """
+        try:
+            if ohlcv_df is None or len(ohlcv_df) < period + 1:
+                return
+
+            # Initialize caches if they don't exist
+            if 'atr_pct_cache' not in self.shared_data_manager.market_data:
+                self.shared_data_manager.market_data['atr_pct_cache'] = {}
+            if 'atr_price_cache' not in self.shared_data_manager.market_data:
+                self.shared_data_manager.market_data['atr_price_cache'] = {}
+
+            # Calculate True Range ATR (same formula as webhook_order_manager)
+            trs = []
+            prev_close = float(ohlcv_df.iloc[0]['close'])
+
+            for idx in range(1, len(ohlcv_df)):
+                row = ohlcv_df.iloc[idx]
+                high = float(row['high'])
+                low = float(row['low'])
+                close = float(row['close'])
+
+                # True Range = max(high - low, |high - prev_close|, |prev_close - low|)
+                tr = max(high - low, abs(high - prev_close), abs(prev_close - low))
+                trs.append(tr)
+                prev_close = close
+
+                # Keep only last 'period' True Ranges
+                if len(trs) > period:
+                    trs.pop(0)
+
+            # Calculate ATR and ATR percentage
+            if trs and prev_close > 0:
+                atr_price = sum(trs) / len(trs)
+                atr_pct = atr_price / prev_close
+
+                # Cache for webhook to use
+                self.shared_data_manager.market_data['atr_pct_cache'][product_id] = atr_pct
+                self.shared_data_manager.market_data['atr_price_cache'][product_id] = atr_price
+
+                self.logger.debug(f"[ATR_CACHE] {product_id}: ATR={atr_price:.6f}, ATR%={atr_pct*100:.2f}%")
+
+        except Exception as e:
+            self.logger.debug(f"[ATR_CACHE] Failed for {product_id}: {e}")
 
     # =========================================================
     # ✅ OHLCV Handling
