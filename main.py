@@ -642,10 +642,19 @@ def make_webhook_tasks(*, listener, logger_manager, websocket_manager, shared_da
     ]
 
     # 🔇 Optional: only add accumulation in non-webhook modes (or if explicitly enabled)
+    logger = logger_manager.loggers['shared_logger']
+    logger.info(f"🔍 [Accumulation] Check: enabled={enable_accumulation}, manager={'exists' if accumulation_manager else 'None'}")
+
     if enable_accumulation and accumulation_manager is not None:
+        logger.info("✅ [Accumulation] Creating Accumulation Daily Runner task")
         tasks.append(
             asyncio.create_task(accumulation_manager.start_daily_runner(), name="Accumulation Daily Runner")
         )
+        logger.info(f"📊 [Accumulation] Config: signal_based={accumulation_manager.signal_based_enabled}, "
+                   f"daily_pnl={accumulation_manager.daily_pnl_based_enabled}, "
+                   f"symbol={accumulation_manager.accumulation_symbol}")
+    else:
+        logger.warning(f"❌ [Accumulation] NOT enabled: flag={enable_accumulation}, manager={'exists' if accumulation_manager else 'None'}")
 
     return tasks
 

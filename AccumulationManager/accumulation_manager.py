@@ -127,6 +127,7 @@ class AccumulationManager:
     async def accumulate_daily_from_realized_pnl(self):
         """
         Runs once per day. Allocates daily realized profit to ETH accumulation.
+        Uses FIFO allocations table (NOT deprecated trade_records.pnl_usd).
         """
         if not self.daily_pnl_based_enabled:
             return
@@ -136,19 +137,30 @@ class AccumulationManager:
             return  # Already executed today
 
         try:
-            # Fetch sells for yesterday (or today's completed trades if run after market close)
+            # Fetch positive PnL from FIFO allocations for yesterday
             date_to_use = today - timedelta(days=1)
-            daily_sells = await self.shared_data_manager.trade_recorder.fetch_sells_by_date(date_to_use)
 
-            # Sum only positive PnL
-            daily_profit = sum(trade.pnl_usd for trade in daily_sells if trade.pnl_usd and trade.pnl_usd > 0)
+            # Query FIFO allocations directly instead of deprecated pnl_usd column
+            from sqlalchemy import text
+            async with self.shared_data_manager.db_session_manager.async_session() as session:
+                query = text("""
+                    SELECT COALESCE(SUM(pnl_usd), 0) as daily_profit
+                    FROM fifo_allocations
+                    WHERE allocation_version = 2
+                      AND DATE(sell_time) = :target_date
+                      AND pnl_usd > 0
+                """)
+                result = await session.execute(query, {"target_date": date_to_use})
+                row = result.fetchone()
+                daily_profit = float(row[0]) if row else 0.0
+
             if daily_profit <= 0:
                 self.logger.info(f"ℹ️ [Accumulation] No positive PnL for {date_to_use}. Skipping accumulation.")
                 self.last_daily_accumulation_date = today
                 return
 
             allocation = Decimal(str(daily_profit)) * self.daily_allocation_pct
-            self.logger.info(f"📈 [Accumulation] Allocating ${allocation:.2f} to daily ETH accumulation from {date_to_use}'s profit")
+            self.logger.info(f"📈 [Accumulation] Allocating ${allocation:.2f} to daily ETH accumulation from {date_to_use}'s profit (${daily_profit:.2f} total)")
 
             order = await self._place_accumulation_order(allocation)
             if order:
@@ -158,7 +170,7 @@ class AccumulationManager:
             self.last_daily_accumulation_date = today
 
         except Exception as e:
-            self.logger.error(f"❌ [Accumulation] Daily PnL-based accumulation failed: {e}")
+            self.logger.error(f"❌ [Accumulation] Daily PnL-based accumulation failed: {e}", exc_info=True)
 
     # ============================
     # 🔹 CORE METHODS

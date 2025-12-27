@@ -465,6 +465,20 @@ class SignalManager:
             _, _, comps = self._compute_score_components(last_row)
             self._log_score_snapshot(symbol, ohlcv_df, buy_score, sell_score, comps,
                                      action=action, trigger=guardrail_note or 'score')
+
+            # 🔹 Trigger signal-based ETH accumulation on strong buy signals
+            if (action == 'buy' and buy_score >= 4.0 and
+                hasattr(self.shared_data_manager, 'accumulation_manager') and
+                self.shared_data_manager.accumulation_manager is not None):
+                try:
+                    import asyncio
+                    asyncio.create_task(
+                        self.shared_data_manager.accumulation_manager.accumulate_on_signal(signal=True),
+                        name=f"Accumulation-{symbol}"
+                    )
+                except Exception as e:
+                    self.logger.debug(f"[Accumulation] Could not trigger signal-based accumulation: {e}")
+
             return {
                 'action': action,
                 'trigger': 'score',
