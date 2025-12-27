@@ -386,6 +386,7 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
                                )
 
     sighook_logger = logger_manager.get_logger("sighook")
+    sighook_logger.info("🔎 [DEBUG] After async_init, about to start background tasks")
 
     # Start periodic refresh of shared data
     asyncio.create_task(refresh_loop(shared_data_manager, interval=60))
