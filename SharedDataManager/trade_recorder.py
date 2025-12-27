@@ -959,10 +959,12 @@ class TradeRecorder:
             sell_trade.cost_basis_usd = fifo_result["cost_basis_usd"]
             sell_trade.sale_proceeds_usd = fifo_result["sale_proceeds_usd"]
             sell_trade.net_sale_proceeds_usd = fifo_result["net_sale_proceeds_usd"]
-            sell_trade.pnl_usd = fifo_result["pnl_usd"]
-            sell_trade.realized_profit = fifo_result["pnl_usd"]
 
-            # 🔁 Update parents
+            # SOFT DEPRECATION: Set deprecated columns to None (P&L is in fifo_allocations table)
+            sell_trade.pnl_usd = None
+            sell_trade.realized_profit = None
+
+            # 🔁 Update parents - only update remaining_size
             for instr in fifo_result["update_instructions"]:
                 if not fifo_result["parent_ids"]:
                     self.logger.warning(f"[FIFO] No parents for SELL {sell_trade.order_id}; deferring PnL.")
@@ -975,12 +977,8 @@ class TradeRecorder:
                 if "remaining_size" in instr and instr["remaining_size"] is not None:
                     parent.remaining_size = instr["remaining_size"]
 
-                # Support either absolute realized_profit or a delta
-                if "realized_profit" in instr:
-                    parent.realized_profit = instr["realized_profit"]
-                elif "realized_profit_delta" in instr:
-                    base = Decimal(str(parent.realized_profit or 0))
-                    parent.realized_profit = float(base + Decimal(str(instr["realized_profit_delta"])))
+                # SOFT DEPRECATION: No longer update realized_profit on parent trades
+                # P&L data is managed in fifo_allocations table only
 
         except asyncio.CancelledError:
             self.logger.warning(f"🛑 FIFO PnL task cancelled for sell trade {sell_trade.order_id}")
