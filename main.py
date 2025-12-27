@@ -390,6 +390,19 @@ async def run_sighook(config, shared_data_manager, market_data_updater, rest_cli
     # Start periodic refresh of shared data
     asyncio.create_task(refresh_loop(shared_data_manager, interval=60))
 
+    # 🔹 Start Accumulation Daily Runner
+    if hasattr(shared_data_manager, 'accumulation_manager') and shared_data_manager.accumulation_manager is not None:
+        sighook_logger.info("✅ [Accumulation] Starting daily runner in sighook mode")
+        asyncio.create_task(
+            shared_data_manager.accumulation_manager.start_daily_runner(),
+            name="Accumulation Daily Runner"
+        )
+        sighook_logger.info(f"📊 [Accumulation] Config: signal_based={shared_data_manager.accumulation_manager.signal_based_enabled}, "
+                          f"daily_pnl={shared_data_manager.accumulation_manager.daily_pnl_based_enabled}, "
+                          f"symbol={shared_data_manager.accumulation_manager.accumulation_symbol}")
+    else:
+        sighook_logger.warning("❌ [Accumulation] Manager not found - accumulation disabled")
+
     try:
         while not shutdown_event.is_set():
             await trade_bot.run_bot()
