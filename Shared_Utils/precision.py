@@ -25,6 +25,9 @@ class PrecisionUtils:
         self.logger = logger_manager.loggers.get('shared_logger') # 🙂
         self.shared_data_manager = shared_data_manager
 
+        # Initialize _usd_pairs to None (set later via set_trade_parameters)
+        self._usd_pairs = None
+
         # Initialize dust threshold configuration for FIFO allocations
         self._init_dust_thresholds()
 
@@ -45,6 +48,16 @@ class PrecisionUtils:
 
     @property
     def usd_pairs(self):
+        if self._usd_pairs is None:
+            # Try to load from shared_data_manager if available
+            if self.shared_data_manager:
+                usd_pairs = self.shared_data_manager.market_data.get('usd_pairs_cache')
+                if usd_pairs is not None and not usd_pairs.empty:
+                    self._usd_pairs = usd_pairs
+                    return self._usd_pairs
+            # Return empty DataFrame if not available
+            import pandas as pd
+            return pd.DataFrame()
         return self._usd_pairs
 
     # def bind_shared_data(self, shared_data_manager):
