@@ -1,9 +1,26 @@
 # ⏰ REMINDER: Schema Cleanup - Hard Removal of Deprecated Columns
 
-**Action Date:** 2025-12-29 (3 weeks from 2025-12-08)
-**Status:** SCHEDULED
+**Action Date:** ~~2025-12-29~~ → **RESCHEDULED to 2026-01-17**
+**Status:** ~~SCHEDULED~~ → **SUPERSEDED**
 **Priority:** MEDIUM
 **Type:** Database Migration
+
+---
+
+## ⚠️ THIS REMINDER IS OBSOLETE
+
+**Reason:** Soft deprecation was not implemented as planned. Found during prerequisite checks on Dec 27, 2025.
+
+**New Reminder:** See `docs/reminders/REMINDER_2026-01-17_schema_cleanup.md`
+
+**What Changed:**
+- Soft deprecation implemented: Dec 27, 2025 (commit a251bb9)
+- New monitoring period: 21 days from Dec 27
+- New hard removal date: Jan 17, 2026 (or later)
+
+---
+
+# ORIGINAL REMINDER (FOR REFERENCE ONLY)
 
 ---
 

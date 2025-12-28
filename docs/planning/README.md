@@ -5,9 +5,11 @@ This directory contains future work plans, roadmaps, and next session preparatio
 ## Active Planning Documents
 
 ### Next Session Tasks
-- `NEXT_SESSION_CASH_TRANSACTIONS.md` - ⚠️ **PENDING** - Cash transactions integration for accurate Risk & Capital metrics
+- `NEXT_SESSION_SCHEMA_CLEANUP.md` - ⏰ **SCHEDULED** - Database schema cleanup (Phase 2) - Due: Dec 29, 2025
 - `NEXT_SESSION_PREP_TASKS.md` - ⚠️ **ACTIVE** - Optimization preparation (Eval: Jan 7, 2025)
-- `NEXT_SESSION_SCHEMA_CLEANUP.md` - ⚠️ **PENDING** - Database schema cleanup (Phase 2)
+
+### Completed Sessions (Archived)
+- `NEXT_SESSION_CASH_TRANSACTIONS.md` - ✅ **COMPLETED** - Cash transactions integration (Moved to archive/planning/)
 
 ### Refactoring Plans
 - `REFACTORING_PLAN_pnl_columns.md` - P&L columns refactoring (Phase 1 soft deprecation started)
@@ -33,6 +35,5 @@ This directory contains future work plans, roadmaps, and next session preparatio
 **Usage:** Reference these documents when starting new sessions or planning future work. Once work is completed, move documents to `archive/planning/`.
 
 **Priority Order:**
-1. NEXT_SESSION_CASH_TRANSACTIONS.md (High priority - fixes email report metrics)
+1. NEXT_SESSION_SCHEMA_CLEANUP.md (Due: Dec 29, 2025 - see reminders/REMINDER_2025-12-29)
 2. NEXT_SESSION_PREP_TASKS.md (Ongoing - monitoring until Jan 7, 2025)
-3. NEXT_SESSION_SCHEMA_CLEANUP.md (Scheduled - see reminders/REMINDER_2025-12-29)
