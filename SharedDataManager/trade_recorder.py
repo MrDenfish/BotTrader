@@ -1066,3 +1066,108 @@ class TradeRecorder:
                 self.logger.error(f"❌ Error fetching sells for {date}: {e}", exc_info=True)
             return []
 
+    # =========================================================
+    # ✅ Strategy Linkage Methods (For Optimization)
+    # =========================================================
+
+    async def create_strategy_link(
+        self,
+        order_id: str,
+        snapshot_id: str,
+        buy_score: float = None,
+        sell_score: float = None,
+        trigger_type: str = None,
+        indicator_breakdown: dict = None,
+        indicators_fired: int = None
+    ):
+        """
+        Create a trade-strategy link record to correlate trades with strategy parameters.
+
+        Args:
+            order_id: Order ID from trade_records
+            snapshot_id: UUID of strategy_snapshots record
+            buy_score: Buy signal strength (for buy orders)
+            sell_score: Sell signal strength (for sell orders)
+            trigger_type: Sell trigger ('signal_flip', 'take_profit', 'stop_loss', etc.)
+            indicator_breakdown: JSON dict of individual indicator contributions
+            indicators_fired: Count of indicators that triggered
+        """
+        try:
+            from TableModels.trade_strategy_link import TradeStrategyLink
+
+            async with self.db_session_manager.async_session() as session:
+                async with session.begin():
+                    # Check if link already exists
+                    existing = await session.execute(
+                        select(TradeStrategyLink).where(TradeStrategyLink.order_id == order_id)
+                    )
+                    if existing.scalar_one_or_none():
+                        self.logger.debug(f"[STRATEGY_LINK] Link already exists for {order_id}, skipping")
+                        return
+
+                    # Create new link
+                    link = TradeStrategyLink(
+                        order_id=order_id,
+                        snapshot_id=snapshot_id,
+                        buy_score=buy_score,
+                        sell_score=sell_score,
+                        trigger_type=trigger_type,
+                        indicator_breakdown=indicator_breakdown,
+                        indicators_fired=indicators_fired
+                    )
+
+                    session.add(link)
+                    await session.flush()
+
+                    self.logger.info(
+                        f"✅ [STRATEGY_LINK] Created link: {order_id} → snapshot {snapshot_id[:8]}... "
+                        f"(buy_score={buy_score}, sell_score={sell_score}, trigger={trigger_type})"
+                    )
+
+        except Exception as e:
+            self.logger.error(f"❌ [STRATEGY_LINK] Failed to create link for {order_id}: {e}", exc_info=True)
+
+    async def update_strategy_link(
+        self,
+        order_id: str,
+        sell_score: float = None,
+        trigger_type: str = None
+    ):
+        """
+        Update an existing trade-strategy link with sell-side data.
+
+        Args:
+            order_id: Order ID to update
+            sell_score: Sell signal strength
+            trigger_type: Sell trigger type
+        """
+        try:
+            from TableModels.trade_strategy_link import TradeStrategyLink
+
+            async with self.db_session_manager.async_session() as session:
+                async with session.begin():
+                    result = await session.execute(
+                        select(TradeStrategyLink).where(TradeStrategyLink.order_id == order_id)
+                    )
+                    link = result.scalar_one_or_none()
+
+                    if not link:
+                        self.logger.warning(f"[STRATEGY_LINK] No existing link found for {order_id}, cannot update")
+                        return
+
+                    # Update sell-side fields
+                    if sell_score is not None:
+                        link.sell_score = sell_score
+                    if trigger_type is not None:
+                        link.trigger_type = trigger_type
+
+                    await session.flush()
+
+                    self.logger.info(
+                        f"✅ [STRATEGY_LINK] Updated link: {order_id} "
+                        f"(sell_score={sell_score}, trigger={trigger_type})"
+                    )
+
+        except Exception as e:
+            self.logger.error(f"❌ [STRATEGY_LINK] Failed to update link for {order_id}: {e}", exc_info=True)
+
