@@ -64,7 +64,11 @@ class TradingStrategy:
             'DASH-USD', 'BCH-USD', 'AVAX-USD', 'SWFTC-USD', 'AVNT-USD',
             'PRIME-USD', 'ICP-USD', 'KAITO-USD', 'IRYS-USD', 'TIME-USD',
             'NMR-USD', 'NEON-USD', 'QNT-USD', 'PERP-USD', 'BOBBOB-USD',
-            'OMNI-USD', 'TIA-USD', 'IP-USD', 'TNSR-USD'  # Added Dec 15, 2025
+            'OMNI-USD', 'TIA-USD', 'IP-USD', 'TNSR-USD',  # Added Dec 15, 2025
+            # Additional losers from 28-day analysis (Dec 28, 2025):
+            'FARM-USD',  # 0% win rate, -$8.40 loss
+            'XLM-USD',   # 0% win rate, -$5.00 loss
+            'AVT-USD',   # 32% win rate, -$10.16 loss (highest total loss)
         ]
 
     # ---------------------------
