@@ -405,6 +405,16 @@ class TradeRecorder:
                     )
                     await session.execute(update_stmt)
 
+                    # ============================================================
+                    # ✅ STRATEGY LINKAGE: Link trade to strategy snapshot
+                    # ============================================================
+                    await self._create_or_update_strategy_link(
+                        session=session,
+                        order_id=order_id,
+                        symbol=symbol,
+                        side=side
+                    )
+
                     # -----------------------------
                     # Update Parent BUYs (remaining_size + realized_profit)
                     # -----------------------------
@@ -1170,4 +1180,100 @@ class TradeRecorder:
 
         except Exception as e:
             self.logger.error(f"❌ [STRATEGY_LINK] Failed to update link for {order_id}: {e}", exc_info=True)
+
+    async def _create_or_update_strategy_link(
+        self,
+        session,
+        order_id: str,
+        symbol: str,
+        side: str
+    ):
+        """
+        Internal helper to create or update strategy linkage using cached metadata.
+
+        Retrieves metadata from shared_data_manager.market_data['strategy_metadata_cache']
+        and calls create_strategy_link() or update_strategy_link() as appropriate.
+
+        Args:
+            session: Active database session (from record_trade context)
+            order_id: Trade order ID
+            symbol: Trading pair (e.g., "BTC-USD")
+            side: "buy" or "sell"
+        """
+        try:
+            # Retrieve cached metadata
+            cache = self.shared_data_manager.market_data.get('strategy_metadata_cache', {})
+            metadata = cache.get(symbol)
+
+            if not metadata:
+                # No cached metadata - likely a manual/reconciled trade
+                self.logger.debug(f"[STRATEGY_LINK] No metadata cached for {symbol}, skipping linkage")
+                return
+
+            # Extract metadata fields
+            score = metadata.get('score', {})
+            snapshot_id = metadata.get('snapshot_id')
+            trigger = metadata.get('trigger', 'unknown')
+            cached_side = metadata.get('side', '').lower()
+
+            # Validate we have meaningful data
+            if not snapshot_id:
+                self.logger.debug(f"[STRATEGY_LINK] No snapshot_id for {symbol}, skipping linkage")
+                return
+
+            # Extract scores based on side
+            buy_score = None
+            sell_score = None
+            indicator_breakdown = None
+            indicators_fired = None
+
+            if side == "buy":
+                # For buy orders, extract buy_score and indicator breakdown
+                buy_score = score.get('buy_score')
+                # indicator_breakdown might be at score.indicator_breakdown or score directly
+                indicator_breakdown = score.get('indicator_breakdown', score)
+                if indicator_breakdown and isinstance(indicator_breakdown, dict):
+                    indicators_fired = len([v for v in indicator_breakdown.values() if v and v > 0])
+
+            elif side == "sell":
+                # For sell orders, extract sell_score
+                sell_score = score.get('sell_score')
+                # If we only have a single score value (TP/SL case), use it as sell_score
+                if sell_score is None and isinstance(score, dict) and 'buy_score' not in score:
+                    # Might be a simple numeric score for the sell
+                    sell_score = score.get('score')
+
+            # Determine if this is CREATE or UPDATE
+            from TableModels.trade_strategy_link import TradeStrategyLink
+
+            existing_link = await session.scalar(
+                select(TradeStrategyLink).where(TradeStrategyLink.order_id == order_id)
+            )
+
+            if side == "buy" or not existing_link:
+                # CREATE: New buy order or orphaned sell
+                await self.create_strategy_link(
+                    order_id=order_id,
+                    snapshot_id=snapshot_id,
+                    buy_score=buy_score,
+                    sell_score=sell_score,
+                    trigger_type=trigger if side == "sell" else None,
+                    indicator_breakdown=indicator_breakdown,
+                    indicators_fired=indicators_fired
+                )
+            else:
+                # UPDATE: Sell order updating existing buy linkage
+                await self.update_strategy_link(
+                    order_id=order_id,
+                    sell_score=sell_score,
+                    trigger_type=trigger
+                )
+
+            # Clear cache entry after use (TTL: immediate cleanup)
+            if symbol in cache:
+                del cache[symbol]
+                self.logger.debug(f"[STRATEGY_CACHE] Cleared metadata for {symbol}")
+
+        except Exception as e:
+            self.logger.error(f"❌ [STRATEGY_LINK] Error in _create_or_update_strategy_link for {order_id}: {e}", exc_info=True)
 

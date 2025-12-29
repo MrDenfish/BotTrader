@@ -497,6 +497,7 @@ class OrderManager:
             coin = symbol.split("-")[0]
             trigger = order.get("trigger", "score")
             score = order.get("score", {})
+            snapshot_id = order.get("snapshot_id")  # ✅ Strategy linkage metadata
 
             # ✅ Skip HODL assets
             if coin in self.hodl:
@@ -533,6 +534,7 @@ class OrderManager:
                 price=price,
                 trigger=trigger,
                 score=score,
+                snapshot_id=snapshot_id,  # ✅ Strategy linkage
                 base_avail_to_trade=base_avail_to_trade,  # usually 0 for new buys
                 quote_avail_balance=quote_avail_balance,
                 take_profit=take_profit,
@@ -597,6 +599,7 @@ class OrderManager:
             trigger = order.get("trigger", "score")
             score = order.get("score", {})
             action = order.get("action", "sell")
+            snapshot_id = order.get("snapshot_id")  # ✅ Strategy linkage metadata
 
             # ✅ Skip if in HODL list
             if coin in self.hodl:
@@ -613,7 +616,8 @@ class OrderManager:
                     price=price,
                     base_avail_to_trade=base_avail_to_trade,
                     quote_amount=quote_amount,
-                    score=score
+                    score=score,
+                    snapshot_id=snapshot_id  # ✅ Strategy linkage
                 )
 
             # ✅ Normal SELL logic (limit or market)
@@ -625,7 +629,8 @@ class OrderManager:
                     price=price,
                     base_avail_to_trade=base_avail_to_trade,
                     quote_amount=quote_amount,
-                    score=score
+                    score=score,
+                    snapshot_id=snapshot_id  # ✅ Strategy linkage
                 )
 
             return None
@@ -642,7 +647,8 @@ class OrderManager:
             price: float,
             base_avail_to_trade: float,
             quote_amount: float,
-            score: dict
+            score: dict,
+            snapshot_id: str = None  # ✅ Strategy linkage metadata
     ) -> Optional[dict]:
         """
         Internal helper to execute sell orders (TP/SL or normal).
@@ -657,6 +663,7 @@ class OrderManager:
                 price=price,
                 trigger=trigger,
                 score=score,
+                snapshot_id=snapshot_id,  # ✅ Strategy linkage
                 base_avail_to_trade=base_avail_to_trade,
                 quote_avail_balance=quote_amount
             )
@@ -700,6 +707,7 @@ class OrderManager:
             price: float,
             trigger: str,
             score: dict,
+            snapshot_id: str = None,  # ✅ Strategy linkage metadata
             base_avail_to_trade: float = 0.0,
             quote_avail_balance: float = 0.0,
             take_profit: float = None,
@@ -711,6 +719,7 @@ class OrderManager:
         ✅ TP/SL-first behavior for BUY orders:
             - Default BUYs to TP/SL type
             - Optionally attach TP and SL thresholds for downstream processing/logging
+        ✅ Strategy linkage: Includes snapshot_id and score for optimization tracking
         """
 
         # --- Normalize values ---
@@ -749,6 +758,7 @@ class OrderManager:
             "source": source,
             "trigger": {"trigger": trigger} if isinstance(trigger, str) else trigger,
             "score": score,
+            "snapshot_id": snapshot_id,  # ✅ Strategy linkage metadata
             "verified": valid_order
         }
 

@@ -203,6 +203,10 @@ class WebHookManager:
             # ✅ Test mode detection (centralized flag for downstream use)
             trigger = request_json.get("trigger")
 
+            # ✅ Strategy linkage metadata extraction
+            score = request_json.get("score", {})
+            snapshot_id = request_json.get("snapshot_id")
+
             return {
                 "trading_pair": pair,
                 "side": side,
@@ -216,7 +220,9 @@ class WebHookManager:
                 "source": request_json.get("source", "UNKNOWN"),
                 "uuid": request_json.get("uuid"),
                 "time": int(request_json.get("timestamp", time.time() * 1000)),
-                "trigger": trigger
+                "trigger": trigger,
+                "score": score,  # ✅ Strategy linkage
+                "snapshot_id": snapshot_id  # ✅ Strategy linkage
             }
 
         except Exception as e:

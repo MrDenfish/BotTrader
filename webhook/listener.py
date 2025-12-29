@@ -1004,6 +1004,10 @@ class WebhookListener:
                     status=int(ValidationCode.INSUFFICIENT_BASE.value)
                 )
 
+            # ✅ Cache strategy metadata for trade-strategy linkage
+            # This metadata will be retrieved when the trade fills and recorded to trade_strategy_link table
+            self._cache_strategy_metadata(trade_data)
+
             # ✅ Build order (pass test_mode directly)
             source = trade_data.get("source", "Webhook")
             trigger = trade_data.get("trigger", "strategy")
@@ -1098,6 +1102,58 @@ class WebhookListener:
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
             self.logger.info("🛑 periodic_save cancelled cleanly.")
+
+    def _cache_strategy_metadata(self, trade_data: dict) -> None:
+        """
+        Cache strategy metadata for trade-strategy linkage.
+
+        This metadata will be retrieved by trade_recorder when the order fills
+        and used to create/update trade_strategy_link records.
+
+        Cache structure:
+            strategy_metadata_cache[product_id] = {
+                'score': {...},
+                'trigger': '...',
+                'snapshot_id': '...',
+                'side': 'buy'/'sell',
+                'timestamp': unix_timestamp
+            }
+        """
+        try:
+            product_id = trade_data.get("trading_pair")
+            score = trade_data.get("score", {})
+            snapshot_id = trade_data.get("snapshot_id")
+            side = trade_data.get("side", "").lower()
+            trigger = trade_data.get("trigger", {})
+
+            # Extract trigger string if it's a dict
+            if isinstance(trigger, dict):
+                trigger = trigger.get("trigger", "unknown")
+
+            # Only cache if we have meaningful metadata
+            if not score and not snapshot_id:
+                return
+
+            # Initialize cache if it doesn't exist
+            if 'strategy_metadata_cache' not in self.shared_data_manager.market_data:
+                self.shared_data_manager.market_data['strategy_metadata_cache'] = {}
+
+            # Cache metadata keyed by product_id
+            self.shared_data_manager.market_data['strategy_metadata_cache'][product_id] = {
+                'score': score,
+                'snapshot_id': snapshot_id,
+                'trigger': trigger,
+                'side': side,
+                'timestamp': trade_data.get("time", int(time.time() * 1000))
+            }
+
+            self.logger.debug(
+                f"[STRATEGY_CACHE] Cached metadata for {product_id}: "
+                f"snapshot_id={snapshot_id}, trigger={trigger}, side={side}"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error caching strategy metadata: {e}", exc_info=True)
 
     def _infer_origin_from_client_order_id(self, coid: str | None) -> str | None:
         s = (coid or "").lower()
