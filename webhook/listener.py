@@ -1126,12 +1126,22 @@ class WebhookListener:
             side = trade_data.get("side", "").lower()
             trigger = trade_data.get("trigger", {})
 
+            # 🔧 DEBUG: Log what we received
+            self.logger.debug(
+                f"[STRATEGY_CACHE_DEBUG] Called for {product_id}: "
+                f"score={score}, snapshot_id={snapshot_id}, side={side}, trigger={trigger}"
+            )
+
             # Extract trigger string if it's a dict
             if isinstance(trigger, dict):
                 trigger = trigger.get("trigger", "unknown")
 
             # Only cache if we have meaningful metadata
             if not score and not snapshot_id:
+                self.logger.debug(
+                    f"[STRATEGY_CACHE_DEBUG] Skipping cache for {product_id}: "
+                    f"score is falsy={not score}, snapshot_id is falsy={not snapshot_id}"
+                )
                 return
 
             # Initialize cache if it doesn't exist
