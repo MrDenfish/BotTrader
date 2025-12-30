@@ -445,6 +445,9 @@ async def create_trade_bot(config, coinbase_api, shared_data_manager, market_dat
 async def init_webhook(config, session, coinbase_api, shared_data_manager, market_data_updater, logger_manager,test_debug_maint,
                        shared_utils_print, shared_utils_color, alert, startup_event=None, trade_bot=None, order_book_manager=None):
 
+    webhook_init_logger = get_logger('main', context={'component': 'webhook_init'})
+    webhook_init_logger.info("🔧 [HTTP_SERVER_DEBUG] init_webhook() called - starting webhook initialization")
+
     listener = WebhookListener(
         bot_config=config,
         shared_data_manager=shared_data_manager,
@@ -525,17 +528,29 @@ async def init_webhook(config, session, coinbase_api, shared_data_manager, marke
 
     # asyncio.create_task(websocket_manager.start_websockets())
 
+    webhook_logger = get_logger('main', context={'component': 'webhook'})
+    webhook_logger.info("🔧 [HTTP_SERVER_DEBUG] About to call listener.create_app()")
+
     app = await listener.create_app()
+    webhook_logger.info(f"🔧 [HTTP_SERVER_DEBUG] create_app() returned: {app}")
+
     if app is None:
         raise RuntimeError("❌ listener.create_app() returned None — cannot start webhook.")
+
+    webhook_logger.info("🔧 [HTTP_SERVER_DEBUG] Creating AppRunner")
     runner = web.AppRunner(app)
+
+    webhook_logger.info("🔧 [HTTP_SERVER_DEBUG] Calling runner.setup()")
     await runner.setup()
+
+    webhook_logger.info(f"🔧 [HTTP_SERVER_DEBUG] Creating TCPSite on 0.0.0.0:{config.webhook_port}")
     site = web.TCPSite(runner, '0.0.0.0', config.webhook_port)
+
+    webhook_logger.info("🔧 [HTTP_SERVER_DEBUG] Calling site.start() - HTTP server starting...")
     await site.start()
 
-    webhook_logger = get_logger('main', context={'component': 'webhook'})
     webhook_logger.info(
-        "TradeBot started",
+        "✅ TradeBot HTTP server started successfully",
         extra={'version': config.program_version, 'port': config.webhook_port}
     )
 
@@ -828,6 +843,7 @@ async def app_boot():
             await run_maintenance_if_needed(shared_data_manager, shared_data_manager.trade_recorder)
 
             if args.run == 'webhook':
+                shared_logger.info("🔧 [HTTP_SERVER_DEBUG] RUN_MODE=webhook detected, calling run_webhook()")
                 await run_webhook(
                     config=config,
                     session=session,
