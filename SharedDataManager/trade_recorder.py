@@ -1229,7 +1229,7 @@ class TradeRecorder:
 
             if side == "buy":
                 # For buy orders, extract buy_score and indicator breakdown
-                buy_score = score.get('buy_score')
+                buy_score = score.get('Buy Score')
                 # indicator_breakdown might be at score.indicator_breakdown or score directly
                 indicator_breakdown = score.get('indicator_breakdown', score)
                 if indicator_breakdown and isinstance(indicator_breakdown, dict):
@@ -1237,9 +1237,9 @@ class TradeRecorder:
 
             elif side == "sell":
                 # For sell orders, extract sell_score
-                sell_score = score.get('sell_score')
+                sell_score = score.get('Sell Score')
                 # If we only have a single score value (TP/SL case), use it as sell_score
-                if sell_score is None and isinstance(score, dict) and 'buy_score' not in score:
+                if sell_score is None and isinstance(score, dict) and 'Buy Score' not in score:
                     # Might be a simple numeric score for the sell
                     sell_score = score.get('score')
 

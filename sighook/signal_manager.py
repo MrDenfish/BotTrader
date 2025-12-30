@@ -361,7 +361,7 @@ class SignalManager:
                         'action': 'buy', 'trigger': 'roc_momo', 'type': 'limit',
                         'Buy Signal': (1, float(roc_value), float(roc_thr_buy)),
                         'Sell Signal': (0, None, None),
-                        'Score': {'Buy Score': None, 'Sell Score': None}
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
                     }
                 if sell_signal_roc:
                     # compute full components so we can see the context even on overrides
@@ -372,7 +372,7 @@ class SignalManager:
                         'action': 'sell', 'trigger': 'roc_momo', 'type': 'limit',
                         'Sell Signal': (1, float(roc_value), float(roc_thr_sell)),
                         'Buy Signal': (0, None, None),
-                        'Score': {'Buy Score': None, 'Sell Score': None}
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
                     }
 
             # ✅ Weighted scoring
