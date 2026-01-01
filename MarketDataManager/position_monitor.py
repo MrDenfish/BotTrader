@@ -617,7 +617,10 @@ class PositionMonitor:
             )
 
             if not order_data:
-                self.logger.warning(f"[POS_MONITOR] Failed to build order data for {product_id} exit")
+                failure_reason = getattr(self.trade_order_manager, 'build_failure_reason', 'Unknown')
+                self.logger.warning(
+                    f"[POS_MONITOR] Failed to build order data for {product_id} exit: {failure_reason}"
+                )
                 return
 
             # Set exit price and order amounts

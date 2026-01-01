@@ -1006,7 +1006,9 @@ class WebhookListener:
 
             # ✅ Cache strategy metadata for trade-strategy linkage
             # This metadata will be retrieved when the trade fills and recorded to trade_strategy_link table
+            self.logger.warning(f"🔧 [DEBUG] About to call _cache_strategy_metadata for {trade_data.get('trading_pair')}")
             self._cache_strategy_metadata(trade_data)
+            self.logger.warning(f"🔧 [DEBUG] _cache_strategy_metadata returned for {trade_data.get('trading_pair')}")
 
             # ✅ Build order (pass test_mode directly)
             source = trade_data.get("source", "Webhook")
@@ -1119,6 +1121,7 @@ class WebhookListener:
                 'timestamp': unix_timestamp
             }
         """
+        self.logger.warning(f"🔧 [DEBUG] _cache_strategy_metadata ENTERED with trade_data keys: {list(trade_data.keys())}")
         try:
             product_id = trade_data.get("trading_pair")
             score = trade_data.get("score", {})
