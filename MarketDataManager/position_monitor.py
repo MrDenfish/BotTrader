@@ -44,6 +44,12 @@ class PositionMonitor:
         # Track trailing stop state per position
         self.trailing_stops = {}  # {symbol: {last_high, stop_price, last_atr, trailing_active}}
 
+        # Fee tracking (fetched from API, cached)
+        self.maker_fee_pct = None
+        self.taker_fee_pct = None
+        self.last_fee_fetch = None
+        self.fee_cache_duration = timedelta(hours=1)  # Refresh fees every hour
+
     def _load_config(self):
         """Load position monitoring configuration from environment."""
         self.max_loss_pct = Decimal(os.getenv('MAX_LOSS_PCT', '0.025'))  # -2.5%
@@ -67,12 +73,72 @@ class PositionMonitor:
         # Position check interval (seconds)
         self.check_interval = int(os.getenv('POSITION_CHECK_INTERVAL', '30'))
 
+        # Fee fallback values from .env (used if API fetch fails)
+        self.fallback_maker_fee = Decimal(os.getenv('MAKER_FEE', '0.004'))  # 0.40%
+        self.fallback_taker_fee = Decimal(os.getenv('TAKER_FEE', '0.008'))  # 0.80%
+
         self.logger.info(
             f"[POS_MONITOR] Configuration loaded: "
             f"max_loss={self.max_loss_pct:.2%}, min_profit={self.min_profit_pct:.2%}, "
             f"hard_stop={self.hard_stop_pct:.2%}, trailing_enabled={self.trailing_enabled}, "
-            f"signal_exit_enabled={self.signal_exit_enabled}"
+            f"signal_exit_enabled={self.signal_exit_enabled}, "
+            f"fallback_fees=maker:{self.fallback_maker_fee:.2%}/taker:{self.fallback_taker_fee:.2%}"
         )
+
+    async def _fetch_current_fees(self) -> Tuple[Decimal, Decimal]:
+        """
+        Fetch current fee rates from Coinbase API (with caching).
+
+        Returns:
+            (maker_fee_pct, taker_fee_pct) as Decimals
+            Falls back to .env values if API call fails
+        """
+        # Check cache validity
+        now = datetime.now()
+        if self.last_fee_fetch and (now - self.last_fee_fetch) < self.fee_cache_duration:
+            if self.maker_fee_pct is not None and self.taker_fee_pct is not None:
+                self.logger.debug(
+                    f"[POS_MONITOR] Using cached fees: "
+                    f"maker={self.maker_fee_pct:.2%}, taker={self.taker_fee_pct:.2%}"
+                )
+                return self.maker_fee_pct, self.taker_fee_pct
+
+        # Fetch fresh fees from API
+        try:
+            fee_data = await self.trade_order_manager.coinbase_api.get_fee_rates()
+
+            if 'error' in fee_data:
+                self.logger.warning(
+                    f"[POS_MONITOR] ⚠️ Fee API returned error: {fee_data.get('error')} "
+                    f"- using fallback fees from .env"
+                )
+                self.maker_fee_pct = self.fallback_maker_fee
+                self.taker_fee_pct = self.fallback_taker_fee
+            else:
+                self.maker_fee_pct = Decimal(str(fee_data.get('maker', self.fallback_maker_fee)))
+                self.taker_fee_pct = Decimal(str(fee_data.get('taker', self.fallback_taker_fee)))
+
+                pricing_tier = fee_data.get('pricing_tier', 'Unknown')
+                usd_volume = fee_data.get('usd_volume', 0)
+
+                self.logger.info(
+                    f"[POS_MONITOR] ✅ Fetched current fees from Coinbase API: "
+                    f"maker={self.maker_fee_pct:.3%}, taker={self.taker_fee_pct:.3%} "
+                    f"(tier: {pricing_tier}, 30d volume: ${usd_volume:,.2f})"
+                )
+
+            self.last_fee_fetch = now
+
+        except Exception as e:
+            self.logger.error(
+                f"[POS_MONITOR] ❌ Failed to fetch fees from API: {e} "
+                f"- using fallback fees from .env",
+                exc_info=True
+            )
+            self.maker_fee_pct = self.fallback_maker_fee
+            self.taker_fee_pct = self.fallback_taker_fee
+
+        return self.maker_fee_pct, self.taker_fee_pct
 
     async def check_positions(self):
         """
@@ -205,12 +271,11 @@ class PositionMonitor:
             # Calculate P&L (RAW - no fees)
             pnl_pct_raw = (current_price - avg_entry_price) / avg_entry_price
 
-            # ✅ FIX: Calculate FEE-AWARE P&L for exit decisions
-            # Assumes: entry was maker (0.25%), exit will be taker (0.50%)
-            # Total round-trip fee: 0.75%
-            entry_fee_pct = Decimal('0.0025')  # 0.25% maker fee on entry
-            exit_fee_pct = Decimal('0.0050')   # 0.50% taker fee on exit
+            # ✅ Fetch current fees from API (with caching and fallback to .env)
+            entry_fee_pct, exit_fee_pct = await self._fetch_current_fees()
 
+            # Calculate FEE-AWARE P&L for exit decisions
+            # Assumes: entry was maker, exit will be taker
             # Entry cost including fee: entry_price * (1 + entry_fee)
             # Exit revenue after fee: current_price * (1 - exit_fee)
             # Net P&L % = (exit_revenue - entry_cost) / entry_cost
@@ -222,7 +287,7 @@ class PositionMonitor:
             self.logger.debug(
                 f"[POS_MONITOR] {product_id}: P&L_raw={pnl_pct_raw:.2%}, P&L_net={pnl_pct:.2%} "
                 f"(entry=${avg_entry_price:.4f}, current=${current_price:.4f}, "
-                f"balance={total_balance_crypto:.6f})"
+                f"balance={total_balance_crypto:.6f}, fees=maker:{entry_fee_pct:.2%}/taker:{exit_fee_pct:.2%})"
             )
 
             # ✅ Task 3: Check for active bracket orders (coordination)
