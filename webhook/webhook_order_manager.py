@@ -895,6 +895,19 @@ class TradeOrderManager:
                         trigger_cache = order_mgmt.get("order_triggers", {})
                         trigger_cache[order_data.order_id] = order_data.trigger
                         order_mgmt["order_triggers"] = trigger_cache
+
+                        # PEAK TRACKING: Store trigger type for BUY orders (for position_monitor)
+                        if side == "buy" and isinstance(order_data.trigger, dict):
+                            trigger_type = order_data.trigger.get("trigger", "").upper()
+                            if trigger_type in ["ROC_MOMO", "ROC_MOMO_OVERRIDE", "ROC"]:
+                                position_triggers = order_mgmt.get("position_triggers", {})
+                                product_id = f"{symbol}-USD"
+                                position_triggers[product_id] = trigger_type
+                                order_mgmt["position_triggers"] = position_triggers
+                                self.logger.info(
+                                    f"[PEAK_TRACK] Stored trigger for {product_id}: {trigger_type}"
+                                )
+
                         await self.shared_data_manager.set_order_management(order_mgmt)
                         self.logger.debug(f"Cached trigger for order {order_data.order_id}: {order_data.trigger}")
                     except Exception as e:
