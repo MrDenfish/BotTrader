@@ -535,11 +535,18 @@ def query_trigger_breakdown(conn):
     """
     Query PnL and order count grouped by trigger type.
 
+    Infers trigger type based on buy order size since trigger field is not reliably populated:
+    - ~$15 (13-17) → Signal Matrix (technical indicators)
+    - ~$20 (18-23) → ROC Momentum
+    - ~$25 (24-30) → Webhook/External
+    - ~$32 (31-34) → Passive Market Making
+    - Other sizes → Websocket (manual/external)
+
     Returns:
         list of dicts: [{'trigger': str, 'order_count': int, 'total_pnl': float, 'win_count': int, 'loss_count': int}, ...]
     """
     try:
-        # Check if trigger column exists
+        # Check if required columns exist
         cols = table_columns(conn, REPORT_TRADES_TABLE)
         if 'trigger' not in cols:
             return []
@@ -551,27 +558,50 @@ def query_trigger_breakdown(conn):
 
         time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
 
-        # Query trigger breakdown using FIFO allocations
-        # Handle both JSON format {"trigger": "LIMIT"} and plain string "limit"
+        # Query trigger breakdown using FIFO allocations and inferring trigger from buy order size
         q = f"""
-            WITH trigger_pnl AS (
+            WITH buy_orders AS (
+                -- Get buy orders with notional value for trigger inference
                 SELECT
-                    UPPER(COALESCE(
-                        tr.trigger->>'trigger',  -- JSON format: {{"trigger": "LIMIT"}}
-                        TRIM(BOTH '"' FROM tr.trigger::text),  -- Plain string: "limit"
-                        'UNKNOWN'
-                    )) AS trigger_type,
-                    tr.order_id,
-                    COALESCE(SUM(fa.pnl_usd), 0) AS pnl
-                FROM {qualify(REPORT_TRADES_TABLE)} tr
-                LEFT JOIN fifo_allocations fa
-                    ON fa.sell_order_id = tr.order_id
-                    AND fa.allocation_version = 2
-                WHERE {time_window_sql}
+                    order_id,
+                    (size * price) AS notional_usd,
+                    CASE
+                        -- TP/SL exits (these are legitimate trigger values)
+                        WHEN UPPER(COALESCE(trigger->>'trigger', TRIM(BOTH '"' FROM trigger::text)))
+                             IN ('TAKE_PROFIT_STOP_LOSS', 'STOP_TRIGGERED', 'BRACKET')
+                        THEN 'TP/SL Exit'
+
+                        -- Infer from order size based on ORDER_SIZE_* configuration
+                        WHEN (size * price) BETWEEN 13 AND 17 THEN 'Signal Matrix'
+                        WHEN (size * price) BETWEEN 18 AND 23 THEN 'ROC Momentum'
+                        WHEN (size * price) BETWEEN 24 AND 30 THEN 'Webhook'
+                        WHEN (size * price) BETWEEN 31 AND 34 THEN 'Passive MM'
+
+                        -- Fallback for other sizes
+                        ELSE 'Websocket'
+                    END AS inferred_trigger
+                FROM {qualify(REPORT_TRADES_TABLE)}
+                WHERE side = 'buy'
+                  AND status IN ('filled', 'done')
+                  AND {time_window_sql}
                   {upper_bound_sql}
-                  AND tr.side = 'sell'
-                  AND tr.status IN ('filled', 'done')
-                GROUP BY trigger_type, tr.order_id
+            ),
+            trigger_pnl AS (
+                SELECT
+                    COALESCE(b.inferred_trigger, 'Unknown') AS trigger_type,
+                    s.order_id,
+                    COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+                FROM {qualify(REPORT_TRADES_TABLE)} s
+                LEFT JOIN fifo_allocations fa
+                    ON fa.sell_order_id = s.order_id
+                    AND fa.allocation_version = 2
+                LEFT JOIN buy_orders b
+                    ON fa.buy_order_id = b.order_id
+                WHERE s.side = 'sell'
+                  AND s.status IN ('filled', 'done')
+                  AND {time_window_sql}
+                  {upper_bound_sql}
+                GROUP BY trigger_type, s.order_id
             )
             SELECT
                 trigger_type,
