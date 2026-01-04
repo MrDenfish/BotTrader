@@ -748,8 +748,10 @@ class OrderManager:
             "order_id": str(uuid.uuid4()),  # Unique client order ID
             "action": "close_at_limit" if side.lower() == "sell" and order_type == "bracket" else side.lower(),
             "order_type": order_type,
-            "order_amount_fiat": float(20.00) if side.lower() == "buy" else base_avail_to_trade,#debugging
-            #"order_amount_fiat": float(self.order_size_fiat) if side.lower() == "buy" else base_avail_to_trade,
+            # ✅ Let webhook container determine order size based on trigger type
+            # Webhook container maps trigger types to ORDER_SIZE_SIGNAL, ORDER_SIZE_ROC, ORDER_SIZE_PASSIVE
+            # See webhook/webhook_order_manager.py:_determine_order_size() for trigger-to-size mapping
+            "order_amount_fiat": None if side.lower() == "buy" else base_avail_to_trade,
             "side": side.lower(),
             "quote_avail_balance": quote_avail_balance,
             "base_avail_to_trade": base_avail_to_trade,
