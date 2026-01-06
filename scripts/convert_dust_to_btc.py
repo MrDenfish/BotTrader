@@ -178,6 +178,8 @@ class DustConverter:
 
         # Calculate USD values and filter dust
         dust_balances = []
+        balances_with_no_price = []
+        balances_above_threshold = []
 
         for candidate in dust_candidates:
             currency = candidate["currency"]
@@ -185,7 +187,11 @@ class DustConverter:
             price = prices.get(currency, Decimal("0"))
             usd_value = balance * price
 
-            if Decimal("0") < usd_value < self.dust_threshold_usd:
+            if price == Decimal("0"):
+                balances_with_no_price.append(f"{currency} ({balance})")
+            elif usd_value >= self.dust_threshold_usd:
+                balances_above_threshold.append(f"{currency} ({balance} @ ${price} = ${usd_value:.2f})")
+            elif Decimal("0") < usd_value < self.dust_threshold_usd:
                 dust_balances.append({
                     "currency": currency,
                     "balance": balance,
@@ -196,6 +202,21 @@ class DustConverter:
                     "active": candidate["active"]
                 })
                 self.logger.info(f"💰 Dust found: {balance} {currency} = ${usd_value:.4f}")
+
+        # Debug logging
+        if balances_with_no_price:
+            self.logger.info(f"\n📊 {len(balances_with_no_price)} balances skipped (no USD price available)")
+            for item in balances_with_no_price[:10]:
+                self.logger.debug(f"  - {item}")
+            if len(balances_with_no_price) > 10:
+                self.logger.debug(f"  ... and {len(balances_with_no_price) - 10} more")
+
+        if balances_above_threshold:
+            self.logger.info(f"\n📊 {len(balances_above_threshold)} balances above ${self.dust_threshold_usd} threshold")
+            for item in balances_above_threshold[:10]:
+                self.logger.info(f"  ✓ {item}")
+            if len(balances_above_threshold) > 10:
+                self.logger.info(f"  ... and {len(balances_above_threshold) - 10} more")
 
         return dust_balances
 
