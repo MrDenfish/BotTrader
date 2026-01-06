@@ -59,7 +59,8 @@ class CentralConfig:
         self._passphrase = self._currency_pairs_ignored = self._log_level = None
         self._assets_ignored = self._buy_target = self._sell_target = self._min_value_to_monitor = None
         self._quote_currency = self._trailing_percentage = self._min_quote_volume = self._min_cooldown = None
-        self._roc_5min = self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
+        self._roc_5min = self._roc_5min_buy_threshold = self._roc_5min_sell_threshold = None
+        self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
         self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = self._spread_to_fee_min =None
         self._tp_min_ticks = self._sl_limit_offset_ticks = self._score_buy_target = self._score_sell_target =  None
@@ -145,6 +146,8 @@ class CentralConfig:
             "_roc_sell_24h": "ROC_SELL_24H",
             "_roc_window": "ROC_WINDOW",
             "_roc_5min":"ROC_5MIN",
+            "_roc_5min_buy_threshold": "ROC_5MIN_BUY_THRESHOLD",
+            "_roc_5min_sell_threshold": "ROC_5MIN_SELL_THRESHOLD",
             "_min_spread_pct":"MIN_SPREAD_PCT",
             "_spread_to_fee_min":"SPREAD_TO_FEE_MIN",
             "_tp_min_ticks":"TP_MIN_TICKS",
@@ -714,6 +717,14 @@ class CentralConfig:
     @property
     def roc_5min(self):
         return int(self._roc_5min)
+
+    @property
+    def roc_5min_buy_threshold(self):
+        return float(self._roc_5min_buy_threshold)
+
+    @property
+    def roc_5min_sell_threshold(self):
+        return float(self._roc_5min_sell_threshold)
 
     @property
     def min_spread_pct(self):
