@@ -978,3 +978,265 @@ class CoinbaseAPI:
         except Exception as e:
             self.logger.error(f"❌ Error fetching open orders: {e}", exc_info=True)
             return []
+
+    async def get_accounts(self) -> List[dict]:
+        """
+        Fetch all account balances from Coinbase Advanced Trade API.
+
+        Returns:
+            List[dict]: List of account balances with structure:
+                {
+                    "uuid": "account-uuid",
+                    "name": "BTC",
+                    "currency": "BTC",
+                    "available_balance": {"value": "0.001", "currency": "BTC"},
+                    "default": True/False,
+                    "active": True/False,
+                    "created_at": "timestamp",
+                    "updated_at": "timestamp",
+                    "type": "ACCOUNT_TYPE_CRYPTO",
+                    "ready": True/False,
+                    "hold": {"value": "0", "currency": "BTC"}
+                }
+        """
+        request_path = '/api/v3/brokerage/accounts'
+        jwt_token = self.generate_rest_jwt('GET', request_path)
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {jwt_token}',
+        }
+
+        all_accounts = []
+        cursor = None
+        max_pages = 100  # Safety limit to prevent infinite loops
+        pages_fetched = 0
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                while pages_fetched < max_pages:
+                    params = {"limit": "250"}
+                    if cursor:
+                        params["cursor"] = cursor
+
+                    try:
+                        resp = await asyncio.wait_for(
+                            session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
+                            timeout=15
+                        )
+                        async with resp:
+                            if resp.status != 200:
+                                error_text = await resp.text()
+                                self.logger.error(f"❌ Get accounts failed [{resp.status}]: {error_text}")
+                                break
+
+                            data = await resp.json()
+                            accounts = data.get("accounts", [])
+                            all_accounts.extend(accounts)
+
+                            pages_fetched += 1
+                            self.logger.debug(f"📊 Fetched page {pages_fetched} of accounts ({len(accounts)} accounts)")
+
+                            # Check if there are more pages
+                            if data.get("has_next", False):
+                                cursor = data.get("cursor")
+                            else:
+                                break
+
+                    except asyncio.TimeoutError:
+                        self.logger.error(f"⏱ Timeout fetching accounts page {pages_fetched + 1}")
+                        break
+
+                self.logger.info(f"✅ Successfully fetched {len(all_accounts)} total accounts")
+                return all_accounts
+
+        except asyncio.CancelledError:
+            self.logger.error("❌ get_accounts() was cancelled", exc_info=True)
+            raise
+
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching accounts: {e}", exc_info=True)
+            return []
+
+    async def create_convert_quote(self, from_account: str, to_account: str, amount: str) -> dict:
+        """
+        Create a convert quote to convert from one cryptocurrency to another.
+
+        Args:
+            from_account: Source account UUID (e.g., DOGE account UUID)
+            to_account: Destination account UUID (e.g., BTC account UUID)
+            amount: Amount to convert in source currency (e.g., "100.50")
+
+        Returns:
+            Dict with quote information:
+                {
+                    "trade": {
+                        "id": "trade-id",
+                        "status": "PENDING",
+                        "user_entered_amount": {"value": "100.50", "currency": "DOGE"},
+                        "amount": {"value": "100.50", "currency": "DOGE"},
+                        "subtotal": {"value": "0.002", "currency": "BTC"},
+                        "total": {"value": "0.002", "currency": "BTC"},
+                        "fees": [...],
+                        "total_fee": {"value": "0.00001", "currency": "BTC"},
+                        "unit_price": {...},
+                        "user_reference": "optional-reference"
+                    }
+                }
+
+        Example:
+            quote = await api.create_convert_quote(
+                from_account="doge-uuid",
+                to_account="btc-uuid",
+                amount="100.50"
+            )
+            trade_id = quote["trade"]["id"]
+        """
+        request_path = '/api/v3/brokerage/convert/quote'
+        jwt_token = self.generate_rest_jwt('POST', request_path)
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {jwt_token}',
+        }
+
+        payload = {
+            "from_account": from_account,
+            "to_account": to_account,
+            "amount": amount
+        }
+
+        try:
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.post(f'{self.rest_url}{request_path}', headers=headers, json=payload) as response:
+                status = response.status
+                response_text = await response.text()
+
+                if status == 200:
+                    data = await response.json()
+                    self.logger.info(f"✅ Convert quote created: {amount} from {from_account[:8]}... to {to_account[:8]}...")
+                    return {"success": True, "data": data}
+
+                elif status == 400:
+                    self.logger.error(f"⚠️ [400] Bad convert quote request: {response_text}")
+                    return {"success": False, "error": "Bad Request", "details": response_text}
+
+                elif status == 401:
+                    self.logger.error(f"🔒 [401] Unauthorized convert quote: {response_text}")
+                    return {"success": False, "error": "Unauthorized", "details": response_text}
+
+                elif status == 403:
+                    self.logger.error(f"⛔ [403] Forbidden convert quote: {response_text}")
+                    return {"success": False, "error": "Forbidden", "details": response_text}
+
+                else:
+                    self.logger.error(f"❌ Convert quote failed [{status}]: {response_text}")
+                    return {"success": False, "error": f"HTTP {status}", "details": response_text}
+
+        except Exception as e:
+            self.logger.error(f"❌ Error creating convert quote: {e}", exc_info=True)
+            return {"success": False, "error": "Exception", "details": str(e)}
+
+    async def commit_convert_trade(self, trade_id: str) -> dict:
+        """
+        Commit a convert trade after creating a quote.
+
+        Args:
+            trade_id: Trade ID from create_convert_quote response
+
+        Returns:
+            Dict with committed trade information:
+                {
+                    "trade": {
+                        "id": "trade-id",
+                        "status": "SUCCESS",
+                        "user_entered_amount": {...},
+                        "amount": {...},
+                        "subtotal": {...},
+                        "total": {...},
+                        ...
+                    }
+                }
+
+        Example:
+            result = await api.commit_convert_trade(trade_id="abc123")
+        """
+        request_path = f'/api/v3/brokerage/convert/{trade_id}'
+        jwt_token = self.generate_rest_jwt('POST', request_path)
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {jwt_token}',
+        }
+
+        try:
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.post(f'{self.rest_url}{request_path}', headers=headers) as response:
+                status = response.status
+                response_text = await response.text()
+
+                if status == 200:
+                    data = await response.json()
+                    self.logger.info(f"✅ Convert trade committed: {trade_id}")
+                    return {"success": True, "data": data}
+
+                elif status == 400:
+                    self.logger.error(f"⚠️ [400] Bad commit request: {response_text}")
+                    return {"success": False, "error": "Bad Request", "details": response_text}
+
+                elif status == 404:
+                    self.logger.error(f"🔍 [404] Trade not found: {trade_id}")
+                    return {"success": False, "error": "Not Found", "details": response_text}
+
+                else:
+                    self.logger.error(f"❌ Commit convert trade failed [{status}]: {response_text}")
+                    return {"success": False, "error": f"HTTP {status}", "details": response_text}
+
+        except Exception as e:
+            self.logger.error(f"❌ Error committing convert trade: {e}", exc_info=True)
+            return {"success": False, "error": "Exception", "details": str(e)}
+
+    async def get_convert_trade(self, trade_id: str) -> dict:
+        """
+        Get status of a convert trade.
+
+        Args:
+            trade_id: Trade ID to check
+
+        Returns:
+            Dict with trade status information
+
+        Example:
+            status = await api.get_convert_trade(trade_id="abc123")
+        """
+        request_path = f'/api/v3/brokerage/convert/{trade_id}'
+        jwt_token = self.generate_rest_jwt('GET', request_path)
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {jwt_token}',
+        }
+
+        try:
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
+
+            async with self.session.get(f'{self.rest_url}{request_path}', headers=headers) as response:
+                status = response.status
+                response_text = await response.text()
+
+                if status == 200:
+                    data = await response.json()
+                    return {"success": True, "data": data}
+
+                elif status == 404:
+                    self.logger.error(f"🔍 [404] Trade not found: {trade_id}")
+                    return {"success": False, "error": "Not Found", "details": response_text}
+
+                else:
+                    self.logger.error(f"❌ Get convert trade failed [{status}]: {response_text}")
+                    return {"success": False, "error": f"HTTP {status}", "details": response_text}
+
+        except Exception as e:
+            self.logger.error(f"❌ Error getting convert trade: {e}", exc_info=True)
+            return {"success": False, "error": "Exception", "details": str(e)}
