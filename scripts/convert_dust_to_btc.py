@@ -18,7 +18,7 @@ import logging
 import sys
 import os
 from decimal import Decimal
-from typing import List, Dict
+from typing import List, Dict, Optional
 from datetime import datetime
 
 # Add parent directory to path for imports
@@ -26,8 +26,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from Api_manager.coinbase_api import CoinbaseAPI
 from Shared_Utils.logging_manager import LoggerManager
-from Shared_Utils.precision_manager import PrecisionManager
-from Shared_Utils.shared_utils import SharedUtils
+from Shared_Utils.utility import SharedUtility
 from Config.config_manager import CentralConfig as Config
 
 
@@ -62,8 +61,7 @@ class DustConverter:
 
         # Setup utilities
         self.session = None
-        self.precision_manager = PrecisionManager()
-        self.shared_utils = SharedUtils()
+        self.shared_utils = None
 
         # Will be initialized in run()
         self.coinbase_api = None
@@ -71,11 +69,12 @@ class DustConverter:
     async def initialize(self):
         """Initialize async components"""
         self.session = aiohttp.ClientSession()
+        self.shared_utils = SharedUtility.get_instance(self.logger_manager)
         self.coinbase_api = CoinbaseAPI(
             self.session,
             self.shared_utils,
             self.logger_manager,
-            self.precision_manager
+            None  # precision_manager not needed for dust conversion
         )
 
     async def cleanup(self):

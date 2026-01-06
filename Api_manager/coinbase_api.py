@@ -1012,42 +1012,44 @@ class CoinbaseAPI:
         pages_fetched = 0
 
         try:
-            async with aiohttp.ClientSession() as session:
-                while pages_fetched < max_pages:
-                    params = {"limit": "250"}
-                    if cursor:
-                        params["cursor"] = cursor
+            if self.session.closed:
+                self.session = aiohttp.ClientSession()
 
-                    try:
-                        resp = await asyncio.wait_for(
-                            session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
-                            timeout=15
-                        )
-                        async with resp:
-                            if resp.status != 200:
-                                error_text = await resp.text()
-                                self.logger.error(f"❌ Get accounts failed [{resp.status}]: {error_text}")
-                                break
+            while pages_fetched < max_pages:
+                params = {"limit": "250"}
+                if cursor:
+                    params["cursor"] = cursor
 
-                            data = await resp.json()
-                            accounts = data.get("accounts", [])
-                            all_accounts.extend(accounts)
+                try:
+                    resp = await asyncio.wait_for(
+                        self.session.get(f"{self.rest_url}{request_path}", params=params, headers=headers),
+                        timeout=15
+                    )
+                    async with resp:
+                        if resp.status != 200:
+                            error_text = await resp.text()
+                            self.logger.error(f"❌ Get accounts failed [{resp.status}]: {error_text}")
+                            break
 
-                            pages_fetched += 1
-                            self.logger.debug(f"📊 Fetched page {pages_fetched} of accounts ({len(accounts)} accounts)")
+                        data = await resp.json()
+                        accounts = data.get("accounts", [])
+                        all_accounts.extend(accounts)
 
-                            # Check if there are more pages
-                            if data.get("has_next", False):
-                                cursor = data.get("cursor")
-                            else:
-                                break
+                        pages_fetched += 1
+                        self.logger.debug(f"📊 Fetched page {pages_fetched} of accounts ({len(accounts)} accounts)")
 
-                    except asyncio.TimeoutError:
-                        self.logger.error(f"⏱ Timeout fetching accounts page {pages_fetched + 1}")
-                        break
+                        # Check if there are more pages
+                        if data.get("has_next", False):
+                            cursor = data.get("cursor")
+                        else:
+                            break
 
-                self.logger.info(f"✅ Successfully fetched {len(all_accounts)} total accounts")
-                return all_accounts
+                except asyncio.TimeoutError:
+                    self.logger.error(f"⏱ Timeout fetching accounts page {pages_fetched + 1}")
+                    break
+
+            self.logger.info(f"✅ Successfully fetched {len(all_accounts)} total accounts")
+            return all_accounts
 
         except asyncio.CancelledError:
             self.logger.error("❌ get_accounts() was cancelled", exc_info=True)
