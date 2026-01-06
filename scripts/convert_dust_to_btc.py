@@ -229,10 +229,11 @@ class DustConverter:
         # Debug logging
         if balances_with_no_price:
             self.logger.info(f"\n📊 {len(balances_with_no_price)} balances skipped (no USD price available)")
-            for item in balances_with_no_price[:10]:
-                self.logger.debug(f"  - {item}")
-            if len(balances_with_no_price) > 10:
-                self.logger.debug(f"  ... and {len(balances_with_no_price) - 10} more")
+            self.logger.info(f"Sample of balances without prices:")
+            for item in balances_with_no_price[:15]:
+                self.logger.info(f"  - {item}")
+            if len(balances_with_no_price) > 15:
+                self.logger.info(f"  ... and {len(balances_with_no_price) - 15} more")
 
         if balances_above_threshold:
             self.logger.info(f"\n📊 {len(balances_above_threshold)} balances above ${self.dust_threshold_usd} threshold")
