@@ -86,6 +86,9 @@ class DustConverter:
         """
         Get current USD prices for given currencies.
 
+        Uses direct API call to bypass symbol filtering, since we need prices
+        for ALL currencies including delisted/blocked ones for dust conversion.
+
         Args:
             currencies: List of currency symbols
 
@@ -100,20 +103,40 @@ class DustConverter:
                 continue
 
             try:
-                # Get best bid/ask for currency-USD pair
+                # Direct API call to get product ticker (bypasses symbol filter)
                 product_id = f"{currency}-USD"
-                result = await self.coinbase_api.get_best_bid_ask([product_id])
+                request_path = f'/api/v3/brokerage/market/products/{product_id}/ticker'
 
-                if product_id in result and "ask" in result[product_id]:
-                    ask_price = result[product_id]["ask"]
-                    prices[currency] = Decimal(str(ask_price))
-                    self.logger.debug(f"Price for {currency}: ${ask_price}")
-                else:
-                    self.logger.warning(f"⚠️ Could not get price for {currency}")
-                    prices[currency] = Decimal("0")
+                jwt_token = self.coinbase_api.generate_rest_jwt('GET', request_path)
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {jwt_token}',
+                }
+
+                if self.coinbase_api.session.closed:
+                    self.coinbase_api.session = aiohttp.ClientSession()
+
+                async with self.coinbase_api.session.get(
+                    f"{self.coinbase_api.rest_url}{request_path}",
+                    headers=headers
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        # Get the ask price (what we'd pay to buy)
+                        ask_price = data.get("ask")
+                        if ask_price:
+                            prices[currency] = Decimal(str(ask_price))
+                            self.logger.debug(f"Price for {currency}: ${ask_price}")
+                        else:
+                            self.logger.debug(f"No ask price for {currency}")
+                            prices[currency] = Decimal("0")
+                    else:
+                        # Product doesn't exist or isn't tradeable
+                        self.logger.debug(f"No market data for {currency} (HTTP {response.status})")
+                        prices[currency] = Decimal("0")
 
             except Exception as e:
-                self.logger.error(f"❌ Error getting price for {currency}: {e}")
+                self.logger.debug(f"Could not get price for {currency}: {e}")
                 prices[currency] = Decimal("0")
 
         return prices
