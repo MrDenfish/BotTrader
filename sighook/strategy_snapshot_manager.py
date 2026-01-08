@@ -114,10 +114,10 @@ class StrategySnapshotManager:
                         config_hash, notes, created_by
                     )
                     VALUES (
-                        NOW(), :score_buy, :score_sell, :weights::jsonb,
+                        NOW(), :score_buy, :score_sell, :weights,
                         :rsi_buy, :rsi_sell, :roc_buy, :roc_sell, :macd_threshold,
                         :tp, :sl, :cooldown, :hysteresis, :min_indicators,
-                        :excluded::text[], :max_spread, :hash, :notes, 'system'
+                        :excluded, :max_spread, :hash, :notes, 'system'
                     )
                     RETURNING snapshot_id
                 """)
@@ -125,7 +125,7 @@ class StrategySnapshotManager:
                 result = await session.execute(insert_query, {
                     "score_buy": config_dict["score_buy_target"],
                     "score_sell": config_dict["score_sell_target"],
-                    "weights": json.dumps(config_dict["indicator_weights"]),
+                    "weights": config_dict["indicator_weights"],  # Pass dict directly for JSONB
                     "rsi_buy": config_dict["rsi_buy_threshold"],
                     "rsi_sell": config_dict["rsi_sell_threshold"],
                     "roc_buy": config_dict["roc_buy_threshold"],
