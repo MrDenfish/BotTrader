@@ -1004,6 +1004,17 @@ class WebhookListener:
                     status=int(ValidationCode.INSUFFICIENT_BASE.value)
                 )
 
+            # ✅ Add current strategy snapshot_id to trade_data
+            try:
+                strategy_snapshot_manager = getattr(self.shared_data_manager, 'strategy_snapshot_manager', None)
+                if strategy_snapshot_manager and strategy_snapshot_manager._current_snapshot_id:
+                    trade_data['snapshot_id'] = str(strategy_snapshot_manager._current_snapshot_id)
+                    self.logger.debug(f"[STRATEGY_LINK] Added snapshot_id to trade_data: {trade_data['snapshot_id']}")
+                else:
+                    self.logger.warning("[STRATEGY_LINK] StrategySnapshotManager not available or no current snapshot")
+            except Exception as e:
+                self.logger.error(f"[STRATEGY_LINK] Error getting snapshot_id: {e}", exc_info=True)
+
             # ✅ Cache strategy metadata for trade-strategy linkage
             # This metadata will be retrieved when the trade fills and recorded to trade_strategy_link table
             self.logger.warning(f"🔧 [DEBUG] About to call _cache_strategy_metadata for {trade_data.get('trading_pair')}")
