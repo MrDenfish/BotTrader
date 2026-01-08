@@ -836,6 +836,26 @@ async def app_boot():
             )
 
             shared_utils_precision.set_trade_parameters()
+
+            # ✅ Initialize Strategy Snapshot Manager for performance tracking
+            try:
+                from sighook.strategy_snapshot_manager import StrategySnapshotManager
+                strategy_snapshot_manager = StrategySnapshotManager(
+                    db=shared_data_manager.database_session_manager,
+                    logger=shared_logger
+                )
+                # Create initial strategy snapshot
+                snapshot_id = await strategy_snapshot_manager.save_current_config(
+                    config=config,
+                    notes="Bot startup - initial configuration snapshot"
+                )
+                shared_logger.info(f"✅ Strategy snapshot initialized: {snapshot_id}")
+                # Store manager in shared_data_manager for global access
+                shared_data_manager.strategy_snapshot_manager = strategy_snapshot_manager
+            except Exception as e:
+                shared_logger.error(f"❌ Failed to initialize strategy snapshot: {e}", exc_info=True)
+                # Non-fatal - continue bot startup even if strategy tracking fails
+
             # ✅ One-time FIFO Debugging
             # await shared_data_manager.trade_recorder.test_performance_tracker()
             # await shared_data_manager.trade_recorder.test_fifo_prod("SPK-USD")
