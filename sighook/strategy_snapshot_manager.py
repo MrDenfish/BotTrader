@@ -138,6 +138,7 @@ class StrategySnapshotManager:
                     "hysteresis": config_dict["flip_hysteresis_pct"],
                     "min_indicators": config_dict["min_indicators_required"],
                     "excluded": config_dict["excluded_symbols"],
+                    "max_spread": config_dict["max_spread_pct"],
                     "hash": config_hash,
                     "notes": notes
                 })
