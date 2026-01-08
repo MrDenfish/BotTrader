@@ -114,18 +114,19 @@ class StrategySnapshotManager:
                         config_hash, notes, created_by
                     )
                     VALUES (
-                        NOW(), :score_buy, :score_sell, :weights,
+                        NOW(), :score_buy, :score_sell, CAST(:weights AS JSONB),
                         :rsi_buy, :rsi_sell, :roc_buy, :roc_sell, :macd_threshold,
                         :tp, :sl, :cooldown, :hysteresis, :min_indicators,
-                        :excluded, :max_spread, :hash, :notes, 'system'
+                        CAST(:excluded AS TEXT[]), :max_spread, :hash, :notes, 'system'
                     )
                     RETURNING snapshot_id
                 """)
 
+                # For asyncpg with raw SQL, JSONB needs to be a JSON string
                 result = await session.execute(insert_query, {
                     "score_buy": config_dict["score_buy_target"],
                     "score_sell": config_dict["score_sell_target"],
-                    "weights": config_dict["indicator_weights"],  # Pass dict directly for JSONB
+                    "weights": json.dumps(config_dict["indicator_weights"]),
                     "rsi_buy": config_dict["rsi_buy_threshold"],
                     "rsi_sell": config_dict["rsi_sell_threshold"],
                     "roc_buy": config_dict["roc_buy_threshold"],
@@ -137,7 +138,6 @@ class StrategySnapshotManager:
                     "hysteresis": config_dict["flip_hysteresis_pct"],
                     "min_indicators": config_dict["min_indicators_required"],
                     "excluded": config_dict["excluded_symbols"],
-                    "max_spread": config_dict["max_spread_pct"],
                     "hash": config_hash,
                     "notes": notes
                 })
