@@ -12,13 +12,13 @@ import asyncio
 import argparse
 import sys
 import os
+import uuid
 from datetime import datetime
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Config.config_manager import CentralConfig
-from sighook.alerts_msgs_webhooks import SenderWebhook
 from Shared_Utils.logger import get_logger
 import aiohttp
 
@@ -43,10 +43,12 @@ async def send_test_order(
     config = CentralConfig()
     logger = get_logger("test_order_sender", context={'component': 'test_order_sender'})
 
-    webhook = SenderWebhook(config, logger)
+    # Build webhook URL
+    webhook_url = config.web_url
 
-    # Build test webhook payload
+    # Build test webhook payload matching sighook format
     webhook_payload = {
+        "origin": "SIGHOOK",
         "source": "TEST",
         "pair": symbol,
         "side": side.lower(),
@@ -65,24 +67,28 @@ async def send_test_order(
         "price": None,  # Let webhook container determine market price
         "verified": "valid",
         "quote_avail_balance": 100.0 if side.lower() == "buy" else 0.0,
-        "snapshot_id": None,  # Will be set by StrategySnapshotManager in webhook container
+        "snapshot_id": str(uuid.uuid4()),  # Bot run snapshot (will be replaced with strategy config snapshot)
+        "order_id": str(uuid.uuid4()),  # Unique order ID for tracking
     }
 
     logger.info(f"📤 Sending TEST order: {side.upper()} {symbol} @ ${size:.2f}")
     logger.info(f"   Trigger: {trigger}")
-    logger.info(f"   Payload: {webhook_payload}")
+    logger.info(f"   Webhook URL: {webhook_url}")
+    logger.info(f"   Order ID: {webhook_payload['order_id']}")
 
     async with aiohttp.ClientSession() as session:
         try:
-            response = await webhook.send_webhook(session, webhook_payload)
-            if response:
-                logger.info(f"✅ Webhook sent successfully: HTTP {response.status}")
+            async with session.post(webhook_url, json=webhook_payload, timeout=aiohttp.ClientTimeout(total=30)) as response:
                 response_text = await response.text()
-                logger.info(f"   Response: {response_text}")
-                return response
-            else:
-                logger.error("❌ Webhook send failed: No response")
-                return None
+
+                if response.status == 200:
+                    logger.info(f"✅ Webhook sent successfully: HTTP {response.status}")
+                    logger.info(f"   Response: {response_text}")
+                    return response
+                else:
+                    logger.error(f"❌ Webhook failed: HTTP {response.status}")
+                    logger.error(f"   Response: {response_text}")
+                    return None
         except Exception as e:
             logger.error(f"❌ Error sending test order: {e}", exc_info=True)
             return None
