@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Config.config_manager import CentralConfig
 from sighook.alerts_msgs_webhooks import SenderWebhook
-from logger_module.logger_manager import LoggerManager
+from Shared_Utils.logger import get_logger
 import aiohttp
 
 
@@ -41,8 +41,7 @@ async def send_test_order(
         order_type: Order type (default: "limit")
     """
     config = CentralConfig()
-    logger_manager = LoggerManager()
-    logger = logger_manager.get_logger("test_order_sender")
+    logger = get_logger("test_order_sender", context={'component': 'test_order_sender'})
 
     webhook = SenderWebhook(config, logger)
 
