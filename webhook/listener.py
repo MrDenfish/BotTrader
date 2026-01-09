@@ -1023,8 +1023,15 @@ class WebhookListener:
 
             # ✅ Build order (pass test_mode directly)
             source = trade_data.get("source", "Webhook")
-            trigger = trade_data.get("trigger", "strategy")
-            trigger = {"trigger": f"{trigger}", "trigger_note": "from webhook"}
+            trigger_raw = trade_data.get("trigger", "strategy")
+
+            # Extract trigger string if it's a dict, otherwise use as-is
+            if isinstance(trigger_raw, dict):
+                trigger_str = trigger_raw.get("trigger", "strategy")
+            else:
+                trigger_str = str(trigger_raw)
+
+            trigger = {"trigger": trigger_str, "trigger_note": "from webhook"}
 
             order_details = await self.trade_order_manager.build_order_data(
                 source, trigger, asset, product_id, stop_price=None, test_mode=self.test_mode
