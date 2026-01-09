@@ -17,7 +17,7 @@ from datetime import datetime
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Config.config_manager import Config
+from Config.config_manager import CentralConfig
 from sighook.alerts_msgs_webhooks import SenderWebhook
 from logger_module.logger_manager import LoggerManager
 import aiohttp
@@ -40,7 +40,7 @@ async def send_test_order(
         trigger: Trigger type for identification (default: "test_signal")
         order_type: Order type (default: "limit")
     """
-    config = Config()
+    config = CentralConfig()
     logger_manager = LoggerManager()
     logger = logger_manager.get_logger("test_order_sender")
 
