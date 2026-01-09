@@ -305,6 +305,7 @@ class TradeOrderManager:
             stop_price: Optional[Decimal] = None,
             order_type: Optional[str] = None,
             side: Optional[str] = None,
+            order_amount_fiat: Optional[Decimal] = None,
             test_mode: bool = False
     ) -> Optional[OrderData]:
         """
@@ -372,24 +373,29 @@ class TradeOrderManager:
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
 
-            # Use trigger-specific order size for visual identification
-            trigger_order_size = self.get_order_size_for_trigger(trigger if isinstance(trigger, dict) else {})
-            fiat_amt = min(usd_avail, trigger_order_size)
+            # ✅ Use provided order_amount_fiat if specified, otherwise use trigger-specific size
+            if order_amount_fiat is not None:
+                fiat_amt = min(usd_avail, Decimal(str(order_amount_fiat)))
+            else:
+                # Use trigger-specific order size for visual identification
+                trigger_order_size = self.get_order_size_for_trigger(trigger if isinstance(trigger, dict) else {})
+                fiat_amt = min(usd_avail, trigger_order_size)
+
             crypto_amt = available_to_trade
-            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
+            order_amount_fiat_calc, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
                 side if side else "buy", fiat_amt, crypto_amt
             )
 
             # ✅ Centralized test mode overrides
             if test_mode:
                 (usd_avail, usd_balance, spot, price,
-                 order_amount_fiat, order_amount_crypto) = self.apply_test_mode_overrides(
+                 order_amount_fiat_calc, order_amount_crypto) = self.apply_test_mode_overrides(
                     asset=asset,
                     usd_avail=usd_avail,
                     usd_balance=usd_balance,
                     spot=spot,
                     price=price,
-                    order_amount_fiat=order_amount_fiat,
+                    order_amount_fiat=order_amount_fiat_calc,
                     order_amount_crypto=order_amount_crypto
                 )
 
@@ -475,7 +481,7 @@ class TradeOrderManager:
                 type=order_type or "limit",
                 order_id="UNKNOWN",
                 side=side,
-                order_amount_fiat=order_amount_fiat,
+                order_amount_fiat=order_amount_fiat_calc,
                 order_amount_crypto=order_amount_crypto,
                 filled_price=None,
                 base_currency=asset,

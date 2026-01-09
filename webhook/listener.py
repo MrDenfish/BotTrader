@@ -1033,11 +1033,13 @@ class WebhookListener:
 
             trigger = {"trigger": trigger_str, "trigger_note": "from webhook"}
 
-            # ✅ Extract side from trade_data to prevent fallback logic from overriding
+            # ✅ Extract side and order_amount_fiat from trade_data
             side = trade_data.get("side", "buy").lower()
+            order_amount_fiat = trade_data.get("order_amount_fiat")
 
             order_details = await self.trade_order_manager.build_order_data(
-                source, trigger, asset, product_id, stop_price=None, side=side, test_mode=self.test_mode
+                source, trigger, asset, product_id, stop_price=None, side=side,
+                order_amount_fiat=order_amount_fiat, test_mode=self.test_mode
             )
             if order_details is None:
                 msg = self.trade_order_manager.build_failure_reason or "Order build failed"
