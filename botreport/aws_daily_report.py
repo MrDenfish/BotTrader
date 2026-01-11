@@ -1433,80 +1433,52 @@ def compute_max_drawdown(conn):
 
 def compute_cash_vs_invested(conn, exposures):
     """
-    Calculate cash balance and invested percentage.
+    Calculate cash balance and invested percentage using cash_transactions.
 
-    Primary source: order_management_snapshots table (stored by webhook/sighook)
-    Fallback: Coinbase REST API (if snapshot not available)
+    Formula: Cash = Net deposits + Realized PnL - Invested Notional
+
+    This separates deposited capital from trading performance and properly
+    accounts for money in open positions.
     """
     invested = float(exposures.get("total_notional", 0.0) if exposures else 0.0)
     notes = []
-    cash = 0.0
 
-    # PRIMARY: Get USD balance from order_management_snapshots (most reliable)
     try:
-        snapshot_query = """
-            SELECT
-                (data::jsonb->'non_zero_balances'->'USD'->>'total_balance_fiat')::numeric as usd_balance,
-                snapshot_time
-            FROM order_management_snapshots
-            WHERE data::jsonb->'non_zero_balances'->'USD' IS NOT NULL
-            ORDER BY snapshot_time DESC
-            LIMIT 1
+        # Get net cash flow from deposits/withdrawals
+        cash_flow_query = """
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN normalized_type = 'deposit' THEN amount_usd
+                    WHEN normalized_type = 'withdrawal' THEN -amount_usd
+                    ELSE 0
+                END
+            ), 0) as net_cash_flow
+            FROM public.cash_transactions
         """
-        snapshot_result = conn.run(snapshot_query)
-        if snapshot_result and snapshot_result[0][0] is not None:
-            cash = float(snapshot_result[0][0])
-            snapshot_time = snapshot_result[0][1]
-            notes.append(f"Cash source: DB snapshot ({snapshot_time})")
-        else:
-            raise ValueError("No USD balance in order_management_snapshots")
+        cash_flow_result = conn.run(cash_flow_query)
+        net_cash_flow = float(cash_flow_result[0][0] if cash_flow_result else 0.0)
 
-    except Exception as db_error:
-        # FALLBACK: Try Coinbase API
-        notes.append(f"DB snapshot failed ({db_error}), trying Coinbase API")
+        # Get realized PnL from FIFO allocations
+        pnl_query = f"""
+            SELECT COALESCE(SUM(pnl_usd), 0) as realized_pnl
+            FROM fifo_allocations
+            WHERE allocation_version = {FIFO_ALLOCATION_VERSION}
+        """
+        pnl_result = conn.run(pnl_query)
+        realized_pnl = float(pnl_result[0][0] if pnl_result else 0.0)
 
-        try:
-            from coinbase.rest import RESTClient
-            import os
-            import json
+        # Calculate cash: deposits + realized_pnl - invested
+        cash = net_cash_flow + realized_pnl - invested
 
-            # Load credentials from JSON file
-            api_key = None
-            api_secret = None
-            api_key_paths = [
-                "/app/Config/webhook_api_key.json",
-                os.path.join(os.path.dirname(__file__), "..", "Config", "webhook_api_key.json"),
-            ]
-            for path in api_key_paths:
-                if os.path.exists(path):
-                    with open(path, 'r') as f:
-                        creds = json.load(f)
-                        api_key = creds.get("name")
-                        api_secret = creds.get("privateKey")
-                        break
+        notes.append(
+            f"Cash source: computed from cash_transactions "
+            f"(net flow: ${net_cash_flow:.2f}, realized PnL: ${realized_pnl:.2f})"
+        )
 
-            if not api_key or not api_secret:
-                raise ValueError("Missing Coinbase API credentials")
-
-            client = RESTClient(api_key=api_key, api_secret=api_secret)
-
-            # Use get_portfolio_breakdown for fiat balances (get_accounts only returns crypto)
-            portfolio_uuid = os.getenv("COINBASE_PORTFOLIO_UUID", "c5a8f238-d2ef-5bb4-93cd-0dfd7a773be7")
-            breakdown = client.get_portfolio_breakdown(portfolio_uuid=portfolio_uuid)
-
-            if breakdown and hasattr(breakdown, 'breakdown'):
-                # Find USD in portfolio breakdown
-                for position in getattr(breakdown.breakdown, 'spot_positions', []):
-                    if position.asset == 'USD':
-                        cash = float(position.total_balance_fiat)
-                        notes.append(f"Cash source: Coinbase API (portfolio breakdown)")
-                        break
-            else:
-                raise ValueError("Could not get portfolio breakdown")
-
-        except Exception as api_error:
-            notes.append(f"Coinbase API failed ({api_error})")
-            cash = 0.0
+    except Exception as e:
+        notes.append(f"Cash calculation failed: {e}")
+        # Fallback to 0 if query fails
+        cash = 0.0
 
     # Calculate invested percentage
     total_equity = cash + invested

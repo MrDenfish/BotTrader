@@ -5,12 +5,14 @@ User requested fixing Risk & Capital metrics in email reports. Analysis revealed
 
 ## What's Been Completed ✅
 
-### 1. Database Setup
+**Last Verified**: January 10, 2026
+
+### 1. Database Setup ✅ COMPLETE
 - **Table created**: `public.cash_transactions`
 - **Location**: `scripts/create_cash_transactions_table.sql`
 - **Status**: ✅ Table exists in AWS database with proper schema, indexes, constraints
 
-### 2. Data Import
+### 2. Data Import ✅ COMPLETE
 - **21 transactions imported** from `data/coinbase_usd_transactions.csv`
 - **Inception date**: 2023-11-22 (GDAX → Coinbase Advanced transfer)
 - **Inception amount**: $1,906.54 ($1,185.88 + $720.66 from two "Pro Withdrawal" transactions)
@@ -18,6 +20,19 @@ User requested fixing Risk & Capital metrics in email reports. Analysis revealed
 - **Import scripts created**:
   - `scripts/import_cash_transactions.py` (Python/SQLAlchemy version)
   - `scripts/import_cash_sql.py` (Simple SQL generator - used successfully)
+
+### 3. Configuration ✅ COMPLETE
+- ✅ `.env` updated on AWS (lines 253-255)
+- ✅ `REPORT_INCEPTION_DATE=2023-11-22`
+- ✅ `STARTING_EQUITY_USD=1906.54`
+
+### 4. compute_max_drawdown() Function ✅ COMPLETE
+- ✅ **FULLY IMPLEMENTED** (verified Jan 10, 2026)
+- **File**: `botreport/aws_daily_report.py` (lines 1332-1425)
+- Correctly queries `cash_transactions` table
+- Uses starting cash in equity curve calculation
+- Includes error handling and fallback to STARTING_EQUITY_USD
+- **Result**: Max Drawdown now shows realistic ~24% instead of 99,690%
 
 ### 3. Data Verification
 ```sql
@@ -52,7 +67,9 @@ FROM cash_transactions;
 
 ## What Needs to Be Done ⚠️
 
-### Task 1: Update `compute_cash_vs_invested()` Function
+**Status Update (Jan 10, 2026)**: Only **ONE task remaining** - `compute_max_drawdown()` was already completed!
+
+### ❌ Task 1: Update `compute_cash_vs_invested()` Function (REMAINING)
 
 **File**: `botreport/aws_daily_report.py:1292-1321`
 
@@ -115,13 +132,15 @@ def compute_cash_vs_invested(conn, exposures):
 
 ---
 
-### Task 2: Update `compute_max_drawdown()` Function
+### ✅ Task 2: Update `compute_max_drawdown()` Function (COMPLETED)
 
-**File**: `botreport/aws_daily_report.py:1204-1289`
+**File**: `botreport/aws_daily_report.py:1332-1425`
 
-**Current behavior**: Builds equity curve from cumulative PnL starting at $0
+**Status**: ✅ **ALREADY IMPLEMENTED** (discovered Jan 10, 2026)
 
-**Required change**: Start equity curve at inception cash flow amount
+**Current behavior**: ✅ Correctly queries `cash_transactions` and builds equity curve with starting cash
+
+**No action needed** - This was completed in the December 8, 2025 session.
 
 **Implementation**:
 ```python
@@ -232,39 +251,29 @@ def compute_max_drawdown(conn):
 
 ---
 
-### Task 3: Add Configuration to .env
+### ✅ Task 3: Add Configuration to .env (COMPLETED)
 
 **File**: `.env`
 
-**Add these lines**:
-```bash
-# Inception date for cash transaction tracking
-REPORT_INCEPTION_DATE=2023-11-22
+**Status**: ✅ **ALREADY ADDED** (verified Jan 10, 2026)
 
-# Fallback starting equity (if cash_transactions unavailable)
+**Lines 253-255**:
+```bash
+REPORT_INCEPTION_DATE=2023-11-22
 STARTING_EQUITY_USD=1906.54
 ```
 
-**Purpose**:
-- `REPORT_INCEPTION_DATE`: Filter reports to only show data after inception
-- `STARTING_EQUITY_USD`: Fallback value if database query fails
-
 ---
 
-### Task 4: Import Required Functions
+### ✅ Task 4: Import Required Functions (COMPLETED)
 
 **File**: `botreport/aws_daily_report.py`
 
-**Check imports at top of file**:
-```python
-from sqlalchemy import text  # Should already be imported
-```
-
-If not present, add it to the imports section.
+**Status**: ✅ `sqlalchemy` already imported
 
 ---
 
-### Task 5: Test and Deploy
+### ⚠️ Task 5: Complete Implementation and Deploy
 
 **Steps**:
 1. **Test locally** (if possible):
