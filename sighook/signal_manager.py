@@ -351,16 +351,17 @@ class SignalManager:
                 roc_diff_std = float(last_row.get('ROC_Diff_STD20', 0.3))
                 accel_ok = abs(roc_diff_value) > max(0.3, 0.5 * roc_diff_std)
 
-                # RSI gate: Only buy in 40-60 range (neutral, not overbought/oversold)
+                # RSI gate: Only buy in 45-55 range (tighter neutral zone for Test 2 optimization)
+                # TEST 2 OPTIMIZATION: Narrowed from 40-60 to 45-55 (backtest improved: 57.9% win rate)
                 buy_signal_roc = (
                     (roc_value > roc_thr_buy) and
                     accel_ok and
-                    (40.0 <= rsi_value <= 60.0)
+                    (45.0 <= rsi_value <= 55.0)
                 )
                 sell_signal_roc = (
                     (roc_value < roc_thr_sell) and
                     accel_ok and
-                    (40.0 <= rsi_value <= 60.0)
+                    (45.0 <= rsi_value <= 55.0)
                 )
 
                 if buy_signal_roc:
