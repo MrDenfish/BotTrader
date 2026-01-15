@@ -239,6 +239,12 @@ TRADING_RULES = [
     TypeRule("ROC_5MIN", int, "5-minute ROC period"),
     RangeRule("ROC_5MIN", min_val=1, max_val=20),
 
+    TypeRule("ROC_5MIN_BUY_THRESHOLD", (int, float), "5-minute ROC buy threshold"),
+    RangeRule("ROC_5MIN_BUY_THRESHOLD", min_val=1.0, max_val=50.0),
+
+    TypeRule("ROC_5MIN_SELL_THRESHOLD", (int, float), "5-minute ROC sell threshold"),
+    RangeRule("ROC_5MIN_SELL_THRESHOLD", min_val=1.0, max_val=50.0),
+
     TypeRule("ROC_BUY_24H", (int, float), "24h ROC buy threshold"),
     RangeRule("ROC_BUY_24H", min_val=0.1, max_val=50),
 
@@ -602,6 +608,8 @@ def validate_trading_constants() -> ValidationResult:
         "SWING_WINDOW": ct.SWING_WINDOW,
         "ROC_WINDOW": ct.ROC_WINDOW,
         "ROC_5MIN": ct.ROC_5MIN,
+        "ROC_5MIN_BUY_THRESHOLD": ct.ROC_5MIN_BUY_THRESHOLD,
+        "ROC_5MIN_SELL_THRESHOLD": ct.ROC_5MIN_SELL_THRESHOLD,
         "ROC_BUY_24H": ct.ROC_BUY_24H,
         "ROC_SELL_24H": ct.ROC_SELL_24H,
         "MAX_OHLCV_ROWS": ct.MAX_OHLCV_ROWS,

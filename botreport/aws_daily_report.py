@@ -535,11 +535,18 @@ def query_trigger_breakdown(conn):
     """
     Query PnL and order count grouped by trigger type.
 
+    Infers trigger type based on buy order size since trigger field is not reliably populated:
+    - ~$15 (13-17) → Signal Matrix (technical indicators)
+    - ~$20 (18-23) → ROC Momentum
+    - ~$25 (24-30) → Webhook/External
+    - ~$32 (31-34) → Passive Market Making
+    - Other sizes → Websocket (manual/external)
+
     Returns:
         list of dicts: [{'trigger': str, 'order_count': int, 'total_pnl': float, 'win_count': int, 'loss_count': int}, ...]
     """
     try:
-        # Check if trigger column exists
+        # Check if required columns exist
         cols = table_columns(conn, REPORT_TRADES_TABLE)
         if 'trigger' not in cols:
             return []
@@ -551,27 +558,50 @@ def query_trigger_breakdown(conn):
 
         time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
 
-        # Query trigger breakdown using FIFO allocations
-        # Handle both JSON format {"trigger": "LIMIT"} and plain string "limit"
+        # Query trigger breakdown using FIFO allocations and inferring trigger from buy order size
         q = f"""
-            WITH trigger_pnl AS (
+            WITH buy_orders AS (
+                -- Get buy orders with notional value for trigger inference
                 SELECT
-                    UPPER(COALESCE(
-                        tr.trigger->>'trigger',  -- JSON format: {{"trigger": "LIMIT"}}
-                        TRIM(BOTH '"' FROM tr.trigger::text),  -- Plain string: "limit"
-                        'UNKNOWN'
-                    )) AS trigger_type,
-                    tr.order_id,
-                    COALESCE(SUM(fa.pnl_usd), 0) AS pnl
-                FROM {qualify(REPORT_TRADES_TABLE)} tr
-                LEFT JOIN fifo_allocations fa
-                    ON fa.sell_order_id = tr.order_id
-                    AND fa.allocation_version = 2
-                WHERE {time_window_sql}
+                    order_id,
+                    (size * price) AS notional_usd,
+                    CASE
+                        -- TP/SL exits (these are legitimate trigger values)
+                        WHEN UPPER(COALESCE(trigger->>'trigger', TRIM(BOTH '"' FROM trigger::text)))
+                             IN ('TAKE_PROFIT_STOP_LOSS', 'STOP_TRIGGERED', 'BRACKET')
+                        THEN 'TP/SL Exit'
+
+                        -- Infer from order size based on ORDER_SIZE_* configuration
+                        WHEN (size * price) BETWEEN 13 AND 17 THEN 'Signal Matrix'
+                        WHEN (size * price) BETWEEN 18 AND 23 THEN 'ROC Momentum'
+                        WHEN (size * price) BETWEEN 24 AND 30 THEN 'Webhook'
+                        WHEN (size * price) BETWEEN 31 AND 34 THEN 'Passive MM'
+
+                        -- Fallback for other sizes
+                        ELSE 'Websocket'
+                    END AS inferred_trigger
+                FROM {qualify(REPORT_TRADES_TABLE)}
+                WHERE side = 'buy'
+                  AND status IN ('filled', 'done')
+                  AND {time_window_sql}
                   {upper_bound_sql}
-                  AND tr.side = 'sell'
-                  AND tr.status IN ('filled', 'done')
-                GROUP BY trigger_type, tr.order_id
+            ),
+            trigger_pnl AS (
+                SELECT
+                    COALESCE(b.inferred_trigger, 'Unknown') AS trigger_type,
+                    s.order_id,
+                    COALESCE(SUM(fa.pnl_usd), 0) AS pnl
+                FROM {qualify(REPORT_TRADES_TABLE)} s
+                LEFT JOIN fifo_allocations fa
+                    ON fa.sell_order_id = s.order_id
+                    AND fa.allocation_version = 2
+                LEFT JOIN buy_orders b
+                    ON fa.buy_order_id = b.order_id
+                WHERE s.side = 'sell'
+                  AND s.status IN ('filled', 'done')
+                  AND {time_window_sql}
+                  {upper_bound_sql}
+                GROUP BY trigger_type, s.order_id
             )
             SELECT
                 trigger_type,
@@ -1207,6 +1237,98 @@ def compute_trade_stats_windowed(conn):
     notes.append(f"TradeStats source: {tbl} using FIFO v{FIFO_ALLOCATION_VERSION} ts_col={ts_col}")
     return avg_win, avg_loss_neg, pf, notes
 
+def compute_strategy_linkage_stats(conn):
+    """
+    Compute strategy linkage statistics for trade-strategy optimization.
+    Returns: dict with linkage_rate, linked_count, total_count, missing_trades, sample_trades
+    """
+    try:
+        tbl = REPORT_TRADES_TABLE
+        cols = table_columns(conn, tbl)
+        if not cols:
+            return {"error": f"Table not found: {tbl}"}
+
+        ts_col = pick_first_available(cols, ["order_time", "trade_time", "filled_at", "completed_at"])
+        if not ts_col:
+            return {"error": f"No time column found on {tbl}"}
+
+        ts_expr = qident(ts_col)
+        time_window_sql, upper_bound_sql = _time_window_sql(ts_expr)
+
+        # Check if trade_strategy_link table exists
+        link_tbl_check = conn.run("SELECT to_regclass('trade_strategy_link')")
+        if not link_tbl_check or not link_tbl_check[0][0]:
+            return {"error": "trade_strategy_link table not found - linkage not enabled"}
+
+        # Query for linkage stats
+        q = f"""
+            SELECT
+                COUNT(*) AS total_trades,
+                COUNT(tsl.order_id) AS linked_trades,
+                COUNT(*) FILTER (WHERE tsl.order_id IS NULL) AS missing_linkage
+            FROM {qualify(tbl)} tr
+            LEFT JOIN trade_strategy_link tsl ON tr.order_id = tsl.order_id
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND tr.status IN ('filled', 'done')
+        """
+        total, linked, missing = conn.run(q)[0]
+        total = int(total or 0)
+        linked = int(linked or 0)
+        missing = int(missing or 0)
+
+        linkage_rate = (linked / total * 100) if total > 0 else 0.0
+
+        # Get sample of linked trades (last 5)
+        sample_q = f"""
+            SELECT
+                tr.symbol,
+                tr.side,
+                tr.{ts_expr},
+                tsl.buy_score,
+                tsl.sell_score,
+                tsl.trigger_type,
+                SUBSTRING(tsl.snapshot_id::text, 1, 8) AS snapshot_id_short
+            FROM {qualify(tbl)} tr
+            INNER JOIN trade_strategy_link tsl ON tr.order_id = tsl.order_id
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND tr.status IN ('filled', 'done')
+            ORDER BY tr.{ts_expr} DESC
+            LIMIT 5
+        """
+        sample_trades = conn.run(sample_q)
+
+        # Get missing trades (for debugging)
+        missing_q = f"""
+            SELECT
+                tr.symbol,
+                tr.side,
+                tr.{ts_expr},
+                tr.order_id
+            FROM {qualify(tbl)} tr
+            LEFT JOIN trade_strategy_link tsl ON tr.order_id = tsl.order_id
+            WHERE {time_window_sql}
+              {upper_bound_sql}
+              AND tr.status IN ('filled', 'done')
+              AND tsl.order_id IS NULL
+            ORDER BY tr.{ts_expr} DESC
+            LIMIT 10
+        """
+        missing_trades = conn.run(missing_q)
+
+        return {
+            "total_count": total,
+            "linked_count": linked,
+            "missing_count": missing,
+            "linkage_rate": linkage_rate,
+            "sample_trades": sample_trades,
+            "missing_trades": missing_trades
+        }
+
+    except Exception as e:
+        return {"error": f"Error computing linkage stats: {e}"}
+
 def compute_max_drawdown(conn):
     """
     Compute max drawdown using FIFO allocations + starting cash balance.
@@ -1311,80 +1433,52 @@ def compute_max_drawdown(conn):
 
 def compute_cash_vs_invested(conn, exposures):
     """
-    Calculate cash balance and invested percentage.
+    Calculate cash balance and invested percentage using cash_transactions.
 
-    Primary source: order_management_snapshots table (stored by webhook/sighook)
-    Fallback: Coinbase REST API (if snapshot not available)
+    Formula: Cash = Net deposits + Realized PnL - Invested Notional
+
+    This separates deposited capital from trading performance and properly
+    accounts for money in open positions.
     """
     invested = float(exposures.get("total_notional", 0.0) if exposures else 0.0)
     notes = []
-    cash = 0.0
 
-    # PRIMARY: Get USD balance from order_management_snapshots (most reliable)
     try:
-        snapshot_query = """
-            SELECT
-                (data::jsonb->'non_zero_balances'->'USD'->>'total_balance_fiat')::numeric as usd_balance,
-                snapshot_time
-            FROM order_management_snapshots
-            WHERE data::jsonb->'non_zero_balances'->'USD' IS NOT NULL
-            ORDER BY snapshot_time DESC
-            LIMIT 1
+        # Get net cash flow from deposits/withdrawals
+        cash_flow_query = """
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN normalized_type = 'deposit' THEN amount_usd
+                    WHEN normalized_type = 'withdrawal' THEN -amount_usd
+                    ELSE 0
+                END
+            ), 0) as net_cash_flow
+            FROM public.cash_transactions
         """
-        snapshot_result = conn.run(snapshot_query)
-        if snapshot_result and snapshot_result[0][0] is not None:
-            cash = float(snapshot_result[0][0])
-            snapshot_time = snapshot_result[0][1]
-            notes.append(f"Cash source: DB snapshot ({snapshot_time})")
-        else:
-            raise ValueError("No USD balance in order_management_snapshots")
+        cash_flow_result = conn.run(cash_flow_query)
+        net_cash_flow = float(cash_flow_result[0][0] if cash_flow_result else 0.0)
 
-    except Exception as db_error:
-        # FALLBACK: Try Coinbase API
-        notes.append(f"DB snapshot failed ({db_error}), trying Coinbase API")
+        # Get realized PnL from FIFO allocations
+        pnl_query = f"""
+            SELECT COALESCE(SUM(pnl_usd), 0) as realized_pnl
+            FROM fifo_allocations
+            WHERE allocation_version = {FIFO_ALLOCATION_VERSION}
+        """
+        pnl_result = conn.run(pnl_query)
+        realized_pnl = float(pnl_result[0][0] if pnl_result else 0.0)
 
-        try:
-            from coinbase.rest import RESTClient
-            import os
-            import json
+        # Calculate cash: deposits + realized_pnl - invested
+        cash = net_cash_flow + realized_pnl - invested
 
-            # Load credentials from JSON file
-            api_key = None
-            api_secret = None
-            api_key_paths = [
-                "/app/Config/webhook_api_key.json",
-                os.path.join(os.path.dirname(__file__), "..", "Config", "webhook_api_key.json"),
-            ]
-            for path in api_key_paths:
-                if os.path.exists(path):
-                    with open(path, 'r') as f:
-                        creds = json.load(f)
-                        api_key = creds.get("name")
-                        api_secret = creds.get("privateKey")
-                        break
+        notes.append(
+            f"Cash source: computed from cash_transactions "
+            f"(net flow: ${net_cash_flow:.2f}, realized PnL: ${realized_pnl:.2f})"
+        )
 
-            if not api_key or not api_secret:
-                raise ValueError("Missing Coinbase API credentials")
-
-            client = RESTClient(api_key=api_key, api_secret=api_secret)
-
-            # Use get_portfolio_breakdown for fiat balances (get_accounts only returns crypto)
-            portfolio_uuid = os.getenv("COINBASE_PORTFOLIO_UUID", "c5a8f238-d2ef-5bb4-93cd-0dfd7a773be7")
-            breakdown = client.get_portfolio_breakdown(portfolio_uuid=portfolio_uuid)
-
-            if breakdown and hasattr(breakdown, 'breakdown'):
-                # Find USD in portfolio breakdown
-                for position in getattr(breakdown.breakdown, 'spot_positions', []):
-                    if position.asset == 'USD':
-                        cash = float(position.total_balance_fiat)
-                        notes.append(f"Cash source: Coinbase API (portfolio breakdown)")
-                        break
-            else:
-                raise ValueError("Could not get portfolio breakdown")
-
-        except Exception as api_error:
-            notes.append(f"Coinbase API failed ({api_error})")
-            cash = 0.0
+    except Exception as e:
+        notes.append(f"Cash calculation failed: {e}")
+        # Fallback to 0 if query fails
+        cash = 0.0
 
     # Calculate invested percentage
     total_equity = cash + invested
@@ -1659,6 +1753,89 @@ def render_fees_section_html(break_even: dict) -> str:
     </table>
     <p style="color:#666">Your average trade must exceed these percentages (before slippage) to be profitable.</p>
     """
+
+def render_linkage_section_html(linkage_stats: dict) -> str:
+    """Render strategy linkage statistics for testing/debugging"""
+    if not linkage_stats or "error" in linkage_stats:
+        error_msg = linkage_stats.get("error", "Unknown error") if linkage_stats else "No data"
+        return f"""
+        <h3>Strategy Linkage Status (Testing)</h3>
+        <p style="color:#999;font-style:italic;">{error_msg}</p>
+        """
+
+    total = linkage_stats.get("total_count", 0)
+    linked = linkage_stats.get("linked_count", 0)
+    missing = linkage_stats.get("missing_count", 0)
+    rate = linkage_stats.get("linkage_rate", 0.0)
+
+    # Status indicator
+    if rate >= 90:
+        status_color = "#28a745"
+        status_icon = "✅"
+    elif rate >= 50:
+        status_color = "#ffc107"
+        status_icon = "⚠️"
+    else:
+        status_color = "#dc3545"
+        status_icon = "❌"
+
+    html = f"""
+    <h3>📊 Strategy Linkage Status (Testing)</h3>
+    <p><strong style="color:{status_color};">{status_icon} Coverage: {linked}/{total} trades ({rate:.1f}%)</strong> | Target: &gt;90%</p>
+    """
+
+    # Sample linked trades
+    sample_trades = linkage_stats.get("sample_trades", [])
+    if sample_trades:
+        html += """
+        <h4>Recent Linked Trades</h4>
+        <table border="1" cellpadding="4" cellspacing="0" style="font-size:12px;">
+          <tr>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Time</th>
+            <th>Buy Score</th>
+            <th>Sell Score</th>
+            <th>Trigger</th>
+            <th>Snapshot ID</th>
+          </tr>
+        """
+        for row in sample_trades[:5]:
+            symbol, side, ts, buy_score, sell_score, trigger, snap_id = row
+            buy_score_str = f"{buy_score:.2f}" if buy_score is not None else "-"
+            sell_score_str = f"{sell_score:.2f}" if sell_score is not None else "-"
+            trigger_str = trigger or "-"
+            ts_str = str(ts)[:19] if ts else "-"
+            html += f"""
+          <tr>
+            <td>{symbol}</td>
+            <td>{side.upper()}</td>
+            <td>{ts_str}</td>
+            <td>{buy_score_str}</td>
+            <td>{sell_score_str}</td>
+            <td>{trigger_str}</td>
+            <td>{snap_id}...</td>
+          </tr>
+            """
+        html += "</table>"
+
+    # Missing trades (for debugging)
+    missing_trades = linkage_stats.get("missing_trades", [])
+    if missing_trades and missing > 0:
+        html += f"""
+        <h4 style="color:#dc3545;">⚠️ Missing Linkage ({missing} trades)</h4>
+        <table border="1" cellpadding="4" cellspacing="0" style="font-size:11px;">
+          <tr><th>Symbol</th><th>Side</th><th>Time</th><th>Order ID</th></tr>
+        """
+        for row in missing_trades[:10]:
+            symbol, side, ts, order_id = row
+            ts_str = str(ts)[:19] if ts else "-"
+            order_id_short = order_id[:12] + "..." if len(order_id) > 12 else order_id
+            html += f"<tr><td>{symbol}</td><td>{side.upper()}</td><td>{ts_str}</td><td>{order_id_short}</td></tr>"
+        html += "</table>"
+        html += "<p style='color:#666;font-size:11px;'><em>Debug: Check logs for cache misses or webhook issues</em></p>"
+
+    return html
 
 def build_html(total_pnl,
                open_pos,
@@ -2186,6 +2363,9 @@ def main():
         strat_rows, strat_notes = compute_strategy_breakdown_windowed(conn)
         detect_notes.extend(strat_notes)
 
+        # Strategy linkage stats (for testing/optimization)
+        linkage_stats = compute_strategy_linkage_stats(conn)
+
         # Symbol performance analysis (if enabled)
         symbol_perf_html = ""
         if REPORT_INCLUDE_SYMBOL_PERFORMANCE:
@@ -2289,6 +2469,14 @@ def main():
             html = html.replace("</body></html>", tpsl_html + "\n</body></html>")
         else:
             html += "\n" + tpsl_html
+
+    # Strategy linkage section (testing/optimization)
+    linkage_html = render_linkage_section_html(linkage_stats)
+    if linkage_html:
+        if "</body></html>" in html:
+            html = html.replace("</body></html>", linkage_html + "\n</body></html>")
+        else:
+            html += "\n" + linkage_html
 
     # Add symbol performance section (if enabled)
     if symbol_perf_html:

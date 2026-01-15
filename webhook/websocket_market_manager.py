@@ -258,6 +258,58 @@ class WebSocketMarketManager:
             self.logger.warning(f"⚠️ Unable to parse order_time: {time_value}")
             return datetime.min.replace(tzinfo=timezone.utc)
 
+    def _parse_trigger_from_client_order_id(self, order: dict) -> Optional[dict]:
+        """
+        Parse trigger type from client_order_id field.
+
+        Expected format: {TRIGGER_TYPE}-{SYMBOL}-{UUID6}
+        Examples:
+            ROC_MOMO-BTC-a1b2c3 → {"trigger": "roc_momo", "trigger_note": "from client_order_id"}
+            PASSIVE_BUY-ETH-d4e5f6 → {"trigger": "passive_buy", "trigger_note": "from client_order_id"}
+            SCORE-DOGE-g7h8i9 → {"trigger": "score", "trigger_note": "from client_order_id"}
+
+        Old format (backwards compat): {source}-{uuid8}
+            PassiveMM-90ed34f3 → Returns None (fall back to cache)
+
+        Args:
+            order: Order dict from WebSocket event
+
+        Returns:
+            Trigger dict if successfully parsed, None otherwise
+        """
+        client_order_id = order.get("client_order_id", "")
+        if not client_order_id:
+            return None
+
+        try:
+            parts = client_order_id.split("-")
+
+            # New format: TRIGGER-SYMBOL-UUID (3+ parts)
+            # Old format: SOURCE-UUID (2 parts)
+            if len(parts) >= 3:
+                trigger_type = parts[0].lower()
+
+                # Validate it looks like a trigger (not a source name)
+                # Old sources: "webhook", "PassiveMM", "sighook", "websocket", "position_monitor"
+                # New triggers: "ROC_MOMO", "SCORE", "PASSIVE_BUY", "PROFIT", "LOSS", etc.
+                old_sources = {"webhook", "passivemm", "sighook", "websocket", "position_monitor"}
+
+                if trigger_type in old_sources:
+                    # This is old format, fall back to cache
+                    return None
+
+                return {
+                    "trigger": trigger_type,
+                    "trigger_note": f"from client_order_id: {client_order_id}"
+                }
+
+            # Old format or invalid format
+            return None
+
+        except Exception as e:
+            self.logger.debug(f"Failed to parse client_order_id '{client_order_id}': {e}")
+            return None
+
     async def _build_trade_dict(
             self,
             order: dict,
@@ -288,6 +340,11 @@ class WebSocketMarketManager:
                 self.logger.exception("find_latest_unlinked_buy_id failed for %s: %s", symbol, e)
                 parent_id = None
 
+        # ✅ Parse trigger from client_order_id (primary method for trigger preservation)
+        # Falls back to order_type if parsing fails
+        parsed_trigger = self._parse_trigger_from_client_order_id(order)
+        trigger = parsed_trigger if parsed_trigger else {"trigger": order_type}
+
         return {
             "order_id": order_id,
             "parent_id": parent_id,
@@ -299,7 +356,7 @@ class WebSocketMarketManager:
             "order_time": self._normalize_order_time(
                 order.get("event_time") or order.get("created_time")
             ),
-            "trigger": {"trigger": order_type},
+            "trigger": trigger,
             "source": source,
             "total_fees": order.get("total_fees", 0),
         }
@@ -330,24 +387,37 @@ class WebSocketMarketManager:
         else:
             parent_id = base_id
 
-        # Retrieve trigger from order_management cache (if available)
-        # Fallback to "websocket" if not found (for orders placed outside current session)
-        trigger_cache = (self.shared_data_manager.order_management or {}).get("order_triggers", {})
-        cached_trigger = trigger_cache.get(base_id)
+        # ✅ TRIGGER RESOLUTION (priority order):
+        # 1. Parse from client_order_id (primary - survives restarts, no database needed)
+        # 2. Retrieve from in-memory cache (backwards compat for old format orders)
+        # 3. Default to "websocket" (external orders or cache miss)
 
-        if cached_trigger:
-            trigger = cached_trigger
-            # Clean up the cache entry after using it to prevent memory growth
-            try:
-                trigger_cache.pop(base_id, None)
-                order_mgmt = self.shared_data_manager.order_management or {}
-                order_mgmt["order_triggers"] = trigger_cache
-                await self.shared_data_manager.set_order_management(order_mgmt)
-            except Exception as e:
-                self.logger.warning(f"Failed to clean up cached trigger for {base_id}: {e}")
+        parsed_trigger = self._parse_trigger_from_client_order_id(order)
+
+        if parsed_trigger:
+            # New format order - client_order_id contains trigger
+            trigger = parsed_trigger
+            self.logger.debug(f"✅ Trigger decoded from client_order_id: {trigger['trigger']}")
         else:
-            # Default for orders we don't have trigger info for
-            trigger = {"trigger": "websocket", "trigger_note": "trigger unknown (order placed externally or before session start)"}
+            # Old format order - try cache fallback
+            trigger_cache = (self.shared_data_manager.order_management or {}).get("order_triggers", {})
+            cached_trigger = trigger_cache.get(base_id)
+
+            if cached_trigger:
+                trigger = cached_trigger
+                # Clean up the cache entry after using it to prevent memory growth
+                try:
+                    trigger_cache.pop(base_id, None)
+                    order_mgmt = self.shared_data_manager.order_management or {}
+                    order_mgmt["order_triggers"] = trigger_cache
+                    await self.shared_data_manager.set_order_management(order_mgmt)
+                    self.logger.debug(f"✅ Trigger retrieved from cache: {trigger.get('trigger')}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to clean up cached trigger for {base_id}: {e}")
+            else:
+                # Default for orders we don't have trigger info for
+                trigger = {"trigger": "websocket", "trigger_note": "trigger unknown (order placed externally or before session start)"}
+                self.logger.debug(f"⚠️ No trigger found, using default: websocket")
 
         return {
             "order_id": fill_order_id,

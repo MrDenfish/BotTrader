@@ -1,5 +1,6 @@
 
 import asyncio
+import uuid
 from typing import Dict, Any, List, Tuple
 import pandas as pd
 from sqlalchemy import select
@@ -47,6 +48,10 @@ class TradingStrategy:
         self._hodl = self.config._hodl
         self.start_time = None
 
+        # ✅ Strategy snapshot ID for trade-strategy linkage
+        # Generated once per bot run to link all trades in this session
+        self.current_snapshot_id = uuid.uuid4()
+
         # ✅ Dynamic Symbol Filter (replaces hardcoded exclusion list)
         # Automatically excludes poor performers based on rolling metrics
         # Fallback to static list if dynamic filtering disabled
@@ -64,7 +69,11 @@ class TradingStrategy:
             'DASH-USD', 'BCH-USD', 'AVAX-USD', 'SWFTC-USD', 'AVNT-USD',
             'PRIME-USD', 'ICP-USD', 'KAITO-USD', 'IRYS-USD', 'TIME-USD',
             'NMR-USD', 'NEON-USD', 'QNT-USD', 'PERP-USD', 'BOBBOB-USD',
-            'OMNI-USD', 'TIA-USD', 'IP-USD', 'TNSR-USD'  # Added Dec 15, 2025
+            'OMNI-USD', 'TIA-USD', 'IP-USD', 'TNSR-USD',  # Added Dec 15, 2025
+            # Additional losers from 28-day analysis (Dec 28, 2025):
+            'FARM-USD',  # 0% win rate, -$8.40 loss
+            'XLM-USD',   # 0% win rate, -$5.00 loss
+            'AVT-USD',   # 32% win rate, -$10.16 loss (highest total loss)
         ]
 
     # ---------------------------
@@ -188,7 +197,7 @@ class TradingStrategy:
                              price: float, trigger: str, action: str = 'buy',
                              score: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Standardized strategy order format.
+        Standardized strategy order format with strategy linkage metadata.
         """
         base_deci, quote_deci, _, _ = self.shared_utils_precision.fetch_precision(symbol)
         return {
@@ -199,6 +208,7 @@ class TradingStrategy:
             'price': self.shared_utils_precision.safe_convert(price, quote_deci),
             'trigger': trigger,
             'score': score or {},
+            'snapshot_id': str(self.current_snapshot_id),  # ✅ Strategy linkage
             'volume': None,
             'sell_cond': None,
             'value': None

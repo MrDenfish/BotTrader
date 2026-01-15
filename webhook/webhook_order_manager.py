@@ -305,6 +305,7 @@ class TradeOrderManager:
             stop_price: Optional[Decimal] = None,
             order_type: Optional[str] = None,
             side: Optional[str] = None,
+            order_amount_fiat: Optional[Decimal] = None,
             test_mode: bool = False
     ) -> Optional[OrderData]:
         """
@@ -372,24 +373,29 @@ class TradeOrderManager:
             total_balance_crypto = Decimal(spot.get("total_balance_crypto", 0))
             available_to_trade = Decimal(spot.get("available_to_trade_crypto", 0))
 
-            # Use trigger-specific order size for visual identification
-            trigger_order_size = self.get_order_size_for_trigger(trigger if isinstance(trigger, dict) else {})
-            fiat_amt = min(usd_avail, trigger_order_size)
+            # ✅ Use provided order_amount_fiat if specified, otherwise use trigger-specific size
+            if order_amount_fiat is not None:
+                fiat_amt = min(usd_avail, Decimal(str(order_amount_fiat)))
+            else:
+                # Use trigger-specific order size for visual identification
+                trigger_order_size = self.get_order_size_for_trigger(trigger if isinstance(trigger, dict) else {})
+                fiat_amt = min(usd_avail, trigger_order_size)
+
             crypto_amt = available_to_trade
-            order_amount_fiat, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
+            order_amount_fiat_calc, order_amount_crypto = self.shared_utils_utility.initialize_order_amounts(
                 side if side else "buy", fiat_amt, crypto_amt
             )
 
             # ✅ Centralized test mode overrides
             if test_mode:
                 (usd_avail, usd_balance, spot, price,
-                 order_amount_fiat, order_amount_crypto) = self.apply_test_mode_overrides(
+                 order_amount_fiat_calc, order_amount_crypto) = self.apply_test_mode_overrides(
                     asset=asset,
                     usd_avail=usd_avail,
                     usd_balance=usd_balance,
                     spot=spot,
                     price=price,
-                    order_amount_fiat=order_amount_fiat,
+                    order_amount_fiat=order_amount_fiat_calc,
                     order_amount_crypto=order_amount_crypto
                 )
 
@@ -423,38 +429,38 @@ class TradeOrderManager:
                 side = "buy" if usd_avail >= self.order_size or test_mode else "sell"
 
             # ✅ Skip bad momentum for buys
-            # ✅ Skip bad momentum for buys (now honors allow_buys_on_red_day)
             if side == "buy" and not test_mode:
+                # Check existing balance - don't buy more if we already have a position (FIFO protection)
+                crypto_value_usd = total_balance_crypto * price if price > 0 else Decimal("0")
+                min_balance_floor = Decimal(str(getattr(self.config, 'min_value_to_monitor', 1.01)))
+                if crypto_value_usd >= min_balance_floor:
+                    self.build_failure_reason = (
+                        f"Skipping BUY for {asset} — existing balance ${crypto_value_usd:.2f} "
+                        f">= MIN_VALUE_TO_MONITOR=${min_balance_floor} (FIFO protection)"
+                    )
+                    return None
+
+                # Check 24h price momentum (red day filter)
                 try:
                     usd_pairs = self.usd_pairs.set_index("asset")
                     price_change_24h = usd_pairs.loc[asset, 'price_percentage_change_24h'] if asset in usd_pairs.index else None
 
-                    # If we can't read the signal, be conservative but don't crash
                     if price_change_24h is None:
                         self.build_failure_reason = f"Skipping BUY for {asset} — no 24h price data"
                         return None
 
                     pc = Decimal(price_change_24h)
 
-                    if not self.allow_buys_on_red_day:
-                        # Original behavior: disallow on any red day
-                        if pc <= 0:
-                            self.build_failure_reason = f"Skipping BUY for {asset} — 24h change {pc}% and allow_buys_on_red_day=false"
-                            return None
-                    else:
-                        # Softer rule when allowed: only block if VERY red (tunable)
-                        red_floor = Decimal(str(getattr(self.config, "red_day_floor_pct", -2)))  # e.g. -2%
-                        if pc <= red_floor:
-                            self.build_failure_reason = f"Skipping BUY for {asset} — 24h change {pc}% below red_day_floor_pct={red_floor}%"
-                            return None
-                except Exception as e:
-                    self.logger.warning(f"⚠️ 24h change check failed for {asset}: {e}")
-                    # Fail closed or open? Keep current conservative behavior:
-                    self.build_failure_reason = f"24h price change check failed for {asset}"
-                    return None
+                    # Block buys on red days if configured (allow_buys_on_red_day=false means block red days)
+                    if not self.allow_buys_on_red_day and pc < 0:
+                        self.build_failure_reason = (
+                            f"Skipping BUY for {asset} — 24h change {pc:.2f}% is negative "
+                            f"(red day filter enabled)"
+                        )
+                        return None
 
                 except Exception as e:
-                    self.logger.warning(f"⚠️ Failed to check price change for {asset}: {e}")
+                    self.logger.warning(f"⚠️ 24h change check failed for {asset}: {e}")
                     self.build_failure_reason = f"24h price change check failed for {asset}"
                     return None
 
@@ -475,7 +481,7 @@ class TradeOrderManager:
                 type=order_type or "limit",
                 order_id="UNKNOWN",
                 side=side,
-                order_amount_fiat=order_amount_fiat,
+                order_amount_fiat=order_amount_fiat_calc,
                 order_amount_crypto=order_amount_crypto,
                 filled_price=None,
                 base_currency=asset,
@@ -895,6 +901,19 @@ class TradeOrderManager:
                         trigger_cache = order_mgmt.get("order_triggers", {})
                         trigger_cache[order_data.order_id] = order_data.trigger
                         order_mgmt["order_triggers"] = trigger_cache
+
+                        # PEAK TRACKING: Store trigger type for BUY orders (for position_monitor)
+                        if side == "buy" and isinstance(order_data.trigger, dict):
+                            trigger_type = order_data.trigger.get("trigger", "").upper()
+                            if trigger_type in ["ROC_MOMO", "ROC_MOMO_OVERRIDE", "ROC"]:
+                                position_triggers = order_mgmt.get("position_triggers", {})
+                                product_id = f"{symbol}-USD"
+                                position_triggers[product_id] = trigger_type
+                                order_mgmt["position_triggers"] = position_triggers
+                                self.logger.info(
+                                    f"[PEAK_TRACK] Stored trigger for {product_id}: {trigger_type}"
+                                )
+
                         await self.shared_data_manager.set_order_management(order_mgmt)
                         self.logger.debug(f"Cached trigger for order {order_data.order_id}: {order_data.trigger}")
                     except Exception as e:

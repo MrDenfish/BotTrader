@@ -793,8 +793,21 @@ class OrderTypeManager:
                 # Post-only prevents orders that cross the spread, but emergency exits NEED to cross
                 use_post_only = order_data.source != 'position_monitor'
 
+                # ✅ Extract trigger type for client_order_id encoding
+                # This enables trigger preservation through WebSocket events without database/cache
+                trigger_type = "UNKNOWN"
+                if isinstance(order_data.trigger, dict):
+                    trigger_type = order_data.trigger.get("trigger", "UNKNOWN").upper()
+                elif isinstance(order_data.trigger, str):
+                    trigger_type = order_data.trigger.upper()
+
+                # Format: {TRIGGER}-{SYMBOL}-{UUID6}
+                # Examples: ROC_MOMO-BTC-a1b2c3, PASSIVE_BUY-ETH-d4e5f6
+                base_symbol = symbol.split('-')[0] if '-' in symbol else symbol
+                client_order_id = f"{trigger_type}-{base_symbol}-{uuid.uuid4().hex[:6]}"
+
                 payload = {
-                    "client_order_id": f"{order_data.source}-{uuid.uuid4().hex[:8]}",
+                    "client_order_id": client_order_id,
                     "product_id": symbol,
                     "side": side,
                     "order_configuration": {
