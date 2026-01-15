@@ -63,6 +63,8 @@ services:
       TP_SL_LOG_PATH: "/app/logs/tpsl.jsonl"
       SCORE_BACKUP_COUNT: "7"
       SCORE_LOG_PATH: "/app/logs/score_log.jsonl"
+      # Passive market making toggle
+      PASSIVE_MM_ENABLED: ${PASSIVE_MM_ENABLED:-false}
     depends_on:
       db:
         condition: service_healthy
