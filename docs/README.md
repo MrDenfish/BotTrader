@@ -56,8 +56,8 @@ This directory contains all documentation for the BotTrader cryptocurrency tradi
 - [Quick Log Check](active/guides/QUICK_LOG_CHECK.md)
 
 ### For Next Session
-- [Cash Transactions Integration](planning/NEXT_SESSION_CASH_TRANSACTIONS.md) - ⚠️ **PENDING IMPLEMENTATION**
-- [Optimization Prep Tasks](planning/NEXT_SESSION_PREP_TASKS.md) - ⚠️ **ACTIVE (Eval: Jan 7, 2025)**
+- [Cash Transactions Integration](in-progress/NEXT_SESSION_CASH_TRANSACTIONS.md) - ⚠️ **PENDING IMPLEMENTATION**
+- [Optimization Prep Tasks](in-progress/NEXT_SESSION_PREP_TASKS.md) - ⚠️ **ACTIVE (Eval: Jan 7, 2025)**
 - [Schema Cleanup](planning/NEXT_SESSION_SCHEMA_CLEANUP.md) - ⚠️ **PENDING**
 - [Reminder: Schema Cleanup](reminders/REMINDER_2025-12-29_schema_cleanup.md) - ⏰ **Due: Dec 29, 2025**
 

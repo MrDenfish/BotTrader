@@ -407,9 +407,9 @@ ssh bottrader-aws "docker logs -f webhook"
 
 See `/docs/` directory for comprehensive documentation:
 
-- [Architecture Deep Dive](docs/active/architecture/ARCHITECTURE_DEEP_DIVE.md)
-- [AWS Deployment Checklist](docs/active/deployment/AWS_DEPLOYMENT_CHECKLIST.md)
-- [Dynamic Symbol Filter](DYNAMIC_FILTER_DOCUMENTATION.md)
+- [Architecture Deep Dive](../active/architecture/ARCHITECTURE_DEEP_DIVE.md)
+- [AWS Deployment Checklist](../active/deployment/AWS_DEPLOYMENT_CHECKLIST.md)
+- [Dynamic Symbol Filter](../active/features/DYNAMIC_FILTER_DOCUMENTATION.md)
 
 ## Testing
 

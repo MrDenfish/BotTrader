@@ -1,4 +1,4 @@
-# Strategy Performance Tracking System
+ the doc# Strategy Performance Tracking System
 
 **Created**: 2025-12-08
 **Purpose**: Track bot configuration changes and correlate with performance for A/B testing and optimization
