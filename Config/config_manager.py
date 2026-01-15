@@ -68,6 +68,7 @@ class CentralConfig:
         self._sl_limit_offset_ticks = self._min_l1_notional_usd = self._pre_bracket_sigma_ratio = None
         self._aws_region = self._score_jsonl_path = self._tp_sl_log_path = self._report_lookback_minutes = None
         self._min_indicators_required = self._excluded_symbols = None
+        self._passive_mm_enabled = None  # Passive market making toggle
         self.exchange: Optional[Any] = None
 
         # Default values
@@ -165,6 +166,7 @@ class CentralConfig:
             "_cooldown_bars": "COOLDOWN_BARS",
             "_min_indicators_required": "MIN_INDICATORS_REQUIRED",
             "_excluded_symbols": "EXCLUDED_SYMBOLS",
+            "_passive_mm_enabled": "PASSIVE_MM_ENABLED",
             "_version": "VERSION",
             "_bb_window": "BB_WINDOW",
             "_bb_std": "BB_STD",
@@ -881,6 +883,13 @@ class CentralConfig:
     @property
     def sleep_time(self):
         return self._sleep_time
+
+    @property
+    def passive_mm_enabled(self):
+        """Returns True if passive market making is enabled, False otherwise."""
+        if self._passive_mm_enabled is None:
+            return False  # Default to disabled for safety
+        return str(self._passive_mm_enabled).lower() in ('true', '1', 'yes', 'on')
 
 
 
