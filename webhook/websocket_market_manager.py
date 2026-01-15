@@ -467,7 +467,7 @@ class WebSocketMarketManager:
             usd_volume = base_volume * current_price
 
             # call manager at most once every 5 s per symbol
-            if now - last > 30:
+            if self.config.passive_mm_enabled and now - last > 30:
                 task = asyncio.create_task(
                     self._safe_place_passive_order(symbol, product_id)
                 )

@@ -223,28 +223,34 @@ async def build_websocket_components(config, listener, shared_data_manager):
     fee_rates = _normalize_fees(fee_rates)
 
     # ------------------------------------------------------
-    passive_order_manager = PassiveOrderManager(
-        config=config,
-        ccxt_api=listener.ccxt_api,
-        coinbase_api=listener.coinbase_api,
-        exchange=listener.exchange,
-        ohlcv_manager=listener.ohlcv_manager,
-        shared_data_manager=shared_data_manager,
-        shared_utils_color=listener.shared_utils_color,
-        shared_utils_utility=listener.shared_utils_utility,
-        shared_utils_precision=listener.shared_utils_precision,
-        trade_order_manager=listener.trade_order_manager,
-        order_manager=listener.order_manager,
-        logger_manager=listener.logger_manager,
-        edge_buffer_pct=config.edge_buffer_pct,
-        min_spread_pct=config.min_spread_pct,
-        max_lifetime=config.max_lifetime,
-        inventory_bias_factor=config.inventory_bias_factor,
-        fee_cache=fee_rates,
-    )
-
-    listener.passive_order_manager = passive_order_manager
-    listener.fee_rates = passive_order_manager.original_fees = fee_rates
+    # Passive MM: Only instantiate if enabled (disabled by default due to poor performance)
+    if config.passive_mm_enabled:
+        passive_order_manager = PassiveOrderManager(
+            config=config,
+            ccxt_api=listener.ccxt_api,
+            coinbase_api=listener.coinbase_api,
+            exchange=listener.exchange,
+            ohlcv_manager=listener.ohlcv_manager,
+            shared_data_manager=shared_data_manager,
+            shared_utils_color=listener.shared_utils_color,
+            shared_utils_utility=listener.shared_utils_utility,
+            shared_utils_precision=listener.shared_utils_precision,
+            trade_order_manager=listener.trade_order_manager,
+            order_manager=listener.order_manager,
+            logger_manager=listener.logger_manager,
+            edge_buffer_pct=config.edge_buffer_pct,
+            min_spread_pct=config.min_spread_pct,
+            max_lifetime=config.max_lifetime,
+            inventory_bias_factor=config.inventory_bias_factor,
+            fee_cache=fee_rates,
+        )
+        listener.passive_order_manager = passive_order_manager
+        listener.fee_rates = passive_order_manager.original_fees = fee_rates
+        listener.logger.info("✓ Passive market making ENABLED")
+    else:
+        listener.passive_order_manager = None
+        listener.fee_rates = fee_rates
+        listener.logger.info("✓ Passive market making DISABLED")
 
     asset_monitor = AssetMonitor(
         listener=listener,
