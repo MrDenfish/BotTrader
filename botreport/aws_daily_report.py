@@ -535,12 +535,14 @@ def query_trigger_breakdown(conn):
     """
     Query PnL and order count grouped by trigger type.
 
-    Infers trigger type based on buy order size since trigger field is not reliably populated:
-    - ~$15 (13-17) → Signal Matrix (technical indicators)
-    - ~$20 (18-23) → ROC Momentum
-    - ~$25 (24-30) → Webhook/External
-    - ~$32 (31-34) → Passive Market Making
-    - Other sizes → Websocket (manual/external)
+    Uses trigger field from trade_records with fallback to order size inference:
+    - 'roc_momo' → ROC Momentum (5-min momentum strategy)
+    - 'score' → Signal Matrix (14-indicator technical analysis)
+    - 'roc_momo_override' → ROC Override (manual intervention)
+    - Fallback order size inference:
+      - ~$15 (13-17) → Signal Matrix
+      - ~$20 (18-23) → ROC Momentum
+      - ~$25 (24-30) → Webhook/External
 
     Returns:
         list of dicts: [{'trigger': str, 'order_count': int, 'total_pnl': float, 'win_count': int, 'loss_count': int}, ...]
@@ -558,27 +560,31 @@ def query_trigger_breakdown(conn):
 
         time_window_sql, upper_bound_sql = _time_window_sql(qident(ts_col))
 
-        # Query trigger breakdown using FIFO allocations and inferring trigger from buy order size
+        # Query trigger breakdown using FIFO allocations and trigger field from trade_records
         q = f"""
             WITH buy_orders AS (
-                -- Get buy orders with notional value for trigger inference
+                -- Get buy orders with trigger from trade_records
                 SELECT
                     order_id,
                     (size * price) AS notional_usd,
                     CASE
-                        -- TP/SL exits (these are legitimate trigger values)
+                        -- Use actual trigger field from trade_records (preferred)
+                        WHEN trigger->>'trigger' = 'roc_momo' THEN 'ROC Momentum'
+                        WHEN trigger->>'trigger' = 'roc_momo_override' THEN 'ROC Override'
+                        WHEN trigger->>'trigger' = 'score' THEN 'Signal Matrix'
+
+                        -- TP/SL exits (legitimate exit triggers)
                         WHEN UPPER(COALESCE(trigger->>'trigger', TRIM(BOTH '"' FROM trigger::text)))
                              IN ('TAKE_PROFIT_STOP_LOSS', 'STOP_TRIGGERED', 'BRACKET')
                         THEN 'TP/SL Exit'
 
-                        -- Infer from order size based on ORDER_SIZE_* configuration
+                        -- Fallback: infer from order size for legacy trades
                         WHEN (size * price) BETWEEN 13 AND 17 THEN 'Signal Matrix'
                         WHEN (size * price) BETWEEN 18 AND 23 THEN 'ROC Momentum'
                         WHEN (size * price) BETWEEN 24 AND 30 THEN 'Webhook'
-                        WHEN (size * price) BETWEEN 31 AND 34 THEN 'Passive MM'
 
-                        -- Fallback for other sizes
-                        ELSE 'Websocket'
+                        -- Other/unknown
+                        ELSE 'Other'
                     END AS inferred_trigger
                 FROM {qualify(REPORT_TRADES_TABLE)}
                 WHERE side = 'buy'
@@ -2018,13 +2024,17 @@ def build_html(total_pnl,
             </tr>
             """
         trigger_html = f"""
-        <h3>Trigger Breakdown (Windowed)</h3>
-        <p><b>Total PnL by Trigger:</b> ${total_trigger_pnl:,.2f}</p>
+        <h3>Strategy Performance (Windowed)</h3>
+        <p><b>Total PnL by Strategy:</b> ${total_trigger_pnl:,.2f}</p>
         <table border="1" cellpadding="6" cellspacing="0">
-          <tr><th>Trigger</th><th>Orders</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Total PnL</th></tr>
+          <tr><th>Strategy</th><th>Orders</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>Total PnL</th></tr>
           {trigger_rows}
         </table>
-        <p style="color:#666;font-size:12px">Shows performance by exit trigger type (POSITION_MONITOR, REARM_OCO_MISSING, etc.)</p>
+        <p style="color:#666;font-size:12px">
+          <b>ROC Momentum:</b> 5-min rate-of-change momentum trades (entry &gt;8.5% ROC)<br>
+          <b>Signal Matrix:</b> 14-indicator technical analysis (score-based)<br>
+          <b>TP/SL Exit:</b> Take-profit/stop-loss automated exits
+        </p>
         """
 
     # Source Statistics Section
