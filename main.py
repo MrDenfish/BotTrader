@@ -288,7 +288,7 @@ async def build_websocket_components(config, listener, shared_data_manager):
         shared_data_manager=shared_data_manager,
         market_ws_manager=None,
         database_session_manager=shared_data_manager.database_session_manager,
-        passive_order_manager=passive_order_manager,
+        passive_order_manager=listener.passive_order_manager,
         asset_monitor=asset_monitor,
 
 
@@ -314,9 +314,10 @@ async def build_websocket_components(config, listener, shared_data_manager):
         shared_data_manager=shared_data_manager,
         database_session_manager=shared_data_manager.database_session_manager
     )
-    market_ws_manager.passive_order_manager = passive_order_manager
-    # 🔁 Restore any passive orders
-    await passive_order_manager.reload_persisted_passive_orders()
+    market_ws_manager.passive_order_manager = listener.passive_order_manager
+    # 🔁 Restore any passive orders (only if enabled)
+    if listener.passive_order_manager:
+        await listener.passive_order_manager.reload_persisted_passive_orders()
 
     websocket_manager = WebSocketManager(
         config=Config(),
