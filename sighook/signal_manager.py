@@ -338,51 +338,59 @@ class SignalManager:
             action = 'hold'
             last_row = ohlcv_df.iloc[-1]
 
-            # ✅ ROC priority overrides
-            roc_value = last_row.get('ROC', None)
-            roc_diff_value = last_row.get('ROC_Diff', 0.0)
+            # ✅ 24-HOUR MOMENTUM ROC STRATEGY
+            # Changed from 5-minute ROC to 24-hour momentum runners
+            # Goal: Catch markets that surge 10%+ in 24h and keep rising
+
             rsi_value = last_row.get('RSI', None)
 
-            if roc_value is not None and rsi_value is not None:
-                # Use 5-minute ROC thresholds for momentum strategy
-                roc_thr_buy = float(self.roc_5min_buy_threshold)  # e.g., +10.0% (5-min ROC)
-                roc_thr_sell = float(self.roc_5min_sell_threshold)  # e.g., -10.0% (5-min ROC)
-                # Adaptive acceleration gate (fallback to 0.3 if not available)
-                roc_diff_std = float(last_row.get('ROC_Diff_STD20', 0.3))
-                accel_ok = abs(roc_diff_value) > max(0.3, 0.5 * roc_diff_std)
+            # Get 24-hour price change from usd_pairs (live ticker data)
+            roc_24h_value = None
+            if self.usd_pairs is not None:
+                try:
+                    usd_pairs_df = self.usd_pairs.set_index("asset")
+                    # Extract symbol name (e.g., "BTC-USD" -> "BTC")
+                    asset_name = symbol.split('-')[0] if '-' in symbol else symbol
+                    if asset_name in usd_pairs_df.index:
+                        roc_24h_value = float(usd_pairs_df.loc[asset_name, 'price_percentage_change_24h'])
+                except Exception as e:
+                    self.logger.debug(f"Could not fetch 24h ROC for {symbol}: {e}")
 
-                # RSI gate: Only buy in 45-55 range (tighter neutral zone for Test 2 optimization)
-                # TEST 2 OPTIMIZATION: Narrowed from 40-60 to 45-55 (backtest improved: 57.9% win rate)
+            if roc_24h_value is not None and rsi_value is not None:
+                # 24-hour momentum thresholds (optimized for momentum runners)
+                roc_24h_buy_threshold = 10.0   # 10% gain in 24 hours
+                roc_24h_sell_threshold = -5.0  # -5% drop in 24 hours
+
+                # RSI gate: Only trade in neutral zone (avoid overextended conditions)
+                # Tightened to 45-55 to avoid chasing pumps that are already overheated
                 buy_signal_roc = (
-                    (roc_value > roc_thr_buy) and
-                    accel_ok and
+                    (roc_24h_value > roc_24h_buy_threshold) and
                     (45.0 <= rsi_value <= 55.0)
                 )
                 sell_signal_roc = (
-                    (roc_value < roc_thr_sell) and
-                    accel_ok and
+                    (roc_24h_value < roc_24h_sell_threshold) and
                     (45.0 <= rsi_value <= 55.0)
                 )
 
                 if buy_signal_roc:
                     # compute full components so we can see the context even on overrides
                     bs, ss, comps = self._compute_score_components(last_row)
-                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_override')
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_24h')
 
                     return {
                         'action': 'buy', 'trigger': 'roc_momo', 'type': 'limit',
-                        'Buy Signal': (1, float(roc_value), float(roc_thr_buy)),
+                        'Buy Signal': (1, float(roc_24h_value), float(roc_24h_buy_threshold)),
                         'Sell Signal': (0, None, None),
                         'Score': {'Buy Score': bs, 'Sell Score': ss}
                     }
                 if sell_signal_roc:
                     # compute full components so we can see the context even on overrides
                     bs, ss, comps = self._compute_score_components(last_row)
-                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_override')
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_24h')
 
                     return {
                         'action': 'sell', 'trigger': 'roc_momo', 'type': 'limit',
-                        'Sell Signal': (1, float(roc_value), float(roc_thr_sell)),
+                        'Sell Signal': (1, float(roc_24h_value), float(roc_24h_sell_threshold)),
                         'Buy Signal': (0, None, None),
                         'Score': {'Buy Score': bs, 'Sell Score': ss}
                     }
