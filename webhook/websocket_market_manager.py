@@ -457,8 +457,13 @@ class WebSocketMarketManager:
         try:
             product_id = ticker.get("product_id")
             now = time.time()
+
+            # Skip passive order processing if passive MM is disabled
+            if not self.config.passive_mm_enabled:
+                return
+
             if not self.passive_order_manager or not hasattr(self.passive_order_manager, "passive_order_tracker"):
-                self.logger.warning(f"⚠️ passive_order_manager or tracker not available for {ticker.get('product_id')}")
+                self.logger.debug(f"passive_order_manager or tracker not available for {ticker.get('product_id')}")
                 return
             last = self.passive_order_manager.passive_order_tracker.get(product_id, {}).get("timestamp", 0)
             symbol = product_id.split("-")[0]
