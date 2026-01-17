@@ -44,6 +44,7 @@ class CentralConfig:
         self._phone = self._report_sender = self._smtp_password = self._report_recipients = self._email_alerts = None
         self._order_size_fiat = self._version = self._max_ohlcv_rows = self._async_mode = None
         self._order_size_webhook = self._order_size_roc = self._order_size_passive = self._order_size_signal = None
+        self._order_size_20m = None  # 20-minute ROC momentum strategy
         self._bb_window = self._bb_std = self._bb_lower_band = self._bb_upper_band = None
         self._macd_fast = self._macd_slow = self._macd_signal = None
         self._rsi_window = self._atr_window = self._rsi_buy = self._max_value_of_crypto_to_buy_more = None
@@ -61,6 +62,7 @@ class CentralConfig:
         self._quote_currency = self._trailing_percentage = self._min_quote_volume = self._min_cooldown = None
         self._roc_5min = self._roc_5min_buy_threshold = self._roc_5min_sell_threshold = None
         self._roc_buy_24h = self._roc_sell_24h = self._roc_window = None
+        self._roc_20m_buy_threshold = self._roc_20m_sell_threshold = None
         self._min_spread_pct = self._maker_fee = self._taker_fee = self._min_order_amount_fiat = None
         self._edge_buffer_pct = self._max_lifetime = self._inventory_bias_factor = self._spread_to_fee_min =None
         self._tp_min_ticks = self._sl_limit_offset_ticks = self._score_buy_target = self._score_sell_target =  None
@@ -126,7 +128,8 @@ class CentralConfig:
             "_quote_currency": "QUOTE_CURRENCY",
             "_order_size_fiat": "ORDER_SIZE_FIAT", # in USD
             "_order_size_webhook": "ORDER_SIZE_WEBHOOK", # Webhook/external signals
-            "_order_size_roc": "ORDER_SIZE_ROC", # Rate of change triggers
+            "_order_size_roc": "ORDER_SIZE_ROC", # Rate of change triggers (24h)
+            "_order_size_20m": "ORDER_SIZE_20M", # 20-minute ROC momentum
             "_order_size_passive": "ORDER_SIZE_PASSIVE", # Passive market making
             "_order_size_signal": "ORDER_SIZE_SIGNAL", # Internal signals
             "_trailing_percentage": "TRAILING_PERCENTAGE",
@@ -149,6 +152,8 @@ class CentralConfig:
             "_roc_5min":"ROC_5MIN",
             "_roc_5min_buy_threshold": "ROC_5MIN_BUY_THRESHOLD",
             "_roc_5min_sell_threshold": "ROC_5MIN_SELL_THRESHOLD",
+            "_roc_20m_buy_threshold": "ROC_20M_BUY_THRESHOLD",
+            "_roc_20m_sell_threshold": "ROC_20M_SELL_THRESHOLD",
             "_min_spread_pct":"MIN_SPREAD_PCT",
             "_spread_to_fee_min":"SPREAD_TO_FEE_MIN",
             "_tp_min_ticks":"TP_MIN_TICKS",
@@ -611,6 +616,10 @@ class CentralConfig:
         return self._order_size_roc
 
     @property
+    def order_size_20m(self):
+        return self._order_size_20m
+
+    @property
     def order_size_passive(self):
         return self._order_size_passive
 
@@ -711,6 +720,14 @@ class CentralConfig:
     @property
     def roc_sell_24h(self):
         return int(self._roc_sell_24h)
+
+    @property
+    def roc_20m_buy_threshold(self):
+        return float(self._roc_20m_buy_threshold)
+
+    @property
+    def roc_20m_sell_threshold(self):
+        return float(self._roc_20m_sell_threshold)
 
     @property
     def roc_window(self):
