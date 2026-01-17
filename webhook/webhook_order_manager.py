@@ -605,7 +605,9 @@ class TradeOrderManager:
             "PASSIVE_LOSS": self.config.order_size_passive,
             "SIGNAL": self.config.order_size_signal,
             "SCORE": self.config.order_size_signal,
-            "ROC_MOMO": self.config.order_size_roc,
+            "ROC_MOMO_24H": self.config.order_size_roc,  # 24-hour momentum runners ($20)
+            "ROC_MOMO_20M": self.config.order_size_20m,  # 20-minute scalps ($15)
+            "ROC_MOMO": self.config.order_size_roc,      # Legacy support
             "ROC_MOMO_OVERRIDE": self.config.order_size_roc,
         }
 

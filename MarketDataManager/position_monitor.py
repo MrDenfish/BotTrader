@@ -448,6 +448,20 @@ class PositionMonitor:
             # Therefore: avg_entry_price = current_price - (unrealized_pnl / balance)
             if current_price > 0 and total_balance_crypto > 0:
                 avg_entry_price = current_price - (unrealized_pnl / total_balance_crypto)
+
+                # CRITICAL FIX: Validate avg_entry_price is reasonable
+                # If avg_entry > 2× current_price or < 0.5× current_price, it's garbage data
+                # This prevents catastrophic exit bugs like SAND-USD (-58% false loss)
+                if avg_entry_price > current_price * Decimal('2') or avg_entry_price < current_price * Decimal('0.5'):
+                    self.logger.warning(
+                        f"[POS_MONITOR] {symbol} INVALID avg_entry from API: "
+                        f"entry={avg_entry_price:.4f}, current={current_price:.4f}, "
+                        f"unrealized_pnl={unrealized_pnl}, balance={total_balance_crypto}. "
+                        f"Using current price as entry (conservative estimate)."
+                    )
+                    # Fallback: assume entry ≈ current price (neutral P&L)
+                    # This prevents false stop-outs but may miss some real losses
+                    avg_entry_price = current_price
             else:
                 avg_entry_price = Decimal('0')
 

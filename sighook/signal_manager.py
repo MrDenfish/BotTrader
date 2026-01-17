@@ -338,11 +338,67 @@ class SignalManager:
             action = 'hold'
             last_row = ohlcv_df.iloc[-1]
 
-            # ✅ 24-HOUR MOMENTUM ROC STRATEGY
-            # Changed from 5-minute ROC to 24-hour momentum runners
-            # Goal: Catch markets that surge 10%+ in 24h and keep rising
+            # ================================================================================
+            # 🎯 MULTI-STRATEGY ROC SYSTEM (Priority Order)
+            # ================================================================================
+            # Strategy #1: 20-Minute Momentum Scalps (1-min candles, 20-period ROC)
+            # Strategy #2: 24-Hour Momentum Runners (ticker 24h% change)
+            # Strategy #3: Calculated ROC (weighted scoring, not override)
+            # ================================================================================
 
             rsi_value = last_row.get('RSI', None)
+
+            # ================================================================================
+            # ✅ STRATEGY #1: 20-MINUTE MOMENTUM SCALPS
+            # ================================================================================
+            # Goal: Catch fast intraday pumps (2%+ in 20 minutes)
+            # Data Source: Calculated ROC from 1-minute candles (20-period lookback)
+            # Exit: Tight trailing stop (1.5× ATR on 5-min candles)
+            # ================================================================================
+
+            roc_20m_value = last_row.get('ROC', None)  # ROC calculated from indicators.py
+            if roc_20m_value is not None and rsi_value is not None:
+                roc_20m_buy_threshold = float(self.config.roc_20m_buy_threshold)  # 2.0% from .env
+                roc_20m_sell_threshold = float(self.config.roc_20m_sell_threshold)  # -2.0% from .env
+
+                # RSI gate: Slightly wider range for fast moves (45-60 vs 45-55 for 24h)
+                buy_signal_20m = (
+                    (roc_20m_value > roc_20m_buy_threshold) and
+                    (45.0 <= rsi_value <= 60.0)
+                )
+                sell_signal_20m = (
+                    (roc_20m_value < roc_20m_sell_threshold) and
+                    (40.0 <= rsi_value <= 55.0)
+                )
+
+                if buy_signal_20m:
+                    bs, ss, comps = self._compute_score_components(last_row)
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_20m')
+
+                    return {
+                        'action': 'buy', 'trigger': 'roc_momo_20m', 'type': 'limit',
+                        'Buy Signal': (1, float(roc_20m_value), float(roc_20m_buy_threshold)),
+                        'Sell Signal': (0, None, None),
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
+                    }
+                if sell_signal_20m:
+                    bs, ss, comps = self._compute_score_components(last_row)
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_20m')
+
+                    return {
+                        'action': 'sell', 'trigger': 'roc_momo_20m', 'type': 'limit',
+                        'Sell Signal': (1, float(roc_20m_value), float(roc_20m_sell_threshold)),
+                        'Buy Signal': (0, None, None),
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
+                    }
+
+            # ================================================================================
+            # ✅ STRATEGY #2: 24-HOUR MOMENTUM RUNNERS
+            # ================================================================================
+            # Goal: Catch big daily movers (10%+ in 24 hours)
+            # Data Source: Exchange ticker price_percentage_change_24h
+            # Exit: Peak tracking (8% drawdown from peak)
+            # ================================================================================
 
             # Get 24-hour price change from usd_pairs (live ticker data)
             roc_24h_value = None
@@ -378,7 +434,7 @@ class SignalManager:
                     self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_24h')
 
                     return {
-                        'action': 'buy', 'trigger': 'roc_momo', 'type': 'limit',
+                        'action': 'buy', 'trigger': 'roc_momo_24h', 'type': 'limit',
                         'Buy Signal': (1, float(roc_24h_value), float(roc_24h_buy_threshold)),
                         'Sell Signal': (0, None, None),
                         'Score': {'Buy Score': bs, 'Sell Score': ss}
@@ -389,7 +445,7 @@ class SignalManager:
                     self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_24h')
 
                     return {
-                        'action': 'sell', 'trigger': 'roc_momo', 'type': 'limit',
+                        'action': 'sell', 'trigger': 'roc_momo_24h', 'type': 'limit',
                         'Sell Signal': (1, float(roc_24h_value), float(roc_24h_sell_threshold)),
                         'Buy Signal': (0, None, None),
                         'Score': {'Buy Score': bs, 'Sell Score': ss}
