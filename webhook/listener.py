@@ -962,28 +962,22 @@ class WebhookListener:
             base_price_in_fiat, quote_price_in_fiat = await self.get_prices(trade_data, market_data_snapshot)
             asset_obj = order_management_snapshot.get("non_zero_balances", {}).get(asset)
 
-            # ✅ Update fee cache if changed
+            # ✅ Update fee cache if changed (only when passive MM is enabled)
             pom = self.passive_order_manager
-            if pom is None:
-                self.logger.warning("PassiveOrderManager not initialized yet")
-                return web.json_response(
-                    {"success": False, "message": "Service warming up"},
-                    status=503
-                )
+            if pom is not None:
+                # Ensure fees are loaded once (if your POM supports it)
+                if not getattr(pom, "fee", None) and hasattr(pom, "ensure_fees_loaded"):
+                    await pom.ensure_fees_loaded()
 
-            # Ensure fees are loaded once (if your POM supports it)
-            if not getattr(pom, "fee", None) and hasattr(pom, "ensure_fees_loaded"):
-                await pom.ensure_fees_loaded()
-
-            try:
-                new_rates = await self.coinbase_api.get_fee_rates()
-                old_maker = (pom.fee or {}).get("maker")
-                new_maker = Decimal(str(new_rates.get("maker"))) if "maker" in new_rates else None
-                if new_maker is not None and (old_maker is None or new_maker != old_maker):
-                    await pom.set_fee_cache(new_rates)
-                    self.fee_rates = pom.fee
-            except Exception as e:
-                self.logger.debug(f"Fee refresh skipped: {e}")
+                try:
+                    new_rates = await self.coinbase_api.get_fee_rates()
+                    old_maker = (pom.fee or {}).get("maker")
+                    new_maker = Decimal(str(new_rates.get("maker"))) if "maker" in new_rates else None
+                    if new_maker is not None and (old_maker is None or new_maker != old_maker):
+                        await pom.set_fee_cache(new_rates)
+                        self.fee_rates = pom.fee
+                except Exception as e:
+                    self.logger.debug(f"Fee refresh skipped: {e}")
 
             # ✅ Order size validation
             _, _, base_value = self.calculate_order_size_fiat(
