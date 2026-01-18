@@ -193,12 +193,14 @@ class WebHookManager:
             )
 
             # ✅ Correct handling of order_amount_fiat
+            # Keep as None if not provided - build_order_data will use trigger-specific sizing
             raw_order_amount = request_json.get("order_amount_fiat")
             if raw_order_amount is not None:
                 order_amount_fiat = Decimal(str(raw_order_amount))
             else:
-                # Fallback to default bot-configured order size
-                order_amount_fiat = getattr(self, "_order_size_fiat", Decimal("0"))
+                # Leave as None to allow trigger-specific order sizing in build_order_data
+                # build_order_data will call get_order_size_for_trigger() if None
+                order_amount_fiat = None
 
             # ✅ Test mode detection (centralized flag for downstream use)
             trigger = request_json.get("trigger")
