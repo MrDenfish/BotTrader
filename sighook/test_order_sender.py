@@ -62,7 +62,8 @@ async def send_test_order(
             "Buy Score": 3.5 if side.lower() == "buy" else 0.0,
             "Sell Score": 0.0 if side.lower() == "buy" else 3.5
         },
-        "order_amount_fiat": size if side.lower() == "buy" else None,
+        # ✅ For ROC triggers, send None to test trigger-specific sizing
+        "order_amount_fiat": None if trigger.lower().startswith("roc") else (size if side.lower() == "buy" else None),
         "base_avail_to_trade": 0.001 if side.lower() == "sell" else 0.0,
         "price": None,  # Let webhook container determine market price
         "verified": "valid",
