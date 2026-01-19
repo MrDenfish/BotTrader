@@ -1192,6 +1192,43 @@ class WebhookListener:
         if s.startswith("websocket-"): return "websocket"
         return None
 
+    def _parse_trigger_from_client_order_id(self, coid: str | None) -> dict | None:
+        """
+        Extract trigger from client_order_id format: {TRIGGER}-{SYMBOL}-{UUID}
+        Examples:
+          - "ROC_MOMO_24H-BTC-abc123" → {"trigger": "roc_momo_24h"}
+          - "SCORE-ETH-def456" → {"trigger": "score"}
+        Returns None if format doesn't match or is legacy format.
+        """
+        if not coid:
+            return None
+
+        try:
+            parts = str(coid).split("-", 2)  # Split into max 3 parts
+            if len(parts) < 3:
+                # Old format or invalid
+                return None
+
+            trigger_type = parts[0].lower()
+
+            # Validate it looks like a trigger (not a source name)
+            # Old sources: "webhook", "PassiveMM", "sighook", "websocket", "position_monitor"
+            # New triggers: "ROC_MOMO", "SCORE", "PASSIVE_BUY", "PROFIT", "LOSS", etc.
+            old_sources = {"webhook", "passivemm", "sighook", "websocket", "position_monitor"}
+
+            if trigger_type in old_sources:
+                # This is old format, not a trigger
+                return None
+
+            return {
+                "trigger": trigger_type,
+                "trigger_note": f"from client_order_id: {coid}"
+            }
+
+        except Exception as e:
+            self.logger.debug(f"Failed to parse trigger from client_order_id '{coid}': {e}")
+            return None
+
     async def reconcile_with_rest_api(self, limit: int = 500):
         logger = self.logger
         coinbase_api = self.coinbase_api
@@ -1297,6 +1334,33 @@ class WebhookListener:
                 else:
                     _source = self._infer_origin_from_client_order_id(order.get("client_order_id")) or "unknown"
 
+                # ✅ TRIGGER RESOLUTION (priority order):
+                # 1. Parse from client_order_id (primary - contains strategy trigger)
+                # 2. Retrieve from strategy_metadata_cache (for recent bot-placed orders)
+                # 3. Default to order_type (external orders or cache miss)
+
+                client_order_id = order.get("client_order_id")
+                parsed_trigger = self._parse_trigger_from_client_order_id(client_order_id)
+
+                if parsed_trigger:
+                    _trigger = parsed_trigger
+                else:
+                    # Check strategy_metadata_cache for trigger metadata
+                    cached_trigger = None
+                    try:
+                        cache = self.shared_data_manager.market_data.get('strategy_metadata_cache', {})
+                        if symbol in cache:
+                            cached_trigger_val = cache[symbol].get('trigger')
+                            if cached_trigger_val:
+                                cached_trigger = {
+                                    "trigger": cached_trigger_val,
+                                    "trigger_note": "from strategy_metadata_cache"
+                                }
+                    except Exception as e:
+                        self.logger.debug(f"Could not retrieve cached trigger for {symbol}: {e}")
+
+                    _trigger = cached_trigger if cached_trigger else {"trigger": order.get("order_type", "market")}
+
                 trade_data = {
                     "order_id": order_id,
                     "parent_id": parent_id,
@@ -1308,7 +1372,7 @@ class WebhookListener:
                     "amount": str(filled_size) if filled_size is not None else "",
                     "status": "filled",
                     "order_time": order_time,
-                    "trigger": {"trigger": order.get("order_type", "market")},
+                    "trigger": _trigger,
                     "source": _source,
                     "total_fees": order.get("total_fees"),
                     "gross_override": gross_override,
