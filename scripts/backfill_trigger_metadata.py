@@ -67,7 +67,7 @@ async def main(dry_run: bool = True):
     """Backfill trigger metadata for historical trades."""
 
     config = CentralConfig()
-    db_manager = DatabaseSessionManager(config)
+    db_manager = DatabaseSessionManager(config.db_url)
 
     # Use the REST client from config directly
     rest_client = config.rest_client
