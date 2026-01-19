@@ -326,6 +326,10 @@ class WebSocketMarketManager:
         """Builds a normalized trade dictionary from order data."""
         order_id = order.get("order_id")
         symbol = order.get("product_id")
+        client_order_id = order.get("client_order_id", "")
+
+        self.logger.debug(f"[BUILD_TRADE_DICT] {symbol} {order_id} | client_order_id='{client_order_id}' | side={side}")
+
         order_type = order.get("order_type") or "market"
 
         # Prefer avg/limit/price in that order, same as before
@@ -399,6 +403,9 @@ class WebSocketMarketManager:
         """Builds a fill trade dict from individual fill record."""
         symbol = order.get("product_id")
         fill_order_id = f"{base_id}-FILL-{index}"
+        client_order_id = order.get("client_order_id", "")
+
+        self.logger.debug(f"[BUILD_FILL_DICT] {symbol} {fill_order_id} | client_order_id='{client_order_id}' | side={side}")
 
         fill_time = fill.get("trade_time") or order.get("event_time")
         amount = float(fill.get("size") or 0)
