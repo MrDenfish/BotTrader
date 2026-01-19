@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from Api_manager.coinbase_api import CoinbaseAPI
-from Config.config_manager import ConfigManager
+from Config.config_manager import CentralConfig
 from SharedDataManager.database_session_manager import DatabaseSessionManager
 from TableModels.trade_records import TradeRecord
 
@@ -67,7 +67,7 @@ def parse_trigger_from_client_order_id(client_order_id: str) -> Optional[dict]:
 async def main(dry_run: bool = True):
     """Backfill trigger metadata for historical trades."""
 
-    config = ConfigManager()
+    config = CentralConfig()
     api = CoinbaseAPI(config)
     db_manager = DatabaseSessionManager(config)
 
