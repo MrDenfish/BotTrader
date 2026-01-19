@@ -23,7 +23,6 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from Api_manager.coinbase_api import CoinbaseAPI
 from Config.config_manager import CentralConfig
 from database_manager.database_session_manager import DatabaseSessionManager
 from TableModels.trade_record import TradeRecord
@@ -68,8 +67,10 @@ async def main(dry_run: bool = True):
     """Backfill trigger metadata for historical trades."""
 
     config = CentralConfig()
-    api = CoinbaseAPI(config)
     db_manager = DatabaseSessionManager(config)
+
+    # Use the REST client from config directly
+    rest_client = config.rest_client
 
     print(f"🔍 Starting trigger metadata backfill (dry_run={dry_run})")
     print("-" * 60)
@@ -98,8 +99,10 @@ async def main(dry_run: bool = True):
 
     # Fetch corresponding orders from Coinbase
     print("📥 Fetching order details from Coinbase API...")
-    params = {'limit': 500, 'order_status': ['FILLED']}
-    response = await api.get_historical_orders_batch(params=params)
+    response = rest_client.list_orders(
+        order_status='FILLED',
+        limit=500
+    )
     orders = response.get('orders', [])
 
     # Create order lookup by order_id
