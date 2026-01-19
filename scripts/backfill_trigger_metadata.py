@@ -103,10 +103,26 @@ async def main(dry_run: bool = True):
         order_status='FILLED',
         limit=500
     )
-    orders = response.get('orders', [])
 
-    # Create order lookup by order_id
-    order_lookup = {o['order_id']: o for o in orders}
+    # Extract orders from response object
+    if hasattr(response, 'orders'):
+        orders = response.orders
+    elif hasattr(response, '__dict__'):
+        orders = response.__dict__.get('orders', [])
+    else:
+        orders = []
+
+    # Create order lookup by order_id (handle both dict and object formats)
+    order_lookup = {}
+    for o in orders:
+        if isinstance(o, dict):
+            order_id = o.get('order_id')
+        else:
+            order_id = getattr(o, 'order_id', None)
+
+        if order_id:
+            order_lookup[order_id] = o
+
     print(f"Retrieved {len(orders)} orders from Coinbase\n")
 
     # Process each broken trade
@@ -127,8 +143,12 @@ async def main(dry_run: bool = True):
             missing_count += 1
             continue
 
-        # Parse trigger from client_order_id
-        client_order_id = order.get('client_order_id')
+        # Parse trigger from client_order_id (handle both dict and object)
+        if isinstance(order, dict):
+            client_order_id = order.get('client_order_id')
+        else:
+            client_order_id = getattr(order, 'client_order_id', None)
+
         new_trigger = parse_trigger_from_client_order_id(client_order_id)
 
         if not new_trigger:
