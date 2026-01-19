@@ -278,7 +278,12 @@ class WebSocketMarketManager:
             Trigger dict if successfully parsed, None otherwise
         """
         client_order_id = order.get("client_order_id", "")
+        symbol = order.get("product_id", "UNKNOWN")
+
+        self.logger.debug(f"[TRIGGER_PARSE] {symbol}: client_order_id='{client_order_id}'")
+
         if not client_order_id:
+            self.logger.debug(f"[TRIGGER_PARSE] {symbol}: No client_order_id found")
             return None
 
         try:
