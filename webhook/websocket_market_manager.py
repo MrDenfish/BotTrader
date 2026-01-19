@@ -340,10 +340,32 @@ class WebSocketMarketManager:
                 self.logger.exception("find_latest_unlinked_buy_id failed for %s: %s", symbol, e)
                 parent_id = None
 
-        # ✅ Parse trigger from client_order_id (primary method for trigger preservation)
-        # Falls back to order_type if parsing fails
+        # ✅ TRIGGER RESOLUTION (priority order):
+        # 1. Parse from client_order_id (primary - survives restarts)
+        # 2. Retrieve from strategy_metadata_cache (for bot-placed orders)
+        # 3. Default to order_type (external orders or cache miss)
+
         parsed_trigger = self._parse_trigger_from_client_order_id(order)
-        trigger = parsed_trigger if parsed_trigger else {"trigger": order_type}
+
+        if parsed_trigger:
+            trigger = parsed_trigger
+        else:
+            # Check strategy_metadata_cache for trigger metadata
+            cached_trigger = None
+            try:
+                cache = self.shared_data_manager.market_data.get('strategy_metadata_cache', {})
+                if symbol in cache:
+                    cached_trigger_val = cache[symbol].get('trigger')
+                    if cached_trigger_val:
+                        cached_trigger = {
+                            "trigger": cached_trigger_val,
+                            "trigger_note": "from strategy_metadata_cache"
+                        }
+                        self.logger.debug(f"✅ Trigger retrieved from strategy_metadata_cache: {cached_trigger_val}")
+            except Exception as e:
+                self.logger.debug(f"Could not retrieve cached trigger for {symbol}: {e}")
+
+            trigger = cached_trigger if cached_trigger else {"trigger": order_type}
 
         return {
             "order_id": order_id,
@@ -389,8 +411,9 @@ class WebSocketMarketManager:
 
         # ✅ TRIGGER RESOLUTION (priority order):
         # 1. Parse from client_order_id (primary - survives restarts, no database needed)
-        # 2. Retrieve from in-memory cache (backwards compat for old format orders)
-        # 3. Default to "websocket" (external orders or cache miss)
+        # 2. Retrieve from strategy_metadata_cache (for bot-placed orders)
+        # 3. Retrieve from in-memory cache (backwards compat for old format orders)
+        # 4. Default to "websocket" (external orders or cache miss)
 
         parsed_trigger = self._parse_trigger_from_client_order_id(order)
 
@@ -399,25 +422,43 @@ class WebSocketMarketManager:
             trigger = parsed_trigger
             self.logger.debug(f"✅ Trigger decoded from client_order_id: {trigger['trigger']}")
         else:
-            # Old format order - try cache fallback
-            trigger_cache = (self.shared_data_manager.order_management or {}).get("order_triggers", {})
-            cached_trigger = trigger_cache.get(base_id)
+            # Try strategy_metadata_cache first
+            cached_trigger = None
+            try:
+                cache = self.shared_data_manager.market_data.get('strategy_metadata_cache', {})
+                if symbol in cache:
+                    cached_trigger_val = cache[symbol].get('trigger')
+                    if cached_trigger_val:
+                        cached_trigger = {
+                            "trigger": cached_trigger_val,
+                            "trigger_note": "from strategy_metadata_cache"
+                        }
+                        self.logger.debug(f"✅ Trigger retrieved from strategy_metadata_cache: {cached_trigger_val}")
+            except Exception as e:
+                self.logger.debug(f"Could not retrieve cached trigger for {symbol}: {e}")
 
             if cached_trigger:
                 trigger = cached_trigger
-                # Clean up the cache entry after using it to prevent memory growth
-                try:
-                    trigger_cache.pop(base_id, None)
-                    order_mgmt = self.shared_data_manager.order_management or {}
-                    order_mgmt["order_triggers"] = trigger_cache
-                    await self.shared_data_manager.set_order_management(order_mgmt)
-                    self.logger.debug(f"✅ Trigger retrieved from cache: {trigger.get('trigger')}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to clean up cached trigger for {base_id}: {e}")
             else:
-                # Default for orders we don't have trigger info for
-                trigger = {"trigger": "websocket", "trigger_note": "trigger unknown (order placed externally or before session start)"}
-                self.logger.debug(f"⚠️ No trigger found, using default: websocket")
+                # Old format order - try order_triggers cache fallback
+                trigger_cache = (self.shared_data_manager.order_management or {}).get("order_triggers", {})
+                legacy_cached_trigger = trigger_cache.get(base_id)
+
+                if legacy_cached_trigger:
+                    trigger = legacy_cached_trigger
+                    # Clean up the cache entry after using it to prevent memory growth
+                    try:
+                        trigger_cache.pop(base_id, None)
+                        order_mgmt = self.shared_data_manager.order_management or {}
+                        order_mgmt["order_triggers"] = trigger_cache
+                        await self.shared_data_manager.set_order_management(order_mgmt)
+                        self.logger.debug(f"✅ Trigger retrieved from legacy cache: {trigger.get('trigger')}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to clean up cached trigger for {base_id}: {e}")
+                else:
+                    # Default for orders we don't have trigger info for
+                    trigger = {"trigger": "websocket", "trigger_note": "trigger unknown (order placed externally or before session start)"}
+                    self.logger.debug(f"⚠️ No trigger found, using default: websocket")
 
         return {
             "order_id": fill_order_id,
