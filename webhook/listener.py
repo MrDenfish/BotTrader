@@ -1506,7 +1506,22 @@ class WebhookListener:
                                 continue
 
                             order_type = (o.get("order_type") or "").lower() or None
-                            trigger = _derive_trigger(o.get("trigger_status"), order_type)
+
+                            # ✅ Check strategy_metadata_cache for correct trigger before deriving
+                            cached_trigger = None
+                            try:
+                                cache = self.shared_data_manager.market_data.get('strategy_metadata_cache', {})
+                                if symbol in cache:
+                                    cached_trigger = cache[symbol].get('trigger')
+                            except Exception as e:
+                                self.logger.debug(f"Could not retrieve cached trigger for {symbol}: {e}")
+
+                            # Use cached trigger if available, otherwise derive from Coinbase data
+                            if cached_trigger:
+                                trigger = cached_trigger
+                            else:
+                                trigger = _derive_trigger(o.get("trigger_status"), order_type)
+
                             source = _infer_source(o.get("client_order_id", ""), o.get("source", ""))
 
                             # Prefer earliest credible time
