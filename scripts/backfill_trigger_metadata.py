@@ -25,8 +25,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from Api_manager.coinbase_api import CoinbaseAPI
 from Config.config_manager import CentralConfig
-from SharedDataManager.database_session_manager import DatabaseSessionManager
-from TableModels.trade_records import TradeRecord
+from database_manager.database_session_manager import DatabaseSessionManager
+from TableModels.trade_record import TradeRecord
 
 
 def parse_trigger_from_client_order_id(client_order_id: str) -> Optional[dict]:
