@@ -25,11 +25,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Service definitions
-declare -A SERVICES
-SERVICES[webhook]="webhook"
-SERVICES[sighook]="sighook"
-SERVICES[report]="report"
+# Service definitions (list format for compatibility with older bash)
+VALID_SERVICES="webhook sighook report"
+
+is_valid_service() {
+    local service=$1
+    echo "$VALID_SERVICES" | grep -q "\b$service\b"
+}
 
 # Function to print colored output
 print_info() {
@@ -118,7 +120,7 @@ deploy_service() {
 verify_all_services() {
     print_header "VERIFYING ALL SERVICE VERSIONS"
 
-    for service in "${!SERVICES[@]}"; do
+    for service in $VALID_SERVICES; do
         echo ""
         print_info "Checking $service..."
         verify_remote_version "$service"
@@ -146,21 +148,21 @@ main() {
     # Validate service name
     if [[ -z "$service_name" ]]; then
         print_error "Usage: $0 [service_name] [--verify-only]"
-        print_info "Available services: ${!SERVICES[@]} all"
+        print_info "Available services: $VALID_SERVICES all"
         print_info "Use --verify-only to check current deployed versions"
         exit 1
     fi
 
     # Deploy service(s)
     if [[ "$service_name" == "all" ]]; then
-        for service in "${!SERVICES[@]}"; do
+        for service in $VALID_SERVICES; do
             deploy_service "$service"
         done
-    elif [[ -n "${SERVICES[$service_name]}" ]]; then
+    elif is_valid_service "$service_name"; then
         deploy_service "$service_name"
     else
         print_error "Unknown service: $service_name"
-        print_info "Available services: ${!SERVICES[@]} all"
+        print_info "Available services: $VALID_SERVICES all"
         exit 1
     fi
 
