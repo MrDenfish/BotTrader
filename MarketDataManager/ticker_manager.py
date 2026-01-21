@@ -289,8 +289,15 @@ class TickerManager:
 
             for account in accounts_response.accounts:
                 asset = account.currency
-                available_balance = Decimal(str(account.available_balance.value))
-                hold_balance = Decimal(str(account.hold.value))
+
+                # Handle both dict and object formats for balance fields
+                if isinstance(account.available_balance, dict):
+                    available_balance = Decimal(str(account.available_balance.get('value', '0')))
+                    hold_balance = Decimal(str(account.hold.get('value', '0')))
+                else:
+                    available_balance = Decimal(str(account.available_balance.value))
+                    hold_balance = Decimal(str(account.hold.value))
+
                 total_balance_crypto = available_balance + hold_balance
 
                 # Skip if below minimum threshold (except USD)
