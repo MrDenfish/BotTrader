@@ -68,7 +68,8 @@ verify_remote_version() {
     local service=$1
     print_info "Checking deployed version of $service..."
 
-    ssh $REMOTE_HOST "docker logs $service --tail 100 2>&1" | grep -E "Version:|Commit:|Branch:|Started:|🚀" | head -10 || {
+    # Use full logs and search for banner (more reliable than --tail with busy services)
+    ssh $REMOTE_HOST "docker logs $service 2>&1" | grep -A 10 "🚀.*SERVICE STARTING" | tail -12 || {
         print_warning "Could not find version info in logs (service may not have started yet)"
         return 1
     }
