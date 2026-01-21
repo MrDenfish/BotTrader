@@ -2343,6 +2343,16 @@ def send_email(html, csv_bytes):
 # Report orchestration, error handling, output routing
 
 def main():
+    # Print version banner before anything else
+    from utils.version import format_version_banner
+    import sys
+
+    version_banner = format_version_banner("report", {
+        "Environment": os.getenv("ENV", "unknown"),
+        "Python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+    })
+    print(version_banner)
+
     conn = get_db_conn()
     detect_notes = []
     fast_html = ""

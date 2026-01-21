@@ -22,6 +22,9 @@
 # docker/Dockerfile.report
 FROM python:3.11-slim
 
+# Cache buster - forces rebuild from this point when --build-arg changes
+ARG CACHE_BUST=1
+
 # system deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl ca-certificates tini \

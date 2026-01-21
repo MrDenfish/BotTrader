@@ -695,6 +695,22 @@ def make_webhook_tasks(*, listener, logger_manager, websocket_manager, shared_da
     return tasks
 
 async def app_boot():
+    # Print version banner before anything else
+    from utils.version import format_version_banner
+    import sys
+
+    # Determine service name from RUN_MODE environment variable
+    run_mode = os.getenv("RUN_MODE", "unknown")
+    service_name = run_mode if run_mode != "both" else "bot"
+
+    version_banner = format_version_banner(service_name, {
+        "Environment": os.getenv("ENV", "unknown"),
+        "Python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "Docker": "true" if IS_DOCKER else "false",
+    })
+    print(version_banner)
+    startup_logger.info(f"Service starting: {service_name}")
+
     # Start optional helpers as named tasks
     if DebugToggles.WATCHDOG_ENABLED:
         asyncio.create_task(
