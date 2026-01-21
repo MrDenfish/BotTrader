@@ -33,6 +33,16 @@ is_valid_service() {
     echo "$VALID_SERVICES" | grep -q "\b$service\b"
 }
 
+# Map user-friendly name to actual docker-compose service name
+get_compose_service_name() {
+    local service=$1
+    if [[ "$service" == "report" ]]; then
+        echo "report-job"
+    else
+        echo "$service"
+    fi
+}
+
 # Function to print colored output
 print_info() {
     echo -e "${BLUE}ℹ️  $1${NC}"
@@ -78,6 +88,7 @@ verify_remote_version() {
 # Function to deploy a single service
 deploy_service() {
     local service=$1
+    local compose_service=$(get_compose_service_name "$service")
 
     print_header "DEPLOYING $service TO AWS"
 
@@ -99,8 +110,8 @@ deploy_service() {
     # Step 3: Build and deploy
     print_info "Step 3/4: Building and deploying $service..."
     ssh $REMOTE_HOST "cd $REMOTE_PATH && \
-        docker compose -f $COMPOSE_FILE build $service && \
-        docker compose -f $COMPOSE_FILE up -d $service" || {
+        docker compose -f $COMPOSE_FILE build $compose_service && \
+        docker compose -f $COMPOSE_FILE up -d $compose_service" || {
         print_error "Failed to build/deploy $service"
         return 1
     }
@@ -111,7 +122,7 @@ deploy_service() {
     sleep 5
 
     print_info "Verifying deployed version..."
-    verify_remote_version "$service"
+    verify_remote_version "$compose_service"
 
     print_success "Deployment of $service complete!"
     echo ""
