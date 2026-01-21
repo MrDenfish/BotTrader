@@ -2,7 +2,7 @@
 
 **Date**: January 4, 2026
 **Purpose**: Comprehensive guide to how order sizing works across all order types
-**Related**: [ORDER_FLOW_DOCUMENTATION.md](ORDER_FLOW_DOCUMENTATION.md), [ARCHITECTURE_DEEP_DIVE.md](active/architecture/ARCHITECTURE_DEEP_DIVE.md)
+**Related**: [ORDER_FLOW_DOCUMENTATION.md](./ORDER_FLOW_DOCUMENTATION.md), [ARCHITECTURE_DEEP_DIVE.md](../architecture/ARCHITECTURE_DEEP_DIVE.md)
 
 ---
 

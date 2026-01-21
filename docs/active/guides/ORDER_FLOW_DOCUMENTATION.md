@@ -2,7 +2,7 @@
 
 **Date**: December 30, 2025
 **Purpose**: Comprehensive guide to all order creation paths and their metadata flows
-**Related**: [ARCHITECTURE_DEEP_DIVE.md](active/architecture/ARCHITECTURE_DEEP_DIVE.md), [LINKAGE_INTEGRATION_DEPLOYMENT.md](LINKAGE_INTEGRATION_DEPLOYMENT.md)
+**Related**: [ARCHITECTURE_DEEP_DIVE.md](../architecture/ARCHITECTURE_DEEP_DIVE.md), [LINKAGE_INTEGRATION_DEPLOYMENT.md](../../archive/sessions/LINKAGE_INTEGRATION_DEPLOYMENT.md)
 
 ---
 
