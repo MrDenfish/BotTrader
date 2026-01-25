@@ -341,7 +341,22 @@ class PositionMonitor:
         """
         Main entry point - check all open positions and place exits if thresholds met.
         Called from asset_monitor sweep cycle.
+
+        🚨 EMERGENCY FIX (2026-01-25): DISABLED DUE TO 0% WIN RATE BUG
+        - Position monitor has 0% win rate across all strategies (18 exits, 0 wins)
+        - Accounts for 73% of total losses (-$10.98 out of -$14.94)
+        - Suspected bug in avg_entry_price calculation from API unrealized_pnl
+        - Will re-enable after bug fix and testing
+        - Rearm_oco will handle all exits temporarily (37.8% win rate, acceptable)
         """
+        self.logger.warning(
+            "[POS_MONITOR] 🚨 EMERGENCY: Position monitor DISABLED due to 0% win rate bug. "
+            "All exits handled by rearm_oco. Will re-enable after bug fix. (2026-01-25)"
+        )
+        return  # Emergency disable - skip all position monitoring
+
+        # ORIGINAL CODE BELOW (DISABLED)
+        # ================================
         # Respect check interval to avoid excessive processing
         now = datetime.now()
         if self.last_check_time:
