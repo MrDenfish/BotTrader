@@ -342,21 +342,13 @@ class PositionMonitor:
         Main entry point - check all open positions and place exits if thresholds met.
         Called from asset_monitor sweep cycle.
 
-        🚨 EMERGENCY FIX (2026-01-25): DISABLED DUE TO 0% WIN RATE BUG
-        - Position monitor has 0% win rate across all strategies (18 exits, 0 wins)
-        - Accounts for 73% of total losses (-$10.98 out of -$14.94)
-        - Suspected bug in avg_entry_price calculation from API unrealized_pnl
-        - Will re-enable after bug fix and testing
-        - Rearm_oco will handle all exits temporarily (37.8% win rate, acceptable)
+        ✅ RE-ENABLED (2026-01-25): Hybrid fix implemented
+        - Now uses trade_records database for ground truth entry prices
+        - Fallback to API with tightened validation (±30% instead of ±100%)
+        - Skips exits if no reliable entry price available
+        - Extensive logging added for monitoring
+        - Previous bug: API unrealized_pnl corruption caused 0% win rate
         """
-        self.logger.warning(
-            "[POS_MONITOR] 🚨 EMERGENCY: Position monitor DISABLED due to 0% win rate bug. "
-            "All exits handled by rearm_oco. Will re-enable after bug fix. (2026-01-25)"
-        )
-        return  # Emergency disable - skip all position monitoring
-
-        # ORIGINAL CODE BELOW (DISABLED)
-        # ================================
         # Respect check interval to avoid excessive processing
         now = datetime.now()
         if self.last_check_time:
@@ -426,6 +418,101 @@ class PositionMonitor:
         except Exception as e:
             self.logger.error(f"[POS_MONITOR] Error in check_positions: {e}", exc_info=True)
 
+    async def _get_avg_entry_price_from_db(self, product_id: str, current_balance: Decimal) -> tuple:
+        """
+        Get average entry price from trade_records database (ground truth).
+
+        This queries actual filled buy orders instead of relying on API unrealized_pnl,
+        which is known to be corrupted.
+
+        Args:
+            product_id: Trading pair (e.g., 'BTC-USD')
+            current_balance: Current total balance in crypto
+
+        Returns:
+            (avg_entry_price, total_quantity_from_db, data_source) tuple
+            - avg_entry_price: Weighted average entry price from DB, or None if unavailable
+            - total_quantity_from_db: Total quantity from DB buy orders
+            - data_source: 'database' or None
+        """
+        try:
+            # Access database session manager from shared_data_manager
+            db_session_manager = getattr(self.shared_data_manager, 'db_session_manager', None)
+            if not db_session_manager:
+                self.logger.debug(f"[POS_MONITOR_DB] {product_id}: No database session manager available")
+                return None, Decimal('0'), None
+
+            # Query trade_records for all buy orders for this product
+            # Get only filled buy orders with remaining_size tracking
+            from sqlalchemy import text
+            query = text("""
+                SELECT
+                    order_id,
+                    price,
+                    size,
+                    COALESCE(remaining_size, size) as remaining_qty,
+                    order_time
+                FROM trade_records
+                WHERE symbol = :symbol
+                  AND side = 'buy'
+                  AND status = 'FILLED'
+                  AND COALESCE(remaining_size, 0) > 0
+                ORDER BY order_time ASC;
+            """)
+
+            async with db_session_manager.async_session() as session:
+                result = await session.execute(query, {"symbol": product_id})
+                buy_orders = result.fetchall()
+
+            if not buy_orders:
+                self.logger.debug(
+                    f"[POS_MONITOR_DB] {product_id}: No open buy orders found in database"
+                )
+                return None, Decimal('0'), None
+
+            # Calculate weighted average entry price
+            total_cost = Decimal('0')
+            total_quantity = Decimal('0')
+
+            for row in buy_orders:
+                qty = Decimal(str(row.remaining_qty))
+                price_dec = Decimal(str(row.price))
+                total_cost += qty * price_dec
+                total_quantity += qty
+
+            if total_quantity == 0:
+                self.logger.warning(
+                    f"[POS_MONITOR_DB] {product_id}: Database shows 0 remaining quantity"
+                )
+                return None, Decimal('0'), None
+
+            avg_entry_price_db = total_cost / total_quantity
+
+            # Validate quantity matches current balance (within 1% tolerance)
+            qty_diff_pct = abs(total_quantity - current_balance) / current_balance if current_balance > 0 else Decimal('1')
+
+            if qty_diff_pct > Decimal('0.01'):
+                self.logger.warning(
+                    f"[POS_MONITOR_DB] {product_id}: Quantity mismatch | "
+                    f"DB: {total_quantity:.8f}, Current: {current_balance:.8f}, "
+                    f"Diff: {qty_diff_pct:.2%} - using DB data anyway"
+                )
+
+            self.logger.info(
+                f"[POS_MONITOR_DB] {product_id}: ✅ Database entry price | "
+                f"avg_entry=${avg_entry_price_db:.6f}, qty={total_quantity:.8f}, "
+                f"orders={len(buy_orders)}"
+            )
+
+            return avg_entry_price_db, total_quantity, 'database'
+
+        except Exception as e:
+            self.logger.error(
+                f"[POS_MONITOR_DB] {product_id}: Error querying database for entry price: {e}",
+                exc_info=True
+            )
+            return None, Decimal('0'), None
+
     async def _check_position(self, symbol: str, position_data: Dict):
         """
         Check a single position and place exit if thresholds met.
@@ -442,55 +529,92 @@ class PositionMonitor:
             # Construct product_id (assuming USD quote)
             product_id = f"{symbol}-USD"
 
-            # Get unrealized P&L to calculate average entry price
-            unrealized_pnl_data = position_data.get('unrealized_pnl', {})
-            if isinstance(unrealized_pnl_data, dict):
-                unrealized_pnl = Decimal(str(unrealized_pnl_data.get('value', 0)))
-            else:
-                unrealized_pnl = Decimal(str(unrealized_pnl_data or 0))
-
             # Fetch current price from bid_ask_spread in market_data
             market_data = self.shared_data_manager.market_data or {}
             bid_ask_spread = market_data.get('bid_ask_spread', {})
             bid_ask = bid_ask_spread.get(product_id, {})
             current_bid = Decimal(str(bid_ask.get('bid', 0)))
             current_ask = Decimal(str(bid_ask.get('ask', 0)))
+
+            # Check bid/ask data staleness
+            bid_ask_timestamp = bid_ask.get('timestamp')
+            if bid_ask_timestamp:
+                from datetime import datetime, timezone
+                age_seconds = (datetime.now(timezone.utc) - bid_ask_timestamp).total_seconds()
+                if age_seconds > 60:
+                    self.logger.warning(
+                        f"[POS_MONITOR] {product_id}: ⚠️ STALE BID/ASK DATA "
+                        f"(age: {age_seconds:.0f}s) - skipping exit check"
+                    )
+                    return
+
             # Use mid-price for P&L calculation
             current_price = (current_bid + current_ask) / Decimal('2') if (current_bid > 0 and current_ask > 0) else Decimal('0')
 
-            # Calculate avg_entry_price from unrealized_pnl
-            # Formula: unrealized_pnl = (current_price - avg_entry_price) * balance
-            # Therefore: avg_entry_price = current_price - (unrealized_pnl / balance)
-            if current_price > 0 and total_balance_crypto > 0:
-                avg_entry_price = current_price - (unrealized_pnl / total_balance_crypto)
+            if current_price <= 0:
+                self.logger.debug(
+                    f"[POS_MONITOR] {product_id} skipped: invalid current price (${current_price})"
+                )
+                return
 
-                # CRITICAL FIX: Validate avg_entry_price is reasonable
-                # If avg_entry > 2× current_price or < 0.5× current_price, it's garbage data
-                # This prevents catastrophic exit bugs like SAND-USD (-58% false loss)
-                if avg_entry_price > current_price * Decimal('2') or avg_entry_price < current_price * Decimal('0.5'):
-                    self.logger.warning(
-                        f"[POS_MONITOR] {symbol} INVALID avg_entry from API: "
-                        f"entry={avg_entry_price:.4f}, current={current_price:.4f}, "
-                        f"unrealized_pnl={unrealized_pnl}, balance={total_balance_crypto}. "
-                        f"Using current price as entry (conservative estimate)."
-                    )
-                    # Fallback: assume entry ≈ current price (neutral P&L)
-                    # This prevents false stop-outs but may miss some real losses
-                    avg_entry_price = current_price
-            else:
-                avg_entry_price = Decimal('0')
+            # 🆕 HYBRID FIX: Try database first, fallback to API with tighter validation
+            avg_entry_price = None
+            data_source = None
 
-            # DEBUG: Log fetched price data
-            self.logger.debug(
-                f"[POS_MONITOR] {symbol} calculated prices: "
-                f"avg_entry={avg_entry_price}, current={current_price}, "
-                f"unrealized_pnl={unrealized_pnl}, balance={total_balance_crypto}"
+            # Step 1: Try to get entry price from database (ground truth)
+            avg_entry_price_db, db_quantity, db_source = await self._get_avg_entry_price_from_db(
+                product_id, total_balance_crypto
             )
 
-            if avg_entry_price <= 0 or current_price <= 0:
-                self.logger.debug(
-                    f"[POS_MONITOR] {symbol} skipped: invalid prices "
-                    f"(entry={avg_entry_price}, current={current_price})"
+            if avg_entry_price_db and avg_entry_price_db > 0:
+                avg_entry_price = avg_entry_price_db
+                data_source = 'database'
+                self.logger.info(
+                    f"[POS_MONITOR] {product_id}: Using DATABASE entry price | "
+                    f"entry=${avg_entry_price:.6f}, source={data_source}"
+                )
+            else:
+                # Step 2: Fallback to API with TIGHTENED validation
+                unrealized_pnl_data = position_data.get('unrealized_pnl', {})
+                if isinstance(unrealized_pnl_data, dict):
+                    unrealized_pnl = Decimal(str(unrealized_pnl_data.get('value', 0)))
+                else:
+                    unrealized_pnl = Decimal(str(unrealized_pnl_data or 0))
+
+                if total_balance_crypto > 0:
+                    # Calculate from API unrealized_pnl
+                    # Formula: avg_entry_price = current_price - (unrealized_pnl / balance)
+                    avg_entry_price_api = current_price - (unrealized_pnl / total_balance_crypto)
+
+                    # 🆕 TIGHTENED VALIDATION: ±30% instead of ±100%
+                    # If avg_entry > 1.3× current OR < 0.7× current, reject
+                    if avg_entry_price_api > current_price * Decimal('1.3') or avg_entry_price_api < current_price * Decimal('0.7'):
+                        self.logger.error(
+                            f"[POS_MONITOR] {product_id}: ❌ NO RELIABLE ENTRY PRICE | "
+                            f"API_entry=${avg_entry_price_api:.6f}, current=${current_price:.6f}, "
+                            f"unrealized_pnl=${unrealized_pnl:.2f}, balance={total_balance_crypto:.8f} | "
+                            f"Database unavailable, API validation FAILED (±30% threshold). "
+                            f"⚠️ SKIPPING EXIT CHECK - cannot safely determine P&L"
+                        )
+                        return  # DO NOT EXIT without reliable entry data
+
+                    # Validation passed - use API data with warning
+                    avg_entry_price = avg_entry_price_api
+                    data_source = 'api_validated'
+                    self.logger.warning(
+                        f"[POS_MONITOR] {product_id}: Using API entry price (DB unavailable) | "
+                        f"entry=${avg_entry_price:.6f}, current=${current_price:.6f}, "
+                        f"unrealized_pnl=${unrealized_pnl:.2f}, source={data_source}"
+                    )
+                else:
+                    self.logger.error(
+                        f"[POS_MONITOR] {product_id}: Zero balance, cannot calculate entry price"
+                    )
+                    return
+
+            if avg_entry_price <= 0:
+                self.logger.error(
+                    f"[POS_MONITOR] {product_id}: Invalid avg_entry_price=${avg_entry_price:.6f}, skipping"
                 )
                 return
 
@@ -518,11 +642,14 @@ class PositionMonitor:
             exit_revenue_per_unit = current_price * (Decimal('1') - exit_fee_pct)
             pnl_pct = (exit_revenue_per_unit - entry_cost_per_unit) / entry_cost_per_unit
 
-            # Log position status with both raw and fee-aware P&L
-            self.logger.debug(
-                f"[POS_MONITOR] {product_id}: P&L_raw={pnl_pct_raw:.2%}, P&L_net={pnl_pct:.2%} "
-                f"(entry=${avg_entry_price:.4f}, current=${current_price:.4f}, "
-                f"balance={total_balance_crypto:.6f}, fees=maker:{entry_fee_pct:.2%}/taker:{exit_fee_pct:.2%})"
+            # 🆕 ENHANCED LOGGING: Include data source and detailed breakdown
+            self.logger.info(
+                f"[POS_MONITOR] {product_id}: P&L Analysis | "
+                f"Entry=${avg_entry_price:.6f} (source:{data_source}), "
+                f"Current=${current_price:.6f}, "
+                f"P&L_raw={pnl_pct_raw:+.2%}, P&L_net={pnl_pct:+.2%}, "
+                f"Balance={total_balance_crypto:.8f}, "
+                f"Fees=maker:{entry_fee_pct:.3%}/taker:{exit_fee_pct:.3%}"
             )
 
             # ✅ Task 3: Check for active bracket orders (coordination)
