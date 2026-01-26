@@ -209,11 +209,19 @@ avg_entry_price = current_price - (unrealized_pnl / total_balance_crypto)
 
 ## Section 7: Files Modified
 
-### Emergency Fix Files
+### Emergency Fix Files (Jan 25, 2026 - Initial)
 - `MarketDataManager/position_monitor.py` - Disabled check_positions()
 - `sighook/signal_manager.py` - Disabled ROC_MOMO_20M and ROC_MOMO_24H detection
 - `.env` - Verified Test 2 parameters (no changes needed if already deployed)
 - `.claude/EMERGENCY_FIXES_2026-01-25.md` - This tracking document
+
+### Hybrid Fix Deployment (Jan 26, 2026 - 01:30 AM)
+- `MarketDataManager/position_monitor.py` - Implemented hybrid entry price calculation
+  - New method: `_get_avg_entry_price_from_db()` queries actual buy orders
+  - Modified: `_check_position()` uses database first, API fallback with tight validation
+  - Enhanced: All P&L logging includes data source
+  - Re-enabled: Position monitor active with extensive logging
+- `.claude/sessions/2026-01-25-2315-position-monitor-bug-investigation.md` - Full investigation doc
 
 ### Documentation Updates
 - `.claude/sessions/2026-01-20-0218-performance-evaluation.md` - Updated with findings
@@ -283,6 +291,6 @@ docker compose -f docker-compose.aws.yml ps
 
 ---
 
-**Document Status**: 🚨 IN PROGRESS
-**Last Updated**: January 25, 2026 - Initial creation
-**Next Update**: After deployment completion
+**Document Status**: ✅ HYBRID FIX DEPLOYED - Monitoring Phase
+**Last Updated**: January 26, 2026 01:35 AM - Hybrid fix deployed to production
+**Next Session**: Monitor position_monitor logs and re-run performance analysis after 24-48 hours
