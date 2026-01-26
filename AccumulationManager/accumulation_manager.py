@@ -178,12 +178,42 @@ class AccumulationManager:
     async def _place_accumulation_order(self, amount_usd: Decimal) -> Optional[dict]:
         product_id = self.accumulation_symbol
         try:
-            order = await self.exchange.place_market_order_usd(
-                product_id=product_id,
-                usd_amount=float(amount_usd),
-                post_only=False
-            )
-            return order
+            # Generate unique client order ID
+            from uuid import uuid4
+            client_order_id = f"accum-{uuid4()}"
+
+            # Construct market order payload for Coinbase Advanced Trade API
+            order_payload = {
+                "client_order_id": client_order_id,
+                "product_id": product_id,
+                "side": "BUY",
+                "order_configuration": {
+                    "market_market_ioc": {
+                        "quote_size": str(amount_usd)  # USD amount to spend
+                    }
+                }
+            }
+
+            # Place order using exchange's create_order method
+            response = await self.exchange.create_order(order_payload)
+
+            # Check if order was successful
+            if isinstance(response, dict) and response.get("success"):
+                success_response = response.get("success_response", {})
+                order = {
+                    "order_id": success_response.get("order_id"),
+                    "product_id": product_id,
+                    "filled_size": success_response.get("filled_size", "0"),
+                    "avg_fill_price": success_response.get("average_filled_price", "0"),
+                    "status": success_response.get("status", "UNKNOWN")
+                }
+                self.logger.info(f"✅ [Accumulation] Market order placed successfully: {order['order_id']}")
+                return order
+            else:
+                error_msg = response.get("error_response", {}).get("message", str(response))
+                self.logger.error(f"❌ [Accumulation] Order placement failed: {error_msg}")
+                return None
+
         except Exception as e:
             self.logger.error(f"❌ [Accumulation] Order placement failed: {e}")
             return None
