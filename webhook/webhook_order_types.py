@@ -789,9 +789,10 @@ class OrderTypeManager:
                 formatted_price = f"{price:.{order_data.quote_decimal}f}"
                 formatted_amount = f"{amount:.{order_data.base_decimal}f}"
 
-                # ✅ FIX: Disable post_only for position monitor exits to allow immediate fills
-                # Post-only prevents orders that cross the spread, but emergency exits NEED to cross
-                use_post_only = order_data.source != 'position_monitor'
+                # ✅ FIX: Disable post_only for position monitor and websocket protective exits
+                # Post-only prevents orders that cross the spread, but emergency/protective exits NEED to cross
+                # websocket source includes REARM_OCO orders for untracked positions
+                use_post_only = order_data.source not in ('position_monitor', 'websocket')
 
                 # ✅ Extract trigger type for client_order_id encoding
                 # This enables trigger preservation through WebSocket events without database/cache
