@@ -1,0 +1,40 @@
+================================================================================
+SINGLE 180-DAY BACKTEST RUN (Phase 2.3.2)
+================================================================================
+
+Symbol: BTC-USD
+Period: 180 days
+Compression filter: ON
+
+================================================================================
+LOADING DATA
+================================================================================
+
+Data loaded:
+  CSV file: /Users/Manny/Python_Projects/BotTrader/backtest/data/BTC_USD.csv
+  Full data: 523,733 bars (2025-01-31 19:08:00 to 2026-01-31 19:07:00)
+  Window: 258,834 bars (2025-08-04 19:07:00 to 2026-01-31 19:07:00)
+
+================================================================================
+RUNNING BACKTEST
+================================================================================
+
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+Indicators calculated:
+  4h bars: 1080
+  1d bars: 181
+  Aligned 1m bars: 258834
+
+Running strategy...
+  Processing 258834 1m bars...
+
+Traceback (most recent call last):
+  File "/Users/Manny/Python_Projects/BotTrader/backtest/run_single_180d.py", line 206, in <module>
+    run_single_180d(compression_enabled=compression_on)
+  File "/Users/Manny/Python_Projects/BotTrader/backtest/run_single_180d.py", line 141, in run_single_180d
+    engine.strategy.process_bar_1m(
+  File "/Users/Manny/Python_Projects/BotTrader/backtest/strategy_4h_hybrid.py", line 412, in process_bar_1m
+    self.state_occupancy[current_state] += 1
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+KeyError: 'FLAT'

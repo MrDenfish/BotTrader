@@ -1,0 +1,224 @@
+================================================================================
+ROC-SCORE VS DONCHIAN BASELINE COMPARISON (365 DAYS)
+================================================================================
+
+Establishing baseline characteristics for each setup mode...
+
+================================================================================
+
+📊 RUNNING DONCHIAN BASELINE (Phase 2.2)...
+
+
+Backtesting BTC-USD (1m base data)...
+  BTC-USD: 258833 bars (1m)
+  Indicators calculated (4h: 1080 bars, 1D: 181 bars)
+  Processing 258833 1m bars...
+    Processed 10000/258833 bars...
+    Processed 20000/258833 bars...
+    Processed 30000/258833 bars...
+    Processed 40000/258833 bars...
+    Processed 50000/258833 bars...
+    Processed 60000/258833 bars...
+    Processed 70000/258833 bars...
+    Processed 80000/258833 bars...
+    Processed 90000/258833 bars...
+    Processed 100000/258833 bars...
+    Processed 110000/258833 bars...
+    Processed 120000/258833 bars...
+    Processed 130000/258833 bars...
+    Processed 140000/258833 bars...
+    Processed 150000/258833 bars...
+    Processed 160000/258833 bars...
+    Processed 170000/258833 bars...
+    Processed 180000/258833 bars...
+    Processed 190000/258833 bars...
+    Processed 200000/258833 bars...
+    Processed 210000/258833 bars...
+    Processed 220000/258833 bars...
+    Processed 230000/258833 bars...
+    Processed 240000/258833 bars...
+    Processed 250000/258833 bars...
+  ✅ Backtest complete
+
+================================================================================
+DONCHIAN BASELINE RESULTS (365 days)
+================================================================================
+
+
+================================================================================
+BACKTEST RESULTS: BTC-USD
+================================================================================
+Config: Hybrid4hConfig(setup=donchian, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=3.0×fees, tp2=8.0×fees)
+
+Signals: 1
+Entries: 1
+Signal→Entry: 100.0%
+Expired: 0
+
+Trades: 1
+Gross P&L: $-2.53
+Fees: $1.18
+Net P&L: $-3.71
+
+Win Rate: 0.0%
+Profit Factor: 0.00
+Avg Win: $0.00
+Avg Loss: $-3.71
+
+TP1 Hit: 0.0%
+TP2 Hit: 0.0%
+Avg Hold: 5568.0 bars (1m)
+================================================================================
+
+================================================================================
+GATE AUDIT: Signal Frequency Diagnostic
+================================================================================
+
+Gate                                Count    % of 4h bars      Conversion
+--------------------------------------------------------------------------------
+Total 4h bars processed               271          100.0%               -
+↳ Regime filter (EMA200)              118           43.5%               -
+↳ Viability filter (ATR%)              64           23.6%           54.2%
+↳ Setup trigger + compression           1            0.4%            1.6%
+↳ Setup created                         1            0.4%          100.0%
+↳ Entry filled                          0            0.0%            0.0%
+--------------------------------------------------------------------------------
+
+BOTTLENECK ANALYSIS:
+
+🚨 CRITICAL: Entry conversion blocks 100% of signals!
+   This gate passed 0 times out of 271 4h bars.
+
+================================================================================
+
+================================================================================
+
+📊 RUNNING ROC-SCORE BASELINE (Phase 2.3)...
+
+
+Backtesting BTC-USD (1m base data)...
+  BTC-USD: 258833 bars (1m)
+  Indicators calculated (4h: 1080 bars, 1D: 181 bars)
+  Processing 258833 1m bars...
+    Processed 10000/258833 bars...
+    Processed 20000/258833 bars...
+    Processed 30000/258833 bars...
+    Processed 40000/258833 bars...
+    Processed 50000/258833 bars...
+    Processed 60000/258833 bars...
+    Processed 70000/258833 bars...
+    Processed 80000/258833 bars...
+    Processed 90000/258833 bars...
+    Processed 100000/258833 bars...
+    Processed 110000/258833 bars...
+    Processed 120000/258833 bars...
+    Processed 130000/258833 bars...
+    Processed 140000/258833 bars...
+    Processed 150000/258833 bars...
+    Processed 160000/258833 bars...
+    Processed 170000/258833 bars...
+    Processed 180000/258833 bars...
+    Processed 190000/258833 bars...
+    Processed 200000/258833 bars...
+    Processed 210000/258833 bars...
+    Processed 220000/258833 bars...
+    Processed 230000/258833 bars...
+    Processed 240000/258833 bars...
+    Processed 250000/258833 bars...
+  ✅ Backtest complete
+
+================================================================================
+ROC-SCORE BASELINE RESULTS (365 days)
+================================================================================
+
+
+================================================================================
+BACKTEST RESULTS: BTC-USD
+================================================================================
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+Signals: 1
+Entries: 1
+Signal→Entry: 100.0%
+Expired: 0
+
+Trades: 1
+Gross P&L: $-2.11
+Fees: $1.18
+Net P&L: $-3.30
+
+Win Rate: 0.0%
+Profit Factor: 0.00
+Avg Win: $0.00
+Avg Loss: $-3.30
+
+TP1 Hit: 0.0%
+TP2 Hit: 0.0%
+Avg Hold: 4530.0 bars (1m)
+================================================================================
+
+================================================================================
+GATE AUDIT: Signal Frequency Diagnostic
+================================================================================
+
+Gate                                Count    % of 4h bars      Conversion
+--------------------------------------------------------------------------------
+Total 4h bars processed               275          100.0%               -
+↳ Regime filter (EMA200)              122           44.4%               -
+↳ Viability filter (ATR%)              68           24.7%           55.7%
+↳ Setup trigger + compression           1            0.4%            1.5%
+↳ Setup created                         1            0.4%          100.0%
+↳ Entry filled                          0            0.0%            0.0%
+--------------------------------------------------------------------------------
+
+BOTTLENECK ANALYSIS:
+
+🚨 CRITICAL: Entry conversion blocks 100% of signals!
+   This gate passed 0 times out of 275 4h bars.
+
+================================================================================
+
+================================================================================
+COMPARATIVE ANALYSIS
+================================================================================
+
+Metric                         Donchian             ROC-Score            Winner
+--------------------------------------------------------------------------------
+Signals/month                  0.08                 0.08                 Donchian
+Fill rate                      100.0               % 100.0               % Donchian
+Trades/month                   0.08                 0.08                 Donchian
+Net P&L                        $-3.71               $-3.30               ROC
+Win rate                       0.0%                 0.0%                 Donchian
+Profit factor                  0.00                 0.00                 Donchian
+
+================================================================================
+KEY INSIGHTS
+================================================================================
+
+Sample Size Check:
+  Donchian: 1 trades ⚠️  (< 30, low confidence)
+  ROC-Score: 1 trades ⚠️  (< 30, low confidence)
+
+Signal Diversity:
+  Similar signal frequency (within 50%)
+
+Trade Frequency Target (2-4 trades/month):
+  ⚠️  Donchian: 0.08 trades/month (below target, needs optimization)
+  ⚠️  ROC-Score: 0.08 trades/month (below target, needs optimization)
+
+Performance:
+  ✅ ROC significantly outperforms (+-11.0%)
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+⚠️  ROC-Score sample size too small (<30 trades)
+
+Recommended:
+  • Lower roc_score_thresh (try 0.8, 1.0, 1.2)
+  • Disable compression filter temporarily
+  • Re-test on 365 days to confirm signal frequency
+
+================================================================================
+

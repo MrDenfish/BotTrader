@@ -1,0 +1,525 @@
+================================================================================
+COMPRESSION ON vs OFF A/B TEST (V2 - Enhanced)
+================================================================================
+
+Test period: 180 days
+Setup mode: roc_score
+
+================================================================================
+STEP 1: LOAD DATA AND DEFINE CANONICAL WINDOW
+================================================================================
+
+Canonical window defined:
+  Start: 2025-08-04 19:07:00
+  End:   2026-01-31 19:07:00
+  Window will be used for BOTH ON and OFF tests
+
+Window resampled to 4h:
+  4h bars (pre-warmup): 1080
+
+================================================================================
+STEP 2: COMPRESSION OFF TEST
+================================================================================
+
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+
+================================================================================
+DATA VALIDATION (TRUTH LINES)
+================================================================================
+
+Raw 1m data (full CSV):
+  Start: 2025-01-31 19:08:00
+  End:   2026-01-31 19:07:00
+  Rows:  523,733
+
+Windowed 1m data (last 180 days):
+  Start: 2025-08-04 19:07:00
+  End:   2026-01-31 19:07:00
+  Rows:  258,834
+
+4h resampled (pre-dropna):
+  Rows:  1,080
+
+4h clean (post-dropna/warmup):
+  Rows:  1,080
+  Dropped: 0
+
+Expected bar counts (theoretical):
+  1m:  259,200 (actual: 258,834, 99.9%)
+  4h:  1,080 (actual: 1,080, 100.0%)
+
+✅ 4h bar count sanity check passed (100.0% of expected)
+
+================================================================================
+
+Running strategy (compression OFF)...
+  Processing 258834 1m bars...
+    Processed 50000/258834 bars...
+    Processed 100000/258834 bars...
+    Processed 150000/258834 bars...
+    Processed 200000/258834 bars...
+    Processed 250000/258834 bars...
+  ✅ Complete
+
+
+================================================================================
+FEE FLOOR VIABILITY PARAMETERS (TRUTH LINE)
+================================================================================
+  maker_fee:              0.0040 (0.40%)
+  taker_fee:              0.0080 (0.80%)
+  round_trip_maker_fee:   0.0080 (0.80%)
+  vol_min_mult:           1.00
+  viability_floor_atr_pct: 0.0080 (0.80%)
+================================================================================
+
+
+================================================================================
+BACKTEST RESULTS: BTC-USD
+================================================================================
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+Signals: 1
+Entries: 1
+Signal→Entry: 100.0%
+Expired: 0
+
+Trades: 1
+Gross P&L: $0.98
+Fees: $0.72
+Net P&L: $0.26
+
+Win Rate: 100.0%
+Profit Factor: 0.00
+Avg Win: $0.26
+Avg Loss: $0.00
+
+TP1 Hit: 100.0%
+TP2 Hit: 0.0%
+Avg Hold: 2581.0 bars (1m)
+================================================================================
+
+================================================================================
+GATE AUDIT: Signal Frequency Diagnostic
+================================================================================
+
+Gate                                Count    % of 4h bars      Conversion
+--------------------------------------------------------------------------------
+Total 4h bars processed                13          100.0%               -
+↳ Regime filter (EMA200)               12           92.3%               -
+↳ Viability filter (ATR%)               2           15.4%           16.7%
+↳ Setup trigger + compression           1            7.7%           50.0%
+↳ Setup created                         1            7.7%          100.0%
+↳ Entry filled                          0            0.0%            0.0%
+--------------------------------------------------------------------------------
+
+BOTTLENECK ANALYSIS:
+
+🚨 CRITICAL: Entry conversion blocks 100% of signals!
+   This gate passed 0 times out of 13 4h bars.
+
+================================================================================
+
+================================================================================
+BB WIDTH PERCENTILE DISTRIBUTION (Section 11.1 - Sanity Check)
+================================================================================
+
+
+================================================================================
+
+================================================================================
+SETUP/COMPRESSION DECOMPOSITION (Section 11.5)
+================================================================================
+
+On VIABLE bars (regime+viability OK):
+
+Category                            Count     % of viable
+------------------------------------------------------------
+Setup trigger only                      0            0.0%
+Compression only                        1           50.0%
+Both (intersection)                     1           50.0%
+Neither                                 0            0.0%
+------------------------------------------------------------
+Total viable bars                       2          100.0%
+
+INVARIANT CHECK:
+✅ Decomposition sum (2) == viable total (2)
+
+INTERPRETATION:
+
+🚨 BOTH are bottlenecks (both setup and compression are rare)
+   → Loosen compression threshold AND adjust setup trigger threshold
+
+================================================================================
+
+================================================================================
+UNIVERSE-LEVEL DIAGNOSTIC COUNTS (Phase 2.3.2)
+================================================================================
+
+ALL 4h bars (N=13):
+  setup_ok:               1 (7.7%)
+  compression_now:        0 (0.0%)
+  compression_recent_6:   0 (0.0%)
+  compression_recent_12:  0 (0.0%)
+  setup & compression_now: 0 (0.0%)
+
+REGIME_OK bars (N=12):
+  setup_ok:               1 (8.3%)
+  compression_now:        0 (0.0%)
+  compression_recent_6:   0 (0.0%)
+  setup & compression_now: 0 (0.0%)
+
+BASE_OK bars (regime + viability) (N=2):
+  setup_ok:               1 (50.0%)
+  compression_now:        0 (0.0%)
+  compression_recent_6:   0 (0.0%)
+  setup & compression_now: 0 (0.0%)
+  setup & compression_recent_6: 0 (0.0%)
+  setup & compression_recent_12: 0 (0.0%)
+
+ANNUALIZED PROJECTIONS (180d → 365d):
+  setup_only:                     2/year
+  setup & compression_now:        0/year
+  setup & compression_recent_6:   0/year
+  setup & compression_recent_12:  0/year
+
+================================================================================
+
+================================================================================
+VIABILITY FILTER DISTRIBUTION
+================================================================================
+
+ATR% distribution on regime_ok bars:
+  Count:  12
+  Min:    0.004
+  P25:    0.006
+  Median: 0.008
+  P75:    0.008
+  Max:    0.009
+
+Viability threshold: 0.0080
+  (vol_min_mult=1.0 × round_trip_maker_fee=0.0080)
+
+Viability pass rate at different vol_min_mult:
+  vol_min_mult=0.75:    8 bars ( 66.7%)
+  vol_min_mult=1.00:    2 bars ( 16.7%) (current)
+  vol_min_mult=1.25:    0 bars (  0.0%)
+  vol_min_mult=1.50:    0 bars (  0.0%)
+
+================================================================================
+
+================================================================================
+ROC-SCORE PERCENTILE CALIBRATION (Section 11.3)
+================================================================================
+
+ROC-score distribution on viable bars:
+  Min:    1.035
+  P25:    1.125
+  Median: 1.215
+  P75:    1.305
+  P90:    1.359
+  P95:    1.377
+  Max:    1.395
+
+Recommended thresholds by percentile:
+(Target: 60-120 setups/year for 2-4 trades/month after fill conversion)
+
+  P60:  1.251 →    1 bars ( 50.0%) → ~  28 setups/year
+  P70:  1.287 →    1 bars ( 50.0%) → ~  28 setups/year
+  P80:  1.323 →    1 bars ( 50.0%) → ~  28 setups/year
+  P85:  1.341 →    1 bars ( 50.0%) → ~  28 setups/year
+  P90:  1.359 →    1 bars ( 50.0%) → ~  28 setups/year
+  P95:  1.377 →    1 bars ( 50.0%) → ~  28 setups/year
+
+Current threshold: 1.200
+Bars passing current threshold: 1 (50.0%) → ~28 setups/year
+
+⚠️  Current threshold is too strict for target frequency!
+   Recommend lowering to P80 (1.323) or P85 (1.341)
+
+================================================================================
+
+================================================================================
+STEP 3: COMPRESSION ON TEST (SAME WINDOW)
+================================================================================
+
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+Window consistency check:
+  OFF window: 2025-08-04 19:07:00 to 2026-01-31 19:07:00 (258834 bars)
+  ON window:  2025-08-04 19:07:00 to 2026-01-31 19:07:00 (258834 bars)
+  ✅ Windows are identical: True
+
+
+================================================================================
+DATA VALIDATION (TRUTH LINES)
+================================================================================
+
+Raw 1m data (full CSV):
+  Start: 2025-01-31 19:08:00
+  End:   2026-01-31 19:07:00
+  Rows:  523,733
+
+Windowed 1m data (last 180 days):
+  Start: 2025-08-04 19:07:00
+  End:   2026-01-31 19:07:00
+  Rows:  258,834
+
+4h resampled (pre-dropna):
+  Rows:  1,080
+
+4h clean (post-dropna/warmup):
+  Rows:  1,080
+  Dropped: 0
+
+Expected bar counts (theoretical):
+  1m:  259,200 (actual: 258,834, 99.9%)
+  4h:  1,080 (actual: 1,080, 100.0%)
+
+✅ 4h bar count sanity check passed (100.0% of expected)
+
+================================================================================
+
+Running strategy (compression ON)...
+  Processing 258834 1m bars...
+    Processed 50000/258834 bars...
+    Processed 100000/258834 bars...
+    Processed 150000/258834 bars...
+    Processed 200000/258834 bars...
+    Processed 250000/258834 bars...
+  ✅ Complete
+
+
+================================================================================
+FEE FLOOR VIABILITY PARAMETERS (TRUTH LINE)
+================================================================================
+  maker_fee:              0.0040 (0.40%)
+  taker_fee:              0.0080 (0.80%)
+  round_trip_maker_fee:   0.0080 (0.80%)
+  vol_min_mult:           1.00
+  viability_floor_atr_pct: 0.0080 (0.80%)
+================================================================================
+
+
+================================================================================
+BACKTEST RESULTS: BTC-USD
+================================================================================
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+Signals: 1
+Entries: 1
+Signal→Entry: 100.0%
+Expired: 0
+
+Trades: 1
+Gross P&L: $-2.73
+Fees: $1.18
+Net P&L: $-3.91
+
+Win Rate: 0.0%
+Profit Factor: 0.00
+Avg Win: $0.00
+Avg Loss: $-3.91
+
+TP1 Hit: 0.0%
+TP2 Hit: 0.0%
+Avg Hold: 1221.0 bars (1m)
+================================================================================
+
+================================================================================
+GATE AUDIT: Signal Frequency Diagnostic
+================================================================================
+
+Gate                                Count    % of 4h bars      Conversion
+--------------------------------------------------------------------------------
+Total 4h bars processed               143          100.0%               -
+↳ Regime filter (EMA200)              115           80.4%               -
+↳ Viability filter (ATR%)              84           58.7%           73.0%
+↳ Setup trigger + compression           1            0.7%            1.2%
+↳ Setup created                         1            0.7%          100.0%
+↳ Entry filled                          0            0.0%            0.0%
+--------------------------------------------------------------------------------
+
+BOTTLENECK ANALYSIS:
+
+🚨 CRITICAL: Entry conversion blocks 100% of signals!
+   This gate passed 0 times out of 143 4h bars.
+
+================================================================================
+
+================================================================================
+BB WIDTH PERCENTILE DISTRIBUTION (Section 11.1 - Sanity Check)
+================================================================================
+
+On ALL 4h bars:
+  Count:  5
+  Min:    18.3
+  P25:    19.2
+  Median: 20.0
+  P75:    22.5
+  Max:    35.8
+
+On VIABLE bars (regime+viability OK):
+  Count:  2
+  Min:    18.3
+  P25:    18.5
+  Median: 18.8
+  P75:    19.0
+  Max:    19.2
+
+Compression Threshold Analysis (% of viable bars):
+  bb_width_pct <= 20:    2 bars (100.0%)
+  bb_width_pct <= 30:    2 bars (100.0%)
+  bb_width_pct <= 35:    2 bars (100.0%)
+  bb_width_pct <= 40:    2 bars (100.0%)
+
+Current threshold: 30
+Bars passing current threshold: 2 (100.0%)
+
+⚠️  WARNING: Current threshold (30) is very loose!
+   Compression filter may not be providing meaningful filtering.
+
+================================================================================
+
+================================================================================
+SETUP/COMPRESSION DECOMPOSITION (Section 11.5)
+================================================================================
+
+On VIABLE bars (regime+viability OK):
+
+Category                            Count     % of viable
+------------------------------------------------------------
+Setup trigger only                     23           27.4%
+Compression only                        1            1.2%
+Both (intersection)                     1            1.2%
+Neither                                59           70.2%
+------------------------------------------------------------
+Total viable bars                      84          100.0%
+
+INVARIANT CHECK:
+✅ Decomposition sum (84) == viable total (84)
+
+INTERPRETATION:
+
+🚨 COMPRESSION is the bottleneck (setup triggers common, compression rare)
+   → Loosen compression threshold (try 30-35)
+   → Increase compression_lookback_4h (try 12)
+
+================================================================================
+
+================================================================================
+UNIVERSE-LEVEL DIAGNOSTIC COUNTS (Phase 2.3.2)
+================================================================================
+
+ALL 4h bars (N=143):
+  setup_ok:               28 (19.6%)
+  compression_now:        4 (2.8%)
+  compression_recent_6:   4 (2.8%)
+  compression_recent_12:  4 (2.8%)
+  setup & compression_now: 1 (0.7%)
+
+REGIME_OK bars (N=115):
+  setup_ok:               27 (23.5%)
+  compression_now:        2 (1.7%)
+  compression_recent_6:   2 (1.7%)
+  setup & compression_now: 1 (0.9%)
+
+BASE_OK bars (regime + viability) (N=84):
+  setup_ok:               24 (28.6%)
+  compression_now:        2 (2.4%)
+  compression_recent_6:   2 (2.4%)
+  setup & compression_now: 1 (1.2%)
+  setup & compression_recent_6: 1 (1.2%)
+  setup & compression_recent_12: 1 (1.2%)
+
+ANNUALIZED PROJECTIONS (180d → 365d):
+  setup_only:                     46/year
+  setup & compression_now:        2/year
+  setup & compression_recent_6:   2/year
+  setup & compression_recent_12:  2/year
+
+================================================================================
+
+================================================================================
+VIABILITY FILTER DISTRIBUTION
+================================================================================
+
+ATR% distribution on regime_ok bars:
+  Count:  115
+  Min:    0.004
+  P25:    0.008
+  Median: 0.009
+  P75:    0.011
+  Max:    0.014
+
+Viability threshold: 0.0080
+  (vol_min_mult=1.0 × round_trip_maker_fee=0.0080)
+
+Viability pass rate at different vol_min_mult:
+  vol_min_mult=0.75:  111 bars ( 96.5%)
+  vol_min_mult=1.00:   84 bars ( 73.0%) (current)
+  vol_min_mult=1.25:   40 bars ( 34.8%)
+  vol_min_mult=1.50:   10 bars (  8.7%)
+
+================================================================================
+
+================================================================================
+ROC-SCORE PERCENTILE CALIBRATION (Section 11.3)
+================================================================================
+
+ROC-score distribution on viable bars:
+  Min:    -2.759
+  P25:    -1.087
+  Median: 0.130
+  P75:    1.363
+  P90:    2.156
+  P95:    2.278
+  Max:    2.790
+
+Recommended thresholds by percentile:
+(Target: 60-120 setups/year for 2-4 trades/month after fill conversion)
+
+  P60:  0.637 →   34 bars ( 40.5%) → ~  87 setups/year
+  P70:  1.168 →   25 bars ( 29.8%) → ~  64 setups/year
+  P80:  1.603 →   17 bars ( 20.2%) → ~  43 setups/year
+  P85:  1.917 →   13 bars ( 15.5%) → ~  33 setups/year
+  P90:  2.156 →    9 bars ( 10.7%) → ~  23 setups/year
+  P95:  2.278 →    5 bars (  6.0%) → ~  13 setups/year
+
+Current threshold: 1.200
+Bars passing current threshold: 24 (28.6%) → ~61 setups/year
+
+✅ Current threshold is in reasonable range for target frequency
+
+================================================================================
+
+================================================================================
+COMPARATIVE ANALYSIS: ON vs OFF
+================================================================================
+
+Metric                    OFF             ON              Delta          
+----------------------------------------------------------------------
+Signals                   1               1               0++++++++++++++
+Signals/month             0.17            0.17            0.00+++++++++++
+Trades                    1               1               0++++++++++++++
+Trades/month              0.17            0.17            0.00+++++++++++
+Net P&L                   $0.26           $-3.91         
+======================================================================
+
+================================================================================
+CONCLUSIONS
+================================================================================
+
+Target frequency: 2.0-4.0 trades/month
+
+🚨 CRITICAL: Setup triggers are TOO STRICT (even with compression OFF)
+   → Compression OFF: 0.17 trades/month (critically low)
+   → Compression ON: 0.17 trades/month
+
+RECOMMENDATION:
+  • Loosen setup trigger thresholds (Donchian/ROC-score)
+  • If using ROC-score, calibrate by percentile (see next section)
+  • Consider redesigning filter architecture
+
+================================================================================
+

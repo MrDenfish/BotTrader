@@ -1,0 +1,895 @@
+================================================================================
+SINGLE 360-DAY BACKTEST RUN (Phase 2.3.2)
+================================================================================
+
+Symbol: BTC-USD
+Period: 360 days
+Compression filter: ON
+Stage C runner policy: ON
+
+================================================================================
+LOADING DATA
+================================================================================
+
+Data loaded:
+  CSV file: /Users/Manny/Python_Projects/BotTrader/backtest/data/BTC_USD.csv
+  Full data: 523,733 bars (2025-01-31 19:08:00 to 2026-01-31 19:07:00)
+  Window: 516,534 bars (2025-02-05 19:07:00 to 2026-01-31 19:07:00)
+
+================================================================================
+RUNNING BACKTEST
+================================================================================
+
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+================================================================================
+TRUTH LINE: STAGE C RUNNER POLICY CONFIGURATION
+================================================================================
+  use_compression_runner_policy:  True
+  runner_qty_frac_compressed:     0.20
+  runner_qty_frac_normal:         0.15
+  trail_mult_compressed:          2.2
+  trail_mult_normal:              1.8
+================================================================================
+
+Indicators calculated:
+  4h bars: 2157
+  1d bars: 361
+  Aligned 1m bars: 516534
+
+Running strategy...
+  Processing 516534 1m bars...
+
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-02-06 00:02:00
+   Symbol: BTC-USD
+   Entry price: $96558.30
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history: WARMUP (insufficient bars: 2/12 available)
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-02-06 16:19:00
+   Symbol: BTC-USD
+   Entry price: $97183.52
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history: WARMUP (insufficient bars: 6/12 available)
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-02-14 20:41:00
+   Symbol: BTC-USD
+   Entry price: $97852.40
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history: PARTIAL WARMUP (0/12 valid values)
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-02-20 05:29:00
+   Symbol: BTC-USD
+   Entry price: $96938.80
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history: PARTIAL WARMUP (0/12 valid values)
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-03-03 00:01:00
+   Symbol: BTC-USD
+   Entry price: $94180.02
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(84.16666666666667), np.float64(82.5), np.float64(80.83333333333333), np.float64(80.0), np.float64(78.33333333333333), np.float64(77.5), np.float64(77.5), np.float64(77.5), np.float64(78.33333333333333), np.float64(79.16666666666666), np.float64(87.5), np.float64(97.5)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+  Processed 100000/516534 bars... (417 4h boundaries detected so far)
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-04-22 16:01:00
+   Symbol: BTC-USD
+   Entry price: $90961.27
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(1.6666666666666667), np.float64(4.166666666666666), np.float64(19.166666666666668), np.float64(38.333333333333336), np.float64(39.166666666666664), np.float64(45.0), np.float64(45.83333333333333), np.float64(45.83333333333333), np.float64(50.0), np.float64(54.166666666666664), np.float64(60.83333333333333), np.float64(65.83333333333333)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-05-01 16:53:00
+   Symbol: BTC-USD
+   Entry price: $97152.80
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(17.5), np.float64(18.333333333333332), np.float64(22.5), np.float64(22.5), np.float64(25.0), np.float64(25.833333333333336), np.float64(24.166666666666668), np.float64(20.0), np.float64(20.0), np.float64(11.666666666666666), np.float64(30.0), np.float64(37.5)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-05-07 12:06:00
+   Symbol: BTC-USD
+   Entry price: $96956.53
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(73.33333333333333), np.float64(73.33333333333333), np.float64(68.33333333333333), np.float64(65.0), np.float64(61.66666666666667), np.float64(61.66666666666667), np.float64(56.666666666666664), np.float64(50.83333333333333), np.float64(59.166666666666664), np.float64(59.166666666666664), np.float64(67.5), np.float64(73.33333333333333)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-05-14 08:04:00
+   Symbol: BTC-USD
+   Entry price: $103645.61
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(32.5), np.float64(24.166666666666668), np.float64(23.333333333333332), np.float64(25.0), np.float64(26.666666666666668), np.float64(30.0), np.float64(30.833333333333336), np.float64(30.833333333333336), np.float64(30.833333333333336), np.float64(34.166666666666664), np.float64(34.166666666666664), np.float64(33.33333333333333)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-05-20 12:10:00
+   Symbol: BTC-USD
+   Entry price: $105061.88
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(35.833333333333336), np.float64(29.166666666666668), np.float64(45.0), np.float64(43.333333333333336), np.float64(42.5), np.float64(52.5), np.float64(55.00000000000001), np.float64(60.0), np.float64(65.0), np.float64(69.16666666666667), np.float64(70.0), np.float64(70.0)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-05-26 08:08:00
+   Symbol: BTC-USD
+   Entry price: $110034.61
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(70.83333333333334), np.float64(67.5), np.float64(65.0), np.float64(66.66666666666666), np.float64(66.66666666666666), np.float64(66.66666666666666), np.float64(65.83333333333333), np.float64(67.5), np.float64(64.16666666666667), np.float64(60.83333333333333), np.float64(52.5), np.float64(46.666666666666664)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-06-03 16:04:00
+   Symbol: BTC-USD
+   Entry price: $106509.04
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    True
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(34.166666666666664), np.float64(16.666666666666664), np.float64(13.333333333333334), np.float64(13.333333333333334), np.float64(11.666666666666666), np.float64(11.666666666666666), np.float64(9.166666666666666), np.float64(11.666666666666666), np.float64(14.166666666666666), np.float64(13.333333333333334), np.float64(12.5), np.float64(20.0)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-06-07 00:13:00
+   Symbol: BTC-USD
+   Entry price: $104261.20
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(13.333333333333334), np.float64(14.166666666666666), np.float64(15.0), np.float64(16.666666666666664), np.float64(44.166666666666664), np.float64(58.333333333333336), np.float64(65.0), np.float64(67.5), np.float64(65.83333333333333), np.float64(65.0), np.float64(64.16666666666667), np.float64(55.00000000000001)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-06-16 12:17:00
+   Symbol: BTC-USD
+   Entry price: $106719.90
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    True
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(80.83333333333333), np.float64(74.16666666666667), np.float64(60.83333333333333), np.float64(48.333333333333336), np.float64(39.166666666666664), np.float64(20.0), np.float64(16.666666666666664), np.float64(8.333333333333332), np.float64(0.8333333333333334), np.float64(0.8333333333333334), np.float64(2.5), np.float64(6.666666666666667)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-06-17 04:24:00
+   Symbol: BTC-USD
+   Entry price: $107513.35
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(39.166666666666664), np.float64(20.0), np.float64(16.666666666666664), np.float64(8.333333333333332), np.float64(0.8333333333333334), np.float64(0.8333333333333334), np.float64(2.5), np.float64(6.666666666666667), np.float64(24.166666666666668), np.float64(41.66666666666667), np.float64(41.66666666666667), np.float64(42.5)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-06-23 20:04:00
+   Symbol: BTC-USD
+   Entry price: $103086.04
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(40.833333333333336), np.float64(44.166666666666664), np.float64(45.83333333333333), np.float64(45.0), np.float64(83.33333333333334), np.float64(97.5), np.float64(100.0), np.float64(100.0), np.float64(98.33333333333333), np.float64(97.5), np.float64(86.66666666666667), np.float64(75.83333333333333)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+  Processed 200000/516534 bars... (832 4h boundaries detected so far)
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-07-02 17:36:00
+   Symbol: BTC-USD
+   Entry price: $109373.16
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(10.833333333333334), np.float64(11.666666666666666), np.float64(10.0), np.float64(10.0), np.float64(15.0), np.float64(22.5), np.float64(30.0), np.float64(35.0), np.float64(35.833333333333336), np.float64(36.666666666666664), np.float64(37.5), np.float64(41.66666666666667)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-07-14 16:08:00
+   Symbol: BTC-USD
+   Entry price: $119644.00
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(93.33333333333333), np.float64(90.0), np.float64(87.5), np.float64(85.0), np.float64(80.83333333333333), np.float64(76.66666666666667), np.float64(70.83333333333334), np.float64(55.00000000000001), np.float64(48.333333333333336), np.float64(61.66666666666667), np.float64(66.66666666666666), np.float64(67.5)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-07-16 16:02:00
+   Symbol: BTC-USD
+   Entry price: $118899.27
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(69.16666666666667), np.float64(66.66666666666666), np.float64(70.83333333333334), np.float64(72.5), np.float64(74.16666666666667), np.float64(78.33333333333333), np.float64(80.0), np.float64(80.0), np.float64(80.83333333333333), np.float64(79.16666666666666), np.float64(79.16666666666666), np.float64(79.16666666666666)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-07-26 20:25:00
+   Symbol: BTC-USD
+   Entry price: $118041.07
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(35.0), np.float64(54.166666666666664), np.float64(62.5), np.float64(63.33333333333333), np.float64(65.83333333333333), np.float64(66.66666666666666), np.float64(65.0), np.float64(62.5), np.float64(60.83333333333333), np.float64(59.166666666666664), np.float64(58.333333333333336), np.float64(56.666666666666664)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-08-03 22:03:00
+   Symbol: BTC-USD
+   Entry price: $114338.34
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(92.5), np.float64(97.5), np.float64(98.33333333333333), np.float64(99.16666666666667), np.float64(100.0), np.float64(100.0), np.float64(100.0), np.float64(100.0), np.float64(97.5), np.float64(95.83333333333334), np.float64(92.5), np.float64(79.16666666666666)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-08-10 16:24:00
+   Symbol: BTC-USD
+   Entry price: $118673.88
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(88.33333333333333), np.float64(83.33333333333334), np.float64(80.0), np.float64(74.16666666666667), np.float64(60.83333333333333), np.float64(59.166666666666664), np.float64(53.333333333333336), np.float64(50.83333333333333), np.float64(55.00000000000001), np.float64(53.333333333333336), np.float64(43.333333333333336), np.float64(32.5)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-08-11 16:40:00
+   Symbol: BTC-USD
+   Entry price: $120102.81
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(53.333333333333336), np.float64(50.83333333333333), np.float64(55.00000000000001), np.float64(53.333333333333336), np.float64(43.333333333333336), np.float64(32.5), np.float64(45.83333333333333), np.float64(55.00000000000001), np.float64(84.16666666666667), np.float64(90.83333333333333), np.float64(90.83333333333333), np.float64(91.66666666666666)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-08-22 22:13:00
+   Symbol: BTC-USD
+   Entry price: $116768.55
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(58.333333333333336), np.float64(48.333333333333336), np.float64(37.5), np.float64(40.0), np.float64(41.66666666666667), np.float64(48.333333333333336), np.float64(46.666666666666664), np.float64(36.666666666666664), np.float64(25.0), np.float64(25.0), np.float64(37.5), np.float64(48.333333333333336)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-08-27 16:13:00
+   Symbol: BTC-USD
+   Entry price: $111823.04
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(94.16666666666667), np.float64(96.66666666666667), np.float64(100.0), np.float64(99.16666666666667), np.float64(100.0), np.float64(100.0), np.float64(98.33333333333333), np.float64(93.33333333333333), np.float64(90.0), np.float64(85.83333333333333), np.float64(75.0), np.float64(55.00000000000001)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-09-03 01:23:00
+   Symbol: BTC-USD
+   Entry price: $111065.94
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    True
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(33.33333333333333), np.float64(5.833333333333333), np.float64(2.5), np.float64(0.8333333333333334), np.float64(0.8333333333333334), np.float64(1.6666666666666667), np.float64(3.3333333333333335), np.float64(6.666666666666667), np.float64(7.5), np.float64(8.333333333333332), np.float64(10.0), np.float64(16.666666666666664)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+  Processed 300000/516534 bars... (1249 4h boundaries detected so far)
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-09-10 16:19:00
+   Symbol: BTC-USD
+   Entry price: $113705.21
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    True
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(5.833333333333333), np.float64(8.333333333333332), np.float64(9.166666666666666), np.float64(14.166666666666666), np.float64(18.333333333333332), np.float64(18.333333333333332), np.float64(17.5), np.float64(14.166666666666666), np.float64(11.666666666666666), np.float64(7.5), np.float64(5.833333333333333), np.float64(15.833333333333332)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-09-18 21:02:00
+   Symbol: BTC-USD
+   Entry price: $117467.32
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(11.666666666666666), np.float64(13.333333333333334), np.float64(17.5), np.float64(18.333333333333332), np.float64(19.166666666666668), np.float64(20.0), np.float64(20.833333333333336), np.float64(32.5), np.float64(35.0), np.float64(38.333333333333336), np.float64(48.333333333333336), np.float64(49.166666666666664)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-09-25 00:29:00
+   Symbol: BTC-USD
+   Entry price: $113171.97
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(97.5), np.float64(97.5), np.float64(98.33333333333333), np.float64(97.5), np.float64(99.16666666666667), np.float64(99.16666666666667), np.float64(99.16666666666667), np.float64(95.83333333333334), np.float64(90.0), np.float64(84.16666666666667), np.float64(82.5), np.float64(75.0)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-09-29 17:02:00
+   Symbol: BTC-USD
+   Entry price: $113626.58
+   Entry type: CHASE
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(95.0), np.float64(88.33333333333333), np.float64(75.0), np.float64(64.16666666666667), np.float64(55.00000000000001), np.float64(30.0), np.float64(13.333333333333334), np.float64(30.0), np.float64(55.833333333333336), np.float64(60.83333333333333), np.float64(66.66666666666666), np.float64(78.33333333333333)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-10-13 04:12:00
+   Symbol: BTC-USD
+   Entry price: $114863.47
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(100.0), np.float64(100.0), np.float64(100.0), np.float64(100.0), np.float64(100.0), np.float64(100.0), np.float64(99.16666666666667), np.float64(98.33333333333333), np.float64(96.66666666666667), np.float64(95.0), np.float64(93.33333333333333), np.float64(91.66666666666666)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-10-20 00:03:00
+   Symbol: BTC-USD
+   Entry price: $108474.22
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    True
+     - compression_recent_6 (24h):       True
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(79.16666666666666), np.float64(77.5), np.float64(75.0), np.float64(69.16666666666667), np.float64(66.66666666666666), np.float64(63.33333333333333), np.float64(52.5), np.float64(47.5), np.float64(34.166666666666664), np.float64(27.500000000000004), np.float64(9.166666666666666), np.float64(10.833333333333334)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-10-24 08:03:00
+   Symbol: BTC-USD
+   Entry price: $110885.42
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      False
+   BB width history (last 12 bars): [np.float64(51.66666666666667), np.float64(44.166666666666664), np.float64(44.166666666666664), np.float64(50.0), np.float64(51.66666666666667), np.float64(51.66666666666667), np.float64(50.0), np.float64(42.5), np.float64(40.0), np.float64(39.166666666666664), np.float64(38.333333333333336), np.float64(40.833333333333336)]
+   Threshold: 30
+   → Using NORMAL runner policy:
+     - runner_qty_frac: 15.00%
+     - trail_mult: 1.8x
+
+🔍 STAGE C VERIFICATION - Fill @ 2025-10-31 20:04:00
+   Symbol: BTC-USD
+   Entry price: $109545.45
+   Entry type: RETEST
+   Compression context:
+     - compression_now (current bar):    False
+     - compression_recent_6 (24h):       False
+     - compression_recent_12 (48h):      True
+   BB width history (last 12 bars): [np.float64(28.333333333333332), np.float64(40.0), np.float64(48.333333333333336), np.float64(66.66666666666666), np.float64(77.5), np.float64(83.33333333333334), np.float64(84.16666666666667), np.float64(83.33333333333334), np.float64(82.5), np.float64(80.0), np.float64(80.0), np.float64(77.5)]
+   Threshold: 30
+   → Using COMPRESSED runner policy:
+     - runner_qty_frac: 20.00%
+     - trail_mult: 2.2x
+  Processed 400000/516534 bars... (1665 4h boundaries detected so far)
+  Processed 500000/516534 bars... (2081 4h boundaries detected so far)
+  ✅ Complete
+
+================================================================================
+DEBUG: 4H BOUNDARY DETECTION IN PROCESSING LOOP
+================================================================================
+  Total 4h boundaries detected during loop: 2150
+  Expected processable boundaries from df_aligned: 2150
+  (Note: df_4h from resampling has 2157 bars total)
+
+  First 20 4h boundaries detected:
+     1. 2025-02-05 20:00:00 (1m bar index 53)
+     2. 2025-02-06 00:00:00 (1m bar index 293)
+     3. 2025-02-06 04:00:00 (1m bar index 533)
+     4. 2025-02-06 08:00:00 (1m bar index 773)
+     5. 2025-02-06 12:00:00 (1m bar index 1013)
+     6. 2025-02-06 16:00:00 (1m bar index 1253)
+     7. 2025-02-06 20:00:00 (1m bar index 1493)
+     8. 2025-02-07 00:00:00 (1m bar index 1733)
+     9. 2025-02-07 04:00:00 (1m bar index 1973)
+    10. 2025-02-07 08:00:00 (1m bar index 2213)
+    11. 2025-02-07 12:00:00 (1m bar index 2453)
+    12. 2025-02-07 16:00:00 (1m bar index 2693)
+    13. 2025-02-07 20:00:00 (1m bar index 2933)
+    14. 2025-02-08 00:00:00 (1m bar index 3173)
+    15. 2025-02-08 04:00:00 (1m bar index 3413)
+    16. 2025-02-08 08:00:00 (1m bar index 3653)
+    17. 2025-02-08 12:00:00 (1m bar index 3893)
+    18. 2025-02-08 16:00:00 (1m bar index 4133)
+    19. 2025-02-08 20:00:00 (1m bar index 4373)
+    20. 2025-02-09 00:00:00 (1m bar index 4613)
+================================================================================
+
+
+================================================================================
+FEE FLOOR VIABILITY PARAMETERS (TRUTH LINE)
+================================================================================
+  maker_fee:              0.0040 (0.40%)
+  taker_fee:              0.0080 (0.80%)
+  round_trip_maker_fee:   0.0080 (0.80%)
+  vol_min_mult:           1.00
+  viability_floor_atr_pct: 0.0080 (0.80%)
+================================================================================
+
+
+
+================================================================================
+BACKTEST RESULTS: BTC-USD
+================================================================================
+Config: Hybrid4hConfig(setup=roc_score, entry=breakout_retest, maker_fee=0.400%, taker_fee=0.800%, tp1=2.5×fees, tp2=5.0×fees)
+
+Signals: 42
+Entries: 34
+Signal→Entry: 81.0%
+Expired: 8
+
+Trades: 34
+Gross P&L: $-12.17
+Fees: $32.39
+Net P&L: $-44.56
+
+Win Rate: 50.0%
+Profit Factor: 0.75
+Avg Win: $1.25
+Avg Loss: $-3.87
+
+TP1 Hit: 55.9%
+TP2 Hit: 23.5%
+Avg Hold: 4901.4 bars (1m)
+================================================================================
+
+================================================================================
+DEBUG: MASK LENGTH VERIFICATION
+================================================================================
+  total_4h_bars (expected):         2150
+  len(regime_ok_mask):              2150
+  len(viability_ok_mask):           2150
+  len(setup_ok_mask):               2150
+  len(compression_ok_mask):         2150
+  len(compression_now_mask):        2150
+  len(compression_recent_6_mask):   2150
+  len(compression_recent_12_mask):  2150
+
+  ✅ All masks have correct length!
+================================================================================
+
+
+================================================================================
+GATE AUDIT: Signal Frequency Diagnostic
+================================================================================
+
+Gate                                Count    % of 4h bars      Conversion
+--------------------------------------------------------------------------------
+Total 4h bars processed             2,150          100.0%               -
+↳ Regime filter (EMA200)            1,266           58.9%               -
+↳ Viability filter (ATR%)           1,042           48.5%           82.3%
+↳ ROC-OK (momentum >= thresh)         217           10.1%           20.8%
+  ↳ ROC-OK + Compressed                66            3.1%           30.4%
+↳ Structure-OK (entry conditions)         42            2.0%           19.4%
+↳ Setup created                        42            2.0%          100.0%
+↳ Entry filled                         34            1.6%           81.0%
+
+DEPRECATED COUNTERS (Phase 2.3.2 and earlier):
+  setup_trigger_ok (old):             42  (replaced by structure_ok)
+  compression_ok (old):                0  (deprecated)
+
+--------------------------------------------------------------------------------
+
+STATE MACHINE BLOCKER ANALYSIS (Phase 2.4):
+
+On ROC-OK bars (N=217):
+  Blocked by state machine:            177  (81.6%)
+  Setup evaluation attempted:           40  (18.4%)
+
+🚨 STATE MACHINE BLOCKING:
+   The strategy state machine only allows new setup evaluation when in FLAT state.
+   After the first setup is created, the state changes to SETUP_ACTIVE,
+   preventing subsequent ROC-OK bars from reaching setup evaluation logic.
+
+   This is expected behavior for single-trade strategies.
+   To evaluate all ROC-OK opportunities, the state machine would need
+   to allow concurrent setups or queue pending signals.
+
+--------------------------------------------------------------------------------
+
+BOTTLENECK ANALYSIS (Stage A - Phase 2.4):
+
+⚠️  Lowest conversion: Structure-OK (19.4%)
+
+STAGE A VERIFICATION:
+Expected hierarchy: roc_ok >= structure_ok >= setup_created >= entry_filled
+✅ Hierarchy verified: 217 >= 42 >= 42 >= 34
+
+================================================================================
+
+================================================================================
+BB WIDTH PERCENTILE DISTRIBUTION (Section 11.1 - Sanity Check)
+================================================================================
+
+On ALL 4h bars:
+  Count:  2012
+  Min:    0.8
+  P25:    22.5
+  Median: 48.3
+  P75:    78.3
+  Max:    100.0
+
+On VIABLE bars (regime+viability OK):
+  Count:  945
+  Min:    0.8
+  P25:    32.5
+  Median: 53.3
+  P75:    80.0
+  Max:    100.0
+
+Compression Threshold Analysis (% of viable bars):
+  bb_width_pct <= 20:  150 bars ( 15.9%)
+  bb_width_pct <= 30:  222 bars ( 23.5%)
+  bb_width_pct <= 35:  268 bars ( 28.4%)
+  bb_width_pct <= 40:  321 bars ( 34.0%)
+
+Current threshold: 30
+Bars passing current threshold: 222 (23.5%)
+
+================================================================================
+
+================================================================================
+SETUP/COMPRESSION DECOMPOSITION (Section 11.5)
+================================================================================
+
+On VIABLE bars (regime+viability OK):
+Using compression_recent_12 for decomposition (48h lookback)
+
+Category                            Count     % of viable
+------------------------------------------------------------
+Setup trigger only                    123           11.8%
+Compression only                      389           37.3%
+Both (intersection)                    94            9.0%
+Neither                               436           41.8%
+------------------------------------------------------------
+Total viable bars                   1,042          100.0%
+
+INVARIANT CHECK:
+✅ Decomposition sum (1042) == viable total (1042)
+
+INTERPRETATION:
+
+✅ Intersection is meaningful - gates are working together
+
+================================================================================
+
+================================================================================
+UNIVERSE-LEVEL DIAGNOSTIC COUNTS (Phase 2.3.2)
+================================================================================
+
+ALL 4h bars (N=2150):
+  setup_ok:               393 (18.3%)
+  compression_now:        669 (31.1%)
+  compression_recent_6:   913 (42.5%)
+  compression_recent_12:  1163 (54.1%)
+  setup & compression_now: 69 (3.2%)
+
+REGIME_OK bars (N=1266):
+  setup_ok:               250 (19.7%)
+  compression_now:        328 (25.9%)
+  compression_recent_6:   469 (37.0%)
+  setup & compression_now: 32 (2.5%)
+
+BASE_OK bars (regime + viability) (N=1042):
+  setup_ok:               217 (20.8%)
+  compression_now:        222 (21.3%)
+  compression_recent_6:   349 (33.5%)
+  setup & compression_now: 17 (1.6%)
+  setup & compression_recent_6: 66 (6.3%)
+  setup & compression_recent_12: 94 (9.0%)
+
+ANNUALIZED PROJECTIONS (180d → 365d):
+  setup_only:                     405/year
+  setup & compression_now:        34/year
+  setup & compression_recent_6:   133/year
+  setup & compression_recent_12:  190/year
+
+================================================================================
+
+================================================================================
+VIABILITY FILTER DISTRIBUTION
+================================================================================
+
+ATR% distribution on regime_ok bars:
+  Count:  1266
+  Min:    0.004
+  P25:    0.009
+  Median: 0.010
+  P75:    0.012
+  Max:    0.027
+
+Viability threshold: 0.0080
+  (vol_min_mult=1.0 × round_trip_maker_fee=0.0080)
+
+Viability pass rate at different vol_min_mult:
+  vol_min_mult=0.75: 1229 bars ( 97.1%)
+  vol_min_mult=1.00: 1042 bars ( 82.3%) (current)
+  vol_min_mult=1.25:  667 bars ( 52.7%)
+  vol_min_mult=1.50:  357 bars ( 28.2%)
+
+================================================================================
+
+================================================================================
+ROC-SCORE PERCENTILE CALIBRATION (Section 11.3)
+================================================================================
+
+Note: Filtered 5 NaN values from warmup period (1037 valid values remain)
+
+ROC-score distribution on viable bars:
+  Min:    -3.093
+  P25:    -0.840
+  Median: 0.083
+  P75:    1.026
+  P90:    1.818
+  P95:    2.407
+  Max:    4.223
+
+Recommended thresholds by percentile:
+(Target: 60-120 setups/year for 2-4 trades/month after fill conversion)
+
+  P60:  0.433 →  415 bars ( 40.0%) → ~  70 setups/year
+  P70:  0.815 →  311 bars ( 30.0%) → ~  53 setups/year
+  P80:  1.237 →  208 bars ( 20.1%) → ~  35 setups/year
+  P85:  1.504 →  156 bars ( 15.0%) → ~  26 setups/year
+  P90:  1.818 →  104 bars ( 10.0%) → ~  18 setups/year
+  P95:  2.407 →   52 bars (  5.0%) → ~   9 setups/year
+
+Current threshold: 1.200
+Bars passing current threshold: 217 (20.9%) → ~37 setups/year
+
+⚠️  Current threshold is too strict for target frequency!
+   Consider P70 (0.815) or P60 (0.433) for more frequent setups
+
+================================================================================
+
+================================================================================
+OPTION 1 OBSERVABILITY: Single Active Setup/Position Per Symbol
+================================================================================
+
+A) STATE OCCUPANCY (4h bars with state as of bar close):
+
+NOTE: State is sampled at 4h bar close. Intra-bar transitions (e.g., FLAT→SETUP_ACTIVE→
+RETEST_ORDER_WORKING within same 4h bar) count as the final state only.
+
+  FLAT                      1472 bars ( 68.5%)  =  353,280 minutes
+  SETUP_ACTIVE                 0 bars (  0.0%)  =        0 minutes
+  RETEST_ORDER_WORKING         0 bars (  0.0%)  =        0 minutes
+  CHASE_ORDER_WORKING          0 bars (  0.0%)  =        0 minutes
+  IN_POSITION                678 bars ( 31.5%)  =  162,720 minutes
+
+  Total 4h bars: 2150
+  Non-FLAT time: 678 bars (31.5%)
+
+--------------------------------------------------------------------------------
+
+B) SETUP LIFECYCLE METRICS:
+
+  Setups created:                42
+  Setups expired (no fill):       8  (19.0%)
+  Entries filled (total):        34
+
+  Entry orders submitted:        58
+
+  Conversion rates:
+    Setup → Entry:             34/42 = 81.0%
+    Order Submitted → Filled:  34/58 = 58.6%
+
+  Entry type breakdown:
+    Retest fills:                26
+    Chase fills:                  8
+
+  Setup active duration:    N/A (no completed setups)
+
+--------------------------------------------------------------------------------
+
+C) OPPORTUNITY LOSS WHILE LOCKED (bars missed due to state != FLAT):
+
+  ROC-OK bars (total on BASE_OK bars):     217
+    Missed while SETUP_ACTIVE:               0  (0.0%)
+    Missed while IN_POSITION:              177  (81.6%)
+  Total ROC-OK bars locked out:            177  (81.6%)
+
+  Compression_recent_12 bars:
+    Total on BASE_OK bars:                 965  (denominator for % below)
+    Total on ALL 4h bars (context):       1163
+    Missed while SETUP_ACTIVE:               0  (0.0%)
+    Missed while IN_POSITION:              243  (25.2%)
+  Total compression bars locked out:       243  (25.2%)
+
+INTERPRETATION:
+  High lock-out % indicates significant opportunity cost from single-setup constraint.
+  Option 2 (setup queue) could capture additional opportunities, but adds complexity.
+
+================================================================================
+
+================================================================================
+STAGE C: TRADE BREAKDOWN BY ENTRY COMPRESSION CONTEXT
+================================================================================
+
+Total trades: 34
+  Compressed entries (compression_recent_12=True): 16
+  Normal entries (compression_recent_12=False):    18
+
+Performance Comparison:
+
+Metric                         Compressed          Normal      Difference
+--------------------------------------------------------------------------------
+Count                                  16              18              -2
+Win Rate                           56.2%          44.4%          11.8%
+Avg Net P&L               $         -0.71 $         -1.84 $          1.13
+Median Net P&L            $          0.08 $         -0.07 $          0.15
+TP1 Hit Rate                       62.5%          50.0%          12.5%
+TP2 Hit Rate                       31.2%          16.7%          14.6%
+Avg Hold (hours)                    95.9           69.0           26.9
+
+INTERPRETATION:
+  Use this breakdown to calibrate Stage C runner policy parameters.
+  If compressed entries underperform, consider tighter TP targets or skip compression filter.
+  If compressed entries outperform, increase runner_qty_frac_compressed for better tail capture.
+
+================================================================================
+
+
+
+================================================================================
+BACKTEST COMPLETE
+================================================================================
+

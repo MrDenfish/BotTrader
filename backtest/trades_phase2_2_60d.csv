@@ -1,0 +1,2 @@
+symbol,entry_time,entry_price,exit_time,qty,gross_pnl,fees,net_pnl,win,stop_hit,tp1_filled,tp2_filled,runner_exit,mfe_pct,mae_pct,bars_held,setup_type,entry_mode,entry_type,entry_wait_minutes
+BTC-USD,2026-01-12 06:01:00,91918.85587422508,2026-01-12 14:24:00,0.0010879160651959437,-2.002795618821663,1.1839776350494269,-3.18677325387109,False,True,False,False,,0.17117720219474863,-2.0837899427794815,503,donchian,breakout_retest,CHASE,121.0

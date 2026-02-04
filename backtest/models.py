@@ -13,7 +13,9 @@ from enum import Enum
 
 class TradeType(Enum):
     """Type of trade entry"""
-    ROC_MOMENTUM = "roc_momentum"
+    ROC_MOMENTUM = "roc_momentum"  # Legacy
+    ROC_MOMO_20M = "roc_momo_20m"  # 20-minute momentum scalps
+    ROC_MOMO_24H = "roc_momo_24h"  # 24-hour momentum runners
     STANDARD_SIGNAL = "standard_signal"
 
 
@@ -21,8 +23,12 @@ class ExitReason(Enum):
     """Reason for closing a position"""
     TAKE_PROFIT = "take_profit"
     STOP_LOSS = "stop_loss"
-    ROC_PEAK_DROP = "roc_peak_drop"
-    ROC_REVERSAL = "roc_reversal"
+    PEAK_TRACKING = "peak_tracking"  # Peak drawdown exit
+    TRAILING_STOP = "trailing_stop"  # ATR trailing stop
+    ROC_REVERSAL_20M = "roc_reversal_20m"  # ROC < -2% for 20M
+    ROC_REVERSAL_24H = "roc_reversal_24h"  # 24h% < -5% for 24H
+    ROC_PEAK_DROP = "roc_peak_drop"  # Legacy
+    ROC_REVERSAL = "roc_reversal"  # Legacy
     MAX_HOLD_TIME = "max_hold_time"
     END_OF_BACKTEST = "end_of_backtest"
 
@@ -43,6 +49,11 @@ class Position:
     price_history: list = None  # For 5-min smoothing
     peak_tracking_active: bool = False  # Activated after hitting min_profit
     breakeven_stop_active: bool = False  # Breakeven stop after +6%
+
+    # Trailing stop tracking (for ROC_MOMO_20M)
+    trailing_stop_price: Optional[Decimal] = None
+    trailing_stop_active: bool = False
+    last_atr: Optional[Decimal] = None
 
     # Entry fees
     entry_fee: Decimal = Decimal("0")

@@ -51,13 +51,20 @@ class DataResampler:
         if timeframe not in DataResampler.TIMEFRAME_MAP:
             raise ValueError(f"Unknown timeframe: {timeframe}. Valid options: {list(DataResampler.TIMEFRAME_MAP.keys())}")
 
-        # Make a copy and ensure time is datetime
+        # Make a copy
         df = df.copy()
-        if not pd.api.types.is_datetime64_any_dtype(df['time']):
-            df['time'] = pd.to_datetime(df['time'])
 
-        # Set time as index for resampling
-        df = df.set_index('time')
+        # Handle both indexed and non-indexed dataframes
+        if not isinstance(df.index, pd.DatetimeIndex):
+            # Not already indexed - look for time column
+            time_col = 'time' if 'time' in df.columns else 'timestamp'
+            if not pd.api.types.is_datetime64_any_dtype(df[time_col]):
+                df[time_col] = pd.to_datetime(df[time_col])
+            df = df.set_index(time_col)
+        else:
+            # Already indexed with datetime - ensure it's datetime
+            if not pd.api.types.is_datetime64_any_dtype(df.index):
+                df.index = pd.to_datetime(df.index)
 
         # Resample using proper OHLCV aggregation
         pandas_rule = DataResampler.TIMEFRAME_MAP[timeframe]
@@ -73,9 +80,7 @@ class DataResampler:
         # Drop any rows where we don't have data (NaN close means no data in that period)
         resampled = resampled.dropna(subset=['close'])
 
-        # Reset index to make 'time' a column again
-        resampled = resampled.reset_index()
-
+        # Keep datetime index (don't reset for merge_asof compatibility)
         return resampled
 
     @staticmethod
