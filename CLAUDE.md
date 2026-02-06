@@ -16,12 +16,12 @@ When asked to deploy to AWS or after committing changes:
 
 1. **Push to GitHub:**
    ```bash
-   git push origin feature/strategy-optimization
+   git push origin main
    ```
 
 2. **Deploy to AWS:**
    ```bash
-   ssh bottrader-aws "cd /opt/bot && git pull origin feature/strategy-optimization"
+   ssh bottrader-aws "cd /opt/bot && git pull origin main"
    ```
 
 3. **Restart containers:**
@@ -46,8 +46,8 @@ See `.claude/DEPLOYMENT.md` for complete deployment documentation.
 
 ## Project Structure
 
-- **Production Branch:** `feature/strategy-optimization`
-- **Main Branch:** `main`
+- **Production Branch:** `main`
+- **Active Development:** `refactor/plugin-architecture`
 - **AWS Location:** `/opt/bot`
 - **Docker Compose:** `docker-compose.aws.yml`
 

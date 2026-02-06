@@ -20,14 +20,14 @@ git add <files>
 git commit -m "feat: Your feature description"
 
 # Push to GitHub
-git push origin feature/strategy-optimization
+git push origin main
 ```
 
 ### 2. Deploy to AWS
 
 ```bash
 # Pull latest changes
-ssh bottrader-aws "cd /opt/bot && git pull origin feature/strategy-optimization"
+ssh bottrader-aws "cd /opt/bot && git pull origin main"
 
 # Restart containers
 ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml restart"
@@ -115,7 +115,7 @@ ssh bottrader-aws "docker restart sighook"
 
 ### One-Line Deployment
 ```bash
-git push origin feature/strategy-optimization && ssh bottrader-aws "cd /opt/bot && git pull origin feature/strategy-optimization && docker compose -f docker-compose.aws.yml restart"
+git push origin main && ssh bottrader-aws "cd /opt/bot && git pull origin main && docker compose -f docker-compose.aws.yml restart"
 ```
 
 ### Check What's Running
@@ -128,6 +128,6 @@ ssh bottrader-aws "cd /opt/bot && git log --oneline -1 && docker compose ps"
 ## Notes
 
 - AWS instance: `bottrader-aws` (SSH alias)
-- Production branch: `feature/strategy-optimization`
-- Main branch: `main`
+- Production branch: `main`
+- Active development: `refactor/plugin-architecture`
 - Docker Compose file: `docker-compose.aws.yml`
