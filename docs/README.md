@@ -1,87 +1,66 @@
-# BotTrader Documentation Index
+# BotTrader Documentation
 
-This directory contains all documentation for the BotTrader cryptocurrency trading bot project.
+Documentation for the BotTrader cryptocurrency trading bot.
+
+For a high-level project overview, see [BOTTRADER_OVERVIEW.md](BOTTRADER_OVERVIEW.md).
 
 ## Directory Structure
 
-### 📂 active/
-**Currently relevant operational documentation**
-- `architecture/` - System architecture and design specifications
-- `deployment/` - Deployment guides and troubleshooting
-- `guides/` - User guides for logging, monitoring, and operations
+### [1-production/](1-production/) - Live Trading Bot
+Production system documentation: architecture, deployment, operations, and strategy docs.
+- **architecture/** - System design, FIFO accounting, dual-container model
+- **strategies/** - Production signal generation and filtering
+- **deployment/** - AWS deployment, database access, reconciliation
+- **operations/** - Logging, testing, order flow, monitoring
 
-### 📂 archive/
-**Historical documentation (completed work)**
-- `sessions/` - Completed session summaries
-- `bugs-resolved/` - Resolved bug analyses and fixes
-- `deprecated/` - Obsolete implementation guides
-- `planning/` - Completed planning documents
+### [2-backtesting/](2-backtesting/) - Backtesting Framework
+Strategy backtesting documentation, specs, and results.
+- **strategies/4h-hybrid-maker/** - Primary backtest strategy (Phase 2.x)
+- **strategies/archived-strategies/** - Superseded strategies (ROC, multi-TF)
+- **architecture/** - Backtest engine design
+- **guides/** - Writing and running backtests
+- **test-results/** - Backtest outputs
 
-### 📂 planning/
-**Future work and active roadmaps**
-- Next session preparation documents
-- Refactoring plans
-- Strategy optimization plans
-- TPSL enhancement plans
+### [3-plugin-architecture/](3-plugin-architecture/) - Plugin System Design
+Refactoring plan for plugin-based strategy and risk management architecture.
+- **design/** - Plugin interface specifications
+- **migration-plan/** - Phased migration from monolithic to plugin system
+- **examples/** - Example plugin implementations
 
-### 📂 analysis/
-**Performance and system analysis reports**
-- Performance analysis reports
-- Database maintenance analysis
-- Risk & capital metrics issues
-- Strategy performance tracking
-- Debug logs
+### [4-analysis/](4-analysis/) - Analysis & Performance
+Performance tracking, feasibility studies, and issue investigations.
+- **performance/** - Bot performance metrics and reports
+- **feasibility/** - Feature feasibility assessments
+- **issues/** - Documented issues and investigations
 
-### 📂 reminders/
-**Scheduled maintenance and future tasks**
-- Time-based reminders for maintenance tasks
+### [5-planning/](5-planning/) - Planning
+Active and completed planning documents.
+- **active/** - Current planning work
+- **completed/** - Finished plans (TPSL, schema cleanup, optimization)
 
----
+### [6-archive/](6-archive/) - Archive
+Historical documentation, resolved bugs, and superseded plans.
+- **bugs-resolved/** - Fixed bug analyses
+- **sessions/** - Historical session summaries
+- **analysis/** - Old analysis docs
+- **planning/** - Superseded plans
+- **deprecated/** - Deprecated features
 
 ## Quick Links
 
-### For Development
-- [Architecture Deep Dive](active/architecture/ARCHITECTURE_DEEP_DIVE.md)
-- [FIFO Allocations Design](active/architecture/FIFO_ALLOCATIONS_DESIGN.md)
-- [Database Access Guide](active/deployment/DATABASE_ACCESS_GUIDE.md)
+### Development
+- [Architecture Deep Dive](1-production/architecture/ARCHITECTURE_DEEP_DIVE.md)
+- [FIFO Allocations Design](1-production/architecture/FIFO_ALLOCATIONS_DESIGN.md)
+- [Order Flow Documentation](1-production/operations/ORDER_FLOW_DOCUMENTATION.md)
 
-### For Deployment
-- [AWS Deployment Checklist](active/deployment/AWS_DEPLOYMENT_CHECKLIST.md)
-- [AWS PostgreSQL Troubleshooting](active/deployment/AWS_POSTGRES_TROUBLESHOOTING.md)
-- [Reconciliation Setup](active/deployment/RECONCILIATION_SETUP.md)
+### Deployment
+- [AWS Deployment Checklist](1-production/deployment/AWS_DEPLOYMENT_CHECKLIST.md)
+- [Database Access Guide](1-production/deployment/DATABASE_ACCESS_GUIDE.md)
 
-### For Operations
-- [Logging Guide](active/guides/LOGGING_PHASE1_GUIDE.md)
-- [Log Evaluation Guide](active/guides/LOG_EVALUATION_GUIDE.md)
-- [Quick Log Check](active/guides/QUICK_LOG_CHECK.md)
-
-### For Next Session
-- [Cash Transactions Integration](planning/NEXT_SESSION_CASH_TRANSACTIONS.md) - ⚠️ **PENDING IMPLEMENTATION**
-- [Optimization Prep Tasks](planning/NEXT_SESSION_PREP_TASKS.md) - ⚠️ **ACTIVE (Eval: Jan 7, 2025)**
-- [Schema Cleanup](planning/NEXT_SESSION_SCHEMA_CLEANUP.md) - ⚠️ **PENDING**
-- [Reminder: Schema Cleanup](reminders/REMINDER_2025-12-29_schema_cleanup.md) - ⏰ **Due: Dec 29, 2025**
+### Backtesting
+- [4h Hybrid Maker Strategy](2-backtesting/strategies/4h-hybrid-maker/)
+- [Plugin Architecture Plan](3-plugin-architecture/README.md)
 
 ---
 
-## Current Session Documentation
-
-**Latest session documentation is kept in the project root for easy access:**
-- `/SESSION_SUMMARY_DEC15_2025.md` - Current session summary (Dec 15, 2025)
-- `/PASSIVE_MM_FIXES_SESSION.md` - PassiveOrderManager fixes documentation
-- `/DYNAMIC_FILTER_DOCUMENTATION.md` - Dynamic symbol filtering guide
-
-Once the session is complete and a new session begins, these files should be moved to `docs/archive/sessions/`.
-
----
-
-## Document Lifecycle
-
-1. **Active Documents** - Live in `active/` directory, regularly referenced and updated
-2. **Planning Documents** - Live in `planning/` until work is completed
-3. **Current Session** - Lives in project root during active development
-4. **Archived Documents** - Moved to `archive/` when work is completed or superseded
-
----
-
-**Last Updated:** December 15, 2025
-**Maintained By:** BotTrader Team
+**Last Updated:** 2026-02-06
