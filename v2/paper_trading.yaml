@@ -1,8 +1,11 @@
-# BotTrader v2 — Paper Trading Configuration
+# BotTrader v2 — Paper Trading Configuration (Production Docker)
 # Usage: python -m v2 --config v2/paper_trading.yaml
 #
 # Paper trading uses live Coinbase WebSocket data but simulates
 # all order fills locally. No real money is used.
+#
+# Runs alongside v1 on AWS. Shares the same PostgreSQL instance
+# (v2 uses v2_* prefixed tables) and logs volume.
 
 app:
   name: "BotTrader"
@@ -31,9 +34,7 @@ strategies:
 
 risk:
   type: "basic"
-  max_exposure_per_symbol_usd: 500
-  max_daily_loss_usd: 200
-  max_open_positions: 10
+  pass_through: true
 
 execution:
   type: "maker_only"
@@ -41,9 +42,14 @@ execution:
   post_only: true
 
 storage:
-  type: "sqlite"
-  db_path: "paper_trades.db"
+  type: "postgres"
+  dsn_env: "DATABASE_URL"
 
 observers:
   - type: "structured_log"
     level: "INFO"
+  - type: "signal_comparison"
+    log_path: "/app/logs/v2_score_log.jsonl"
+  - type: "heartbeat"
+    path: "/app/logs/v2/heartbeat"
+    interval: 10.0

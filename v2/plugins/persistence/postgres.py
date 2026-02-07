@@ -61,8 +61,12 @@ class PostgresStorage(StorageAdapter):
                 "PostgreSQL DSN not configured. Set DATABASE_URL env or pass dsn="
             )
 
+        dsn = self._dsn
+        if "+asyncpg" in dsn:
+            dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+
         self._pool = await asyncpg.create_pool(
-            self._dsn,
+            dsn,
             min_size=1,
             max_size=self._pool_size,
             command_timeout=30,

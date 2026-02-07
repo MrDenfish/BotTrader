@@ -143,6 +143,36 @@ services:
       retries: 5
       start_period: 120s
     restart: unless-stopped
+
+  v2-paper:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.v2
+    container_name: v2-paper
+    environment:
+      TZ: ${TZ}
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      V2_SCORE_LOG_PATH: "/app/logs/v2_score_log.jsonl"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /opt/bot/.env:/app/.env:ro
+      - /opt/bot/logs:/app/logs
+    entrypoint: [ "/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.v2.sh" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import os,time,sys;p='/app/logs/v2/heartbeat';sys.exit(0) if (os.path.exists(p) and (time.time()-os.path.getmtime(p)<300)) else sys.exit(1)\"" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
   report-job:
     build:
       context: .
