@@ -1,5 +1,8 @@
 # BotTrader v2 — Paper Trading Configuration
 # Usage: python -m v2 --config v2/paper_trading.yaml
+#
+# Paper trading uses live Coinbase WebSocket data but simulates
+# all order fills locally. No real money is used.
 
 app:
   name: "BotTrader"
@@ -9,17 +12,22 @@ app:
 exchange:
   type: "paper"
   initial_balance_usd: 10000
-  simulated_fill_delay_ms: 100
+  maker_fee: 0.006
+  taker_fee: 0.012
+  slippage_bps: 1.0
 
 data_providers:
   - type: "websocket"
+    # Reads API credentials from environment:
+    #   COINBASE_API_KEY, COINBASE_API_SECRET
+    channels: ["ticker_batch", "heartbeats"]
+    idle_timeout: 90.0
 
 strategies:
   - type: "composite_scoring"
     config:
       score_buy_target: 2.0
       score_sell_target: 2.0
-      roc_24h_enabled: false
 
 risk:
   type: "basic"
@@ -38,4 +46,4 @@ storage:
 
 observers:
   - type: "structured_log"
-    level: "DEBUG"
+    level: "INFO"
