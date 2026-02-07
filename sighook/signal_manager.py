@@ -341,126 +341,115 @@ class SignalManager:
             # ================================================================================
             # 🎯 MULTI-STRATEGY ROC SYSTEM (Priority Order)
             # ================================================================================
-            # 🚨 EMERGENCY FIX (2026-01-25): MULTI-ROC STRATEGIES DISABLED
-            # Reason: Strategy mismatch with backtest
-            # - Backtest was for Test 2 (8.5% ROC threshold, 57.9% win rate, 19 trades/60 days)
-            # - Production was running Multi-ROC (10% 24h + 2% 20m, 26.7% win rate, 930 trades/60 days)
-            # - Trade frequency 52× higher than expected
-            # Will re-enable after Test 2 evaluation period (7-14 days)
-            # ================================================================================
-            # Strategy #1: 20-Minute Momentum Scalps - DISABLED
-            # Strategy #2: 24-Hour Momentum Runners - DISABLED
-            # Strategy #3: Calculated ROC (weighted scoring) - STILL ACTIVE
+            # Re-enabled 2026-02-06 with corrected Test 2 backtest parameters:
+            # - 24h ROC threshold: 8.5% (was 10.0%, now config-driven via ROC_24H_BUY_THRESHOLD)
+            # - 20m ROC threshold: 2.0% (config-driven via ROC_20M_BUY_THRESHOLD)
+            # - RSI gate: 45-55 (14-period Wilder standard)
+            # Test 2 backtest: 57.9% win rate, 19 trades/60 days, -$1.94 P&L
             # ================================================================================
 
             rsi_value = last_row.get('RSI', None)
 
             # ================================================================================
-            # ❌ STRATEGY #1: 20-MINUTE MOMENTUM SCALPS - DISABLED (2026-01-25)
+            # STRATEGY #1: 20-MINUTE MOMENTUM SCALPS
             # ================================================================================
             # Goal: Catch fast intraday pumps (2%+ in 20 minutes)
             # Data Source: Calculated ROC from 1-minute candles (20-period lookback)
             # Exit: Tight trailing stop (1.5× ATR on 5-min candles)
-            # DISABLED: See emergency fix notes above
             # ================================================================================
 
-            if False:  # DISABLED (2026-01-25) - Strategy mismatch with backtest
-                roc_20m_value = last_row.get('ROC', None)  # ROC calculated from indicators.py
-                if roc_20m_value is not None and rsi_value is not None:
-                    roc_20m_buy_threshold = float(self.config.roc_20m_buy_threshold)  # 2.0% from .env
-                    roc_20m_sell_threshold = float(self.config.roc_20m_sell_threshold)  # -2.0% from .env
+            roc_20m_value = last_row.get('ROC', None)  # ROC calculated from indicators.py
+            if roc_20m_value is not None and rsi_value is not None:
+                roc_20m_buy_threshold = float(self.config.roc_20m_buy_threshold)  # from .env
+                roc_20m_sell_threshold = float(self.config.roc_20m_sell_threshold)  # from .env
 
-                    # RSI gate: Slightly wider range for fast moves (45-60 vs 45-55 for 24h)
-                    buy_signal_20m = (
-                        (roc_20m_value > roc_20m_buy_threshold) and
-                        (45.0 <= rsi_value <= 60.0)
-                    )
-                    sell_signal_20m = (
-                        (roc_20m_value < roc_20m_sell_threshold) and
-                        (40.0 <= rsi_value <= 55.0)
-                    )
+                # RSI gate: Slightly wider range for fast moves (45-60 vs 45-55 for 24h)
+                buy_signal_20m = (
+                    (roc_20m_value > roc_20m_buy_threshold) and
+                    (45.0 <= rsi_value <= 60.0)
+                )
+                sell_signal_20m = (
+                    (roc_20m_value < roc_20m_sell_threshold) and
+                    (40.0 <= rsi_value <= 55.0)
+                )
 
-                    if buy_signal_20m:
-                        bs, ss, comps = self._compute_score_components(last_row)
-                        self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_20m')
+                if buy_signal_20m:
+                    bs, ss, comps = self._compute_score_components(last_row)
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_20m')
 
-                        return {
-                            'action': 'buy', 'trigger': 'roc_momo_20m', 'type': 'limit',
-                            'Buy Signal': (1, float(roc_20m_value), float(roc_20m_buy_threshold)),
-                            'Sell Signal': (0, None, None),
-                            'Score': {'Buy Score': bs, 'Sell Score': ss}
-                        }
-                    if sell_signal_20m:
-                        bs, ss, comps = self._compute_score_components(last_row)
-                        self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_20m')
+                    return {
+                        'action': 'buy', 'trigger': 'roc_momo_20m', 'type': 'limit',
+                        'Buy Signal': (1, float(roc_20m_value), float(roc_20m_buy_threshold)),
+                        'Sell Signal': (0, None, None),
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
+                    }
+                if sell_signal_20m:
+                    bs, ss, comps = self._compute_score_components(last_row)
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_20m')
 
-                        return {
-                            'action': 'sell', 'trigger': 'roc_momo_20m', 'type': 'limit',
-                            'Sell Signal': (1, float(roc_20m_value), float(roc_20m_sell_threshold)),
-                            'Buy Signal': (0, None, None),
-                            'Score': {'Buy Score': bs, 'Sell Score': ss}
-                        }
+                    return {
+                        'action': 'sell', 'trigger': 'roc_momo_20m', 'type': 'limit',
+                        'Sell Signal': (1, float(roc_20m_value), float(roc_20m_sell_threshold)),
+                        'Buy Signal': (0, None, None),
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
+                    }
 
             # ================================================================================
-            # ❌ STRATEGY #2: 24-HOUR MOMENTUM RUNNERS - DISABLED (2026-01-25)
+            # STRATEGY #2: 24-HOUR MOMENTUM RUNNERS
             # ================================================================================
-            # Goal: Catch big daily movers (10%+ in 24 hours)
+            # Goal: Catch big daily movers (8.5%+ in 24 hours, per Test 2 backtest)
             # Data Source: Exchange ticker price_percentage_change_24h
             # Exit: Peak tracking (8% drawdown from peak)
-            # DISABLED: See emergency fix notes above
+            # Thresholds: Config-driven via ROC_24H_BUY_THRESHOLD / ROC_24H_SELL_THRESHOLD
             # ================================================================================
 
-            if False:  # DISABLED (2026-01-25) - Strategy mismatch with backtest
-                # Get 24-hour price change from usd_pairs (live ticker data)
-                roc_24h_value = None
-                if self.usd_pairs is not None:
-                    try:
-                        usd_pairs_df = self.usd_pairs.set_index("asset")
-                        # Extract symbol name (e.g., "BTC-USD" -> "BTC")
-                        asset_name = symbol.split('-')[0] if '-' in symbol else symbol
-                        if asset_name in usd_pairs_df.index:
-                            roc_24h_value = float(usd_pairs_df.loc[asset_name, 'price_percentage_change_24h'])
-                    except Exception as e:
-                        self.logger.debug(f"Could not fetch 24h ROC for {symbol}: {e}")
+            # Get 24-hour price change from usd_pairs (live ticker data)
+            roc_24h_value = None
+            if self.usd_pairs is not None:
+                try:
+                    usd_pairs_df = self.usd_pairs.set_index("asset")
+                    # Extract symbol name (e.g., "BTC-USD" -> "BTC")
+                    asset_name = symbol.split('-')[0] if '-' in symbol else symbol
+                    if asset_name in usd_pairs_df.index:
+                        roc_24h_value = float(usd_pairs_df.loc[asset_name, 'price_percentage_change_24h'])
+                except Exception as e:
+                    self.logger.debug(f"Could not fetch 24h ROC for {symbol}: {e}")
 
-                if roc_24h_value is not None and rsi_value is not None:
-                    # 24-hour momentum thresholds (optimized for momentum runners)
-                    roc_24h_buy_threshold = 10.0   # 10% gain in 24 hours
-                    roc_24h_sell_threshold = -5.0  # -5% drop in 24 hours
+            if roc_24h_value is not None and rsi_value is not None:
+                roc_24h_buy_threshold = float(self.config.roc_24h_buy_threshold)   # from .env (default 8.5)
+                roc_24h_sell_threshold = float(self.config.roc_24h_sell_threshold)  # from .env (default -5.0)
 
-                    # RSI gate: Only trade in neutral zone (avoid overextended conditions)
-                    # Tightened to 45-55 to avoid chasing pumps that are already overheated
-                    buy_signal_roc = (
-                        (roc_24h_value > roc_24h_buy_threshold) and
-                        (45.0 <= rsi_value <= 55.0)
-                    )
-                    sell_signal_roc = (
-                        (roc_24h_value < roc_24h_sell_threshold) and
-                        (45.0 <= rsi_value <= 55.0)
-                    )
+                # RSI gate: Only trade in neutral zone (avoid overextended conditions)
+                # Tightened to 45-55 to avoid chasing pumps that are already overheated
+                buy_signal_roc = (
+                    (roc_24h_value > roc_24h_buy_threshold) and
+                    (45.0 <= rsi_value <= 55.0)
+                )
+                sell_signal_roc = (
+                    (roc_24h_value < roc_24h_sell_threshold) and
+                    (45.0 <= rsi_value <= 55.0)
+                )
 
-                    if buy_signal_roc:
-                        # compute full components so we can see the context even on overrides
-                        bs, ss, comps = self._compute_score_components(last_row)
-                        self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_24h')
+                if buy_signal_roc:
+                    bs, ss, comps = self._compute_score_components(last_row)
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='buy', trigger='roc_momo_24h')
 
-                        return {
-                            'action': 'buy', 'trigger': 'roc_momo_24h', 'type': 'limit',
-                            'Buy Signal': (1, float(roc_24h_value), float(roc_24h_buy_threshold)),
-                            'Sell Signal': (0, None, None),
-                            'Score': {'Buy Score': bs, 'Sell Score': ss}
-                        }
-                    if sell_signal_roc:
-                        # compute full components so we can see the context even on overrides
-                        bs, ss, comps = self._compute_score_components(last_row)
-                        self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_24h')
+                    return {
+                        'action': 'buy', 'trigger': 'roc_momo_24h', 'type': 'limit',
+                        'Buy Signal': (1, float(roc_24h_value), float(roc_24h_buy_threshold)),
+                        'Sell Signal': (0, None, None),
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
+                    }
+                if sell_signal_roc:
+                    bs, ss, comps = self._compute_score_components(last_row)
+                    self._log_score_snapshot(symbol, ohlcv_df, bs, ss, comps, action='sell', trigger='roc_momo_24h')
 
-                        return {
-                            'action': 'sell', 'trigger': 'roc_momo_24h', 'type': 'limit',
-                            'Sell Signal': (1, float(roc_24h_value), float(roc_24h_sell_threshold)),
-                            'Buy Signal': (0, None, None),
-                            'Score': {'Buy Score': bs, 'Sell Score': ss}
-                        }
+                    return {
+                        'action': 'sell', 'trigger': 'roc_momo_24h', 'type': 'limit',
+                        'Sell Signal': (1, float(roc_24h_value), float(roc_24h_sell_threshold)),
+                        'Buy Signal': (0, None, None),
+                        'Score': {'Buy Score': bs, 'Sell Score': ss}
+                    }
 
             # ✅ Weighted scoring
             buy_score, sell_score = 0.0, 0.0
