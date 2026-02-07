@@ -1,0 +1,42 @@
+# BotTrader v2 — Live Trading Configuration
+# Usage: python -m v2 --config v2/config.yaml
+
+app:
+  name: "BotTrader"
+  mode: "live"
+  symbols: ["BTC-USD", "ETH-USD"]
+
+exchange:
+  type: "coinbase"
+  api_key_env: "COINBASE_API_KEY"
+  api_secret_env: "COINBASE_API_SECRET"
+
+data_providers:
+  - type: "websocket"
+
+strategies:
+  - type: "composite_scoring"
+    config:
+      score_buy_target: 2.0
+      score_sell_target: 2.0
+      roc_24h_enabled: false
+
+risk:
+  type: "basic"
+  max_exposure_per_symbol_usd: 500
+  max_daily_loss_usd: 200
+  max_open_positions: 10
+
+execution:
+  type: "maker_only"
+  max_retries: 3
+  post_only: true
+
+storage:
+  type: "postgres"
+  url_env: "DATABASE_URL"
+
+observers:
+  - type: "structured_log"
+  - type: "daily_report"
+  - type: "alerting"

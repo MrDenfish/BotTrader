@@ -1,0 +1,41 @@
+# BotTrader v2 — Paper Trading Configuration
+# Usage: python -m v2 --config v2/paper_trading.yaml
+
+app:
+  name: "BotTrader"
+  mode: "paper"
+  symbols: ["BTC-USD", "ETH-USD"]
+
+exchange:
+  type: "paper"
+  initial_balance_usd: 10000
+  simulated_fill_delay_ms: 100
+
+data_providers:
+  - type: "websocket"
+
+strategies:
+  - type: "composite_scoring"
+    config:
+      score_buy_target: 2.0
+      score_sell_target: 2.0
+      roc_24h_enabled: false
+
+risk:
+  type: "basic"
+  max_exposure_per_symbol_usd: 500
+  max_daily_loss_usd: 200
+  max_open_positions: 10
+
+execution:
+  type: "maker_only"
+  max_retries: 3
+  post_only: true
+
+storage:
+  type: "sqlite"
+  db_path: "paper_trades.db"
+
+observers:
+  - type: "structured_log"
+    level: "DEBUG"

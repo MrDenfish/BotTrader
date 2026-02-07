@@ -1,0 +1,41 @@
+# BotTrader v2 — Backtest: 4H Hybrid Maker Strategy
+# Usage: python -m v2 --config v2/backtest_4h.yaml
+
+app:
+  name: "BotTrader"
+  mode: "backtest"
+  symbols: ["BTC-USD"]
+
+exchange:
+  type: "backtest"
+
+data_providers:
+  - type: "csv_replay"
+    data_dir: "backtest/data"
+    days: 360
+
+strategies:
+  - type: "hybrid_4h_maker"
+    config:
+      score_buy_threshold: 2.0
+      score_sell_threshold: 2.0
+      ema_fast: 12
+      ema_slow: 26
+
+risk:
+  type: "basic"
+  max_exposure_per_symbol_usd: 10000
+  max_daily_loss_usd: 2000
+  max_open_positions: 5
+
+execution:
+  type: "maker_only"
+  post_only: true
+
+storage:
+  type: "sqlite"
+  db_path: "backtest_results/backtest.db"
+
+observers:
+  - type: "structured_log"
+    level: "INFO"
