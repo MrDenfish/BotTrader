@@ -1,0 +1,44 @@
+# BotTrader v2 — Backtest: Composite Scoring Strategy
+# Usage: python -m v2 --config v2/backtest_composite.yaml
+#
+# The composite scoring strategy computes its own indicators from raw 1m
+# candle data (BB, MACD, RSI, ROC, W-Bottom/M-Top, Swing), so no
+# Hybrid4hConfig is needed by the data provider.
+
+app:
+  name: "BotTrader"
+  mode: "backtest"
+  symbols: ["BTC-USD"]
+
+exchange:
+  type: "backtest"
+
+data_providers:
+  - type: "csv_replay"
+    data_dir: "backtest/data"
+    days: 60
+    resolution: "1m"
+    # No config needed — composite scoring computes its own indicators
+
+strategies:
+  - type: "composite_scoring"
+    # Uses default CompositeScoreConfig.
+    # Override parameters inline:
+    # config:
+    #   score_buy_target: 5.5
+    #   score_sell_target: 5.5
+    #   rsi_buy: 20.0
+    #   rsi_sell: 80.0
+
+risk:
+  type: "basic"
+
+execution:
+  type: "maker_only"
+
+storage:
+  type: "sqlite"
+
+observers:
+  - type: "structured_log"
+    level: "INFO"

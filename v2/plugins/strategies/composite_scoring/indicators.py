@@ -1,0 +1,184 @@
+"""Indicator calculations for the composite scoring strategy.
+
+Ported from sighook/indicators.py. Each indicator returns a
+(decision, value, threshold) tuple for the last bar of the DataFrame.
+
+The ``compute_indicators`` function runs all indicators on a rolling
+buffer DataFrame and returns a dict keyed by indicator name.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from v2.plugins.strategies.composite_scoring.config import CompositeScoreConfig
+
+
+def _norm(decision: bool | int, value: float, threshold: float) -> tuple[int, float, float]:
+    """Normalize to (int_decision, float_value, float_threshold)."""
+    return (
+        int(bool(decision)),
+        float(value if value is not None else 0.0),
+        float(threshold if threshold is not None else 0.0),
+    )
+
+
+def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
+    """Compute all indicator signals on *df*, return values for the last row.
+
+    Parameters
+    ----------
+    df : DataFrame with columns: open, high, low, close, volume.
+         Index should be datetime. Must have at least ``cfg.min_bars`` rows.
+    cfg : Strategy configuration.
+
+    Returns
+    -------
+    dict mapping indicator names (``"Buy RSI"``, etc.) to
+    ``(decision, value, threshold)`` tuples.  Also includes raw values
+    prefixed with ``_`` (``"_RSI"``, ``"_ROC"``, …) for momentum checks.
+    """
+    n = len(df)
+    needed = max(cfg.bb_window, cfg.macd_slow + cfg.macd_signal, cfg.rsi_window + 1, 3)
+    if n < needed:
+        return {}
+
+    results: dict = {}
+
+    # === 1. BOLLINGER BANDS ===
+    basis = df["close"].rolling(window=cfg.bb_window).mean()
+    std = df["close"].rolling(window=cfg.bb_window).std()
+    upper = basis + cfg.bb_std * std
+    lower = basis - cfg.bb_std * std
+    band_ratio = (upper / lower).fillna(1.0)
+
+    last = df.iloc[-1]
+    last_upper = float(upper.iloc[-1]) if not pd.isna(upper.iloc[-1]) else 0.0
+    last_lower = float(lower.iloc[-1]) if not pd.isna(lower.iloc[-1]) else 0.0
+    last_basis = float(basis.iloc[-1]) if not pd.isna(basis.iloc[-1]) else 0.0
+    last_ratio = float(band_ratio.iloc[-1])
+
+    results["Buy Touch"] = _norm(last["close"] <= last_lower, last["close"], last_lower)
+    results["Sell Touch"] = _norm(last["close"] >= last_upper, last["close"], last_upper)
+    results["Buy Ratio"] = _norm(last_ratio > cfg.buy_ratio, last_ratio, cfg.buy_ratio)
+    results["Sell Ratio"] = _norm(last_ratio < cfg.sell_ratio, last_ratio, cfg.sell_ratio)
+
+    # === 2. MACD ===
+    ema_fast = df["close"].ewm(span=cfg.macd_fast, adjust=False).mean()
+    ema_slow = df["close"].ewm(span=cfg.macd_slow, adjust=False).mean()
+    macd = ema_fast - ema_slow
+    signal_line = macd.ewm(span=cfg.macd_signal, adjust=False).mean()
+    macd_hist = macd - signal_line
+
+    last_macd = float(macd.iloc[-1])
+    last_signal = float(signal_line.iloc[-1])
+    last_hist = float(macd_hist.iloc[-1])
+
+    # Crossover check (last 2 bars)
+    if n >= 2:
+        prev_macd = float(macd.iloc[-2])
+        prev_signal = float(signal_line.iloc[-2])
+        buy_macd = (prev_macd < prev_signal and last_macd > last_signal and last_macd > 0)
+        sell_macd = (prev_macd > prev_signal and last_macd < last_signal and last_macd < 0)
+    else:
+        buy_macd = False
+        sell_macd = False
+
+    results["Buy MACD"] = _norm(buy_macd, last_hist, 0.0)
+    results["Sell MACD"] = _norm(sell_macd, last_hist, 0.0)
+
+    # === 3. RSI ===
+    delta = df["close"].diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window=cfg.rsi_window).mean()
+    avg_loss = loss.rolling(window=cfg.rsi_window).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = (100 - (100 / (1 + rs))).clip(0, 100).fillna(50)
+    rsi_value = float(rsi.iloc[-1])
+
+    results["Buy RSI"] = _norm(rsi_value < cfg.rsi_buy, rsi_value, cfg.rsi_buy)
+    results["Sell RSI"] = _norm(rsi_value > cfg.rsi_sell, rsi_value, cfg.rsi_sell)
+    results["_RSI"] = rsi_value
+
+    # === 4. ROC ===
+    roc = df["close"].pct_change(periods=cfg.roc_window) * 100
+    roc_value = float(roc.iloc[-1]) if not pd.isna(roc.iloc[-1]) else 0.0
+
+    results["Buy ROC"] = _norm(roc_value > cfg.roc_buy_threshold, roc_value, cfg.roc_buy_threshold)
+    results["Sell ROC"] = _norm(roc_value < cfg.roc_sell_threshold, roc_value, cfg.roc_sell_threshold)
+    results["_ROC"] = roc_value
+
+    # === 5. W-BOTTOM & M-TOP ===
+    # Pattern uses bars [i-1, i, i+1].  The *last* row (our scoring target)
+    # is always (0, 0, 0) because there is no bar i+1 to confirm the pattern.
+    # This matches v1 production behaviour.
+    w_bottom = False
+    m_top = False
+    min_price_change = 0.0
+
+    if n >= 3:
+        atr_range = (
+            df["high"].rolling(cfg.atr_window).max()
+            - df["low"].rolling(cfg.atr_window).min()
+        ).fillna(0)
+        min_price_change = float(atr_range.median() * 0.065)
+        vol_mean = df["volume"].rolling(window=cfg.atr_window, min_periods=1).mean().fillna(0)
+
+        # Check pattern at index n-2 (prev=n-3, curr=n-2, nxt=n-1).
+        # The result is stored at n-2, NOT at n-1 (the scoring row).
+        # So for the scoring row, W-Bottom/M-Top are always 0.
+        # We keep the computation for correctness if someone changes
+        # to scoring at n-2 in the future.
+        prev_bar, curr_bar, next_bar = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+        prev_lower = float(lower.iloc[-3]) if not pd.isna(lower.iloc[-3]) else 0.0
+        prev_upper = float(upper.iloc[-3]) if not pd.isna(upper.iloc[-3]) else 0.0
+        next_basis = float(basis.iloc[-1]) if not pd.isna(basis.iloc[-1]) else 0.0
+        next_vol_mean = float(vol_mean.iloc[-1])
+
+        w_bottom = bool(
+            prev_lower > 0
+            and prev_bar["low"] < prev_lower
+            and curr_bar["low"] > prev_bar["low"]
+            and next_bar["low"] > curr_bar["low"]
+            and next_bar["close"] > next_basis
+            and next_bar["volume"] > next_vol_mean
+            and abs(curr_bar["low"] - prev_bar["low"]) >= min_price_change
+        )
+        m_top = bool(
+            prev_upper > 0
+            and prev_bar["high"] > prev_upper
+            and curr_bar["high"] < prev_bar["high"]
+            and next_bar["high"] < curr_bar["high"]
+            and next_bar["close"] < next_basis
+            and next_bar["volume"] > next_vol_mean
+            and abs(curr_bar["high"] - prev_bar["high"]) >= min_price_change
+        )
+
+    # Score the *last* row — pattern detection at n-2 means
+    # the last row always gets decision=0 (matching v1 behaviour).
+    results["W-Bottom"] = _norm(False, last["low"], min_price_change)
+    results["M-Top"] = _norm(False, last["high"], min_price_change)
+
+    # === 6. SWING TRADING ===
+    rolling_high = df["close"].rolling(window=cfg.swing_window).max()
+    rolling_low = df["close"].rolling(window=cfg.swing_window).min()
+
+    last_rh = float(rolling_high.iloc[-1]) if not pd.isna(rolling_high.iloc[-1]) else 0.0
+    last_rl = float(rolling_low.iloc[-1]) if not pd.isna(rolling_low.iloc[-1]) else 0.0
+
+    # Note: close > rolling_high is always False because rolling_high
+    # includes the current bar (matches v1 behaviour).
+    buy_swing = (last["close"] > last_rh and last_macd > last_signal)
+    sell_swing = (last["close"] < last_rl and last_macd < last_signal)
+
+    results["Buy Swing"] = _norm(buy_swing, last["close"], 0.0)
+    results["Sell Swing"] = _norm(sell_swing, last["close"], 0.0)
+
+    # === Raw values for diagnostics ===
+    results["_upper"] = last_upper
+    results["_lower"] = last_lower
+    results["_MACD_Hist"] = last_hist
+
+    return results

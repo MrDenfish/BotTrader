@@ -192,9 +192,15 @@ class CsvReplayProvider(DataProvider):
         ts_4h = set(df_4h.index)
         ts_1d = set(df_1d.index)
 
-        df_4h = self._calc_4h(df_4h, config)
-        df_1d = self._calc_1d(df_1d, config)
-        df_aligned = self._align(df_base, df_4h, df_1d)
+        if config is not None:
+            df_4h = self._calc_4h(df_4h, config)
+            df_1d = self._calc_1d(df_1d, config)
+            df_aligned = self._align(df_base, df_4h, df_1d)
+        else:
+            # No config — skip indicator computation, return raw data.
+            # Strategies that compute their own indicators (e.g. composite_scoring)
+            # don't need the 4h/1D indicators from the data provider.
+            df_aligned = df_base.copy()
 
         return df_4h, df_1d, df_aligned, ts_4h, ts_1d
 
