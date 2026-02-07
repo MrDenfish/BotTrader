@@ -61,9 +61,40 @@ def main() -> None:
     from v2.core.app import App
     app = App(config_path=args.config, overrides=overrides or None)
     try:
-        asyncio.run(app.run())
+        result = asyncio.run(app.run())
+        if result is not None:
+            _print_backtest_results(result, app)
     except KeyboardInterrupt:
         pass
+
+
+def _print_backtest_results(stats: dict, app) -> None:
+    """Print backtest results summary."""
+    if "error" in stats:
+        print(f"\nError: {stats['error']}")
+        return
+
+    print("\n" + "=" * 70)
+    print("BACKTEST RESULTS (v2)")
+    print("=" * 70)
+
+    print(f"Trades: {stats.get('trades', 0)}")
+    print(f"Gross P&L: ${stats.get('gross_pnl', 0):.2f}")
+    print(f"Fees: ${stats.get('fees', 0):.2f}")
+    print(f"Net P&L: ${stats.get('net_pnl', 0):.2f}")
+
+    if stats.get('trades', 0) > 0:
+        print(f"Win Rate: {stats.get('win_rate', 0):.1%}")
+        print(f"Profit Factor: {stats.get('profit_factor', 0):.2f}")
+        print(f"Avg Win: ${stats.get('avg_win', 0):.2f}")
+        print(f"Avg Loss: ${stats.get('avg_loss', 0):.2f}")
+
+    print("=" * 70)
+
+    # Print enhanced diagnostics if available
+    for strategy in app._strategies:
+        if hasattr(strategy, "print_enhanced_diagnostics"):
+            print(strategy.print_enhanced_diagnostics())
 
 
 if __name__ == "__main__":

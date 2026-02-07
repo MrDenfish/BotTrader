@@ -1,5 +1,8 @@
-# BotTrader v2 — Backtest: 4H Hybrid Maker Strategy
+# BotTrader v2 — Backtest: 4H Hybrid Maker Strategy (ROC-score mode)
 # Usage: python -m v2 --config v2/backtest_4h.yaml
+#
+# NOTE: For full config flexibility, use the Python API directly
+# with Hybrid4hConfig presets (get_phase2_3_roc_baseline_config, etc.)
 
 app:
   name: "BotTrader"
@@ -13,28 +16,23 @@ data_providers:
   - type: "csv_replay"
     data_dir: "backtest/data"
     days: 360
+    resolution: "1m"
 
 strategies:
   - type: "hybrid_4h_maker"
-    config:
-      score_buy_threshold: 2.0
-      score_sell_threshold: 2.0
-      ema_fast: 12
-      ema_slow: 26
+    # Uses default Hybrid4hConfig when no config specified.
+    # To use a preset config, run via Python:
+    #   from backtest.config_4h_hybrid import get_phase2_3_roc_baseline_config
+    #   config = get_phase2_3_roc_baseline_config()
 
 risk:
   type: "basic"
-  max_exposure_per_symbol_usd: 10000
-  max_daily_loss_usd: 2000
-  max_open_positions: 5
 
 execution:
   type: "maker_only"
-  post_only: true
 
 storage:
   type: "sqlite"
-  db_path: "backtest_results/backtest.db"
 
 observers:
   - type: "structured_log"

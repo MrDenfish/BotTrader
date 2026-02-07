@@ -43,12 +43,18 @@ class App:
         self._storage = None
         self._observers: list = []
 
+        # Backtest results
+        self.backtest_results: dict | None = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    async def run(self) -> None:
-        """Full lifecycle: setup → run → teardown."""
+    async def run(self) -> dict | None:
+        """Full lifecycle: setup → run → teardown.
+
+        Returns backtest results dict in backtest mode, None otherwise.
+        """
         self.config = Config.load(self.config_path, self.overrides)
         logger.info(
             "Starting BotTrader v2 — mode=%s, symbols=%s",
@@ -61,7 +67,12 @@ class App:
 
         await self._setup()
         try:
-            await self._run_loop()
+            if self.config.app.mode == "backtest":
+                self.backtest_results = self._run_backtest()
+                return self.backtest_results
+            else:
+                await self._run_loop()
+                return None
         finally:
             await self._teardown()
 
@@ -111,7 +122,6 @@ class App:
 
         # Configure and start strategies
         for s in self._strategies:
-            # Find matching strategy config from the config list
             matching = [
                 ref for ref in cfg.strategies if ref.type == s.name
             ]
@@ -197,7 +207,108 @@ class App:
             )
 
     # ------------------------------------------------------------------
-    # Run loop + shutdown
+    # Backtest mode
+    # ------------------------------------------------------------------
+
+    def _run_backtest(self) -> dict:
+        """Synchronous bar-by-bar backtest.
+
+        In backtest mode, the CsvReplayProvider has pre-loaded and pre-
+        computed all data/indicators. We iterate bar-by-bar synchronously,
+        calling each strategy's ``on_backtest_bar()`` method directly.
+        This bypasses the async event loop for deterministic execution.
+        """
+        from v2.plugins.data.csv_replay import CsvReplayProvider, BacktestCandleEvent
+
+        cfg = self.config
+        results = {}
+
+        # Find the CSV replay provider
+        csv_providers = [
+            dp for dp in self._data_providers
+            if isinstance(dp, CsvReplayProvider)
+        ]
+        if not csv_providers:
+            logger.error("No csv_replay data provider configured for backtest")
+            return {"error": "No csv_replay data provider"}
+
+        provider = csv_providers[0]
+
+        for symbol in cfg.app.symbols:
+            logger.info("Backtesting %s...", symbol)
+
+            df = provider._aligned_data.get(symbol)
+            if df is None:
+                logger.warning("%s: no data loaded — skipping", symbol)
+                results[symbol] = {"error": "No data"}
+                continue
+
+            ts_4h = provider._4h_timestamps.get(symbol, set())
+            ts_1d = provider._1d_timestamps.get(symbol, set())
+            total_bars = len(df)
+
+            for idx, (ts, row) in enumerate(df.iterrows()):
+                from v2.core.types import Candle
+                candle = Candle(
+                    symbol=symbol,
+                    timestamp=ts.to_pydatetime(),
+                    open=row["open"],
+                    high=row["high"],
+                    low=row["low"],
+                    close=row["close"],
+                    volume=row.get("volume", 0.0),
+                    timeframe=provider._resolution,
+                )
+
+                indicators = {
+                    "4h": {
+                        "atr_pct": row.get("atr_pct_4h", 0),
+                        "donch_high_prev": row.get("donch_high_prev_4h", 0),
+                        "bb_width_pct": row.get("bb_width_pct_4h", 0),
+                        "bb_width": row.get("bb_width_4h", 0),
+                        "roc_score_4h": row.get("roc_score_4h", 0),
+                    },
+                    "1D": {
+                        "ema200": row.get("ema200_1d", 0),
+                        "ema50": row.get("ema50_1d", 0),
+                        "ema200_slope": row.get("ema200_slope_1d", 0),
+                        "ema50_slope": row.get("ema50_slope_1d", 0),
+                    },
+                }
+
+                context = {
+                    "is_4h_close": ts in ts_4h,
+                    "is_1d_close": ts in ts_1d,
+                }
+
+                # Call each strategy
+                for strategy in self._strategies:
+                    if hasattr(strategy, "on_backtest_bar"):
+                        sig = strategy.on_backtest_bar(
+                            symbol, candle, indicators, context,
+                        )
+                        if sig is not None:
+                            self.bus.publish(
+                                SignalEvent(signal=sig, strategy_name=strategy.name)
+                            )
+
+                if (idx + 1) % 50_000 == 0:
+                    logger.info("  %s: %d / %d bars", symbol, idx + 1, total_bars)
+
+            logger.info("  %s: complete (%d bars)", symbol, total_bars)
+
+            # Collect results from strategies
+            for strategy in self._strategies:
+                if hasattr(strategy, "get_statistics"):
+                    results[symbol] = strategy.get_statistics()
+
+        # If single symbol, return flat
+        if len(results) == 1:
+            return list(results.values())[0]
+        return results
+
+    # ------------------------------------------------------------------
+    # Run loop + shutdown (live/paper mode)
     # ------------------------------------------------------------------
 
     async def _run_loop(self) -> None:
