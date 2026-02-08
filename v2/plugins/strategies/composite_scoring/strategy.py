@@ -171,7 +171,30 @@ class CompositeScoringStrategy(Strategy):
         # Compute indicators
         ind = compute_indicators(df, cfg)
         if not ind:
+            logger.info(
+                "DIAG %s bar=%d: compute_indicators returned empty (n=%d)",
+                symbol, bar_idx, len(df),
+            )
             return None
+
+        # --- Diagnostic logging (temporary) ---
+        rsi_val = ind.get("_RSI")
+        roc_val = ind.get("_ROC")
+        buy_rsi = ind.get("Buy RSI", (0,))[0]
+        sell_rsi = ind.get("Sell RSI", (0,))[0]
+        buy_roc = ind.get("Buy ROC", (0,))[0]
+        sell_roc = ind.get("Sell ROC", (0,))[0]
+        buy_macd = ind.get("Buy MACD", (0,))[0]
+        sell_macd = ind.get("Sell MACD", (0,))[0]
+        logger.info(
+            "DIAG %s bar=%d: RSI=%.2f ROC=%.4f%% | "
+            "fired: bRSI=%d sRSI=%d bROC=%d sROC=%d bMACD=%d sMACD=%d | "
+            "thresholds: rsi_buy=%.1f rsi_sell=%.1f roc_buy=%.2f roc_sell=%.2f",
+            symbol, bar_idx,
+            rsi_val or 0, roc_val or 0,
+            buy_rsi, sell_rsi, buy_roc, sell_roc, buy_macd, sell_macd,
+            cfg.rsi_buy, cfg.rsi_sell, cfg.roc_buy_threshold, cfg.roc_sell_threshold,
+        )
 
         # --- Priority: 20-minute momentum scalps ---
         roc_value = ind.get("_ROC")
@@ -209,6 +232,14 @@ class CompositeScoringStrategy(Strategy):
         # --- Composite scoring ---
         buy_score, sell_score, buy_signal, sell_signal, components = compute_scores(
             ind, cfg,
+        )
+
+        logger.info(
+            "DIAG %s bar=%d: buy_score=%.3f sell_score=%.3f "
+            "buy_sig=%s sell_sig=%s target_buy=%.1f target_sell=%.1f",
+            symbol, bar_idx, buy_score, sell_score,
+            buy_signal, sell_signal,
+            cfg.score_buy_target, cfg.score_sell_target,
         )
 
         # --- Guardrails ---
