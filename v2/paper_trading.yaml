@@ -31,6 +31,7 @@ strategies:
     config:
       score_buy_target: 2.0
       score_sell_target: 2.0
+      allow_buys_on_red_day: false
 
 risk:
   type: "basic"

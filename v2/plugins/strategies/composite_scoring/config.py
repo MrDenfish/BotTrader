@@ -87,6 +87,11 @@ class CompositeScoreConfig:
     roc_24h_rsi_range: tuple[float, float] = (45.0, 55.0)
 
     # ------------------------------------------------------------------
+    # Red-day gate
+    # ------------------------------------------------------------------
+    allow_buys_on_red_day: bool = True  # If False, block buys when 24h change < 0
+
+    # ------------------------------------------------------------------
     # Buffer / warmup
     # ------------------------------------------------------------------
     buffer_size: int = 500   # Rolling candle buffer for indicator calculation

@@ -220,6 +220,19 @@ class CompositeScoringStrategy(Strategy):
             return None
 
         direction = Direction.BUY if action == "buy" else Direction.SELL
+
+        # --- Red-day gate: block buys when 24h change is negative ---
+        if direction == Direction.BUY and not cfg.allow_buys_on_red_day:
+            roc_24h = self._roc_24h.get(symbol)
+            if roc_24h is None:
+                logger.debug("Buy blocked for %s: no 24h price data", symbol)
+                return None
+            if roc_24h < 0:
+                logger.debug(
+                    "Buy blocked for %s: 24h price down (%.2f%%)", symbol, roc_24h,
+                )
+                return None
+
         reason = note or "score"
         metadata = {
             "trigger": "score",

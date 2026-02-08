@@ -411,3 +411,79 @@ class TestCompositeScoringStrategy:
         assert s2._bar_idx["BTC-USD"] == 42
         assert s2._roc_24h["BTC-USD"] == 9.5
         assert s2._guardrails._last_side["BTC-USD"] == "long"
+
+    def test_red_day_gate_blocks_buy(self):
+        """When allow_buys_on_red_day=False, buys are blocked on red days."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"min_bars": 5, "allow_buys_on_red_day": False})
+
+        # Set 24h change to negative (red day)
+        s.on_ticker(TickerEvent(
+            symbol="BTC-USD", price=97000.0,
+            timestamp=datetime.now(), change_24h_pct=-2.5,
+        ))
+
+        # Mock indicators and scoring to force a buy signal through guardrails
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0}
+        mock_scores = (5.0, 0.0, True, False, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=(True, False, "buy", "test")):
+
+            base_ts = datetime(2026, 1, 1)
+            results = []
+            for i in range(10):
+                candle = Candle(
+                    symbol="BTC-USD",
+                    timestamp=base_ts + timedelta(minutes=i),
+                    open=97000.0, high=97100.0,
+                    low=96900.0, close=97000.0, volume=1.0,
+                )
+                result = s.on_candle(candle, {})
+                if result is not None:
+                    results.append(result)
+
+        # Red-day gate should block all buy signals
+        buy_signals = [r for r in results if r.direction == Direction.BUY]
+        assert len(buy_signals) == 0, f"Expected 0 buys on red day, got {len(buy_signals)}"
+
+    def test_red_day_gate_allows_buy_when_enabled(self):
+        """When allow_buys_on_red_day=True (default), buys pass through on red days."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"min_bars": 5, "allow_buys_on_red_day": True})
+
+        # Set 24h change to negative (red day)
+        s.on_ticker(TickerEvent(
+            symbol="BTC-USD", price=97000.0,
+            timestamp=datetime.now(), change_24h_pct=-2.5,
+        ))
+
+        # Mock indicators and scoring to force a buy signal through guardrails
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0}
+        mock_scores = (5.0, 0.0, True, False, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=(True, False, "buy", "test")):
+
+            base_ts = datetime(2026, 1, 1)
+            results = []
+            for i in range(10):
+                candle = Candle(
+                    symbol="BTC-USD",
+                    timestamp=base_ts + timedelta(minutes=i),
+                    open=97000.0, high=97100.0,
+                    low=96900.0, close=97000.0, volume=1.0,
+                )
+                result = s.on_candle(candle, {})
+                if result is not None:
+                    results.append(result)
+
+        # With allow_buys_on_red_day=True, buys should pass through despite red day
+        buy_signals = [r for r in results if r.direction == Direction.BUY]
+        assert len(buy_signals) > 0, "Expected buys to pass through when red-day gate is disabled"
