@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Compare v1 and v2 signal logs for agreement analysis.
 
-Reads JSONL files from v1 (score_log.jsonl) and v2 (v2_score_log.jsonl),
+Reads JSONL files from v1 (scores.jsonl) and v2 (v2_score_log.jsonl),
 aligns signals by (symbol, timestamp) within a configurable window,
 and reports match statistics.
 
+v1 logs every evaluation (including holds) for all 31 symbols.
+v2 only logs buy/sell signals. Both are filtered to buy/sell only.
+
 Usage:
     python scripts/compare_signals.py \
-        --v1 logs/score_log.jsonl \
+        --v1 logs/scores.jsonl \
         --v2 logs/v2_score_log.jsonl \
         [--window 60]
 """
@@ -137,8 +140,8 @@ def print_report(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare v1 and v2 signal logs")
-    parser.add_argument("--v1", required=True, help="Path to v1 score_log.jsonl")
-    parser.add_argument("--v2", required=True, help="Path to v2 v2_score_log.jsonl")
+    parser.add_argument("--v1", default="logs/scores.jsonl", help="Path to v1 scores.jsonl")
+    parser.add_argument("--v2", default="logs/v2_score_log.jsonl", help="Path to v2 v2_score_log.jsonl")
     parser.add_argument(
         "--window", type=int, default=60,
         help="Alignment window in seconds (default: 60)",
