@@ -78,8 +78,14 @@ export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD D
 if [[ -z "${COINBASE_API_KEY-}" ]]; then
   local_key_file="/app/Config/websocket_api_info.json"
   if [[ -f "$local_key_file" ]]; then
-    export COINBASE_API_KEY="$(python -c "import json;d=json.load(open('$local_key_file'));print(d['name'])")"
-    export COINBASE_API_SECRET="$(python -c "import json;d=json.load(open('$local_key_file'));print(d['signing_key'])")"
+    # Use eval to handle multiline PEM key correctly
+    eval "$(python -c "
+import json, shlex
+with open('$local_key_file') as f:
+    d = json.load(f)
+print('export COINBASE_API_KEY=' + shlex.quote(d['name']))
+print('export COINBASE_API_SECRET=' + shlex.quote(d['signing_key']))
+")"
     log "Loaded Coinbase API credentials from $local_key_file (key_len=${#COINBASE_API_KEY})"
   else
     warn "No Coinbase API key file found at $local_key_file"
