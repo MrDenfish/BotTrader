@@ -29,10 +29,10 @@ data_providers:
 strategies:
   - type: "composite_scoring"
     config:
-      # Scoring thresholds (matching v1 .env)
-      score_buy_target: 2.0
-      score_sell_target: 2.0
-      allow_buys_on_red_day: false
+      # Scoring thresholds (lowered for signal pipeline testing)
+      score_buy_target: 0.1
+      score_sell_target: 0.1
+      allow_buys_on_red_day: true
       # Bollinger Bands
       bb_window: 10
       buy_ratio: 1.05
@@ -51,8 +51,8 @@ strategies:
       sma_volatility: 10
       atr_window: 8
       swing_window: 10
-      # Guardrails
-      min_indicators_required: 3
+      # Guardrails (lowered for signal pipeline testing)
+      min_indicators_required: 1
 
 risk:
   type: "basic"
