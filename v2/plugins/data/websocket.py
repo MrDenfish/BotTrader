@@ -2,6 +2,7 @@
 
 Connects to Coinbase Advanced Trade WebSocket for real-time
 ticker_batch events. Emits TickerEvents on the event bus.
+Aggregates tickers into 1-minute OHLCV candles and emits CandleEvents.
 
 Ported from webhook/listener.py and webhook/websocket_helper.py.
 """
@@ -20,7 +21,7 @@ from typing import Any
 from v2.core import registry
 from v2.core.event_bus import EventBus
 from v2.core.interfaces import DataProvider
-from v2.core.types import TickerEvent
+from v2.core.types import Candle, CandleEvent, TickerEvent
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,11 @@ class WebSocketDataProvider(DataProvider):
         self._last_message_time: float = 0.0
         self._watchdog_task: asyncio.Task | None = None
 
+        # Candle aggregation: per-symbol partial 1-minute bars
+        # Key: symbol, Value: {minute: datetime, open, high, low, close}
+        self._candle_state: dict[str, dict] = {}
+        self._candle_flush_task: asyncio.Task | None = None
+
     def _load_key_file(self, path: str) -> None:
         """Load API credentials from a Coinbase CDP JSON key file."""
         try:
@@ -91,6 +97,7 @@ class WebSocketDataProvider(DataProvider):
         self._running = True
         self._ws_task = asyncio.create_task(self._ws_loop())
         self._watchdog_task = asyncio.create_task(self._idle_watchdog())
+        self._candle_flush_task = asyncio.create_task(self._candle_flusher())
         logger.info(
             "WebSocket data provider starting (symbols=%s, channels=%s)",
             symbols, self._channels,
@@ -98,13 +105,15 @@ class WebSocketDataProvider(DataProvider):
 
     async def stop(self) -> None:
         self._running = False
-        for task in (self._ws_task, self._watchdog_task):
+        for task in (self._ws_task, self._watchdog_task, self._candle_flush_task):
             if task:
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
+        # Flush any remaining partial candles
+        self._flush_all_candles()
         logger.info("WebSocket data provider stopped")
 
     # ------------------------------------------------------------------
@@ -235,15 +244,120 @@ class WebSocketDataProvider(DataProvider):
                 except (ValueError, TypeError):
                     pass
 
+                now = datetime.now(timezone.utc)
+
                 if self._bus:
                     self._bus.publish(TickerEvent(
                         symbol=symbol,
                         price=price,
-                        timestamp=datetime.now(timezone.utc),
+                        timestamp=now,
                         change_24h_pct=change_24h,
                         bid=bid,
                         ask=ask,
                     ))
+
+                # Aggregate into 1-minute candle
+                self._update_candle(symbol, price, now)
+
+    # ------------------------------------------------------------------
+    # 1-minute candle aggregation
+    # ------------------------------------------------------------------
+
+    def _minute_key(self, ts: datetime) -> datetime:
+        """Truncate timestamp to the start of the minute."""
+        return ts.replace(second=0, microsecond=0)
+
+    def _update_candle(self, symbol: str, price: float, ts: datetime) -> None:
+        """Update the current 1-minute candle bar for a symbol.
+
+        If the tick falls in a new minute, emit the completed candle
+        as a CandleEvent and start a fresh bar.
+        """
+        minute = self._minute_key(ts)
+        state = self._candle_state.get(symbol)
+
+        if state is None:
+            # First tick for this symbol — start a new bar
+            self._candle_state[symbol] = {
+                "minute": minute,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+            }
+            return
+
+        if minute > state["minute"]:
+            # New minute — close previous bar and emit
+            self._emit_candle(symbol, state)
+            # Start new bar
+            self._candle_state[symbol] = {
+                "minute": minute,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price,
+            }
+        else:
+            # Same minute — update OHLC
+            state["high"] = max(state["high"], price)
+            state["low"] = min(state["low"], price)
+            state["close"] = price
+
+    def _emit_candle(self, symbol: str, state: dict) -> None:
+        """Publish a completed CandleEvent."""
+        if not self._bus:
+            return
+        candle = Candle(
+            symbol=symbol,
+            timestamp=state["minute"],
+            open=state["open"],
+            high=state["high"],
+            low=state["low"],
+            close=state["close"],
+            volume=0.0,  # ticker_batch doesn't include per-tick volume
+            timeframe="1m",
+        )
+        self._bus.publish(CandleEvent(candle=candle))
+        logger.debug(
+            "Candle emitted: %s %s O=%.2f H=%.2f L=%.2f C=%.2f",
+            symbol, state["minute"].strftime("%H:%M"),
+            candle.open, candle.high, candle.low, candle.close,
+        )
+
+    def _flush_all_candles(self) -> None:
+        """Emit all pending partial candles (used on stop and at minute boundaries)."""
+        for symbol, state in list(self._candle_state.items()):
+            self._emit_candle(symbol, state)
+        self._candle_state.clear()
+
+    async def _candle_flusher(self) -> None:
+        """Periodically emit completed candles at minute boundaries.
+
+        Ensures candles are emitted even during quiet market periods
+        when no new ticks arrive to trigger the minute rollover.
+        """
+        while self._running:
+            try:
+                # Sleep until just past the next minute boundary
+                now = datetime.now(timezone.utc)
+                seconds_until_next = 60 - now.second - now.microsecond / 1_000_000
+                await asyncio.sleep(seconds_until_next + 0.5)
+
+                if not self._running:
+                    break
+
+                current_minute = self._minute_key(datetime.now(timezone.utc))
+                for symbol, state in list(self._candle_state.items()):
+                    if state["minute"] < current_minute:
+                        self._emit_candle(symbol, state)
+                        # Remove stale state — next tick starts fresh
+                        del self._candle_state[symbol]
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Error in candle flusher")
 
     # ------------------------------------------------------------------
     # Idle watchdog

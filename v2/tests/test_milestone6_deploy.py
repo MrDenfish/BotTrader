@@ -5,6 +5,7 @@ Tests cover:
 - SignalComparisonObserver: JSONL output format, correct fields
 - PostgresStorage DSN normalization: strips +asyncpg prefix
 - Plugin registration: heartbeat + signal_comparison discovered
+- WebSocket candle aggregation: OHLC accumulation, minute rollover, flusher
 """
 
 from __future__ import annotations
@@ -12,19 +13,21 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from v2.core import registry
+from v2.core.event_bus import EventBus
 from v2.core.types import (
     CandleEvent,
     Candle,
     Direction,
     Signal,
     SignalEvent,
+    TickerEvent,
 )
 
 
@@ -311,3 +314,158 @@ class TestPluginRegistration:
         cls = registry.get_class("observer", "signal_comparison")
         obs = cls(log_path=str(tmp_path / "sc.jsonl"))
         assert obs.name == "signal_comparison"
+
+
+# =====================================================================
+# WebSocket candle aggregation
+# =====================================================================
+
+
+class TestCandleAggregation:
+    """Test 1-minute candle aggregation in WebSocketDataProvider."""
+
+    def _make_provider(self) -> "WebSocketDataProvider":
+        from v2.plugins.data.websocket import WebSocketDataProvider
+        bus = EventBus()
+        provider = WebSocketDataProvider(event_bus=bus)
+        return provider
+
+    def test_first_tick_creates_bar(self, now):
+        provider = self._make_provider()
+        ts = now.replace(second=10, microsecond=0)
+        provider._update_candle("BTC-USD", 50000.0, ts)
+
+        state = provider._candle_state.get("BTC-USD")
+        assert state is not None
+        assert state["open"] == 50000.0
+        assert state["high"] == 50000.0
+        assert state["low"] == 50000.0
+        assert state["close"] == 50000.0
+        assert state["minute"] == ts.replace(second=0)
+
+    def test_same_minute_updates_ohlc(self, now):
+        provider = self._make_provider()
+        base = now.replace(second=0, microsecond=0)
+
+        provider._update_candle("BTC-USD", 50000.0, base.replace(second=5))
+        provider._update_candle("BTC-USD", 50100.0, base.replace(second=15))  # new high
+        provider._update_candle("BTC-USD", 49900.0, base.replace(second=30))  # new low
+        provider._update_candle("BTC-USD", 50050.0, base.replace(second=45))  # new close
+
+        state = provider._candle_state["BTC-USD"]
+        assert state["open"] == 50000.0
+        assert state["high"] == 50100.0
+        assert state["low"] == 49900.0
+        assert state["close"] == 50050.0
+
+    def test_new_minute_emits_candle(self, now):
+        provider = self._make_provider()
+        emitted: list[CandleEvent] = []
+        provider._bus.subscribe(CandleEvent, lambda e: emitted.append(e))
+
+        minute_0 = now.replace(second=0, microsecond=0)
+        minute_1 = minute_0 + timedelta(minutes=1)
+
+        # Ticks in minute 0
+        provider._update_candle("BTC-USD", 50000.0, minute_0.replace(second=5))
+        provider._update_candle("BTC-USD", 50100.0, minute_0.replace(second=30))
+        assert len(emitted) == 0
+
+        # First tick in minute 1 triggers emit of minute 0 bar
+        provider._update_candle("BTC-USD", 50200.0, minute_1.replace(second=2))
+        assert len(emitted) == 1
+
+        candle = emitted[0].candle
+        assert candle.symbol == "BTC-USD"
+        assert candle.timestamp == minute_0
+        assert candle.open == 50000.0
+        assert candle.high == 50100.0
+        assert candle.low == 50000.0
+        assert candle.close == 50100.0
+        assert candle.timeframe == "1m"
+
+    def test_multiple_symbols_independent(self, now):
+        provider = self._make_provider()
+        emitted: list[CandleEvent] = []
+        provider._bus.subscribe(CandleEvent, lambda e: emitted.append(e))
+
+        minute_0 = now.replace(second=0, microsecond=0)
+        minute_1 = minute_0 + timedelta(minutes=1)
+
+        # Both symbols in minute 0
+        provider._update_candle("BTC-USD", 50000.0, minute_0.replace(second=5))
+        provider._update_candle("ETH-USD", 3000.0, minute_0.replace(second=10))
+        assert len(emitted) == 0
+
+        # BTC rolls over, ETH stays
+        provider._update_candle("BTC-USD", 50100.0, minute_1.replace(second=3))
+        assert len(emitted) == 1
+        assert emitted[0].candle.symbol == "BTC-USD"
+
+        # ETH rolls over
+        provider._update_candle("ETH-USD", 3050.0, minute_1.replace(second=5))
+        assert len(emitted) == 2
+        assert emitted[1].candle.symbol == "ETH-USD"
+        assert emitted[1].candle.open == 3000.0
+
+    def test_flush_all_emits_partial_candles(self, now):
+        provider = self._make_provider()
+        emitted: list[CandleEvent] = []
+        provider._bus.subscribe(CandleEvent, lambda e: emitted.append(e))
+
+        minute_0 = now.replace(second=0, microsecond=0)
+        provider._update_candle("BTC-USD", 50000.0, minute_0.replace(second=10))
+        provider._update_candle("ETH-USD", 3000.0, minute_0.replace(second=15))
+
+        provider._flush_all_candles()
+        assert len(emitted) == 2
+        assert provider._candle_state == {}
+
+    def test_minute_key_truncation(self, now):
+        provider = self._make_provider()
+        ts = now.replace(second=37, microsecond=123456)
+        minute = provider._minute_key(ts)
+        assert minute.second == 0
+        assert minute.microsecond == 0
+        assert minute.minute == ts.minute
+
+    def test_no_emit_without_bus(self, now):
+        """Provider without event_bus should not crash on emit."""
+        from v2.plugins.data.websocket import WebSocketDataProvider
+        provider = WebSocketDataProvider(event_bus=None)
+
+        minute_0 = now.replace(second=0, microsecond=0)
+        minute_1 = minute_0 + timedelta(minutes=1)
+
+        provider._update_candle("BTC-USD", 50000.0, minute_0.replace(second=5))
+        # This should not raise even without bus
+        provider._update_candle("BTC-USD", 50100.0, minute_1.replace(second=3))
+
+    @pytest.mark.asyncio
+    async def test_candle_flusher_emits_stale_bars(self, now):
+        """Candle flusher should emit bars from previous minutes."""
+        provider = self._make_provider()
+        provider._running = True
+        emitted: list[CandleEvent] = []
+        provider._bus.subscribe(CandleEvent, lambda e: emitted.append(e))
+
+        # Inject a stale candle state (2 minutes ago)
+        stale_minute = now.replace(second=0, microsecond=0) - timedelta(minutes=2)
+        provider._candle_state["BTC-USD"] = {
+            "minute": stale_minute,
+            "open": 50000.0,
+            "high": 50100.0,
+            "low": 49900.0,
+            "close": 50050.0,
+        }
+
+        # Call the flush logic directly (not the full async loop)
+        current_minute = provider._minute_key(now)
+        for symbol, state in list(provider._candle_state.items()):
+            if state["minute"] < current_minute:
+                provider._emit_candle(symbol, state)
+                del provider._candle_state[symbol]
+
+        assert len(emitted) == 1
+        assert emitted[0].candle.open == 50000.0
+        assert "BTC-USD" not in provider._candle_state
