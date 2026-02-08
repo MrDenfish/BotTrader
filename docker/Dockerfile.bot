@@ -7,30 +7,17 @@
 #
 # What it does:
 #   - Uses python:3.11-slim as base
-#   - Installs AWS CLI, build tools, tini, and SSL certificates
+#   - Installs build tools, tini, and SSL certificates
 #   - Creates a non-root user (appuser)
 #   - Installs Python dependencies from requirements.txt
 #   - Copies the entire application codebase into /app
 #   - Removes any stray .env files to avoid leaking dev configs
-#   - Downloads the AWS RDS global trust bundle for SSL
-#   - Installs two helper scripts:
-#       * /usr/local/bin/ssm-env        → loads env vars from AWS SSM Parameter Store
-#       * /usr/local/bin/entrypoint-bot → container entrypoint for the bot
 #   - Runs as non-root user
-#   - Starts via tini with entrypoint-bot, which bootstraps SSM and launches the bot
-#
-# Notes:
-#   - Requires AWS_REGION and SSM_ROOT environment variables at runtime.
-#   - Expects SSM parameters to be under /bottrader/prod or /bottrader/dev.
-#   - Ensures DB connections use SSL by default (RDS requires it).
+#   - Starts via tini with entrypoint-bot
 #
 # ------------------------------------------------------------------------------
 
-# docker/Dockerfile.bot
 FROM python:3.11-slim
-
-# Cache buster - forces rebuild from this point when --build-arg changes
-ARG CACHE_BUST=1
 
 # add bash (entrypoint uses bash), tini for signal handling
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -41,7 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd -ms /bin/bash appuser
 WORKDIR /app
 
-# copy source
+# Install Python deps first (cached unless requirements.txt changes)
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source (changes here don't invalidate pip cache)
 COPY . /app
 # Remove any legacy env files from old multi-env system
 RUN rm -f /app/.env_tradebot /app/.env_tradebot_sensitive || true
@@ -49,19 +40,10 @@ RUN rm -f /app/.env_tradebot /app/.env_tradebot_sensitive || true
 RUN chmod -R 755 /app/scripts || true
 
 # ensure entrypoint has LF endings and is executable
-# (sed removes CR if file was committed with CRLF)
 RUN sed -i 's/\r$//' /app/docker/entrypoint/entrypoint.bot.sh \
  && chmod +x /app/docker/entrypoint/entrypoint.bot.sh
-
-# install deps
-ARG REQS=requirements.txt
-RUN pip install --no-cache-dir -r ${REQS}
 
 ENV TZ=UTC
 USER appuser
 
 ENTRYPOINT ["/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.bot.sh"]
-
-
-
-
