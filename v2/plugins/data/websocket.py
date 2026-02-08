@@ -163,8 +163,8 @@ class WebSocketDataProvider(DataProvider):
         """Send subscription message for configured channels."""
         from coinbase import jwt_generator
 
-        jwt_token = jwt_generator.build_rest_jwt(
-            self._ws_url, self._api_key, self._api_secret,
+        jwt_token = jwt_generator.build_ws_jwt(
+            self._api_key, self._api_secret,
         )
         for channel in self._channels:
             msg = {
