@@ -74,31 +74,13 @@ if [[ -z "${DATABASE_URL-}" || -z "$DATABASE_URL" ]]; then
 fi
 export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD DATABASE_URL
 
-# 3) Extract Coinbase API credentials from v1 key file if not already set
-if [[ -z "${COINBASE_API_KEY-}" ]]; then
-  local_key_file="/app/Config/websocket_api_info.json"
-  if [[ -f "$local_key_file" ]]; then
-    # Use eval to handle multiline PEM key correctly
-    eval "$(python -c "
-import json, shlex
-with open('$local_key_file') as f:
-    d = json.load(f)
-print('export COINBASE_API_KEY=' + shlex.quote(d['name']))
-print('export COINBASE_API_SECRET=' + shlex.quote(d['signing_key']))
-")"
-    log "Loaded Coinbase API credentials from $local_key_file (key_len=${#COINBASE_API_KEY})"
-  else
-    warn "No Coinbase API key file found at $local_key_file"
-  fi
-fi
-
-# 4) Wait for Postgres
+# 3) Wait for Postgres
 wait_for_postgres
 
-# 5) Create log directories
+# 4) Create log directories
 mkdir -p /app/logs/v2
 chmod -R 0775 /app/logs/v2 || true
 
-# 6) Launch v2 in paper mode
+# 5) Launch v2 in paper mode
 log "Starting v2 paper trading..."
 exec python -u -m v2 --config /app/v2/paper_trading.yaml --log-level "${LOG_LEVEL:-INFO}"

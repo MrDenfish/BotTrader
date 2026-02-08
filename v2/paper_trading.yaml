@@ -21,8 +21,8 @@ exchange:
 
 data_providers:
   - type: "websocket"
-    # Reads API credentials from environment:
-    #   COINBASE_API_KEY, COINBASE_API_SECRET
+    # Reads from CDP key file (same as v1), falls back to env vars
+    key_file: "/app/Config/websocket_api_info.json"
     channels: ["ticker_batch", "heartbeats"]
     idle_timeout: 90.0
 
