@@ -1,0 +1,35 @@
+# ------------------------------------------------------------------------------
+# Dockerfile.v2
+# ------------------------------------------------------------------------------
+#
+# Purpose:
+#   Build the runtime container for BotTrader v2 paper trading mode.
+#   Identical to Dockerfile.bot except for the entrypoint.
+#
+# ------------------------------------------------------------------------------
+
+FROM python:3.11-slim
+
+ARG CACHE_BUST=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash ca-certificates curl tini build-essential \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -ms /bin/bash appuser
+WORKDIR /app
+
+COPY . /app
+RUN rm -f /app/.env_tradebot /app/.env_tradebot_sensitive || true
+RUN chmod -R 755 /app/scripts || true
+
+RUN sed -i 's/\r$//' /app/docker/entrypoint/entrypoint.v2.sh \
+ && chmod +x /app/docker/entrypoint/entrypoint.v2.sh
+
+ARG REQS=requirements.txt
+RUN pip install --no-cache-dir -r ${REQS}
+
+ENV TZ=UTC
+USER appuser
+
+ENTRYPOINT ["/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.v2.sh"]

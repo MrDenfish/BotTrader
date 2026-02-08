@@ -1,0 +1,55 @@
+# BotTrader v2 — Paper Trading Configuration (Production Docker)
+# Usage: python -m v2 --config v2/paper_trading.yaml
+#
+# Paper trading uses live Coinbase WebSocket data but simulates
+# all order fills locally. No real money is used.
+#
+# Runs alongside v1 on AWS. Shares the same PostgreSQL instance
+# (v2 uses v2_* prefixed tables) and logs volume.
+
+app:
+  name: "BotTrader"
+  mode: "paper"
+  symbols: ["BTC-USD", "ETH-USD"]
+
+exchange:
+  type: "paper"
+  initial_balance_usd: 10000
+  maker_fee: 0.006
+  taker_fee: 0.012
+  slippage_bps: 1.0
+
+data_providers:
+  - type: "websocket"
+    # Reads API credentials from environment:
+    #   COINBASE_API_KEY, COINBASE_API_SECRET
+    channels: ["ticker_batch", "heartbeats"]
+    idle_timeout: 90.0
+
+strategies:
+  - type: "composite_scoring"
+    config:
+      score_buy_target: 2.0
+      score_sell_target: 2.0
+
+risk:
+  type: "basic"
+  pass_through: true
+
+execution:
+  type: "maker_only"
+  max_retries: 3
+  post_only: true
+
+storage:
+  type: "postgres"
+  dsn_env: "DATABASE_URL"
+
+observers:
+  - type: "structured_log"
+    level: "INFO"
+  - type: "signal_comparison"
+    log_path: "/app/logs/v2_score_log.jsonl"
+  - type: "heartbeat"
+    path: "/app/logs/v2/heartbeat"
+    interval: 10.0
