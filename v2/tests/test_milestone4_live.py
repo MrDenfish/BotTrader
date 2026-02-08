@@ -601,6 +601,19 @@ class TestMakerOnlyExecution:
         qty = maker._determine_qty(sig)
         assert qty is None
 
+    def test_determine_qty_default_notional(self, bus):
+        from v2.plugins.execution.maker_only import MakerOnlyExecution
+        maker = MakerOnlyExecution(event_bus=bus, default_notional=500)
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=50000.0,
+            reason="test",
+        )
+        qty = maker._determine_qty(sig)
+        assert qty == Decimal("500") / Decimal("50000")  # 0.01 BTC
+
     @pytest.mark.asyncio
     async def test_backtest_mode_returns_none(self, bus):
         from v2.plugins.execution.maker_only import MakerOnlyExecution

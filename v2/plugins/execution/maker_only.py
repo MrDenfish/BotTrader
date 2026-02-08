@@ -52,6 +52,9 @@ class MakerOnlyExecution(ExecutionManager):
         self._initial_buffer_pct = Decimal(str(kwargs.get("initial_buffer_pct", "0.001")))
         self._buffer_increment = Decimal(str(kwargs.get("buffer_increment", "0.0005")))
         self._min_price_buffer = Decimal(str(kwargs.get("min_price_buffer", "0.0000001")))
+        self._default_notional: Decimal | None = (
+            Decimal(str(kwargs["default_notional"])) if "default_notional" in kwargs else None
+        )
         self._mode: str = kwargs.get("mode", "live")
 
     def configure(self, config: Any) -> None:
@@ -63,6 +66,8 @@ class MakerOnlyExecution(ExecutionManager):
                 self._initial_buffer_pct = Decimal(str(config["initial_buffer_pct"]))
             if "buffer_increment" in config:
                 self._buffer_increment = Decimal(str(config["buffer_increment"]))
+            if "default_notional" in config:
+                self._default_notional = Decimal(str(config["default_notional"]))
 
     async def execute_signal(
         self, signal: Signal, exchange: ExchangeAdapter
@@ -151,11 +156,17 @@ class MakerOnlyExecution(ExecutionManager):
     # ------------------------------------------------------------------
 
     def _determine_qty(self, signal: Signal) -> Decimal | None:
-        """Determine order quantity from signal."""
+        """Determine order quantity from signal.
+
+        Priority: signal.qty > signal.notional > default_notional.
+        """
         if signal.qty is not None:
             return Decimal(str(signal.qty))
-        if signal.notional is not None and signal.price is not None and signal.price > 0:
-            return Decimal(str(signal.notional)) / Decimal(str(signal.price))
+        notional = signal.notional
+        if notional is None and self._default_notional is not None:
+            notional = float(self._default_notional)
+        if notional is not None and signal.price is not None and signal.price > 0:
+            return Decimal(str(notional)) / Decimal(str(signal.price))
         return None
 
     @staticmethod
