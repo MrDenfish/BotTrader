@@ -40,13 +40,13 @@ strategies:
       macd_fast: 8
       macd_slow: 21
       macd_signal: 5
-      # RSI
-      rsi_buy: 25.0
-      rsi_sell: 75.0
-      # ROC (composite scoring indicator)
+      # RSI (widened for testing — triggers near neutral)
+      rsi_buy: 45.0
+      rsi_sell: 55.0
+      # ROC (widened for testing — triggers on tiny moves)
       roc_window: 20
-      roc_buy_threshold: 2.0
-      roc_sell_threshold: -1.0
+      roc_buy_threshold: 0.1
+      roc_sell_threshold: -0.1
       # Volatility & Swing
       sma_volatility: 10
       atr_window: 8
