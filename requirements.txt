@@ -11,7 +11,9 @@ aiofiles==24.1.0
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.10.11
-    # via ccxt
+    # via
+    #   -r requirements.in
+    #   ccxt
 aiosignal==1.4.0
     # via aiohttp
 aiosqlite==0.21.0
@@ -32,6 +34,10 @@ backports-tarfile==1.2.0
     # via jaraco-context
 boto3==1.40.11
     # via -r requirements.in
+botocore==1.40.76
+    # via
+    #   boto3
+    #   s3transfer
 bottleneck==1.4.2
     # via -r requirements.in
 brotli==1.0.9
@@ -87,6 +93,10 @@ jaraco-functools==4.3.0
     # via jaraco-text
 jaraco-text==3.12.1
     # via -r requirements.in
+jmespath==1.1.0
+    # via
+    #   boto3
+    #   botocore
 more-itertools==10.7.0
     # via
     #   inflect
@@ -130,15 +140,21 @@ pyproject-hooks==1.2.0
 pysocks==1.7.1
     # via -r requirements.in
 python-dateutil==2.9.0.post0
-    # via pandas
+    # via
+    #   botocore
+    #   pandas
 python-dotenv==1.0.1
     # via -r requirements.in
 pytz==2025.2
     # via pandas
+pyyaml==6.0.2
+    # via -r requirements.in
 requests==2.32.5
     # via
     #   ccxt
     #   coinbase-advanced-py
+s3transfer==0.13.1
+    # via boto3
 six==1.17.0
     # via python-dateutil
 sqlalchemy==2.0.43
@@ -162,7 +178,9 @@ typing-extensions==4.14.1
 tzdata==2025.2
     # via pandas
 urllib3==2.5.0
-    # via requests
+    # via
+    #   botocore
+    #   requests
 websockets==13.1
     # via coinbase-advanced-py
 wheel==0.45.1
