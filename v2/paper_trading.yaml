@@ -29,10 +29,10 @@ data_providers:
 strategies:
   - type: "composite_scoring"
     config:
-      # Scoring thresholds (lowered for signal pipeline testing)
-      score_buy_target: 0.1
-      score_sell_target: 0.1
-      allow_buys_on_red_day: true
+      # Scoring thresholds (aligned with v1 production .env)
+      score_buy_target: 2.0
+      score_sell_target: 2.0
+      allow_buys_on_red_day: false
       # Bollinger Bands
       bb_window: 10
       buy_ratio: 1.05
@@ -40,21 +40,19 @@ strategies:
       macd_fast: 8
       macd_slow: 21
       macd_signal: 5
-      # RSI (widened for testing — triggers near neutral)
-      rsi_buy: 45.0
-      rsi_sell: 55.0
-      # ROC (widened for testing — triggers on tiny moves)
+      # RSI
+      rsi_buy: 25.0
+      rsi_sell: 75.0
+      # ROC
       roc_window: 20
-      roc_buy_threshold: 0.1
-      roc_sell_threshold: -0.1
+      roc_buy_threshold: 2.0
+      roc_sell_threshold: -1.0
       # Volatility & Swing
       sma_volatility: 10
       atr_window: 8
       swing_window: 10
-      # Guardrails (lowered for signal pipeline testing)
-      min_indicators_required: 1
-      # Warmup (reduced for faster testing — min needed by indicators is 26)
-      min_bars: 27
+      # Guardrails
+      min_indicators_required: 3
 
 risk:
   type: "basic"
