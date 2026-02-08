@@ -56,7 +56,8 @@ strategies:
 
 risk:
   type: "basic"
-  pass_through: true
+  pass_through: false
+  hodl_symbols: []  # Set to ["BTC-USD", "ETH-USD", "ATOM-USD"] for live mode
 
 execution:
   type: "maker_only"

@@ -31,6 +31,7 @@ class TradeRecord(Base):
     ingest_via = Column(String)
     last_reconciled_at = Column(DateTime(timezone=True))
     last_reconciled_via = Column(String)
+    exit_reason = Column(String, nullable=True)
 
 
     __table_args__ = (

@@ -345,6 +345,10 @@ class TradeRecorder:
                         "realized_profit": None,
                     }
 
+                    exit_reason = trade_data.get("exit_reason")
+                    if exit_reason:
+                        trade_dict["exit_reason"] = exit_reason
+
                     if ingest_via:
                         trade_dict["ingest_via"] = ingest_via
                     if last_reconciled_at:

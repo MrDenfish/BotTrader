@@ -233,6 +233,16 @@ class WebSocketMarketManager:
             # -------------------------------
             queued_trades.sort(key=lambda x: self._parse_order_time(x["order_time"]))
             for trade in queued_trades:
+                # Attach exit_reason from position_monitor if available
+                if trade.get("side", "").lower() == "sell":
+                    oid = trade.get("order_id", "")
+                    # Strip -FILL-N suffix to match original order_id
+                    base_oid = oid.split("-FILL-")[0] if "-FILL-" in oid else oid
+                    pos_monitor = getattr(self.shared_data_manager, "position_monitor", None)
+                    if pos_monitor:
+                        exit_reason = pos_monitor.pop_exit_reason(base_oid)
+                        if exit_reason:
+                            trade["exit_reason"] = exit_reason
                 await self.shared_data_manager.trade_recorder.enqueue_trade(trade)
 
             await self.shared_data_manager.set_order_management({"order_tracker": order_tracker})

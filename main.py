@@ -811,13 +811,9 @@ async def app_boot():
                 ccxt_api=None  # Pass your existing ccxt_api if available
             )
             shared_logger.info(
-                "🔎 Coinbase at T0: base=%s prefix=%s sandbox=%s key_len=%s sec_len=%s pp_len=%s",
+                "Coinbase credentials loaded (base=%s, sandbox=%s)",
                 os.getenv("COINBASE_API_BASE_URL"),
-                os.getenv("COINBASE_API_PREFIX"),
                 os.getenv("COINBASE_USE_SANDBOX"),
-                len(os.getenv("COINBASE_API_KEY", "")),
-                len(os.getenv("COINBASE_API_SECRET", "")),
-                len(os.getenv("COINBASE_API_PASSPHRASE", "")),
             )
 
             # One cheap authenticated preflight to load JWT and catch any startup race
@@ -1012,7 +1008,6 @@ if __name__ == "__main__":
     setup_logging()
     _fh = setup_stack_logging()  # keep a reference
 
-    os.environ['PYTHONASYNCIODEBUG'] = '1' # debugging turn off in production
     logger = logging.getLogger('asyncio')
     logger.setLevel(logging.ERROR)
     asyncio.run(main(), debug=DebugToggles.AIO_DEBUG)

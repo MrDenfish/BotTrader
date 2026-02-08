@@ -58,6 +58,7 @@ class BasicRiskManager(RiskManager):
             str(kwargs.get("max_order_size_usd", "inf"))
         )
         self._pass_through = kwargs.get("pass_through", False)
+        self._hodl_symbols: set[str] = set(kwargs.get("hodl_symbols", []))
 
         # Daily loss tracking
         self._daily_realized_pnl = Decimal("0")
@@ -79,6 +80,8 @@ class BasicRiskManager(RiskManager):
             if "max_order_size_usd" in config:
                 self._max_order_size = Decimal(str(config["max_order_size_usd"]))
             self._pass_through = config.get("pass_through", self._pass_through)
+            if "hodl_symbols" in config:
+                self._hodl_symbols = set(config["hodl_symbols"])
 
     # ------------------------------------------------------------------
     # Signal validation
@@ -88,6 +91,13 @@ class BasicRiskManager(RiskManager):
         """Vet signal against risk limits. Returns signal or None (vetoed)."""
         if self._pass_through:
             return signal
+
+        # HODL gate — block all execution for HODL symbols
+        if signal.symbol in self._hodl_symbols:
+            self._publish_veto(
+                signal, f"hodl_gate: {signal.symbol} is HODL"
+            )
+            return None
 
         # HOLD signals always pass
         if signal.direction == Direction.HOLD:

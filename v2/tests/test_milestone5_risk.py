@@ -349,6 +349,48 @@ class TestBasicRiskManager:
         )
         assert rm.on_position_update(pos) is None
 
+    # --- HODL gate tests ---
+
+    def test_hodl_gate_blocks_buy(self, bus):
+        rm = self._create(bus=bus, hodl_symbols=["BTC-USD"])
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+
+        signal = _make_signal(direction=Direction.BUY, symbol="BTC-USD")
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is None
+        assert len(events) == 1
+        assert "hodl_gate" in events[0].reason
+
+    def test_hodl_gate_blocks_sell(self, bus):
+        rm = self._create(bus=bus, hodl_symbols=["BTC-USD"])
+        signal = _make_signal(direction=Direction.SELL, symbol="BTC-USD")
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is None
+
+    def test_hodl_gate_non_hodl_passes(self):
+        rm = self._create(hodl_symbols=["BTC-USD"])
+        signal = _make_signal(direction=Direction.BUY, symbol="ETH-USD")
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is signal
+
+    def test_hodl_gate_empty_list_passes(self):
+        rm = self._create(hodl_symbols=[])
+        signal = _make_signal(direction=Direction.BUY, symbol="BTC-USD")
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is signal
+
+    def test_hodl_gate_skipped_when_pass_through(self):
+        rm = self._create(pass_through=True, hodl_symbols=["BTC-USD"])
+        signal = _make_signal(direction=Direction.BUY, symbol="BTC-USD")
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is signal
+
 
 # =====================================================================
 # CircuitBreakerRiskManager

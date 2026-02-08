@@ -44,6 +44,9 @@ class PositionMonitor:
         # Track trailing stop state per position
         self.trailing_stops = {}  # {symbol: {last_high, stop_price, last_atr, trailing_active}}
 
+        # Pending exit reasons keyed by order_id (for DB persistence)
+        self._pending_exit_reasons: dict[str, str] = {}
+
         # Peak tracking state per position (ROC momentum trades)
         self.peak_tracking_state = {}  # {symbol: {peak_price, price_history, entry_time, trigger_type, breakeven_activated}}
 
@@ -52,6 +55,10 @@ class PositionMonitor:
         self.taker_fee_pct = None
         self.last_fee_fetch = None
         self.fee_cache_duration = timedelta(hours=1)  # Refresh fees every hour
+
+    def pop_exit_reason(self, order_id: str) -> str | None:
+        """Retrieve and remove a pending exit reason for the given order_id."""
+        return self._pending_exit_reasons.pop(order_id, None)
 
     def _load_config(self):
         """Load position monitoring configuration from environment."""
@@ -1090,6 +1097,8 @@ class PositionMonitor:
 
             if success:
                 order_id = response.get('order_id')
+                if order_id:
+                    self._pending_exit_reasons[order_id] = reason
                 self.logger.info(
                     f"[POS_MONITOR] ✅ Exit order placed for {product_id}: "
                     f"order_id={order_id}, price=${exit_price:.4f}, size={size:.6f}, reason={reason}"
