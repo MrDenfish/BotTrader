@@ -6,13 +6,18 @@ aligns signals by (symbol, timestamp) within a configurable window,
 and reports match statistics.
 
 v1 logs every evaluation (including holds) for all 31 symbols.
-v2 only logs buy/sell signals. Both are filtered to buy/sell only.
+v2 only logs buy/sell signals for BTC-USD and ETH-USD.
+Both are filtered to buy/sell only, and v1 is filtered to the
+symbols v2 tracks (--symbols flag).
+
+Note: v1 has a HODL list (BTC, ETH, ATOM) that blocks sell execution
+but still generates sell *signals* in scores.jsonl. This comparison
+operates at the signal-generation layer, not the execution layer.
 
 Usage:
-    python scripts/compare_signals.py \
-        --v1 logs/scores.jsonl \
-        --v2 logs/v2_score_log.jsonl \
-        [--window 60]
+    python scripts/compare_signals.py
+    python scripts/compare_signals.py --symbols BTC-USD ETH-USD
+    python scripts/compare_signals.py --v1 logs/scores.jsonl --v2 logs/v2_score_log.jsonl
 """
 
 from __future__ import annotations
@@ -24,8 +29,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
-def load_signals(path: Path) -> list[dict]:
-    """Load actionable signals (buy/sell) from a JSONL file."""
+def load_signals(
+    path: Path,
+    symbols: set[str] | None = None,
+) -> list[dict]:
+    """Load actionable signals (buy/sell) from a JSONL file.
+
+    If *symbols* is provided, only include signals for those symbols.
+    """
     signals = []
     with open(path) as f:
         for line_num, line in enumerate(f, 1):
@@ -40,6 +51,9 @@ def load_signals(path: Path) -> list[dict]:
             action = rec.get("action", "").lower()
             if action not in ("buy", "sell"):
                 continue
+            symbol = rec.get("symbol", "")
+            if symbols and symbol not in symbols:
+                continue
             ts_raw = rec.get("ts") or rec.get("timestamp")
             if ts_raw:
                 try:
@@ -48,7 +62,7 @@ def load_signals(path: Path) -> list[dict]:
                     continue
             else:
                 continue
-            rec["_symbol"] = rec.get("symbol", "")
+            rec["_symbol"] = symbol
             rec["_action"] = action
             signals.append(rec)
     return signals
@@ -64,17 +78,22 @@ def align_signals(
     Returns (matched_pairs, v1_only, v2_only).
     """
     window = timedelta(seconds=window_secs)
+
+    # Index v2 signals by symbol for faster lookup
+    v2_by_symbol: dict[str, list[tuple[int, dict]]] = {}
+    for i, s2 in enumerate(v2_signals):
+        v2_by_symbol.setdefault(s2["_symbol"], []).append((i, s2))
+
     v2_used: set[int] = set()
     matched: list[tuple[dict, dict]] = []
     v1_only: list[dict] = []
 
     for s1 in v1_signals:
+        candidates = v2_by_symbol.get(s1["_symbol"], [])
         best_idx = None
         best_delta = None
-        for i, s2 in enumerate(v2_signals):
+        for i, s2 in candidates:
             if i in v2_used:
-                continue
-            if s1["_symbol"] != s2["_symbol"]:
                 continue
             delta = abs(s1["_ts"] - s2["_ts"])
             if delta <= window:
@@ -95,6 +114,7 @@ def print_report(
     matched: list[tuple[dict, dict]],
     v1_only: list[dict],
     v2_only: list[dict],
+    symbols: list[str] | None = None,
 ) -> None:
     """Print a human-readable comparison report."""
     total_v1 = len(matched) + len(v1_only)
@@ -104,6 +124,8 @@ def print_report(
     print("=" * 60)
     print("  Signal Comparison Report: v1 vs v2")
     print("=" * 60)
+    if symbols:
+        print(f"  Symbols:              {', '.join(symbols)}")
     print(f"  v1 signals (buy/sell): {total_v1}")
     print(f"  v2 signals (buy/sell): {total_v2}")
     print(f"  Matched pairs:        {len(matched)}")
@@ -146,6 +168,10 @@ def main() -> None:
         "--window", type=int, default=60,
         help="Alignment window in seconds (default: 60)",
     )
+    parser.add_argument(
+        "--symbols", nargs="+", default=["BTC-USD", "ETH-USD"],
+        help="Symbols to compare (default: BTC-USD ETH-USD)",
+    )
     args = parser.parse_args()
 
     v1_path = Path(args.v1)
@@ -158,13 +184,14 @@ def main() -> None:
         print(f"Error: v2 file not found: {v2_path}", file=sys.stderr)
         sys.exit(1)
 
-    v1_signals = load_signals(v1_path)
-    v2_signals = load_signals(v2_path)
+    symbol_filter = set(args.symbols)
+    v1_signals = load_signals(v1_path, symbols=symbol_filter)
+    v2_signals = load_signals(v2_path, symbols=symbol_filter)
 
     print(f"  Loaded {len(v1_signals)} v1 signals, {len(v2_signals)} v2 signals")
 
     matched, v1_only, v2_only = align_signals(v1_signals, v2_signals, args.window)
-    print_report(matched, v1_only, v2_only)
+    print_report(matched, v1_only, v2_only, symbols=args.symbols)
 
 
 if __name__ == "__main__":
