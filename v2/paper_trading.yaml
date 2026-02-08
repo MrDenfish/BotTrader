@@ -53,6 +53,8 @@ strategies:
       swing_window: 10
       # Guardrails (lowered for signal pipeline testing)
       min_indicators_required: 1
+      # Warmup (reduced for faster testing — min needed by indicators is 26)
+      min_bars: 27
 
 risk:
   type: "basic"

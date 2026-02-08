@@ -154,7 +154,12 @@ class CompositeScoringStrategy(Strategy):
         self._bar_idx[symbol] += 1
 
         # Not enough data yet
-        if len(self._bars[symbol]) < cfg.min_bars:
+        bar_count = len(self._bars[symbol])
+        if bar_count < cfg.min_bars:
+            if bar_count % 10 == 0 or bar_count == cfg.min_bars - 1:
+                logger.info(
+                    "DIAG %s warmup: %d/%d bars", symbol, bar_count, cfg.min_bars,
+                )
             return None
 
         return self._evaluate(symbol, candle)
