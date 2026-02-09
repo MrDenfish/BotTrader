@@ -53,7 +53,7 @@ strategies:
       # Scoring thresholds (aligned with v1 production .env)
       score_buy_target: 2.0
       score_sell_target: 2.0
-      allow_buys_on_red_day: false
+      allow_buys_on_red_day: true
       # Bollinger Bands
       bb_window: 10
       buy_ratio: 1.05
@@ -90,7 +90,7 @@ execution:
   type: "maker_only"
   max_retries: 3
   post_only: true
-  default_notional: 500
+  default_notional: 30
 
 storage:
   type: "postgres"
