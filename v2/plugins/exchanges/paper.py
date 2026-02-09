@@ -102,8 +102,12 @@ class PaperExchange(ExchangeAdapter):
 
         if event.bid is not None:
             self._latest_bid[symbol] = Decimal(str(event.bid))
+        elif event.price:
+            self._latest_bid[symbol] = Decimal(str(event.price))
         if event.ask is not None:
             self._latest_ask[symbol] = Decimal(str(event.ask))
+        elif event.price:
+            self._latest_ask[symbol] = Decimal(str(event.price))
 
         # Check if any resting limit orders should fill
         self._check_limit_fills(symbol)
@@ -262,6 +266,11 @@ class PaperExchange(ExchangeAdapter):
         price = self._latest_price.get(symbol, 0.0)
         bid = float(self._latest_bid.get(symbol, 0))
         ask = float(self._latest_ask.get(symbol, 0))
+        # Fallback: use last price as bid/ask when ticker_batch omits them
+        if not bid and price:
+            bid = price
+        if not ask and price:
+            ask = price
         return TickerEvent(
             symbol=symbol,
             price=price,
@@ -278,12 +287,16 @@ class PaperExchange(ExchangeAdapter):
         """Get fill price for a market order with slippage."""
         if side == Side.BUY:
             ask = self._latest_ask.get(symbol)
+            if ask is None and symbol in self._latest_price:
+                ask = Decimal(str(self._latest_price[symbol]))
             if ask is None:
                 return None
             slip = ask * self._slippage_bps / Decimal("10000")
             return ask + slip
         else:
             bid = self._latest_bid.get(symbol)
+            if bid is None and symbol in self._latest_price:
+                bid = Decimal(str(self._latest_price[symbol]))
             if bid is None:
                 return None
             slip = bid * self._slippage_bps / Decimal("10000")
