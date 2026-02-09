@@ -10,7 +10,28 @@
 app:
   name: "BotTrader"
   mode: "paper"
-  symbols: ["BTC-USD", "ETH-USD"]
+  symbols:
+    - "BTC-USD"
+    - "ETH-USD"
+    - "SOL-USD"
+    - "XRP-USD"
+    - "DOGE-USD"
+    - "ADA-USD"
+    - "LINK-USD"
+    - "HBAR-USD"
+    - "SUI-USD"
+    - "PEPE-USD"
+    - "LTC-USD"
+    - "BCH-USD"
+    - "HYPE-USD"
+    - "MON-USD"
+    - "TAO-USD"
+    - "WLFI-USD"
+    - "PAXG-USD"
+    - "ONDO-USD"
+    - "SKY-USD"
+    - "XLM-USD"
+    - "ZEC-USD"
 
 exchange:
   type: "paper"
