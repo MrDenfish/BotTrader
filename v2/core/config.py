@@ -38,7 +38,7 @@ class Config:
     exchange: PluginRef = field(default_factory=lambda: PluginRef(type="paper"))
     data_providers: list[PluginRef] = field(default_factory=list)
     strategies: list[PluginRef] = field(default_factory=list)
-    risk: PluginRef = field(default_factory=lambda: PluginRef(type="basic"))
+    risk: list[PluginRef] = field(default_factory=lambda: [PluginRef(type="basic")])
     execution: PluginRef = field(default_factory=lambda: PluginRef(type="maker_only"))
     storage: PluginRef = field(default_factory=lambda: PluginRef(type="sqlite"))
     observers: list[PluginRef] = field(default_factory=list)
@@ -94,9 +94,13 @@ class Config:
         if "observers" in d:
             cfg.observers = [_parse_plugin_ref(x) for x in d["observers"]]
 
-        # Singleton plugin sections
+        # Risk: supports both single dict (backward compat) and list
         if "risk" in d:
-            cfg.risk = _parse_plugin_ref(d["risk"])
+            raw_risk = d["risk"]
+            if isinstance(raw_risk, list):
+                cfg.risk = [_parse_plugin_ref(x) for x in raw_risk]
+            else:
+                cfg.risk = [_parse_plugin_ref(raw_risk)]
 
         if "execution" in d:
             cfg.execution = _parse_plugin_ref(d["execution"])

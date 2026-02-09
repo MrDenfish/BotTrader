@@ -99,10 +99,16 @@ class CircuitBreakerRiskManager(RiskManager):
             if self._should_auto_reset():
                 self.reset()
             else:
-                logger.debug(
+                logger.warning(
                     "Circuit breaker ACTIVE — vetoing %s %s (reason: %s)",
                     signal.direction.value, signal.symbol, self._trip_reason,
                 )
+                if self._bus:
+                    self._bus.publish(RiskEvent(
+                        event_type="signal_vetoed",
+                        reason=f"circuit_breaker_active: {self._trip_reason}",
+                        metadata={"symbol": signal.symbol, "direction": signal.direction.value},
+                    ))
                 return None
 
         return signal

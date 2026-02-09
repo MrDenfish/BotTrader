@@ -15,6 +15,8 @@ from v2.core import registry
 from v2.core.types import (
     CandleEvent,
     FillEvent,
+    OrderEvent,
+    OrderStatus,
     Portfolio,
     SignalEvent,
     TickerEvent,
@@ -38,7 +40,7 @@ class App:
         self._exchange = None
         self._data_providers: list = []
         self._strategies: list = []
-        self._risk = None
+        self._risk_managers: list = []
         self._execution = None
         self._storage = None
         self._observers: list = []
@@ -95,10 +97,11 @@ class App:
             registry.create_strategy(s.type, event_bus=self.bus, **s.config)
             for s in cfg.strategies
         ]
-        if cfg.risk.type:
-            self._risk = registry.create_risk(
-                cfg.risk.type, event_bus=self.bus, **cfg.risk.config
-            )
+        self._risk_managers = [
+            registry.create_risk(r.type, event_bus=self.bus, **r.config)
+            for r in cfg.risk
+            if r.type
+        ]
         if cfg.execution.type:
             self._execution = registry.create_execution(
                 cfg.execution.type, event_bus=self.bus, **cfg.execution.config
@@ -146,12 +149,11 @@ class App:
             bus.subscribe(FillEvent, lambda e, s=strategy: s.on_fill(e.fill))
             bus.subscribe(TickerEvent, lambda e, s=strategy: s.on_ticker(e))
 
-        # Risk manager checks signals
-        if self._risk:
-            bus.subscribe(
-                SignalEvent,
-                lambda e: self._on_signal_risk_check(e),
-            )
+        # Risk managers check signals, receive fills, and track rejections
+        if self._risk_managers:
+            bus.subscribe(SignalEvent, lambda e: self._on_signal_risk_check(e))
+            bus.subscribe(FillEvent, lambda e: self._on_fill_risk(e))
+            bus.subscribe(OrderEvent, lambda e: self._on_order_rejection(e))
 
         # Persistence receives fills and orders
         if self._storage:
@@ -175,12 +177,28 @@ class App:
             self.bus.publish(SignalEvent(signal=result, strategy_name=strategy.name))
 
     def _on_signal_risk_check(self, event: SignalEvent) -> None:
-        """Risk manager vets signal, then forward to execution."""
-        approved = self._risk.check_signal(event.signal, self.portfolio)
+        """Chain signal through all risk managers, then forward to execution."""
+        approved = event.signal
+        for rm in self._risk_managers:
+            approved = rm.check_signal(approved, self.portfolio)
+            if approved is None:
+                return
         if approved and self._execution:
             asyncio.ensure_future(
                 self._execution.execute_signal(approved, self._exchange)
             )
+
+    def _on_fill_risk(self, event: FillEvent) -> None:
+        """Forward fills to all risk managers for tracking."""
+        for rm in self._risk_managers:
+            rm.on_fill(event.fill, self.portfolio)
+
+    def _on_order_rejection(self, event: OrderEvent) -> None:
+        """Forward order rejections to risk managers that track them."""
+        if event.order.status == OrderStatus.REJECTED:
+            for rm in self._risk_managers:
+                if hasattr(rm, "on_rejection"):
+                    rm.on_rejection()
 
     def _on_fill_storage(self, event: FillEvent) -> None:
         if self._storage:

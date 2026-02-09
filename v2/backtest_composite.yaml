@@ -31,7 +31,7 @@ strategies:
     #   rsi_sell: 80.0
 
 risk:
-  type: "basic"
+  - type: "basic"
 
 execution:
   type: "maker_only"

@@ -20,6 +20,7 @@ from v2.core.interfaces import ExecutionManager, ExchangeAdapter
 from v2.core.types import (
     Direction,
     Order,
+    OrderEvent,
     OrderStatus,
     OrderType,
     Side,
@@ -137,6 +138,8 @@ class MakerOnlyExecution(ExecutionManager):
                         "Order rejected (non-post-only): %s — %s",
                         signal.symbol, reason,
                     )
+                    if self._bus:
+                        self._bus.publish(OrderEvent(order=result, event_type="rejected"))
                     return None
             else:
                 logger.info(
@@ -149,6 +152,19 @@ class MakerOnlyExecution(ExecutionManager):
             "All %d attempts exhausted for %s %s",
             self._max_retries, side.value, signal.symbol,
         )
+        if self._bus:
+            exhausted_order = Order(
+                order_id="exhausted",
+                symbol=signal.symbol,
+                side=side,
+                order_type=OrderType.LIMIT,
+                price=Decimal("0"),
+                qty=qty,
+                status=OrderStatus.REJECTED,
+                timestamp=datetime.now(timezone.utc),
+                metadata={"reason": "max_retries_exhausted", "attempts": self._max_retries},
+            )
+            self._bus.publish(OrderEvent(order=exhausted_order, event_type="rejected"))
         return None
 
     # ------------------------------------------------------------------

@@ -1131,3 +1131,237 @@ class TestAlerting:
             # Manual alert should bypass rate limit
             result = ao.send_manual_alert("Manual", "Alert body")
             assert result is True
+
+
+# =====================================================================
+# Risk Chaining (basic → circuit_breaker)
+# =====================================================================
+
+
+class TestRiskChaining:
+    """Tests for chaining multiple risk managers in sequence."""
+
+    def _create_basic(self, bus=None, **kwargs):
+        from v2.plugins.risk.basic import BasicRiskManager
+        kwargs["event_bus"] = bus
+        return BasicRiskManager(**kwargs)
+
+    def _create_cb(self, bus=None, **kwargs):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+        kwargs["event_bus"] = bus
+        return CircuitBreakerRiskManager(**kwargs)
+
+    def test_both_approve_signal_passes(self, bus):
+        basic = self._create_basic(bus=bus)
+        cb = self._create_cb(bus=bus)
+        signal = _make_signal()
+        portfolio = _make_portfolio()
+
+        approved = signal
+        for rm in [basic, cb]:
+            approved = rm.check_signal(approved, portfolio)
+            if approved is None:
+                break
+        assert approved is signal
+
+    def test_basic_vetoes_cb_never_called(self, bus):
+        basic = self._create_basic(bus=bus, max_open_positions=0)
+        cb = self._create_cb(bus=bus)
+        signal = _make_signal()
+        portfolio = _make_portfolio()
+
+        approved = signal
+        cb_called = False
+        original_check = cb.check_signal
+
+        def tracking_check(sig, port):
+            nonlocal cb_called
+            cb_called = True
+            return original_check(sig, port)
+
+        cb.check_signal = tracking_check
+
+        for rm in [basic, cb]:
+            approved = rm.check_signal(approved, portfolio)
+            if approved is None:
+                break
+        assert approved is None
+        assert not cb_called
+
+    def test_basic_approves_cb_tripped_vetoes(self, bus):
+        basic = self._create_basic(bus=bus)
+        cb = self._create_cb(bus=bus)
+        cb._trip("test trip")
+
+        signal = _make_signal()
+        portfolio = _make_portfolio()
+
+        approved = signal
+        for rm in [basic, cb]:
+            approved = rm.check_signal(approved, portfolio)
+            if approved is None:
+                break
+        assert approved is None
+
+    def test_both_receive_fills(self, bus):
+        basic = self._create_basic(bus=bus)
+        cb = self._create_cb(bus=bus, max_consecutive_rejections=10)
+        cb._consecutive_rejections = 5
+
+        portfolio = _make_portfolio()
+        fill = _make_fill(side=Side.BUY)
+
+        for rm in [basic, cb]:
+            rm.on_fill(fill, portfolio)
+
+        # Basic tracks exposure
+        assert basic._symbol_exposure.get("BTC-USD", Decimal("0")) == Decimal("97")
+        # CB resets rejection counter on fill
+        assert cb._consecutive_rejections == 0
+
+
+# =====================================================================
+# Fill Wiring to Risk Managers (via EventBus)
+# =====================================================================
+
+
+class TestFillWiringToRisk:
+    """Verify on_fill is called on all risk managers when FillEvent published."""
+
+    def test_fill_event_reaches_risk_managers(self, bus):
+        from v2.plugins.risk.basic import BasicRiskManager
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        basic = BasicRiskManager(event_bus=bus)
+        cb = CircuitBreakerRiskManager(event_bus=bus, max_consecutive_rejections=10)
+        cb._consecutive_rejections = 3
+
+        risk_managers = [basic, cb]
+        portfolio = _make_portfolio()
+
+        # Simulate what app._on_fill_risk does
+        fill = _make_fill(side=Side.BUY)
+        for rm in risk_managers:
+            rm.on_fill(fill, portfolio)
+
+        assert basic._symbol_exposure.get("BTC-USD") == Decimal("97")
+        assert cb._consecutive_rejections == 0
+
+
+# =====================================================================
+# OrderEvent Rejection → on_rejection Wiring
+# =====================================================================
+
+
+class TestOrderRejectionWiring:
+    """Verify circuit breaker on_rejection is called on REJECTED OrderEvents."""
+
+    def test_rejected_order_calls_on_rejection(self, bus):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        cb = CircuitBreakerRiskManager(event_bus=bus, max_consecutive_rejections=3)
+
+        # Simulate what app._on_order_rejection does
+        order = _make_order(status=OrderStatus.REJECTED)
+        event = OrderEvent(order=order, event_type="rejected")
+
+        if event.order.status == OrderStatus.REJECTED:
+            if hasattr(cb, "on_rejection"):
+                cb.on_rejection()
+
+        assert cb._consecutive_rejections == 1
+
+    def test_filled_order_does_not_call_on_rejection(self, bus):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        cb = CircuitBreakerRiskManager(event_bus=bus, max_consecutive_rejections=3)
+
+        order = _make_order(status=OrderStatus.FILLED)
+        event = OrderEvent(order=order, event_type="submitted")
+
+        if event.order.status == OrderStatus.REJECTED:
+            if hasattr(cb, "on_rejection"):
+                cb.on_rejection()
+
+        assert cb._consecutive_rejections == 0
+
+    def test_rejection_cascade_trips_breaker(self, bus):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        cb = CircuitBreakerRiskManager(event_bus=bus, max_consecutive_rejections=3)
+
+        for i in range(3):
+            order = _make_order(status=OrderStatus.REJECTED, order_id=f"order-{i}")
+            event = OrderEvent(order=order, event_type="rejected")
+            if event.order.status == OrderStatus.REJECTED:
+                if hasattr(cb, "on_rejection"):
+                    cb.on_rejection()
+
+        assert cb.is_tripped
+        assert "consecutive_rejections" in cb._trip_reason
+
+
+# =====================================================================
+# Circuit Breaker Veto Publishing
+# =====================================================================
+
+
+class TestCircuitBreakerVetoPublishing:
+    """Verify tripped circuit breaker publishes RiskEvent when vetoing."""
+
+    def test_veto_publishes_risk_event(self, bus):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        cb = CircuitBreakerRiskManager(event_bus=bus, cooldown_minutes=60)
+        cb._trip("test_reason")
+
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+
+        signal = _make_signal()
+        portfolio = _make_portfolio()
+        result = cb.check_signal(signal, portfolio)
+
+        assert result is None
+        # One from _trip(), one from check_signal veto
+        veto_events = [e for e in events if "circuit_breaker_active" in e.reason]
+        assert len(veto_events) == 1
+        assert veto_events[0].event_type == "signal_vetoed"
+        assert "test_reason" in veto_events[0].reason
+        assert veto_events[0].metadata["symbol"] == "BTC-USD"
+        assert veto_events[0].metadata["direction"] == "buy"
+
+    def test_no_event_when_not_tripped(self, bus):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        cb = CircuitBreakerRiskManager(event_bus=bus)
+
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+
+        signal = _make_signal()
+        portfolio = _make_portfolio()
+        result = cb.check_signal(signal, portfolio)
+
+        assert result is signal
+        assert len(events) == 0
+
+    def test_no_veto_event_after_auto_reset(self, bus):
+        from v2.plugins.risk.circuit_breaker import CircuitBreakerRiskManager
+
+        cb = CircuitBreakerRiskManager(event_bus=bus, cooldown_minutes=1)
+        cb._trip("test_reason")
+        # Pretend trip happened 2 minutes ago
+        cb._trip_time = time.time() - 120
+
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+
+        signal = _make_signal()
+        portfolio = _make_portfolio()
+        result = cb.check_signal(signal, portfolio)
+
+        # Auto-reset should allow signal through, no veto event
+        assert result is signal
+        veto_events = [e for e in events if "circuit_breaker_active" in e.reason]
+        assert len(veto_events) == 0

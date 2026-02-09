@@ -120,3 +120,45 @@ observers:
         assert cfg.observers[0].config["level"] == "DEBUG"
         assert cfg.observers[1].type == "daily_report"
         assert cfg.observers[1].config["email_to"] == "test@test.com"
+
+
+class TestRiskConfig:
+    """Risk field supports both single dict (backward compat) and list."""
+
+    def test_risk_single_dict_backward_compat(self, tmp_path):
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text("""
+risk:
+  type: "basic"
+  pass_through: true
+""")
+        cfg = Config.load(config_file)
+        assert isinstance(cfg.risk, list)
+        assert len(cfg.risk) == 1
+        assert cfg.risk[0].type == "basic"
+        assert cfg.risk[0].config.get("pass_through") is True
+
+    def test_risk_list_format(self, tmp_path):
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text("""
+risk:
+  - type: "basic"
+    pass_through: false
+  - type: "circuit_breaker"
+    max_losses_in_window: 5
+    cooldown_minutes: 30
+""")
+        cfg = Config.load(config_file)
+        assert isinstance(cfg.risk, list)
+        assert len(cfg.risk) == 2
+        assert cfg.risk[0].type == "basic"
+        assert cfg.risk[0].config.get("pass_through") is False
+        assert cfg.risk[1].type == "circuit_breaker"
+        assert cfg.risk[1].config.get("max_losses_in_window") == 5
+        assert cfg.risk[1].config.get("cooldown_minutes") == 30
+
+    def test_risk_default_is_list(self):
+        cfg = Config.load()
+        assert isinstance(cfg.risk, list)
+        assert len(cfg.risk) == 1
+        assert cfg.risk[0].type == "basic"

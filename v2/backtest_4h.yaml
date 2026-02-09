@@ -26,7 +26,7 @@ strategies:
     #   config = get_phase2_3_roc_baseline_config()
 
 risk:
-  type: "basic"
+  - type: "basic"
 
 execution:
   type: "maker_only"

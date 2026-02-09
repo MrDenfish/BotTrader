@@ -22,10 +22,16 @@ strategies:
       roc_24h_enabled: false
 
 risk:
-  type: "basic"
-  max_exposure_per_symbol_usd: 500
-  max_daily_loss_usd: 200
-  max_open_positions: 10
+  - type: "basic"
+    max_exposure_per_symbol_usd: 500
+    max_daily_loss_usd: 200
+    max_open_positions: 10
+  - type: "circuit_breaker"
+    max_losses_in_window: 5
+    loss_window_minutes: 30
+    large_loss_threshold_usd: 50
+    max_consecutive_rejections: 10
+    cooldown_minutes: 30
 
 execution:
   type: "maker_only"
