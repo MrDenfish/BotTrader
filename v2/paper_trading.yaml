@@ -81,7 +81,8 @@ strategies:
       atr_window: 8
       swing_window: 10
       # Guardrails
-      min_indicators_required: 3
+      min_indicators_required: 2
+      cooldown_bars: 1  # 1 × 5min = 5min (v1 uses 7 × 1min = 7min)
 
 risk:
   - type: "basic"
