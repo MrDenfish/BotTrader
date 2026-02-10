@@ -50,25 +50,28 @@ data_providers:
 strategies:
   - type: "composite_scoring"
     config:
-      # Scoring thresholds (aligned with v1 production .env)
+      # Candle aggregation: 5-min bars from 1-min WebSocket candles
+      # Warmup: 40 bars × 5 min = ~3.3 hours
+      candle_interval_minutes: 5
+      # Scoring thresholds
       score_buy_target: 2.0
       score_sell_target: 2.0
       allow_buys_on_red_day: true
-      # Bollinger Bands
+      # Bollinger Bands (10 bars = 50 min)
       bb_window: 10
       buy_ratio: 1.05
-      # MACD
+      # MACD (8/21/5 spans ~105 min of history)
       macd_fast: 8
       macd_slow: 21
       macd_signal: 5
-      # RSI
+      # RSI (14 bars = 70 min)
       rsi_buy: 25.0
       rsi_sell: 75.0
-      # ROC
-      roc_window: 20
+      # ROC (4 bars × 5 min = ~20 min lookback)
+      roc_window: 4
       roc_buy_threshold: 2.0
       roc_sell_threshold: -1.0
-      # Volatility & Swing
+      # Volatility & Swing (10 bars = 50 min)
       sma_volatility: 10
       atr_window: 8
       swing_window: 10

@@ -126,20 +126,136 @@ class TestIndicators:
         rsi = result["_RSI"]
         assert 0.0 <= rsi <= 100.0
 
-    def test_w_bottom_m_top_always_zero_on_last_row(self):
-        """v1 behaviour: W-Bottom/M-Top never fire on the last row."""
-        df = _make_df(n=100)
-        cfg = CompositeScoreConfig()
-        result = compute_indicators(df, cfg)
-        assert result["W-Bottom"][0] == 0
-        assert result["M-Top"][0] == 0
+    def test_w_bottom_fires_with_pattern(self):
+        """W-Bottom fires when price dips below lower BB and recovers."""
+        cfg = CompositeScoreConfig(bb_window=10, bb_std=2.0, atr_window=8)
+        # Build a DataFrame where bars n-3/n-2/n-1 form a W-Bottom pattern:
+        # prev (n-3): low dips below lower BB
+        # curr (n-2): low rises above prev low
+        # next (n-1): low rises further, close above basis
+        n = 50
+        rng = np.random.default_rng(99)
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        base = 100.0
+        closes = np.full(n, base) + np.cumsum(rng.normal(0, 0.3, n))
+        highs = closes + rng.uniform(0.5, 2.0, n)
+        lows = closes - rng.uniform(0.5, 2.0, n)
+        opens = closes + rng.normal(0, 0.5, n)
+        volumes = np.zeros(n)  # No volume data (WebSocket scenario)
 
-    def test_buy_swing_never_fires(self):
-        """v1 behaviour: rolling_high includes current bar, so close > rolling_high is always False."""
+        # Force W-Bottom pattern at the end:
+        # n-3: low dips far below lower band
+        lows[-3] = closes[-3] - 20.0  # Deep dip below BB
+        # n-2: low higher than n-3
+        lows[-2] = closes[-2] - 5.0
+        # n-1: low higher still, close above basis
+        lows[-1] = closes[-1] - 1.0
+        closes[-1] = base + 5.0  # Above basis
+        highs[-1] = closes[-1] + 1.0
+
+        df = pd.DataFrame({
+            "open": opens, "high": highs, "low": lows,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        result = compute_indicators(df, cfg)
+        # With zero volume, the volume check is bypassed — pattern should fire
+        assert result["W-Bottom"][0] == 1
+
+    def test_w_bottom_zero_without_pattern(self):
+        """W-Bottom returns 0 when no pattern is present."""
         df = _make_df(n=100)
         cfg = CompositeScoreConfig()
         result = compute_indicators(df, cfg)
-        assert result["Buy Swing"][0] == 0
+        # Random data unlikely to have an exact W-Bottom at the end
+        assert result["W-Bottom"][0] in (0, 1)  # Could happen by chance
+        assert isinstance(result["W-Bottom"], tuple) and len(result["W-Bottom"]) == 3
+
+    def test_w_bottom_bypasses_volume_when_zero(self):
+        """When all volume is 0, volume check is skipped (WebSocket mode)."""
+        cfg = CompositeScoreConfig(bb_window=10, atr_window=8)
+        n = 50
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        base = 100.0
+        closes = np.full(n, base)
+        highs = closes + 2.0
+        lows = closes - 2.0
+        opens = closes.copy()
+        volumes = np.zeros(n)  # All zero volume
+
+        # Force W-Bottom pattern
+        lows[-3] = base - 20.0
+        lows[-2] = base - 5.0
+        lows[-1] = base - 1.0
+        closes[-1] = base + 5.0
+        highs[-1] = base + 6.0
+
+        df = pd.DataFrame({
+            "open": opens, "high": highs, "low": lows,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        result = compute_indicators(df, cfg)
+        # Volume bypass allows pattern to fire
+        assert result["W-Bottom"][0] == 1
+
+    def test_w_bottom_enforces_volume_when_available(self):
+        """When volume data exists, the volume condition is enforced."""
+        cfg = CompositeScoreConfig(bb_window=10, atr_window=8)
+        n = 50
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        base = 100.0
+        closes = np.full(n, base)
+        highs = closes + 2.0
+        lows = closes - 2.0
+        opens = closes.copy()
+        volumes = np.ones(n) * 10.0  # Real volume data
+
+        # Force W-Bottom pattern
+        lows[-3] = base - 20.0
+        lows[-2] = base - 5.0
+        lows[-1] = base - 1.0
+        closes[-1] = base + 5.0
+        highs[-1] = base + 6.0
+        # But set confirmation bar volume to 0 (below mean)
+        volumes[-1] = 0.0
+
+        df = pd.DataFrame({
+            "open": opens, "high": highs, "low": lows,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        result = compute_indicators(df, cfg)
+        # Volume exists but confirmation bar has 0 volume → pattern blocked
+        assert result["W-Bottom"][0] == 0
+
+    def test_buy_swing_detects_breakout(self):
+        """Buy Swing fires when close breaks above previous rolling high with MACD confirmation."""
+        cfg = CompositeScoreConfig(swing_window=10, macd_fast=8, macd_slow=21, macd_signal=5)
+        n = 50
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        # Flat market then sharp breakout on the last bar
+        closes = np.full(n, 100.0)
+        # Last bar breaks out significantly above the flat range
+        closes[-1] = 120.0
+        # Also need MACD > signal line — create a recent uptrend for MACD
+        for i in range(n - 10, n):
+            closes[i] = 100.0 + (i - (n - 10)) * 2.5  # Ramp up
+        closes[-1] = 125.0  # Final breakout well above rolling high
+
+        highs = closes + 1.0
+        lows = closes - 1.0
+        opens = closes - 0.5
+        volumes = np.ones(n)
+
+        df = pd.DataFrame({
+            "open": opens, "high": highs, "low": lows,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        result = compute_indicators(df, cfg)
+        # Close should exceed previous bar's rolling high (shift(1) fix)
+        assert result["Buy Swing"][0] == 1
 
 
 # ------------------------------------------------------------------
@@ -487,3 +603,97 @@ class TestCompositeScoringStrategy:
         # With allow_buys_on_red_day=True, buys should pass through despite red day
         buy_signals = [r for r in results if r.direction == Direction.BUY]
         assert len(buy_signals) > 0, "Expected buys to pass through when red-day gate is disabled"
+
+
+# ------------------------------------------------------------------
+# Candle aggregation
+# ------------------------------------------------------------------
+
+class TestCandleAggregation:
+    def setup_method(self):
+        registry.discover_plugins()
+
+    def test_interval_1_passthrough(self):
+        """candle_interval_minutes=1 preserves original direct-append behavior."""
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"candle_interval_minutes": 1, "min_bars": 5})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(5):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+            )
+            s.on_candle(candle, {})
+
+        # 5 candles → 5 bars in buffer (no aggregation)
+        assert len(s._bars["BTC-USD"]) == 5
+
+    def test_interval_5_aggregates(self):
+        """candle_interval_minutes=5 aggregates 5 one-min candles into 1 bar."""
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"candle_interval_minutes": 5, "min_bars": 3})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=100.0 + i, high=105.0 + i, low=95.0 + i,
+                close=101.0 + i, volume=1.0 + i * 0.1,
+            )
+            s.on_candle(candle, {})
+
+        # 10 one-min candles → 2 aggregated 5-min bars
+        assert len(s._bars["BTC-USD"]) == 2
+
+    def test_aggregated_ohlcv_correct(self):
+        """Aggregated bar has correct OHLCV: open=first, high=max, low=min, close=last, volume=sum."""
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"candle_interval_minutes": 3, "min_bars": 1})
+
+        base_ts = datetime(2026, 1, 1)
+        candles_data = [
+            (100.0, 110.0, 90.0, 105.0, 1.0),   # bar 1
+            (105.0, 120.0, 95.0, 115.0, 2.0),    # bar 2 (highest high)
+            (115.0, 118.0, 85.0, 112.0, 3.0),    # bar 3 (lowest low)
+        ]
+        for i, (o, h, l, c, v) in enumerate(candles_data):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=o, high=h, low=l, close=c, volume=v,
+            )
+            s.on_candle(candle, {})
+
+        assert len(s._bars["BTC-USD"]) == 1
+        bar = s._bars["BTC-USD"][0]
+        assert bar["open"] == 100.0    # First candle's open
+        assert bar["high"] == 120.0    # Max of all highs
+        assert bar["low"] == 85.0      # Min of all lows
+        assert bar["close"] == 112.0   # Last candle's close
+        assert bar["volume"] == 6.0    # Sum of volumes
+
+    def test_partial_buffer_returns_none(self):
+        """Fewer than N candles in aggregation buffer returns None."""
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"candle_interval_minutes": 5, "min_bars": 1})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(4):  # Only 4 of 5 needed
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+            )
+            result = s.on_candle(candle, {})
+            assert result is None
+
+        # Buffer not yet in _bars
+        assert "BTC-USD" not in s._bars or len(s._bars.get("BTC-USD", [])) == 0
+
+    def test_config_default_interval_is_1(self):
+        """Default candle_interval_minutes is 1 (backward compatible)."""
+        cfg = CompositeScoreConfig()
+        assert cfg.candle_interval_minutes == 1

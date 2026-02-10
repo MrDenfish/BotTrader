@@ -92,6 +92,11 @@ class CompositeScoreConfig:
     allow_buys_on_red_day: bool = True  # If False, block buys when 24h change < 0
 
     # ------------------------------------------------------------------
+    # Candle aggregation
+    # ------------------------------------------------------------------
+    candle_interval_minutes: int = 1  # 1=raw 1-min candles, 5=aggregate to 5-min
+
+    # ------------------------------------------------------------------
     # Buffer / warmup
     # ------------------------------------------------------------------
     buffer_size: int = 500   # Rolling candle buffer for indicator calculation

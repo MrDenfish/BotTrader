@@ -55,11 +55,14 @@ class CompositeScoringStrategy(Strategy):
         self._guardrails = Guardrails()
         self._configured = False
 
-        # Per-symbol rolling buffer of OHLCV dicts
+        # Per-symbol rolling buffer of OHLCV dicts (aggregated candles)
         self._bars: dict[str, deque] = {}
 
         # Per-symbol bar counter (for cooldown tracking)
         self._bar_idx: dict[str, int] = {}
+
+        # Aggregation buffer: accumulates 1-min candles until interval reached
+        self._agg_buffer: dict[str, list] = {}
 
         # 24h ROC from live ticker (only populated in live mode)
         self._roc_24h: dict[str, float] = {}
@@ -133,25 +136,56 @@ class CompositeScoringStrategy(Strategy):
     # ------------------------------------------------------------------
 
     def _process_candle(self, candle: Candle) -> Signal | None:
-        """Accumulate candle in buffer, evaluate if enough bars."""
+        """Accumulate candle in buffer, evaluate if enough bars.
+
+        When ``candle_interval_minutes > 1``, incoming 1-min candles are
+        aggregated into N-minute bars before being appended to the rolling
+        indicator buffer.
+        """
         symbol = candle.symbol
         cfg = self._config
+        interval = cfg.candle_interval_minutes
 
-        # Initialize buffer for symbol
+        # Initialize buffers for symbol
         if symbol not in self._bars:
             self._bars[symbol] = deque(maxlen=cfg.buffer_size)
             self._bar_idx[symbol] = 0
 
-        # Append candle to buffer
-        self._bars[symbol].append({
+        bar_dict = {
             "timestamp": candle.timestamp,
             "open": candle.open,
             "high": candle.high,
             "low": candle.low,
             "close": candle.close,
             "volume": candle.volume,
-        })
-        self._bar_idx[symbol] += 1
+        }
+
+        if interval <= 1:
+            # Direct append — original 1-min behavior
+            self._bars[symbol].append(bar_dict)
+            self._bar_idx[symbol] += 1
+        else:
+            # Aggregate N one-minute candles into one N-minute bar
+            if symbol not in self._agg_buffer:
+                self._agg_buffer[symbol] = []
+            self._agg_buffer[symbol].append(bar_dict)
+
+            if len(self._agg_buffer[symbol]) < interval:
+                return None  # Waiting for more 1-min candles
+
+            # Aggregate the buffered candles
+            buf = self._agg_buffer[symbol]
+            agg = {
+                "timestamp": buf[-1]["timestamp"],
+                "open": buf[0]["open"],
+                "high": max(b["high"] for b in buf),
+                "low": min(b["low"] for b in buf),
+                "close": buf[-1]["close"],
+                "volume": sum(b["volume"] for b in buf),
+            }
+            self._agg_buffer[symbol] = []
+            self._bars[symbol].append(agg)
+            self._bar_idx[symbol] += 1
 
         # Not enough data yet
         if len(self._bars[symbol]) < cfg.min_bars:

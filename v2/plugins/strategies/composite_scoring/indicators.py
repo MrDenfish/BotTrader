@@ -125,12 +125,13 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
         ).fillna(0)
         min_price_change = float(atr_range.median() * 0.065)
         vol_mean = df["volume"].rolling(window=cfg.atr_window, min_periods=1).mean().fillna(0)
+        # When volume data is unavailable (WebSocket ticker_batch = all zeros),
+        # bypass the volume confirmation to let patterns fire on price alone.
+        volume_available = df["volume"].sum() > 0
 
         # Check pattern at index n-2 (prev=n-3, curr=n-2, nxt=n-1).
-        # The result is stored at n-2, NOT at n-1 (the scoring row).
-        # So for the scoring row, W-Bottom/M-Top are always 0.
-        # We keep the computation for correctness if someone changes
-        # to scoring at n-2 in the future.
+        # The pattern is confirmed with a 1-bar delay — acceptable on
+        # multi-minute candles and avoids lookahead bias.
         prev_bar, curr_bar, next_bar = df.iloc[-3], df.iloc[-2], df.iloc[-1]
         prev_lower = float(lower.iloc[-3]) if not pd.isna(lower.iloc[-3]) else 0.0
         prev_upper = float(upper.iloc[-3]) if not pd.isna(upper.iloc[-3]) else 0.0
@@ -143,7 +144,7 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
             and curr_bar["low"] > prev_bar["low"]
             and next_bar["low"] > curr_bar["low"]
             and next_bar["close"] > next_basis
-            and next_bar["volume"] > next_vol_mean
+            and (not volume_available or next_bar["volume"] > next_vol_mean)
             and abs(curr_bar["low"] - prev_bar["low"]) >= min_price_change
         )
         m_top = bool(
@@ -152,24 +153,22 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
             and curr_bar["high"] < prev_bar["high"]
             and next_bar["high"] < curr_bar["high"]
             and next_bar["close"] < next_basis
-            and next_bar["volume"] > next_vol_mean
+            and (not volume_available or next_bar["volume"] > next_vol_mean)
             and abs(curr_bar["high"] - prev_bar["high"]) >= min_price_change
         )
 
-    # Score the *last* row — pattern detection at n-2 means
-    # the last row always gets decision=0 (matching v1 behaviour).
-    results["W-Bottom"] = _norm(False, last["low"], min_price_change)
-    results["M-Top"] = _norm(False, last["high"], min_price_change)
+    results["W-Bottom"] = _norm(w_bottom, float(df.iloc[-2]["low"]) if n >= 3 else 0.0, min_price_change)
+    results["M-Top"] = _norm(m_top, float(df.iloc[-2]["high"]) if n >= 3 else 0.0, min_price_change)
 
     # === 6. SWING TRADING ===
-    rolling_high = df["close"].rolling(window=cfg.swing_window).max()
-    rolling_low = df["close"].rolling(window=cfg.swing_window).min()
+    # Use shift(1) to exclude the current bar — otherwise close can never
+    # exceed its own rolling max (or fall below its own rolling min).
+    rolling_high = df["close"].shift(1).rolling(window=cfg.swing_window).max()
+    rolling_low = df["close"].shift(1).rolling(window=cfg.swing_window).min()
 
     last_rh = float(rolling_high.iloc[-1]) if not pd.isna(rolling_high.iloc[-1]) else 0.0
     last_rl = float(rolling_low.iloc[-1]) if not pd.isna(rolling_low.iloc[-1]) else 0.0
 
-    # Note: close > rolling_high is always False because rolling_high
-    # includes the current bar (matches v1 behaviour).
     buy_swing = (last["close"] > last_rh and last_macd > last_signal)
     sell_swing = (last["close"] < last_rl and last_macd < last_signal)
 
