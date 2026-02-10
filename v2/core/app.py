@@ -129,7 +129,9 @@ class App:
             self._pair_discovery = registry.create_pair_discovery(
                 cfg.pair_discovery.type, event_bus=self.bus, **cfg.pair_discovery.config,
             )
-            self._pair_discovery.configure(cfg.pair_discovery.config)
+            # The PluginRef.config may wrap the real config under a "config" key
+            inner_cfg = cfg.pair_discovery.config.get("config", cfg.pair_discovery.config)
+            self._pair_discovery.configure(inner_cfg)
             try:
                 discovered = await self._pair_discovery.discover()
                 if discovered:
