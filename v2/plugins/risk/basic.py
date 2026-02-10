@@ -118,7 +118,9 @@ class BasicRiskManager(RiskManager):
         if signal.direction == Direction.BUY:
             return self._check_buy(signal, portfolio)
 
-        # SELL signals generally allowed (closing positions is risk-reducing)
+        if signal.direction == Direction.SELL:
+            return self._check_sell(signal, portfolio)
+
         return signal
 
     def _check_buy(self, signal: Signal, portfolio: Portfolio) -> Signal | None:
@@ -155,6 +157,17 @@ class BasicRiskManager(RiskManager):
             )
             return None
 
+        return signal
+
+    def _check_sell(self, signal: Signal, portfolio: Portfolio) -> Signal | None:
+        """Validate SELL signals — require an open position to sell."""
+        position = portfolio.positions.get(signal.symbol)
+        if position is None or position.qty <= 0:
+            self._publish_veto(
+                signal,
+                f"no_position: {signal.symbol} has no open position to sell",
+            )
+            return None
         return signal
 
     # ------------------------------------------------------------------

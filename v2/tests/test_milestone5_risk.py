@@ -181,12 +181,42 @@ class TestBasicRiskManager:
         result = rm.check_signal(signal, portfolio)
         assert result is signal
 
-    def test_sell_signals_pass_through(self):
+    def test_sell_vetoed_no_position(self):
         rm = self._create()
         signal = _make_signal(direction=Direction.SELL)
         portfolio = _make_portfolio()
         result = rm.check_signal(signal, portfolio)
+        assert result is None  # No position to sell
+
+    def test_sell_passes_with_position(self):
+        rm = self._create()
+        signal = _make_signal(direction=Direction.SELL)
+        positions = {
+            "BTC-USD": Position(
+                symbol="BTC-USD",
+                qty=Decimal("0.01"),
+                avg_entry_price=Decimal("97000"),
+                cost_basis=Decimal("970"),
+            ),
+        }
+        portfolio = _make_portfolio(positions=positions)
+        result = rm.check_signal(signal, portfolio)
         assert result is signal
+
+    def test_sell_vetoed_zero_qty(self):
+        rm = self._create()
+        signal = _make_signal(direction=Direction.SELL)
+        positions = {
+            "BTC-USD": Position(
+                symbol="BTC-USD",
+                qty=Decimal("0"),
+                avg_entry_price=Decimal("97000"),
+                cost_basis=Decimal("0"),
+            ),
+        }
+        portfolio = _make_portfolio(positions=positions)
+        result = rm.check_signal(signal, portfolio)
+        assert result is None  # Zero qty = no position
 
     def test_buy_signal_passes_within_limits(self):
         rm = self._create(
