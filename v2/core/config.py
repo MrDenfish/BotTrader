@@ -42,6 +42,7 @@ class Config:
     execution: PluginRef = field(default_factory=lambda: PluginRef(type="maker_only"))
     storage: PluginRef = field(default_factory=lambda: PluginRef(type="sqlite"))
     observers: list[PluginRef] = field(default_factory=list)
+    pair_discovery: PluginRef | None = None
 
     # ------------------------------------------------------------------
     # Loaders
@@ -107,6 +108,9 @@ class Config:
 
         if "storage" in d:
             cfg.storage = _parse_plugin_ref(d["storage"])
+
+        if "pair_discovery" in d:
+            cfg.pair_discovery = _parse_plugin_ref(d["pair_discovery"])
 
         return cfg
 

@@ -186,3 +186,12 @@ class TickerEvent:
     change_24h_pct: float | None = None
     bid: float | None = None
     ask: float | None = None
+
+
+@dataclass(frozen=True)
+class SymbolsUpdatedEvent:
+    """Active trading pair list changed (from pair discovery)."""
+    symbols: tuple[str, ...]
+    added: tuple[str, ...]
+    removed: tuple[str, ...]
+    source: str = "pair_discovery"

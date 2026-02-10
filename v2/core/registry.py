@@ -17,6 +17,7 @@ from v2.core.interfaces import (
     ExchangeAdapter,
     ExecutionManager,
     Observer,
+    PairDiscovery,
     RiskManager,
     StorageAdapter,
     Strategy,
@@ -33,6 +34,7 @@ _registry: dict[str, dict[str, Type]] = {
     "execution": {},
     "storage": {},
     "observer": {},
+    "pair_discovery": {},
 }
 
 # Category → expected ABC
@@ -44,6 +46,7 @@ _category_abc: dict[str, Type] = {
     "execution": ExecutionManager,
     "storage": StorageAdapter,
     "observer": Observer,
+    "pair_discovery": PairDiscovery,
 }
 
 
@@ -138,6 +141,10 @@ def create_storage(name: str, **kw: Any) -> StorageAdapter:
 
 def create_observer(name: str, **kw: Any) -> Observer:
     return create("observer", name, **kw)
+
+
+def create_pair_discovery(name: str, **kw: Any) -> PairDiscovery:
+    return create("pair_discovery", name, **kw)
 
 
 # ---------------------------------------------------------------------------

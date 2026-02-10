@@ -37,6 +37,7 @@ class App:
         self._shutdown = asyncio.Event()
 
         # Plugin instances (populated in _setup)
+        self._pair_discovery = None
         self._exchange = None
         self._data_providers: list = []
         self._strategies: list = []
@@ -123,6 +124,25 @@ class App:
         if self._storage:
             await self._storage.connect()
 
+        # Pair discovery (optional — replaces static symbol list)
+        if cfg.pair_discovery and cfg.pair_discovery.type:
+            self._pair_discovery = registry.create_pair_discovery(
+                cfg.pair_discovery.type, event_bus=self.bus, **cfg.pair_discovery.config,
+            )
+            self._pair_discovery.configure(cfg.pair_discovery.config)
+            try:
+                discovered = await self._pair_discovery.discover()
+                if discovered:
+                    logger.info(
+                        "Pair discovery: %d symbols (replacing %d static)",
+                        len(discovered), len(cfg.app.symbols),
+                    )
+                    cfg.app.symbols = discovered
+                else:
+                    logger.warning("Pair discovery returned empty — using YAML symbols")
+            except Exception:
+                logger.exception("Pair discovery failed — using YAML symbols")
+
         # Configure and start strategies
         for s in self._strategies:
             matching = [
@@ -135,6 +155,10 @@ class App:
         # Start data providers
         for dp in self._data_providers:
             await dp.start(cfg.app.symbols)
+
+        # Start pair discovery refresh loop (after data providers are running)
+        if self._pair_discovery:
+            await self._pair_discovery.start()
 
         logger.info("Setup complete — %d strategies, %d data providers",
                      len(self._strategies), len(self._data_providers))
@@ -343,6 +367,8 @@ class App:
 
     async def _teardown(self) -> None:
         """Stop plugins in reverse order."""
+        if self._pair_discovery:
+            await self._pair_discovery.stop()
         for strategy in self._strategies:
             strategy.stop()
         for dp in self._data_providers:

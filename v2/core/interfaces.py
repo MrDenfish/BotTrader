@@ -221,3 +221,35 @@ class Observer(ABC):
 
     @abstractmethod
     def on_event(self, event: Any) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# PairDiscovery
+# ---------------------------------------------------------------------------
+
+class PairDiscovery(ABC):
+    """Discovers tradeable pairs from an exchange based on volume/liquidity.
+
+    Fetches available products, filters by volume and other criteria,
+    and publishes ``SymbolsUpdatedEvent`` when the active set changes.
+    """
+
+    name: str
+
+    @abstractmethod
+    def configure(self, config: Any) -> None: ...
+
+    @abstractmethod
+    async def discover(self) -> list[str]:
+        """Fetch and filter trading pairs. Returns list of symbols."""
+        ...
+
+    @abstractmethod
+    async def start(self) -> None:
+        """Start periodic refresh background task."""
+        ...
+
+    @abstractmethod
+    async def stop(self) -> None:
+        """Stop refresh task and close resources."""
+        ...

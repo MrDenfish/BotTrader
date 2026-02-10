@@ -10,6 +10,8 @@
 app:
   name: "BotTrader"
   mode: "paper"
+  # Fallback symbols — used only if pair discovery fails at startup.
+  # When pair_discovery is active, this list is replaced by discovered pairs.
   symbols:
     - "BTC-USD"
     - "ETH-USD"
@@ -23,15 +25,18 @@ app:
     - "PEPE-USD"
     - "LTC-USD"
     - "BCH-USD"
-    - "HYPE-USD"
-    - "MON-USD"
-    - "TAO-USD"
-    - "WLFI-USD"
-    - "PAXG-USD"
-    - "ONDO-USD"
-    - "SKY-USD"
-    - "XLM-USD"
-    - "ZEC-USD"
+
+# Dynamic pair discovery — fetches products from Coinbase API and
+# filters by 24h volume (same algorithm as v1). Replaces app.symbols
+# at startup and refreshes periodically.
+pair_discovery:
+  type: "coinbase"
+  key_file: "/app/Config/websocket_api_info.json"
+  config:
+    refresh_interval_minutes: 30
+    shill_coins: ["UNFI", "TRUMP", "MATIC"]
+    seed_symbols: ["BTC-USD", "ETH-USD"]
+    max_pairs: 50
 
 exchange:
   type: "paper"

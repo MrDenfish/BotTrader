@@ -77,6 +77,9 @@ class WebSocketDataProvider(DataProvider):
         self._candle_state: dict[str, dict] = {}
         self._candle_flush_task: asyncio.Task | None = None
 
+        # Flag: set when pair discovery updates the symbol list
+        self._symbols_changed = asyncio.Event()
+
     def _load_key_file(self, path: str) -> None:
         """Load API credentials from a Coinbase CDP JSON key file."""
         try:
@@ -98,6 +101,12 @@ class WebSocketDataProvider(DataProvider):
         self._ws_task = asyncio.create_task(self._ws_loop())
         self._watchdog_task = asyncio.create_task(self._idle_watchdog())
         self._candle_flush_task = asyncio.create_task(self._candle_flusher())
+
+        # Subscribe to dynamic symbol updates from pair discovery
+        if self._bus:
+            from v2.core.types import SymbolsUpdatedEvent
+            self._bus.subscribe(SymbolsUpdatedEvent, self._on_symbols_updated)
+
         logger.info(
             "WebSocket data provider starting (symbols=%s, channels=%s)",
             symbols, self._channels,
@@ -115,6 +124,19 @@ class WebSocketDataProvider(DataProvider):
         # Flush any remaining partial candles
         self._flush_all_candles()
         logger.info("WebSocket data provider stopped")
+
+    def _on_symbols_updated(self, event: Any) -> None:
+        """Handle dynamic symbol list changes from pair discovery."""
+        new_symbols = list(event.symbols)
+        if set(new_symbols) == set(self._symbols):
+            return
+        logger.info(
+            "Symbol list updated: %d -> %d (added=%d, removed=%d)",
+            len(self._symbols), len(new_symbols),
+            len(event.added), len(event.removed),
+        )
+        self._symbols = new_symbols
+        self._symbols_changed.set()
 
     # ------------------------------------------------------------------
     # WebSocket connection loop
@@ -155,6 +177,12 @@ class WebSocketDataProvider(DataProvider):
                             self._process_message(raw_msg)
                         except Exception:
                             logger.exception("Error processing market WS message")
+
+                        # Check if pair discovery updated the symbol list
+                        if self._symbols_changed.is_set():
+                            self._symbols_changed.clear()
+                            logger.info("Symbols changed — reconnecting WebSocket")
+                            break  # Clean close → reconnect with new symbols
 
             except asyncio.CancelledError:
                 break
