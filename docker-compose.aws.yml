@@ -156,6 +156,8 @@ services:
       V2_SCORE_LOG_PATH: "/app/logs/v2_score_log.jsonl"
       DATABASE_URL: "postgresql://${DB_USER:-bot_user}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}"
       AWS_REGION: ${AWS_REGION:-us-west-2}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
     depends_on:
       db:
         condition: service_healthy

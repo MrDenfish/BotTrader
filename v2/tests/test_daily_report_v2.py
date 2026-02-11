@@ -390,6 +390,24 @@ class TestEmailDelivery:
         assert ok is True
         mock_smtp.sendmail.assert_called_once()
 
+    def test_smtp_user_env(self):
+        from v2.plugins.observability.daily_report_v2.delivery.email import EmailConfig, send_email
+
+        config = EmailConfig(
+            backend="smtp", sender="test@x.com", recipients=["user@x.com"],
+            smtp_host="smtp.test.com", smtp_port=587,
+            smtp_user_env="TEST_SMTP_USER", smtp_password_env="TEST_SMTP_PW",
+        )
+        mock_smtp = MagicMock()
+        with patch("v2.plugins.observability.daily_report_v2.delivery.email.smtplib.SMTP", return_value=mock_smtp):
+            mock_smtp.__enter__ = MagicMock(return_value=mock_smtp)
+            mock_smtp.__exit__ = MagicMock(return_value=False)
+            with patch.dict("os.environ", {"TEST_SMTP_USER": "envuser", "TEST_SMTP_PW": "password123"}):
+                ok = send_email("Subject", "<h1>Test</h1>", config)
+
+        assert ok is True
+        mock_smtp.login.assert_called_once_with("envuser", "password123")
+
     def test_no_config_returns_false(self):
         from v2.plugins.observability.daily_report_v2.delivery.email import EmailConfig, send_email
 

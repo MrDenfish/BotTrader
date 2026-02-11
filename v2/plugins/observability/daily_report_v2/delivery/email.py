@@ -24,6 +24,7 @@ class EmailConfig:
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""
+    smtp_user_env: str = ""
     smtp_password_env: str = "SMTP_PASSWORD"
 
     @classmethod
@@ -36,6 +37,7 @@ class EmailConfig:
             smtp_host=d.get("smtp_host", "smtp.gmail.com"),
             smtp_port=int(d.get("smtp_port", 587)),
             smtp_user=d.get("smtp_user", ""),
+            smtp_user_env=d.get("smtp_user_env", ""),
             smtp_password_env=d.get("smtp_password_env", "SMTP_PASSWORD"),
         )
 
@@ -97,10 +99,16 @@ def _send_via_smtp(msg: MIMEMultipart, config: EmailConfig) -> bool:
         logger.warning("SMTP password not set (env: %s)", config.smtp_password_env)
         return False
 
+    user = config.smtp_user
+    if not user and config.smtp_user_env:
+        user = os.environ.get(config.smtp_user_env, "")
+    if not user:
+        user = config.sender
+
     try:
         with smtplib.SMTP(config.smtp_host, config.smtp_port) as server:
             server.starttls()
-            server.login(config.smtp_user or config.sender, password)
+            server.login(user, password)
             server.sendmail(config.sender, config.recipients, msg.as_string())
         logger.info("Report email sent via SMTP to %d recipients", len(config.recipients))
         return True

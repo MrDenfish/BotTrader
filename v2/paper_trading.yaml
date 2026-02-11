@@ -117,9 +117,13 @@ observers:
     dsn_env: "DATABASE_URL"
     report_hour_utc: 8
     email:
-      backend: "ses"
-      sender: ""          # Configure before enabling
-      recipients: []
+      backend: "smtp"
+      sender: "reports@a1zoobies.com"
+      recipients: ["dennfish@gmail.com"]
+      smtp_host: "email-smtp.us-west-2.amazonaws.com"
+      smtp_port: 587
+      smtp_user_env: "SMTP_USERNAME"
+      smtp_password_env: "SMTP_PASSWORD"
     slack:
       webhook_url_env: "SLACK_WEBHOOK_URL"
     comparison:
