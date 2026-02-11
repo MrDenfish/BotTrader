@@ -111,4 +111,9 @@ def _extract_timestamp(entry: dict) -> float | None:
         val = entry["ts"]
         if isinstance(val, (int, float)):
             return float(val)
+        if isinstance(val, str):
+            try:
+                return datetime.fromisoformat(val.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                pass
     return None

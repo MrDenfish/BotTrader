@@ -22,8 +22,12 @@ def collect_comparison(
 
     Signal matching: greedy, by (symbol, action) within match_window_seconds.
     """
-    v1_signals = parse_signals(v1_log_path, start, end)
-    v2_signals = parse_signals(v2_log_path, start, end)
+    v1_raw = parse_signals(v1_log_path, start, end)
+    v2_raw = parse_signals(v2_log_path, start, end)
+
+    # Filter to actionable signals only (buy/sell) — hold entries are noise
+    v1_signals = [s for s in v1_raw if s.get("action", "").upper() in ("BUY", "SELL")]
+    v2_signals = [s for s in v2_raw if s.get("action", "").upper() in ("BUY", "SELL")]
 
     v1_symbols = {s.get("symbol", "") for s in v1_signals}
     v2_symbols = {s.get("symbol", "") for s in v2_signals}
