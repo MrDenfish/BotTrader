@@ -113,3 +113,17 @@ observers:
   - type: "heartbeat"
     path: "/app/logs/v2/heartbeat"
     interval: 10.0
+  - type: "daily_report_v2"
+    dsn_env: "DATABASE_URL"
+    report_hour_utc: 8
+    email:
+      backend: "ses"
+      sender: ""          # Configure before enabling
+      recipients: []
+    slack:
+      webhook_url_env: "SLACK_WEBHOOK_URL"
+    comparison:
+      enabled: true
+      v1_signal_log: "/app/logs/scores.jsonl"
+      v2_signal_log: "/app/logs/v2_score_log.jsonl"
+      match_window_seconds: 60

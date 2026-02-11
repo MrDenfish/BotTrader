@@ -9,6 +9,12 @@ import sys
 
 
 def main() -> None:
+    # Intercept "report" subcommand before argparse
+    if len(sys.argv) > 1 and sys.argv[1] == "report":
+        from v2.plugins.observability.daily_report_v2.cli import report_main
+        report_main(sys.argv[2:])
+        return
+
     parser = argparse.ArgumentParser(
         prog="bottrader-v2",
         description="BotTrader v2 — plugin-based trading system",
