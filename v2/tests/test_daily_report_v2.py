@@ -315,10 +315,9 @@ class TestHtmlRenderer:
 
         data = _make_report_data()
         html = HtmlRenderer().render(data)
-        assert "Trading Activity" in html
-        assert "P&amp;L" in html or "P&L" in html
-        assert "Signals" in html
-        assert "Risk Events" in html
+        assert "hero-pnl" in html
+        assert "P&amp;L by Symbol" in html
+        assert "System Health" in html
         assert "v1 vs v2 Comparison" in html
 
     def test_renders_without_comparison(self):
@@ -326,7 +325,7 @@ class TestHtmlRenderer:
 
         data = _make_report_data(comparison=None)
         html = HtmlRenderer().render(data)
-        assert "Trading Activity" in html
+        assert "hero-pnl" in html
         assert "v1 vs v2 Comparison" not in html
 
 

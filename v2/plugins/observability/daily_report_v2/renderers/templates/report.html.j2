@@ -2,31 +2,57 @@
 <html>
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; color: #333; }
-  .container { max-width: 700px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
-  .header { background: #1a1a2e; color: #fff; padding: 24px 30px; }
-  .header h1 { margin: 0 0 4px 0; font-size: 22px; font-weight: 600; }
-  .header .subtitle { color: #a0a0c0; font-size: 13px; }
-  .section { padding: 20px 30px; border-bottom: 1px solid #eee; }
+  .container { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+  .header { background: #1a1a2e; color: #fff; padding: 20px 24px 16px; }
+  .header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .header .sub { color: #a0a0c0; font-size: 12px; margin-top: 2px; }
+
+  {# ── Hero P&L ── #}
+  .hero { padding: 20px 24px; text-align: center; border-bottom: 1px solid #eee; }
+  .hero-pnl { font-size: 36px; font-weight: 700; letter-spacing: -0.5px; }
+  .hero-pnl.up { color: #16a34a; }
+  .hero-pnl.down { color: #dc2626; }
+  .hero-pnl.flat { color: #666; }
+  .hero-meta { display: flex; justify-content: center; gap: 20px; margin-top: 8px; font-size: 13px; color: #666; }
+  .hero-meta strong { color: #333; }
+
+  {# ── Sections ── #}
+  .section { padding: 16px 24px; border-bottom: 1px solid #eee; }
   .section:last-child { border-bottom: none; }
-  .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; padding: 6px 8px; color: #666; font-weight: 500; border-bottom: 2px solid #eee; }
-  td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .section h2 { font-size: 13px; color: #888; margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+
+  {# ── Tables ── #}
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 5px 6px; color: #888; font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #eee; }
+  td { padding: 5px 6px; border-bottom: 1px solid #f5f5f5; }
+  .r { text-align: right; font-variant-numeric: tabular-nums; }
   .green { color: #16a34a; }
   .red { color: #dc2626; }
   .muted { color: #999; }
-  .stat-row { display: flex; justify-content: space-between; padding: 4px 0; }
-  .stat-label { color: #666; }
-  .stat-value { font-weight: 600; }
-  .comparison-box { background: #f8f9fa; border-radius: 6px; padding: 16px; margin-top: 8px; }
-  .agreement-rate { font-size: 28px; font-weight: 700; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 500; }
+  .bold { font-weight: 600; }
+
+  {# ── Highlights ── #}
+  .hl-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .hl-label { color: #666; }
+  .hl-value { font-weight: 600; }
+
+  {# ── Alert box ── #}
+  .alert { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; margin: 8px 0; font-size: 13px; border-radius: 0 4px 4px 0; }
+  .alert.danger { background: #fef2f2; border-color: #dc2626; }
+
+  {# ── Comparison ── #}
+  .comp-box { background: #f8f9fa; border-radius: 6px; padding: 14px; margin-top: 6px; }
+  .comp-rate { font-size: 24px; font-weight: 700; text-align: center; }
+  .comp-grid { display: flex; justify-content: space-around; margin-top: 10px; text-align: center; font-size: 12px; }
+  .comp-grid .val { font-weight: 600; font-size: 16px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 500; }
   .badge-v1 { background: #dbeafe; color: #1d4ed8; }
   .badge-v2 { background: #dcfce7; color: #16a34a; }
-  .footer { padding: 16px 30px; text-align: center; color: #999; font-size: 12px; }
+
+  .footer { padding: 12px 24px; text-align: center; color: #bbb; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -34,85 +60,73 @@
 
   {# ── Header ── #}
   <div class="header">
-    <h1>BotTrader v2 — Daily Report</h1>
-    <div class="subtitle">{{ data.report_date }} &middot; {{ data.period_hours }}h period &middot; Generated {{ data.generated_at.strftime('%Y-%m-%d %H:%M UTC') if data.generated_at else 'N/A' }}</div>
+    <h1>BotTrader v2 &mdash; Daily Report</h1>
+    <div class="sub">{{ data.report_date }} &middot; {{ data.period_hours }}h window</div>
   </div>
 
-  {# ── Trading Activity ── #}
-  <div class="section">
-    <h2>Trading Activity</h2>
-    <div class="stat-row">
-      <span class="stat-label">Buy fills</span>
-      <span class="stat-value">{{ data.trade_stats.buy_count }} ({{ data.trade_stats.buy_volume_usd | money }})</span>
+  {# ════════════════════════════════════════════════════════════
+     1. HOW DID I DO?  — The headline
+     ════════════════════════════════════════════════════════════ #}
+  <div class="hero">
+    {% set pnl_class = 'up' if data.pnl.net_pnl > 0 else ('down' if data.pnl.net_pnl < 0 else 'flat') %}
+    <div class="hero-pnl {{ pnl_class }}">{{ data.pnl.net_pnl | money }}</div>
+    <div class="hero-meta">
+      <span><strong>{{ data.pnl.win_count }}W</strong> / {{ data.pnl.loss_count }}L ({{ data.pnl.win_rate | pct }})</span>
+      <span>{{ data.trade_stats.buy_count + data.trade_stats.sell_count }} fills</span>
+      <span>{{ data.trade_stats.total_fees | money }} fees</span>
     </div>
-    <div class="stat-row">
-      <span class="stat-label">Sell fills</span>
-      <span class="stat-value">{{ data.trade_stats.sell_count }} ({{ data.trade_stats.sell_volume_usd | money }})</span>
+    {% if data.pnl.best_trade or data.pnl.worst_trade %}
+    <div class="hero-meta" style="margin-top: 4px;">
+      {% if data.pnl.best_trade %}
+      <span class="green">Best: {{ data.pnl.best_trade[0] }} {{ data.pnl.best_trade[1] | money }}</span>
+      {% endif %}
+      {% if data.pnl.worst_trade %}
+      <span class="red">Worst: {{ data.pnl.worst_trade[0] }} {{ data.pnl.worst_trade[1] | money }}</span>
+      {% endif %}
     </div>
-    <div class="stat-row">
-      <span class="stat-label">Fees</span>
-      <span class="stat-value">{{ data.trade_stats.total_fees | money }}</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Symbols traded</span>
-      <span class="stat-value">{{ data.trade_stats.symbols_traded | length }}</span>
-    </div>
+    {% endif %}
   </div>
 
-  {# ── P&L Summary ── #}
+  {# ════════════════════════════════════════════════════════════
+     2. P&L BY SYMBOL  — Where did money come from / go
+     ════════════════════════════════════════════════════════════ #}
+  {% if data.pnl.by_symbol %}
   <div class="section">
-    <h2>Realized P&amp;L</h2>
-    <div class="stat-row">
-      <span class="stat-label">Net P&amp;L</span>
-      <span class="stat-value {% if data.pnl.net_pnl > 0 %}green{% elif data.pnl.net_pnl < 0 %}red{% endif %}">{{ data.pnl.net_pnl | money }}</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Win / Loss</span>
-      <span class="stat-value">{{ data.pnl.win_count }}W / {{ data.pnl.loss_count }}L ({{ data.pnl.win_rate | pct }})</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Avg Win / Avg Loss</span>
-      <span class="stat-value">{{ data.pnl.avg_win | money }} / {{ data.pnl.avg_loss | money }}</span>
-    </div>
-    {% if data.pnl.best_trade %}
-    <div class="stat-row">
-      <span class="stat-label">Best trade</span>
-      <span class="stat-value green">{{ data.pnl.best_trade[0] }} {{ data.pnl.best_trade[1] | money }}</span>
-    </div>
-    {% endif %}
-    {% if data.pnl.worst_trade %}
-    <div class="stat-row">
-      <span class="stat-label">Worst trade</span>
-      <span class="stat-value red">{{ data.pnl.worst_trade[0] }} {{ data.pnl.worst_trade[1] | money }}</span>
-    </div>
-    {% endif %}
-
-    {% if data.pnl.by_symbol %}
-    <table style="margin-top: 12px;">
-      <tr><th>Symbol</th><th class="num">P&amp;L</th></tr>
+    <h2>P&amp;L by Symbol</h2>
+    <table>
+      <tr><th>Symbol</th><th class="r">Trades</th><th class="r">P&amp;L</th></tr>
       {% for sym, pnl in data.pnl.by_symbol.items() | sort(attribute='1', reverse=true) %}
       <tr>
         <td>{{ sym }}</td>
-        <td class="num {% if pnl > 0 %}green{% elif pnl < 0 %}red{% endif %}">{{ pnl | money }}</td>
+        <td class="r muted">
+          {%- if data.signals.by_symbol.get(sym) -%}
+            {{ data.signals.by_symbol[sym].get('BUY', 0) }}B / {{ data.signals.by_symbol[sym].get('SELL', 0) }}S
+          {%- else -%}
+            &mdash;
+          {%- endif -%}
+        </td>
+        <td class="r bold {% if pnl > 0 %}green{% elif pnl < 0 %}red{% endif %}">{{ pnl | money }}</td>
       </tr>
       {% endfor %}
     </table>
-    {% endif %}
   </div>
+  {% endif %}
 
-  {# ── Open Positions ── #}
+  {# ════════════════════════════════════════════════════════════
+     3. OPEN POSITIONS  — What am I holding
+     ════════════════════════════════════════════════════════════ #}
   {% if data.positions %}
   <div class="section">
     <h2>Open Positions</h2>
     <table>
-      <tr><th>Symbol</th><th class="num">Qty</th><th class="num">Avg Entry</th><th class="num">Cost Basis</th><th class="num">Unrealized</th></tr>
+      <tr><th>Symbol</th><th class="r">Qty</th><th class="r">Avg Entry</th><th class="r">Cost</th><th class="r">Unrealized</th></tr>
       {% for pos in data.positions %}
       <tr>
         <td>{{ pos.symbol }}</td>
-        <td class="num">{{ "%.6f" | format(pos.qty) }}</td>
-        <td class="num">{{ "%.4f" | format(pos.avg_entry) }}</td>
-        <td class="num">{{ pos.cost_basis | money }}</td>
-        <td class="num {% if pos.unrealized_pnl and pos.unrealized_pnl > 0 %}green{% elif pos.unrealized_pnl and pos.unrealized_pnl < 0 %}red{% endif %}">
+        <td class="r">{{ "%.6f" | format(pos.qty) }}</td>
+        <td class="r">{{ "%.4f" | format(pos.avg_entry) }}</td>
+        <td class="r">{{ pos.cost_basis | money }}</td>
+        <td class="r {% if pos.unrealized_pnl and pos.unrealized_pnl > 0 %}green{% elif pos.unrealized_pnl and pos.unrealized_pnl < 0 %}red{% endif %}">
           {{ pos.unrealized_pnl | money if pos.unrealized_pnl is not none else '—' }}
         </td>
       </tr>
@@ -121,124 +135,69 @@
   </div>
   {% endif %}
 
-  {# ── Signals ── #}
+  {# ════════════════════════════════════════════════════════════
+     4. SYSTEM HEALTH  — Is the bot working correctly
+     ════════════════════════════════════════════════════════════ #}
   <div class="section">
-    <h2>Signals</h2>
-    <div class="stat-row">
-      <span class="stat-label">Total signals</span>
-      <span class="stat-value">{{ data.signals.total }} ({{ data.signals.buy_count }}B / {{ data.signals.sell_count }}S)</span>
+    <h2>System Health</h2>
+    <div class="hl-row">
+      <span class="hl-label">Signals generated</span>
+      <span class="hl-value">{{ data.signals.total }} ({{ data.signals.buy_count }}B / {{ data.signals.sell_count }}S)</span>
     </div>
-    {% if data.signals.by_symbol %}
-    <table style="margin-top: 12px;">
-      <tr><th>Symbol</th><th class="num">Buy</th><th class="num">Sell</th></tr>
-      {% for sym, counts in data.signals.by_symbol.items() | sort %}
-      <tr>
-        <td>{{ sym }}</td>
-        <td class="num">{{ counts.get('BUY', 0) }}</td>
-        <td class="num">{{ counts.get('SELL', 0) }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-    {% endif %}
-  </div>
-
-  {# ── Risk Events ── #}
-  <div class="section">
-    <h2>Risk Events</h2>
-    <div class="stat-row">
-      <span class="stat-label">Vetoes</span>
-      <span class="stat-value">{{ data.risk.vetoes }}</span>
+    <div class="hl-row">
+      <span class="hl-label">Symbols active</span>
+      <span class="hl-value">{{ data.signals.by_symbol | length if data.signals.by_symbol else data.trade_stats.symbols_traded | length }}</span>
     </div>
-    <div class="stat-row">
-      <span class="stat-label">Circuit breaker trips</span>
-      <span class="stat-value">{{ data.risk.circuit_breaker_trips }}</span>
-    </div>
-    <div class="stat-row">
-      <span class="stat-label">Rejections</span>
-      <span class="stat-value">{{ data.risk.rejections }}</span>
+    {% if data.risk.vetoes or data.risk.circuit_breaker_trips or data.risk.rejections %}
+    <div class="alert{% if data.risk.circuit_breaker_trips %} danger{% endif %}" style="margin-top: 8px;">
+      {% if data.risk.vetoes %}<div>{{ data.risk.vetoes }} signal{{ 's' if data.risk.vetoes != 1 }} vetoed by risk manager</div>{% endif %}
+      {% if data.risk.circuit_breaker_trips %}<div>{{ data.risk.circuit_breaker_trips }} circuit breaker trip{{ 's' if data.risk.circuit_breaker_trips != 1 }}</div>{% endif %}
+      {% if data.risk.rejections %}<div>{{ data.risk.rejections }} order{{ 's' if data.risk.rejections != 1 }} rejected</div>{% endif %}
     </div>
     {% if data.risk.events %}
-    <div style="margin-top: 8px; font-size: 13px; color: #666;">
-      {% for evt in data.risk.events %}
-      <div>{{ evt }}</div>
-      {% endfor %}
+    <div style="margin-top: 6px; font-size: 12px; color: #888;">
+      {% for evt in data.risk.events[:5] %}<div>{{ evt }}</div>{% endfor %}
+      {% if data.risk.events | length > 5 %}<div class="muted">... and {{ data.risk.events | length - 5 }} more</div>{% endif %}
     </div>
+    {% endif %}
+    {% else %}
+    <div style="margin-top: 4px; font-size: 12px; color: #999;">No risk events.</div>
     {% endif %}
   </div>
 
-  {# ── v1 vs v2 Comparison ── #}
-  {% if data.comparison %}
+  {# ════════════════════════════════════════════════════════════
+     5. v1 vs v2 COMPARISON  — Transition monitoring
+     ════════════════════════════════════════════════════════════ #}
+  {% if data.comparison and (data.comparison.v1_signal_count or data.comparison.v2_signal_count) %}
   <div class="section">
     <h2>v1 vs v2 Comparison</h2>
-    <div class="comparison-box">
-      <div style="text-align: center;">
-        <div class="muted" style="font-size: 12px; margin-bottom: 4px;">Signal Agreement Rate</div>
-        <div class="agreement-rate {% if data.comparison.agreement_rate >= 0.8 %}green{% elif data.comparison.agreement_rate >= 0.5 %}{% else %}red{% endif %}">
-          {{ data.comparison.agreement_rate | pct }}
-        </div>
+    <div class="comp-box">
+      <div class="muted" style="text-align: center; font-size: 11px; margin-bottom: 2px;">Signal Agreement</div>
+      <div class="comp-rate {% if data.comparison.agreement_rate >= 0.8 %}green{% elif data.comparison.agreement_rate < 0.5 %}red{% endif %}">
+        {{ data.comparison.agreement_rate | pct }}
       </div>
-      <div style="display: flex; justify-content: space-around; margin-top: 12px;">
-        <div style="text-align: center;">
-          <div class="muted" style="font-size: 12px;">v1 signals</div>
-          <div style="font-weight: 600;">{{ data.comparison.v1_signal_count }}</div>
-        </div>
-        <div style="text-align: center;">
-          <div class="muted" style="font-size: 12px;">v2 signals</div>
-          <div style="font-weight: 600;">{{ data.comparison.v2_signal_count }}</div>
-        </div>
-        <div style="text-align: center;">
-          <div class="muted" style="font-size: 12px;">Agreed</div>
-          <div style="font-weight: 600;">{{ data.comparison.agreement_count }}</div>
-        </div>
+      <div class="comp-grid">
+        <div><div class="val">{{ data.comparison.v1_signal_count }}</div><div class="muted">v1</div></div>
+        <div><div class="val">{{ data.comparison.v2_signal_count }}</div><div class="muted">v2</div></div>
+        <div><div class="val">{{ data.comparison.agreement_count }}</div><div class="muted">matched</div></div>
       </div>
     </div>
-
-    <div style="margin-top: 12px;">
-      <div class="stat-row">
-        <span class="stat-label">v1-only signals</span>
-        <span class="stat-value">{{ data.comparison.v1_only_count }}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">v2-only signals</span>
-        <span class="stat-value">{{ data.comparison.v2_only_count }}</span>
-      </div>
-    </div>
-
     {% if data.comparison.symbols_only_v1 or data.comparison.symbols_only_v2 %}
-    <div style="margin-top: 12px;">
+    <div style="margin-top: 10px; font-size: 12px;">
       {% if data.comparison.symbols_only_v1 %}
-      <div style="margin-bottom: 4px;">
-        <span class="muted">v1-only symbols:</span>
-        {% for s in data.comparison.symbols_only_v1 | sort %}<span class="badge badge-v1">{{ s }}</span> {% endfor %}
-      </div>
+      <div style="margin-bottom: 3px;"><span class="muted">v1 only:</span> {% for s in data.comparison.symbols_only_v1 | sort %}<span class="badge badge-v1">{{ s }}</span> {% endfor %}</div>
       {% endif %}
       {% if data.comparison.symbols_only_v2 %}
-      <div>
-        <span class="muted">v2-only symbols:</span>
-        {% for s in data.comparison.symbols_only_v2 | sort %}<span class="badge badge-v2">{{ s }}</span> {% endfor %}
-      </div>
+      <div><span class="muted">v2 only:</span> {% for s in data.comparison.symbols_only_v2 | sort %}<span class="badge badge-v2">{{ s }}</span> {% endfor %}</div>
       {% endif %}
     </div>
-    {% endif %}
-
-    {% if data.comparison.divergences %}
-    <table style="margin-top: 12px;">
-      <tr><th>Source</th><th>Symbol</th><th>Action</th></tr>
-      {% for d in data.comparison.divergences[:15] %}
-      <tr>
-        <td><span class="badge {% if d.source == 'v1_only' %}badge-v1{% else %}badge-v2{% endif %}">{{ d.source }}</span></td>
-        <td>{{ d.symbol }}</td>
-        <td>{{ d.action }}</td>
-      </tr>
-      {% endfor %}
-    </table>
     {% endif %}
   </div>
   {% endif %}
 
   {# ── Footer ── #}
   <div class="footer">
-    Generated by BotTrader v2 Daily Report Plugin
+    BotTrader v2 &middot; {{ data.generated_at.strftime('%H:%M UTC') if data.generated_at else '' }}
   </div>
 
 </div>

@@ -100,42 +100,56 @@ async def _run_report(args: argparse.Namespace) -> None:
 
 def _print_summary(data) -> None:
     """Print a text summary to stdout."""
-    print()
-    print(f"{'=' * 60}")
-    print(f"  BotTrader v2 — Daily Report for {data.report_date}")
-    print(f"{'=' * 60}")
-    print()
-
-    ts = data.trade_stats
-    print(f"  Trading: {ts.buy_count} buys (${float(ts.buy_volume_usd):,.2f}) / "
-          f"{ts.sell_count} sells (${float(ts.sell_volume_usd):,.2f})")
-    print(f"  Fees: ${float(ts.total_fees):,.2f}")
-    print(f"  Symbols: {', '.join(ts.symbols_traded) if ts.symbols_traded else 'none'}")
-    print()
-
     pnl = data.pnl
-    print(f"  Net P&L: ${float(pnl.net_pnl):,.2f}")
-    print(f"  Win Rate: {pnl.win_rate:.1%} ({pnl.win_count}W / {pnl.loss_count}L)")
-    if pnl.best_trade:
-        print(f"  Best: {pnl.best_trade[0]} ${float(pnl.best_trade[1]):,.2f}")
-    if pnl.worst_trade:
-        print(f"  Worst: {pnl.worst_trade[0]} ${float(pnl.worst_trade[1]):,.2f}")
+    ts = data.trade_stats
+    fills = ts.buy_count + ts.sell_count
+
     print()
-
-    print(f"  Signals: {data.signals.total} ({data.signals.buy_count}B / {data.signals.sell_count}S)")
-    print(f"  Risk: {data.risk.vetoes} vetoes, {data.risk.circuit_breaker_trips} CB trips, "
-          f"{data.risk.rejections} rejections")
-    print()
-
-    if data.comparison:
-        c = data.comparison
-        print(f"  v1 vs v2 Agreement: {c.agreement_rate:.1%}")
-        print(f"    v1: {c.v1_signal_count} signals, v2: {c.v2_signal_count} signals")
-        print(f"    Matched: {c.agreement_count}, v1-only: {c.v1_only_count}, v2-only: {c.v2_only_count}")
-        if c.symbols_only_v1:
-            print(f"    v1-only symbols: {', '.join(sorted(c.symbols_only_v1))}")
-        if c.symbols_only_v2:
-            print(f"    v2-only symbols: {', '.join(sorted(c.symbols_only_v2))}")
-        print()
-
     print(f"{'=' * 60}")
+    print(f"  BotTrader v2 — {data.report_date}")
+    print(f"{'=' * 60}")
+
+    # 1. How did I do?
+    sign = "+" if pnl.net_pnl > 0 else ""
+    print(f"\n  P&L:      {sign}${float(pnl.net_pnl):,.2f}")
+    print(f"  Win Rate: {pnl.win_rate:.1%} ({pnl.win_count}W / {pnl.loss_count}L)")
+    print(f"  Fills:    {fills} ({ts.buy_count}B / {ts.sell_count}S)  Fees: ${float(ts.total_fees):,.2f}")
+    if pnl.best_trade:
+        print(f"  Best:     {pnl.best_trade[0]} ${float(pnl.best_trade[1]):,.2f}")
+    if pnl.worst_trade:
+        print(f"  Worst:    {pnl.worst_trade[0]} ${float(pnl.worst_trade[1]):,.2f}")
+
+    # 2. P&L by symbol
+    if pnl.by_symbol:
+        print(f"\n  {'─' * 40}")
+        for sym, sym_pnl in sorted(pnl.by_symbol.items(), key=lambda x: float(x[1]), reverse=True):
+            sign = "+" if sym_pnl > 0 else ""
+            print(f"  {sym:<16} {sign}${float(sym_pnl):,.2f}")
+
+    # 3. Open positions
+    if data.positions:
+        print(f"\n  {'─' * 40}")
+        print(f"  Open Positions:")
+        for pos in data.positions:
+            ur = f"${pos.unrealized_pnl:,.2f}" if pos.unrealized_pnl is not None else "—"
+            print(f"  {pos.symbol:<16} qty={pos.qty:.6f}  cost={pos.cost_basis:,.2f}  unreal={ur}")
+
+    # 4. System health
+    print(f"\n  {'─' * 40}")
+    print(f"  Signals:  {data.signals.total} ({data.signals.buy_count}B / {data.signals.sell_count}S)")
+    if data.risk.vetoes or data.risk.circuit_breaker_trips or data.risk.rejections:
+        print(f"  Risk:     {data.risk.vetoes} vetoes, {data.risk.circuit_breaker_trips} CB trips, "
+              f"{data.risk.rejections} rejections")
+
+    # 5. Comparison
+    if data.comparison and (data.comparison.v1_signal_count or data.comparison.v2_signal_count):
+        c = data.comparison
+        print(f"\n  {'─' * 40}")
+        print(f"  v1/v2 Agreement: {c.agreement_rate:.1%}")
+        print(f"    v1: {c.v1_signal_count}  v2: {c.v2_signal_count}  matched: {c.agreement_count}")
+        if c.symbols_only_v1:
+            print(f"    v1-only: {', '.join(sorted(c.symbols_only_v1))}")
+        if c.symbols_only_v2:
+            print(f"    v2-only: {', '.join(sorted(c.symbols_only_v2))}")
+
+    print(f"\n{'=' * 60}")
