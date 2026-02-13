@@ -201,7 +201,27 @@ class TestBasicRiskManager:
         }
         portfolio = _make_portfolio(positions=positions)
         result = rm.check_signal(signal, portfolio)
-        assert result is signal
+        assert result is not None
+        assert result.direction == Direction.SELL
+
+    def test_sell_qty_set_to_position_size(self):
+        """_check_sell should replace signal qty with actual position qty."""
+        rm = self._create()
+        signal = _make_signal(direction=Direction.SELL, qty=100.0)  # Wrong qty
+        positions = {
+            "BTC-USD": Position(
+                symbol="BTC-USD",
+                qty=Decimal("4.78"),
+                avg_entry_price=Decimal("2100"),
+                cost_basis=Decimal("10038"),
+            ),
+        }
+        portfolio = _make_portfolio(positions=positions)
+        result = rm.check_signal(signal, portfolio)
+        assert result is not None
+        assert result.qty == 4.78  # Should match position, not original signal
+        assert result.symbol == "BTC-USD"
+        assert result.direction == Direction.SELL
 
     def test_sell_vetoed_zero_qty(self):
         rm = self._create()

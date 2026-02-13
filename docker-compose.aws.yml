@@ -5,6 +5,11 @@ services:
     image: postgres:16
     container_name: db
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     env_file:
       - /opt/bot/.env
     environment:
@@ -27,6 +32,11 @@ services:
       context: .
       dockerfile: ./docker/Dockerfile.bot
     container_name: webhook
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       TZ: ${TZ}
       RUN_MODE: webhook
@@ -90,6 +100,11 @@ services:
       context: .
       dockerfile: ./docker/Dockerfile.bot
     container_name: sighook
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       TZ: ${TZ}
       RUN_MODE: sighook
@@ -149,6 +164,11 @@ services:
       context: .
       dockerfile: ./docker/Dockerfile.v2
     container_name: v2-paper
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       TZ: ${TZ}
       PYTHONUNBUFFERED: "1"

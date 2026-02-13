@@ -9,6 +9,7 @@ Tables are auto-created on connect if they don't exist.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -46,6 +47,7 @@ class PostgresStorage(StorageAdapter):
         **kwargs: Any,
     ) -> None:
         self._dsn = dsn or os.environ.get(dsn_env, "")
+        self._clean_dsn = ""  # Set in connect() after stripping +asyncpg
         self._pool_size = pool_size
         self._pool = None  # asyncpg.Pool
 
@@ -64,13 +66,27 @@ class PostgresStorage(StorageAdapter):
         dsn = self._dsn
         if "+asyncpg" in dsn:
             dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+        self._clean_dsn = dsn
 
-        self._pool = await asyncpg.create_pool(
-            dsn,
-            min_size=1,
-            max_size=self._pool_size,
-            command_timeout=30,
-        )
+        for attempt in range(1, 4):
+            try:
+                self._pool = await asyncpg.create_pool(
+                    dsn,
+                    min_size=1,
+                    max_size=self._pool_size,
+                    command_timeout=30,
+                )
+                break
+            except Exception:
+                if attempt == 3:
+                    raise
+                wait = 2 ** attempt
+                logger.warning(
+                    "PostgreSQL connect attempt %d/3 failed, retrying in %ds",
+                    attempt, wait,
+                )
+                await asyncio.sleep(wait)
+
         await self._create_tables()
         logger.info("PostgreSQL connected (pool_size=%d)", self._pool_size)
 
@@ -80,29 +96,58 @@ class PostgresStorage(StorageAdapter):
             self._pool = None
             logger.info("PostgreSQL disconnected")
 
+    async def _reconnect(self) -> None:
+        """Close broken pool and create a new one."""
+        import asyncpg
+
+        logger.warning("PostgreSQL reconnecting...")
+        try:
+            if self._pool:
+                await self._pool.close()
+        except Exception:
+            pass
+        self._pool = await asyncpg.create_pool(
+            self._clean_dsn,
+            min_size=1,
+            max_size=self._pool_size,
+            command_timeout=30,
+        )
+        logger.info("PostgreSQL reconnected")
+
     # ------------------------------------------------------------------
     # Record
     # ------------------------------------------------------------------
 
     async def record_fill(self, fill: Fill) -> None:
-        await self._pool.execute(
-            """INSERT INTO v2_fills
-               (fill_id, order_id, symbol, side, price, qty, fee,
-                fee_currency, is_maker, timestamp, metadata)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-               ON CONFLICT (fill_id) DO NOTHING""",
-            fill.fill_id,
-            fill.order_id,
-            fill.symbol,
-            fill.side.value,
-            float(fill.price),
-            float(fill.qty),
-            float(fill.fee),
-            fill.fee_currency,
-            fill.is_maker,
-            fill.timestamp,
-            json.dumps(fill.metadata, default=str),
-        )
+        for attempt in range(1, 3):
+            try:
+                async with self._pool.acquire() as conn:
+                    await conn.execute(
+                        """INSERT INTO v2_fills
+                           (fill_id, order_id, symbol, side, price, qty, fee,
+                            fee_currency, is_maker, timestamp, metadata)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                           ON CONFLICT (fill_id) DO NOTHING""",
+                        fill.fill_id,
+                        fill.order_id,
+                        fill.symbol,
+                        fill.side.value,
+                        float(fill.price),
+                        float(fill.qty),
+                        float(fill.fee),
+                        fill.fee_currency,
+                        fill.is_maker,
+                        fill.timestamp,
+                        json.dumps(fill.metadata, default=str),
+                    )
+                return
+            except Exception:
+                logger.warning(
+                    "record_fill attempt %d/2 failed for %s",
+                    attempt, fill.fill_id, exc_info=True,
+                )
+                if attempt < 2:
+                    await self._reconnect()
 
     async def record_order(self, order: Order) -> None:
         await self._pool.execute(

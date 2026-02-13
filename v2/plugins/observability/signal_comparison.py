@@ -68,3 +68,5 @@ class SignalComparisonObserver(Observer):
             "metadata": sig.metadata,
         }
         self._logger.info(json.dumps(record, default=str))
+        for h in self._logger.handlers:
+            h.flush()

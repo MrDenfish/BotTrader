@@ -15,6 +15,7 @@ stays in strategies; this plugin focuses on pre-execution signal vetting).
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -168,7 +169,8 @@ class BasicRiskManager(RiskManager):
                 f"no_position: {signal.symbol} has no open position to sell",
             )
             return None
-        return signal
+        # Set sell qty to actual position size so execution sells the full holding
+        return replace(signal, qty=float(position.qty))
 
     # ------------------------------------------------------------------
     # Fill tracking
