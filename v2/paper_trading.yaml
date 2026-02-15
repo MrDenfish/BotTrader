@@ -99,7 +99,7 @@ execution:
   type: "maker_only"
   max_retries: 3
   post_only: true
-  default_notional: 15
+  default_notional: 50
 
 storage:
   type: "postgres"

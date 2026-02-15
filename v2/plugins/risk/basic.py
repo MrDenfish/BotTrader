@@ -126,6 +126,16 @@ class BasicRiskManager(RiskManager):
 
     def _check_buy(self, signal: Signal, portfolio: Portfolio) -> Signal | None:
         """Additional checks for BUY signals."""
+        # FIFO protection — block buying if already holding a position
+        existing = portfolio.positions.get(signal.symbol)
+        if existing and existing.qty > 0:
+            self._publish_veto(
+                signal,
+                f"fifo_protection: already holding {signal.symbol} "
+                f"(qty={existing.qty})",
+            )
+            return None
+
         # Max positions
         open_positions = sum(
             1 for p in portfolio.positions.values() if p.qty > 0
