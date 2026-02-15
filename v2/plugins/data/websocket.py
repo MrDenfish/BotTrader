@@ -80,6 +80,11 @@ class WebSocketDataProvider(DataProvider):
         # Flag: set when pair discovery updates the symbol list
         self._symbols_changed = asyncio.Event()
 
+        # Volume backfill: cache of real volumes from REST API
+        # {symbol: {minute_datetime: volume_float}}
+        self._volume_cache: dict[str, dict[datetime, float]] = {}
+        self._volume_task: asyncio.Task | None = None
+
     def _load_key_file(self, path: str) -> None:
         """Load API credentials from a Coinbase CDP JSON key file."""
         try:
@@ -101,6 +106,7 @@ class WebSocketDataProvider(DataProvider):
         self._ws_task = asyncio.create_task(self._ws_loop())
         self._watchdog_task = asyncio.create_task(self._idle_watchdog())
         self._candle_flush_task = asyncio.create_task(self._candle_flusher())
+        self._volume_task = asyncio.create_task(self._volume_fetcher())
 
         # Subscribe to dynamic symbol updates from pair discovery
         if self._bus:
@@ -114,7 +120,7 @@ class WebSocketDataProvider(DataProvider):
 
     async def stop(self) -> None:
         self._running = False
-        for task in (self._ws_task, self._watchdog_task, self._candle_flush_task):
+        for task in (self._ws_task, self._watchdog_task, self._candle_flush_task, self._volume_task):
             if task:
                 task.cancel()
                 try:
@@ -336,6 +342,11 @@ class WebSocketDataProvider(DataProvider):
         """Publish a completed CandleEvent."""
         if not self._bus:
             return
+        # Merge real volume from REST API cache if available
+        volume = 0.0
+        sym_cache = self._volume_cache.get(symbol)
+        if sym_cache and state["minute"] in sym_cache:
+            volume = sym_cache.pop(state["minute"])
         candle = Candle(
             symbol=symbol,
             timestamp=state["minute"],
@@ -343,7 +354,7 @@ class WebSocketDataProvider(DataProvider):
             high=state["high"],
             low=state["low"],
             close=state["close"],
-            volume=0.0,  # ticker_batch doesn't include per-tick volume
+            volume=volume,
             timeframe="1m",
         )
         self._bus.publish(CandleEvent(candle=candle))
@@ -386,6 +397,110 @@ class WebSocketDataProvider(DataProvider):
                 break
             except Exception:
                 logger.exception("Error in candle flusher")
+
+    # ------------------------------------------------------------------
+    # Volume backfill via REST API
+    # ------------------------------------------------------------------
+
+    async def _volume_fetcher(self) -> None:
+        """Periodically fetch real OHLCV candles from Coinbase REST API.
+
+        Runs every 5 minutes, fetches 1-minute candles for each active
+        symbol, and caches volume data. The cached volume is merged into
+        candles when they are emitted by _emit_candle().
+        """
+        import aiohttp
+        from coinbase import jwt_generator
+
+        # Wait 60s before first fetch to let WebSocket stabilize
+        await asyncio.sleep(60)
+
+        while self._running:
+            try:
+                now = datetime.now(timezone.utc)
+                start_ts = int((now - timedelta(minutes=6)).timestamp())
+                end_ts = int(now.timestamp())
+
+                async with aiohttp.ClientSession() as session:
+                    for symbol in list(self._symbols):
+                        if not self._running:
+                            break
+                        try:
+                            await self._fetch_volume_for_symbol(
+                                session, jwt_generator, symbol, start_ts, end_ts,
+                            )
+                        except Exception:
+                            logger.debug("Volume fetch failed for %s", symbol, exc_info=True)
+                        # Rate limiting between symbols
+                        await asyncio.sleep(0.1)
+
+                # Prune stale cache entries (older than 10 minutes)
+                cutoff = now - timedelta(minutes=10)
+                for sym in list(self._volume_cache.keys()):
+                    cache = self._volume_cache[sym]
+                    stale = [k for k in cache if k < cutoff]
+                    for k in stale:
+                        del cache[k]
+                    if not cache:
+                        del self._volume_cache[sym]
+
+                # Sleep 5 minutes before next fetch cycle
+                await asyncio.sleep(300)
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Error in volume fetcher")
+                await asyncio.sleep(60)
+
+    async def _fetch_volume_for_symbol(
+        self,
+        session: Any,
+        jwt_generator: Any,
+        symbol: str,
+        start_ts: int,
+        end_ts: int,
+    ) -> None:
+        """Fetch 1-minute candles from Coinbase REST API and cache volume."""
+        path = f"/api/v3/brokerage/products/{symbol}/candles"
+        url = f"https://api.coinbase.com{path}"
+        params = {
+            "start": str(start_ts),
+            "end": str(end_ts),
+            "granularity": "ONE_MINUTE",
+        }
+
+        jwt_token = jwt_generator.build_rest_jwt(
+            f"GET {path}", self._api_key, self._api_secret,
+        )
+        headers = {"Authorization": f"Bearer {jwt_token}"}
+
+        async with session.get(url, params=params, headers=headers) as resp:
+            if resp.status != 200:
+                logger.debug("Volume API %d for %s", resp.status, symbol)
+                return
+            data = await resp.json()
+
+        candles = data.get("candles", [])
+        if not candles:
+            return
+
+        if symbol not in self._volume_cache:
+            self._volume_cache[symbol] = {}
+
+        cached = 0
+        for c in candles:
+            try:
+                epoch = int(c["start"])
+                volume = float(c.get("volume", 0))
+                minute_dt = datetime.fromtimestamp(epoch, tz=timezone.utc)
+                self._volume_cache[symbol][minute_dt] = volume
+                cached += 1
+            except (KeyError, ValueError, TypeError):
+                continue
+
+        if cached:
+            logger.debug("Volume cached: %s — %d candles", symbol, cached)
 
     # ------------------------------------------------------------------
     # Idle watchdog

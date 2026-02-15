@@ -88,6 +88,12 @@ risk:
   - type: "basic"
     pass_through: false
     hodl_symbols: []  # Set to ["BTC-USD", "ETH-USD", "ATOM-USD"] for live mode
+  - type: "exit_manager"
+    hard_stop_pct: 0.045          # -4.5% emergency exit
+    soft_stop_pct: 0.03           # -3.0% normal stop-loss
+    trailing_activation_pct: 0.03 # +3.0% profit activates trailing
+    trailing_distance_pct: 0.03   # trail 3% below peak
+    check_interval_sec: 5         # throttle ticker checks
   - type: "circuit_breaker"
     max_losses_in_window: 5
     loss_window_minutes: 30

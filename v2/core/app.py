@@ -175,11 +175,15 @@ class App:
             bus.subscribe(FillEvent, lambda e, s=strategy: s.on_fill(e.fill))
             bus.subscribe(TickerEvent, lambda e, s=strategy: s.on_ticker(e))
 
-        # Risk managers check signals, receive fills, and track rejections
+        # Risk managers check signals, receive fills, track rejections, and
+        # (optionally) monitor tickers for dynamic exits
         if self._risk_managers:
             bus.subscribe(SignalEvent, lambda e: self._on_signal_risk_check(e))
             bus.subscribe(FillEvent, lambda e: self._on_fill_risk(e))
             bus.subscribe(OrderEvent, lambda e: self._on_order_rejection(e))
+            for rm in self._risk_managers:
+                if hasattr(rm, "on_ticker"):
+                    bus.subscribe(TickerEvent, lambda e, r=rm: r.on_ticker(e, self.portfolio))
 
         # Persistence receives fills and orders
         if self._storage:
