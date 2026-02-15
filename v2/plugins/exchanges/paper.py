@@ -318,15 +318,19 @@ class PaperExchange(ExchangeAdapter):
         else:
             # Reject sell if insufficient balance (no short selling on spot)
             current_balance = self._balances.get(base_currency, Decimal("0"))
-            if current_balance < order.qty:
+            sell_qty = Decimal(str(order.qty))
+            # Clamp to balance when difference is dust (float precision artefact)
+            if sell_qty > current_balance and (sell_qty - current_balance) / sell_qty < Decimal("1e-12"):
+                sell_qty = current_balance
+            if current_balance < sell_qty:
                 logger.warning(
                     "Paper sell rejected: %s balance %s < qty %s",
-                    base_currency, current_balance, order.qty,
+                    base_currency, current_balance, sell_qty,
                 )
                 return
-            proceeds = fill_price * order.qty - fee
+            proceeds = fill_price * sell_qty - fee
             self._balances["USD"] = self._balances.get("USD", Decimal("0")) + proceeds
-            self._balances[base_currency] = current_balance - order.qty
+            self._balances[base_currency] = current_balance - sell_qty
 
         # Remove from open orders
         self._open_orders.pop(order.order_id, None)

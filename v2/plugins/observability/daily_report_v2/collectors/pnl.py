@@ -42,6 +42,7 @@ def compute_fifo_pnl(rows: list) -> PnLSummary:
     trades: list[tuple[str, Decimal]] = []  # (symbol, realized_pnl)
     total_fees = Decimal("0")
     by_symbol: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    fills_by_symbol: dict[str, dict[str, int]] = defaultdict(lambda: {"BUY": 0, "SELL": 0})
 
     for row in rows:
         symbol = row["symbol"]
@@ -50,6 +51,8 @@ def compute_fifo_pnl(rows: list) -> PnLSummary:
         qty = Decimal(str(row["qty"]))
         fee = Decimal(str(row["fee"]))
         total_fees += fee
+
+        fills_by_symbol[symbol][side] += 1
 
         if side == "BUY":
             fee_per_unit = fee / qty if qty else Decimal("0")
@@ -97,4 +100,5 @@ def compute_fifo_pnl(rows: list) -> PnLSummary:
         best_trade=max(trades, key=lambda t: t[1]) if trades else None,
         worst_trade=min(trades, key=lambda t: t[1]) if trades else None,
         by_symbol=dict(by_symbol),
+        fills_by_symbol=dict(fills_by_symbol),
     )

@@ -34,6 +34,7 @@ class PnLSummary:
     best_trade: tuple[str, Decimal] | None = None   # (symbol, pnl)
     worst_trade: tuple[str, Decimal] | None = None   # (symbol, pnl)
     by_symbol: dict[str, Decimal] = field(default_factory=dict)
+    fills_by_symbol: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass

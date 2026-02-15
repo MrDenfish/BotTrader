@@ -99,8 +99,8 @@
       <tr>
         <td>{{ sym }}</td>
         <td class="r muted">
-          {%- if data.signals.by_symbol.get(sym) -%}
-            {{ data.signals.by_symbol[sym].get('BUY', 0) }}B / {{ data.signals.by_symbol[sym].get('SELL', 0) }}S
+          {%- if data.pnl.fills_by_symbol.get(sym) -%}
+            {{ data.pnl.fills_by_symbol[sym].get('BUY', 0) }}B / {{ data.pnl.fills_by_symbol[sym].get('SELL', 0) }}S
           {%- else -%}
             &mdash;
           {%- endif -%}
