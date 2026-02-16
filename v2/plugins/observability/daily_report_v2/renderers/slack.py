@@ -11,13 +11,20 @@ class SlackRenderer:
     def render(self, data: ReportData) -> list[dict]:
         blocks: list[dict] = []
 
-        # Header
+        # Header — period-aware
+        if data.period_hours and data.period_hours < 24:
+            title = (
+                f"BotTrader v2 — {data.period_hours}h Report "
+                f"({data.report_date} "
+                f"{data.period_start.strftime('%H:%M') if data.period_start else ''}-"
+                f"{data.period_end.strftime('%H:%M') if data.period_end else ''} UTC)"
+            )
+        else:
+            title = f"BotTrader v2 — Daily Report ({data.report_date})"
+
         blocks.append({
             "type": "header",
-            "text": {
-                "type": "plain_text",
-                "text": f"BotTrader v2 — Daily Report ({data.report_date})",
-            },
+            "text": {"type": "plain_text", "text": title},
         })
 
         # 1. Hero P&L
@@ -39,6 +46,24 @@ class SlackRenderer:
 
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": hero}})
 
+        # 1.5 Portfolio snapshot
+        if data.portfolio:
+            p = data.portfolio
+            change = p.ending_value - p.starting_value
+            change_pct = (change / p.starting_value * 100) if p.starting_value else 0
+            sign = "+" if change >= 0 else ""
+            drawdown = p.high_watermark - p.low_watermark
+            dd_pct = (drawdown / p.high_watermark * 100) if p.high_watermark else 0
+            portfolio_text = (
+                f"*Portfolio*\n"
+                f"${p.ending_value:,.2f} ({sign}{change_pct:.2f}%)\n"
+                f"High: ${p.high_watermark:,.2f} · Low: ${p.low_watermark:,.2f} · "
+                f"Drawdown: {dd_pct:.1f}%\n"
+                f"Cash: ${p.cash_balance:,.2f} · Positions: ${p.positions_value:,.2f}"
+            )
+            blocks.append({"type": "divider"})
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": portfolio_text}})
+
         # 2. P&L by symbol (compact)
         if pnl.by_symbol:
             lines = []
@@ -51,6 +76,23 @@ class SlackRenderer:
                 "text": {"type": "mrkdwn", "text": f"*P&L by Symbol*\n{' · '.join(lines)}"},
             })
 
+        # 2.5 Trade log (compact — max 10 entries)
+        if data.trade_log:
+            lines = []
+            for t in data.trade_log[:10]:
+                side_icon = ":large_green_circle:" if t.side == "BUY" else ":red_circle:"
+                pnl_str = f" P&L ${t.realized_pnl:+,.2f}" if t.realized_pnl is not None else ""
+                lines.append(
+                    f"{side_icon} {t.symbol} {t.side} {t.qty:.4f} @ ${t.price:,.2f}{pnl_str}"
+                )
+            if len(data.trade_log) > 10:
+                lines.append(f"_...and {len(data.trade_log) - 10} more_")
+            blocks.append({"type": "divider"})
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Trade Log*\n" + "\n".join(lines)},
+            })
+
         # 3. System health
         health = f"*Signals:* {data.signals.total} ({data.signals.buy_count}B / {data.signals.sell_count}S)"
         if data.risk.vetoes or data.risk.circuit_breaker_trips:
@@ -61,6 +103,27 @@ class SlackRenderer:
 
         blocks.append({"type": "divider"})
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": health}})
+
+        # 3.5 Exit manager
+        if data.exit_manager:
+            em = data.exit_manager
+            exit_text = (
+                f"*Exit Manager*\n"
+                f"Hard stops: {em.hard_stops} · Soft stops: {em.soft_stops} · "
+                f"Trailing stops: {em.trailing_stops}\n"
+                f"Trailing activations: {em.trailing_activations} · "
+                f"Total exits: {em.total_exits}"
+            )
+            if em.events:
+                exit_text += "\n"
+                for ev in em.events[:5]:
+                    exit_text += (
+                        f"\n{ev.symbol} {ev.reason} @ ${ev.price:,.2f} ({ev.pnl_pct:+.2f}%)"
+                    )
+                if len(em.events) > 5:
+                    exit_text += f"\n_...and {len(em.events) - 5} more_"
+            blocks.append({"type": "divider"})
+            blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": exit_text}})
 
         # 4. Comparison (if data exists)
         if data.comparison and (data.comparison.v1_signal_count or data.comparison.v2_signal_count):

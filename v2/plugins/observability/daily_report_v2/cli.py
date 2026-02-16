@@ -16,7 +16,7 @@ def report_main(argv: list[str]) -> None:
         description="Generate a daily trading report",
     )
     parser.add_argument("--config", "-c", required=True, help="Path to YAML config file")
-    parser.add_argument("--hours", type=int, default=24, help="Reporting period in hours (default: 24)")
+    parser.add_argument("--hours", type=int, default=4, help="Reporting period in hours (default: 4)")
     parser.add_argument("--date", type=str, default=None, help="Report date (YYYY-MM-DD). Defaults to yesterday.")
     parser.add_argument("--send", action="store_true", help="Send via configured delivery channels")
     parser.add_argument("--output", "-o", type=str, default=None, help="Write HTML to file")
@@ -83,7 +83,10 @@ async def _run_report(args: argparse.Namespace) -> None:
         from .delivery.slack import send_slack
         from .renderers.slack import SlackRenderer
 
-        subject = f"BotTrader v2 Daily Report — {report_date}"
+        if args.hours >= 24:
+            subject = f"BotTrader v2 Daily Report — {report_date}"
+        else:
+            subject = f"BotTrader v2 {args.hours}h Report — {report_date}"
 
         if observer._email_config.sender and observer._email_config.recipients:
             ok = send_email(subject, html, observer._email_config)
@@ -106,7 +109,13 @@ def _print_summary(data) -> None:
 
     print()
     print(f"{'=' * 60}")
-    print(f"  BotTrader v2 — {data.report_date}")
+    if data.period_hours and data.period_hours < 24:
+        header = f"  BotTrader v2 — {data.period_hours}h Report ({data.report_date})"
+        if data.period_start and data.period_end:
+            header += f" {data.period_start.strftime('%H:%M')}-{data.period_end.strftime('%H:%M')} UTC"
+    else:
+        header = f"  BotTrader v2 — {data.report_date}"
+    print(header)
     print(f"{'=' * 60}")
 
     # 1. How did I do?
@@ -119,12 +128,34 @@ def _print_summary(data) -> None:
     if pnl.worst_trade:
         print(f"  Worst:    {pnl.worst_trade[0]} ${float(pnl.worst_trade[1]):,.2f}")
 
+    # 1.5 Portfolio
+    if data.portfolio:
+        p = data.portfolio
+        change = p.ending_value - p.starting_value
+        change_pct = (change / p.starting_value * 100) if p.starting_value else 0
+        csign = "+" if change >= 0 else ""
+        print(f"\n  {'─' * 40}")
+        print(f"  Portfolio: ${p.ending_value:,.2f} ({csign}{change_pct:.2f}%)")
+        print(f"  High: ${p.high_watermark:,.2f}  Low: ${p.low_watermark:,.2f}")
+        print(f"  Cash: ${p.cash_balance:,.2f}  Positions: ${p.positions_value:,.2f}")
+
     # 2. P&L by symbol
     if pnl.by_symbol:
         print(f"\n  {'─' * 40}")
         for sym, sym_pnl in sorted(pnl.by_symbol.items(), key=lambda x: float(x[1]), reverse=True):
             sign = "+" if sym_pnl > 0 else ""
             print(f"  {sym:<16} {sign}${float(sym_pnl):,.2f}")
+
+    # 2.5 Trade log
+    if data.trade_log:
+        print(f"\n  {'─' * 40}")
+        print(f"  Trade Log ({len(data.trade_log)} fills):")
+        for t in data.trade_log[:15]:
+            pnl_str = f"  P&L ${t.realized_pnl:+,.2f}" if t.realized_pnl is not None else ""
+            print(f"  {t.timestamp.strftime('%H:%M')} {t.side:4s} {t.symbol:<12} "
+                  f"{t.qty:.4f} @ ${t.price:,.2f}{pnl_str}")
+        if len(data.trade_log) > 15:
+            print(f"  ...and {len(data.trade_log) - 15} more")
 
     # 3. Open positions
     if data.positions:
@@ -133,6 +164,16 @@ def _print_summary(data) -> None:
         for pos in data.positions:
             ur = f"${pos.unrealized_pnl:,.2f}" if pos.unrealized_pnl is not None else "—"
             print(f"  {pos.symbol:<16} qty={pos.qty:.6f}  cost={pos.cost_basis:,.2f}  unreal={ur}")
+
+    # 3.5 Exit manager
+    if data.exit_manager:
+        em = data.exit_manager
+        print(f"\n  {'─' * 40}")
+        print(f"  Exit Manager: {em.total_exits} exits "
+              f"(hard={em.hard_stops}, soft={em.soft_stops}, trail={em.trailing_stops})")
+        print(f"  Trailing activations: {em.trailing_activations}")
+        for ev in em.events[:5]:
+            print(f"    {ev.symbol} {ev.reason} @ ${ev.price:,.2f} ({ev.pnl_pct:+.2f}%)")
 
     # 4. System health
     print(f"\n  {'─' * 40}")

@@ -70,6 +70,57 @@ class RiskStats:
 
 
 @dataclass
+class ExitEventDetail:
+    """Single exit manager event for the report."""
+
+    timestamp: datetime
+    symbol: str
+    reason: str          # "hard_stop", "soft_stop", "trailing_stop"
+    price: float
+    pnl_pct: float
+    peak_price: float | None = None
+
+
+@dataclass
+class ExitManagerStats:
+    """Exit manager activity for the reporting period."""
+
+    hard_stops: int = 0
+    soft_stops: int = 0
+    trailing_stops: int = 0
+    trailing_activations: int = 0
+    total_exits: int = 0
+    events: list[ExitEventDetail] = field(default_factory=list)
+
+
+@dataclass
+class TradeLogEntry:
+    """Individual fill for the trade log section."""
+
+    timestamp: datetime
+    symbol: str
+    side: str
+    price: float
+    qty: float
+    notional: float
+    fee: float
+    is_maker: bool
+    realized_pnl: float | None = None
+
+
+@dataclass
+class PortfolioSnapshot:
+    """Portfolio value at period boundaries."""
+
+    starting_value: float
+    ending_value: float
+    high_watermark: float
+    low_watermark: float
+    cash_balance: float
+    positions_value: float
+
+
+@dataclass
 class ComparisonData:
     """v1 vs v2 signal and fill comparison."""
 
@@ -97,5 +148,10 @@ class ReportData:
     positions: list[PositionSnapshot]
     signals: SignalStats
     risk: RiskStats
+    period_start: datetime | None = None
+    period_end: datetime | None = None
+    exit_manager: ExitManagerStats | None = None
+    trade_log: list[TradeLogEntry] | None = None
+    portfolio: PortfolioSnapshot | None = None
     comparison: ComparisonData | None = None
     generated_at: datetime | None = None

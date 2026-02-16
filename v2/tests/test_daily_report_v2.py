@@ -11,13 +11,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from v2.core.types import Side
 from v2.plugins.observability.daily_report_v2.models import (
     ComparisonData,
+    ExitEventDetail,
+    ExitManagerStats,
     PnLSummary,
+    PortfolioSnapshot,
     PositionSnapshot,
     ReportData,
     RiskStats,
     SignalStats,
+    TradeLogEntry,
     TradeStats,
 )
 
@@ -481,3 +486,444 @@ class TestDailyReportV2Observer:
 
         obs = DailyReportV2Observer()
         assert obs._has_activity is False
+
+    def test_period_slot_alignment(self):
+        from v2.plugins.observability.daily_report_v2 import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(report_interval_hours=4)
+        slot = obs._current_period_slot()
+        # Slot should be aligned to a 4-hour boundary
+        assert slot.hour % 4 == 0
+        assert slot.minute == 0
+        assert slot.second == 0
+        assert slot.microsecond == 0
+
+    def test_ticker_updates_portfolio_tracker(self):
+        from v2.core.types import TickerEvent
+        from v2.plugins.observability.daily_report_v2 import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(report_interval_hours=4)
+        now = datetime.now(timezone.utc)
+        obs.on_event(TickerEvent(symbol="BTC-USD", price=50000.0, timestamp=now))
+        assert obs._portfolio_tracker._last_prices.get("BTC-USD") == 50000.0
+
+    def test_fill_updates_portfolio_tracker(self):
+        from v2.core.types import Fill, FillEvent, Side
+        from v2.plugins.observability.daily_report_v2 import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(report_interval_hours=4, initial_balance_usd=10000)
+        now = datetime.now(timezone.utc)
+        fill = Fill(
+            fill_id="test-1", order_id="ord-1",
+            symbol="ETH-USD", side=Side.BUY,
+            price=Decimal("2000"), qty=Decimal("0.5"),
+            fee=Decimal("1.2"), fee_currency="USD", is_maker=True,
+            timestamp=now,
+        )
+        obs.on_event(FillEvent(fill=fill))
+        assert obs._has_activity is True
+        # Portfolio should reflect the buy
+        assert Decimal("0.5") == obs._portfolio_tracker._positions.get("ETH-USD", Decimal("0"))
+
+    def test_exit_event_routed_to_accumulator(self):
+        from v2.core.types import RiskEvent
+        from v2.plugins.observability.daily_report_v2 import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(report_interval_hours=4)
+        obs.on_event(RiskEvent(
+            event_type="exit_triggered",
+            reason="hard_stop",
+            metadata={"symbol": "BTC-USD", "price": 45000, "pnl_pct": -4.5},
+        ))
+        snap = obs._exit_acc.snapshot()
+        assert snap.hard_stops == 1
+        assert snap.total_exits == 1
+        assert len(snap.events) == 1
+
+    def test_trailing_activation_routed(self):
+        from v2.core.types import RiskEvent
+        from v2.plugins.observability.daily_report_v2 import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(report_interval_hours=4)
+        obs.on_event(RiskEvent(
+            event_type="trailing_activated",
+            reason="trailing_stop",
+            metadata={"symbol": "SOL-USD", "price": 120, "pnl_pct": 3.5},
+        ))
+        snap = obs._exit_acc.snapshot()
+        assert snap.trailing_activations == 1
+        assert snap.total_exits == 0  # activation != exit
+
+
+# ============================================================
+# Exit Event Accumulator Tests
+# ============================================================
+
+
+class TestExitEventAccumulator:
+    def test_record_exit_types(self):
+        from v2.core.types import RiskEvent
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import ExitEventAccumulator
+
+        acc = ExitEventAccumulator()
+        acc.record_exit(RiskEvent(event_type="exit_triggered", reason="hard_stop",
+                                   metadata={"symbol": "BTC-USD", "price": 45000, "pnl_pct": -4.5}))
+        acc.record_exit(RiskEvent(event_type="exit_triggered", reason="soft_stop",
+                                   metadata={"symbol": "ETH-USD", "price": 2000, "pnl_pct": -3.0}))
+        acc.record_exit(RiskEvent(event_type="exit_triggered", reason="trailing_stop",
+                                   metadata={"symbol": "SOL-USD", "price": 115, "pnl_pct": 2.5, "peak_price": 120}))
+
+        snap = acc.snapshot()
+        assert snap.hard_stops == 1
+        assert snap.soft_stops == 1
+        assert snap.trailing_stops == 1
+        assert snap.total_exits == 3
+        assert len(snap.events) == 3
+
+    def test_trailing_activation(self):
+        from v2.core.types import RiskEvent
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import ExitEventAccumulator
+
+        acc = ExitEventAccumulator()
+        acc.record_trailing_activation(RiskEvent(
+            event_type="trailing_activated", reason="trailing_stop",
+            metadata={"symbol": "BTC-USD", "price": 52000, "pnl_pct": 3.5},
+        ))
+        snap = acc.snapshot()
+        assert snap.trailing_activations == 1
+        assert snap.total_exits == 0
+
+    def test_reset(self):
+        from v2.core.types import RiskEvent
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import ExitEventAccumulator
+
+        acc = ExitEventAccumulator()
+        acc.record_exit(RiskEvent(event_type="exit_triggered", reason="hard_stop",
+                                   metadata={"symbol": "X", "price": 1, "pnl_pct": -5}))
+        acc.record_trailing_activation(RiskEvent(
+            event_type="trailing_activated", reason="trailing_stop", metadata={},
+        ))
+        acc.reset()
+        snap = acc.snapshot()
+        assert snap.hard_stops == 0
+        assert snap.trailing_activations == 0
+        assert len(snap.events) == 0
+
+    def test_max_events_cap(self):
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import ExitEventAccumulator, MAX_EVENTS
+        from v2.core.types import RiskEvent
+
+        acc = ExitEventAccumulator()
+        for i in range(MAX_EVENTS + 10):
+            acc.record_exit(RiskEvent(
+                event_type="exit_triggered", reason="soft_stop",
+                metadata={"symbol": f"SYM-{i}", "price": 100, "pnl_pct": -3.0},
+            ))
+        snap = acc.snapshot()
+        assert len(snap.events) == MAX_EVENTS
+        assert snap.soft_stops == MAX_EVENTS + 10  # counter still increments
+
+
+# ============================================================
+# Trade Log Collector Tests
+# ============================================================
+
+
+class TestTradeLogCollector:
+    def test_fifo_pnl_annotation(self):
+        from v2.plugins.observability.daily_report_v2.collectors.trade_log import _annotate_with_pnl
+
+        now = datetime.now(timezone.utc)
+        rows = [
+            {"symbol": "BTC-USD", "side": "BUY", "price": 50000.0, "qty": 0.1, "fee": 3.0, "is_maker": True, "timestamp": now},
+            {"symbol": "BTC-USD", "side": "SELL", "price": 51000.0, "qty": 0.1, "fee": 3.06, "is_maker": True, "timestamp": now},
+        ]
+        entries = _annotate_with_pnl(rows)
+        assert len(entries) == 2
+        assert entries[0].realized_pnl is None  # buy has no P&L
+        assert entries[1].realized_pnl is not None
+        # Gross: (51000 - 50000) * 0.1 = 100. Fees: 3.0 + 3.06 = 6.06. Net: 93.94
+        assert abs(entries[1].realized_pnl - 93.94) < 0.01
+
+    def test_multiple_buys_single_sell(self):
+        from v2.plugins.observability.daily_report_v2.collectors.trade_log import _annotate_with_pnl
+
+        now = datetime.now(timezone.utc)
+        rows = [
+            {"symbol": "ETH-USD", "side": "BUY", "price": 2000.0, "qty": 0.5, "fee": 0.6, "is_maker": True, "timestamp": now},
+            {"symbol": "ETH-USD", "side": "BUY", "price": 2100.0, "qty": 0.5, "fee": 0.63, "is_maker": True, "timestamp": now},
+            {"symbol": "ETH-USD", "side": "SELL", "price": 2200.0, "qty": 1.0, "fee": 1.32, "is_maker": True, "timestamp": now},
+        ]
+        entries = _annotate_with_pnl(rows)
+        assert entries[2].realized_pnl is not None
+        # FIFO: first 0.5 bought at 2000, second 0.5 at 2100
+        # Gross: (2200-2000)*0.5 + (2200-2100)*0.5 = 100 + 50 = 150
+        # Fees: 0.6 + 0.63 + 1.32 = 2.55
+        # Net: 147.45
+        assert abs(entries[2].realized_pnl - 147.45) < 0.01
+
+    def test_empty_rows(self):
+        from v2.plugins.observability.daily_report_v2.collectors.trade_log import _annotate_with_pnl
+
+        entries = _annotate_with_pnl([])
+        assert entries == []
+
+
+# ============================================================
+# Portfolio Tracker Tests
+# ============================================================
+
+
+class TestPortfolioTracker:
+    def test_initial_snapshot(self):
+        from v2.plugins.observability.daily_report_v2.collectors.portfolio_tracker import PortfolioTracker
+
+        pt = PortfolioTracker(initial_balance_usd=10000)
+        snap = pt.snapshot()
+        assert snap.starting_value == 10000.0
+        assert snap.ending_value == 10000.0
+        assert snap.cash_balance == 10000.0
+        assert snap.positions_value == 0.0
+
+    def test_buy_reduces_cash(self):
+        from v2.plugins.observability.daily_report_v2.collectors.portfolio_tracker import PortfolioTracker
+
+        pt = PortfolioTracker(initial_balance_usd=10000)
+        pt.on_fill("BTC-USD", Side.BUY, Decimal("50000"), Decimal("0.1"), Decimal("3"))
+        snap = pt.snapshot()
+        # Cash: 10000 - 5000 - 3 = 4997
+        assert abs(snap.cash_balance - 4997.0) < 0.01
+        # Position value at fill price: 0.1 * 50000 = 5000
+        assert abs(snap.positions_value - 5000.0) < 0.01
+
+    def test_sell_increases_cash(self):
+        from v2.plugins.observability.daily_report_v2.collectors.portfolio_tracker import PortfolioTracker
+
+        pt = PortfolioTracker(initial_balance_usd=10000)
+        pt.on_fill("BTC-USD", Side.BUY, Decimal("50000"), Decimal("0.1"), Decimal("3"))
+        pt.on_fill("BTC-USD", Side.SELL, Decimal("51000"), Decimal("0.1"), Decimal("3.06"))
+        snap = pt.snapshot()
+        # After sell: position cleared, cash = 10000 - 5000 - 3 + 5100 - 3.06 = 10093.94
+        assert abs(snap.cash_balance - 10093.94) < 0.01
+        assert snap.positions_value == 0.0
+
+    def test_ticker_updates_mtm(self):
+        from v2.plugins.observability.daily_report_v2.collectors.portfolio_tracker import PortfolioTracker
+
+        pt = PortfolioTracker(initial_balance_usd=10000)
+        pt.on_fill("BTC-USD", Side.BUY, Decimal("50000"), Decimal("0.1"), Decimal("0"))
+        pt.on_ticker("BTC-USD", 55000.0)
+        snap = pt.snapshot()
+        # Position: 0.1 * 55000 = 5500.  Cash: 10000 - 5000 = 5000.  Total: 10500
+        assert abs(snap.ending_value - 10500.0) < 0.01
+
+    def test_watermarks(self):
+        from v2.plugins.observability.daily_report_v2.collectors.portfolio_tracker import PortfolioTracker
+
+        pt = PortfolioTracker(initial_balance_usd=10000)
+        pt.on_fill("BTC-USD", Side.BUY, Decimal("50000"), Decimal("0.1"), Decimal("0"))
+        # High: ticker goes up
+        pt.on_ticker("BTC-USD", 55000.0)
+        pt._update_watermarks()
+        # Low: ticker drops
+        pt.on_ticker("BTC-USD", 45000.0)
+        pt._update_watermarks()
+
+        snap = pt.snapshot()
+        # High: 5000 cash + 0.1*55000 = 10500
+        assert abs(snap.high_watermark - 10500.0) < 0.01
+        # Low: 5000 cash + 0.1*45000 = 9500
+        assert abs(snap.low_watermark - 9500.0) < 0.01
+
+    def test_start_new_period_resets_watermarks(self):
+        from v2.plugins.observability.daily_report_v2.collectors.portfolio_tracker import PortfolioTracker
+
+        pt = PortfolioTracker(initial_balance_usd=10000)
+        pt.on_fill("BTC-USD", Side.BUY, Decimal("50000"), Decimal("0.1"), Decimal("0"))
+        pt.on_ticker("BTC-USD", 55000.0)
+        pt._update_watermarks()
+        pt.start_new_period()
+
+        snap = pt.snapshot()
+        # After reset, high/low/start should equal current value
+        assert snap.starting_value == snap.ending_value
+        assert snap.high_watermark == snap.ending_value
+        assert snap.low_watermark == snap.ending_value
+
+
+# ============================================================
+# New HTML Renderer Section Tests
+# ============================================================
+
+
+class TestHtmlRendererNewSections:
+    def _make_data_with_new_sections(self):
+        return _make_report_data(
+            period_start=datetime(2026, 2, 10, 4, 0, tzinfo=timezone.utc),
+            period_end=datetime(2026, 2, 10, 8, 0, tzinfo=timezone.utc),
+            period_hours=4,
+            portfolio=PortfolioSnapshot(
+                starting_value=10000, ending_value=10150,
+                high_watermark=10200, low_watermark=9950,
+                cash_balance=5000, positions_value=5150,
+            ),
+            trade_log=[
+                TradeLogEntry(
+                    timestamp=datetime(2026, 2, 10, 5, 30, tzinfo=timezone.utc),
+                    symbol="BTC-USD", side="BUY", price=50000.0, qty=0.1,
+                    notional=5000.0, fee=3.0, is_maker=True,
+                ),
+                TradeLogEntry(
+                    timestamp=datetime(2026, 2, 10, 6, 15, tzinfo=timezone.utc),
+                    symbol="BTC-USD", side="SELL", price=51000.0, qty=0.1,
+                    notional=5100.0, fee=3.06, is_maker=True, realized_pnl=93.94,
+                ),
+            ],
+            exit_manager=ExitManagerStats(
+                hard_stops=1, soft_stops=0, trailing_stops=1,
+                trailing_activations=2, total_exits=2,
+                events=[
+                    ExitEventDetail(
+                        timestamp=datetime(2026, 2, 10, 7, 0, tzinfo=timezone.utc),
+                        symbol="BTC-USD", reason="trailing_stop",
+                        price=51000.0, pnl_pct=2.0, peak_price=52000.0,
+                    ),
+                ],
+            ),
+        )
+
+    def test_portfolio_section_rendered(self):
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = self._make_data_with_new_sections()
+        html = HtmlRenderer().render(data)
+        assert "Portfolio" in html
+        assert "Starting" in html
+        assert "Ending" in html
+        assert "High / Low" in html
+
+    def test_trade_log_section_rendered(self):
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = self._make_data_with_new_sections()
+        html = HtmlRenderer().render(data)
+        assert "Trade Log" in html
+        assert "side-buy" in html
+        assert "side-sell" in html
+
+    def test_exit_manager_section_rendered(self):
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = self._make_data_with_new_sections()
+        html = HtmlRenderer().render(data)
+        assert "Exit Manager" in html
+        assert "Hard stops" in html
+        assert "Trailing stops" in html
+        assert "trailing_stop" in html
+
+    def test_period_aware_header(self):
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = self._make_data_with_new_sections()
+        html = HtmlRenderer().render(data)
+        assert "4h Report" in html
+
+    def test_daily_header_for_24h(self):
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = _make_report_data(period_hours=24)
+        html = HtmlRenderer().render(data)
+        assert "Daily Report" in html
+
+    def test_sections_hidden_when_none(self):
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = _make_report_data(portfolio=None, trade_log=None, exit_manager=None)
+        html = HtmlRenderer().render(data)
+        assert "Portfolio" not in html
+        assert "Trade Log" not in html
+        assert "Exit Manager" not in html
+
+
+# ============================================================
+# New Slack Renderer Section Tests
+# ============================================================
+
+
+class TestSlackRendererNewSections:
+    def _make_data_with_new_sections(self):
+        return _make_report_data(
+            period_start=datetime(2026, 2, 10, 4, 0, tzinfo=timezone.utc),
+            period_end=datetime(2026, 2, 10, 8, 0, tzinfo=timezone.utc),
+            period_hours=4,
+            portfolio=PortfolioSnapshot(
+                starting_value=10000, ending_value=10150,
+                high_watermark=10200, low_watermark=9950,
+                cash_balance=5000, positions_value=5150,
+            ),
+            trade_log=[
+                TradeLogEntry(
+                    timestamp=datetime(2026, 2, 10, 5, 30, tzinfo=timezone.utc),
+                    symbol="BTC-USD", side="BUY", price=50000.0, qty=0.1,
+                    notional=5000.0, fee=3.0, is_maker=True,
+                ),
+            ],
+            exit_manager=ExitManagerStats(
+                hard_stops=1, soft_stops=0, trailing_stops=0,
+                trailing_activations=1, total_exits=1,
+                events=[
+                    ExitEventDetail(
+                        timestamp=datetime(2026, 2, 10, 7, 0, tzinfo=timezone.utc),
+                        symbol="BTC-USD", reason="hard_stop",
+                        price=48000.0, pnl_pct=-4.5,
+                    ),
+                ],
+            ),
+        )
+
+    def test_period_aware_header(self):
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = self._make_data_with_new_sections()
+        blocks = SlackRenderer().render(data)
+        header_text = blocks[0]["text"]["text"]
+        assert "4h Report" in header_text
+        assert "04:00" in header_text
+        assert "08:00" in header_text
+
+    def test_portfolio_block(self):
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = self._make_data_with_new_sections()
+        blocks = SlackRenderer().render(data)
+        all_text = " ".join(b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "section")
+        assert "Portfolio" in all_text
+        assert "Cash" in all_text
+
+    def test_trade_log_block(self):
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = self._make_data_with_new_sections()
+        blocks = SlackRenderer().render(data)
+        all_text = " ".join(b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "section")
+        assert "Trade Log" in all_text
+        assert "BTC-USD" in all_text
+
+    def test_exit_manager_block(self):
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = self._make_data_with_new_sections()
+        blocks = SlackRenderer().render(data)
+        all_text = " ".join(b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "section")
+        assert "Exit Manager" in all_text
+        assert "Hard stops" in all_text
+
+    def test_no_new_sections_when_none(self):
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = _make_report_data(portfolio=None, trade_log=None, exit_manager=None)
+        blocks = SlackRenderer().render(data)
+        all_text = " ".join(b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "section")
+        assert "Portfolio" not in all_text
+        assert "Trade Log" not in all_text
+        assert "Exit Manager" not in all_text

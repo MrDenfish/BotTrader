@@ -121,7 +121,8 @@ observers:
     interval: 10.0
   - type: "daily_report_v2"
     dsn_env: "DATABASE_URL"
-    report_hour_utc: 8
+    report_interval_hours: 4
+    initial_balance_usd: 10000
     email:
       backend: "smtp"
       sender: "reports@a1zoobies.com"

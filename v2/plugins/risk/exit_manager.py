@@ -151,6 +151,12 @@ class ExitManager(RiskManager):
                     "Trailing stop ACTIVATED: %s at $%.4f (pnl=+%.2f%%, peak=$%.4f)",
                     symbol, price, pnl_pct * 100, peak,
                 )
+                if self._bus:
+                    self._bus.publish(RiskEvent(
+                        event_type="trailing_activated",
+                        reason="trailing_stop",
+                        metadata={"symbol": symbol, "price": price, "pnl_pct": round(pnl_pct * 100, 2)},
+                    ))
 
         # Check trailing stop
         if self._trailing_active.get(symbol, False):
