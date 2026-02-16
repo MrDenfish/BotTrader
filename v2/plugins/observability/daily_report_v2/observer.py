@@ -83,6 +83,7 @@ class DailyReportV2Observer(Observer):
         self._portfolio_tracker = PortfolioTracker(
             initial_balance_usd=float(kwargs.get("initial_balance_usd", 10_000)),
         )
+        self._portfolio_hydrated = False
         self._has_activity = False
 
         # Renderers
@@ -161,7 +162,7 @@ class DailyReportV2Observer(Observer):
     # ------------------------------------------------------------------
 
     async def _ensure_pool(self):
-        """Lazy DB pool creation."""
+        """Lazy DB pool creation + one-time portfolio hydration."""
         if self._pool is None:
             import asyncpg
             dsn = os.environ.get(self._dsn_env, "")
@@ -169,6 +170,24 @@ class DailyReportV2Observer(Observer):
                 logger.warning("DATABASE_URL not set (env: %s) — DB collectors will be empty", self._dsn_env)
                 return
             self._pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3)
+
+        if not self._portfolio_hydrated and self._pool:
+            await self._hydrate_portfolio()
+
+    async def _hydrate_portfolio(self) -> None:
+        """Replay all historical v2_fills to hydrate the portfolio tracker."""
+        try:
+            rows = await self._pool.fetch(
+                "SELECT symbol, side, price, qty, fee FROM v2_fills ORDER BY timestamp ASC",
+            )
+            if rows:
+                self._portfolio_tracker.replay_fills(rows)
+                logger.info("Portfolio tracker hydrated from %d historical fills", len(rows))
+            else:
+                logger.info("Portfolio tracker: no historical fills to replay")
+        except Exception:
+            logger.exception("Failed to hydrate portfolio tracker from DB")
+        self._portfolio_hydrated = True
 
     async def generate_report(
         self,
