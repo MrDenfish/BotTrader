@@ -24,9 +24,13 @@ When asked to deploy to AWS or after committing changes:
    ssh bottrader-aws "cd /opt/bot && git pull origin main"
    ```
 
-3. **Restart containers:**
+3. **Rebuild and restart containers (v2-paper uses baked-in code, restart alone won't pick up changes):**
    ```bash
-   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml restart"
+   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-paper"
+   ```
+   For v1 containers that mount code as volumes, restart is sufficient:
+   ```bash
+   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml restart webhook sighook"
    ```
 
 4. **Verify deployment:**
@@ -57,4 +61,5 @@ See `.claude/DEPLOYMENT.md` for complete deployment documentation.
 - `sighook` - Signal processing and strategy execution
 - `db` - PostgreSQL database
 - `bottrader-report` - Daily email reporting
+- `v2-paper` - v2 paper trading (code baked into image — needs `--build` on deploy)
 - `bottrader-aws-leaderboard-job-1` - Leaderboard updates
