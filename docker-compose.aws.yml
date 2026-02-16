@@ -140,10 +140,11 @@ services:
       SCORE_JSONL_PATH: "/app/logs/scores.jsonl"
       TP_SL_LOG_PATH: "/app/logs/tpsl.jsonl"
       SCORE_LOG_PATH: "/app/logs/score_log.jsonl"
-      # ⚠️ TEMPORARY: lowered from 5.5 to 2.0 to align with v2 for signal comparison
-      # Revert to 5.5 (or remove these lines) once v1/v2 comparison is validated
+      # ⚠️ TEMPORARY: lowered to align with v2 for signal comparison
+      # Revert once v1/v2 comparison is validated
       SCORE_BUY_TARGET: "2.0"
       SCORE_SELL_TARGET: "2.0"
+      MIN_INDICATORS_REQUIRED: "2"
     depends_on:
       db:
         condition: service_healthy
