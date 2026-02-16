@@ -139,7 +139,7 @@
           {%- if data.pnl.fills_by_symbol.get(sym) -%}
             {{ data.pnl.fills_by_symbol[sym].get('BUY', 0) }}B / {{ data.pnl.fills_by_symbol[sym].get('SELL', 0) }}S
           {%- else -%}
-            &mdash;
+            —
           {%- endif -%}
         </td>
         <td class="r bold {% if pnl > 0 %}green{% elif pnl < 0 %}red{% endif %}">{{ pnl | money }}</td>
@@ -165,7 +165,7 @@
         <td class="r">{{ "%.4f" | format(t.price) }}</td>
         <td class="r">{{ t.notional | money }}</td>
         <td class="r {% if t.realized_pnl is not none and t.realized_pnl > 0 %}green{% elif t.realized_pnl is not none and t.realized_pnl < 0 %}red{% endif %}">
-          {{ t.realized_pnl | money if t.realized_pnl is not none else '&mdash;' }}
+          {{ t.realized_pnl | money if t.realized_pnl is not none else '—' }}
         </td>
       </tr>
       {% endfor %}

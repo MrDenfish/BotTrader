@@ -459,6 +459,83 @@ class TestConfigure:
         assert p._shill_coins == set()
         assert p._seed_symbols == []
         assert p._max_pairs == 100
+        assert p._min_quote_volume == 0.0
+
+    def test_configure_min_quote_volume(self):
+        """configure() should set min_quote_volume from config."""
+        p = CoinbasePairDiscovery(api_key="k", api_secret="s")
+        p.configure({"min_quote_volume": 1_000_000})
+        assert p._min_quote_volume == 1_000_000.0
+
+
+# ---------------------------------------------------------------------------
+# Minimum quote volume (hard floor)
+# ---------------------------------------------------------------------------
+
+class TestMinQuoteVolume:
+    """Test min_quote_volume hard floor filtering."""
+
+    def test_min_quote_volume_filters_low_volume(self):
+        """Coins below min_quote_volume should be excluded even if above average."""
+        p = CoinbasePairDiscovery(api_key="k", api_secret="s")
+        p.configure({"min_quote_volume": 1_000_000})
+        products = [
+            _make_product("BIG-USD", quote_volume=5_000_000),
+            _make_product("SMALL-USD", quote_volume=500_000),
+            _make_product("TINY-USD", quote_volume=100_000),
+        ]
+        # Avg = (5M + 500K + 100K) / 3 = ~1.87M
+        # Threshold = max(1.87M, 1M) = 1.87M
+        # Only BIG-USD (5M) passes
+        symbols = p._filter_products(products)
+        assert "BIG-USD" in symbols
+        assert "SMALL-USD" not in symbols
+        assert "TINY-USD" not in symbols
+
+    def test_min_quote_volume_raises_floor_above_average(self):
+        """When avg is below min_quote_volume, the floor takes precedence."""
+        p = CoinbasePairDiscovery(api_key="k", api_secret="s")
+        p.configure({"min_quote_volume": 50_000_000})
+        products = [
+            _make_product("A-USD", quote_volume=100_000_000),
+            _make_product("B-USD", quote_volume=30_000_000),
+            _make_product("C-USD", quote_volume=10_000_000),
+        ]
+        # Avg = (100M + 30M + 10M) / 3 = 46.7M
+        # Threshold = max(46.7M, 50M) = 50M (floor wins)
+        # Only A-USD (100M) passes
+        symbols = p._filter_products(products)
+        assert symbols == ["A-USD"]
+
+    def test_min_quote_volume_zero_disables_floor(self):
+        """min_quote_volume=0 should behave like no floor (avg-only)."""
+        p = CoinbasePairDiscovery(api_key="k", api_secret="s")
+        p.configure({"min_quote_volume": 0})
+        products = [
+            _make_product("BTC-USD", quote_volume=500),
+            _make_product("ETH-USD", quote_volume=500),
+            _make_product("LOW-USD", quote_volume=100),
+        ]
+        # Avg = (500+500+100)/3 = 366.7. BTC and ETH pass, LOW doesn't.
+        symbols = p._filter_products(products)
+        assert "BTC-USD" in symbols
+        assert "ETH-USD" in symbols
+        assert "LOW-USD" not in symbols
+
+    def test_seed_symbols_bypass_min_quote_volume(self):
+        """Seed symbols should be included even if below min_quote_volume."""
+        p = CoinbasePairDiscovery(api_key="k", api_secret="s")
+        p.configure({
+            "min_quote_volume": 1_000_000,
+            "seed_symbols": ["ETH-USD"],
+        })
+        products = [
+            _make_product("BTC-USD", quote_volume=5_000_000),
+            _make_product("ETH-USD", quote_volume=100_000),
+        ]
+        symbols = p._filter_products(products)
+        assert "BTC-USD" in symbols
+        assert "ETH-USD" in symbols  # seed bypasses floor
 
 
 # ---------------------------------------------------------------------------

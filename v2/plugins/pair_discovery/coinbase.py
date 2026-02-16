@@ -67,6 +67,7 @@ class CoinbasePairDiscovery(PairDiscovery):
         self._shill_coins: set[str] = set()
         self._seed_symbols: list[str] = []
         self._max_pairs: int = 100
+        self._min_quote_volume: float = 0.0  # hard floor for 24h USD volume
         self._configured = False
 
     # ------------------------------------------------------------------
@@ -97,6 +98,7 @@ class CoinbasePairDiscovery(PairDiscovery):
         }
         self._seed_symbols = list(config.get("seed_symbols", []))
         self._max_pairs = config.get("max_pairs", 100)
+        self._min_quote_volume = float(config.get("min_quote_volume", 0))
         self._configured = True
 
     async def discover(self) -> list[str]:
@@ -159,9 +161,11 @@ class CoinbasePairDiscovery(PairDiscovery):
             return list(self._seed_symbols)
 
         avg_volume = sum(valid_volumes) / len(valid_volumes)
+        # Use the higher of avg_volume and min_quote_volume as the threshold
+        volume_threshold = max(avg_volume, self._min_quote_volume)
         logger.info(
-            "Pair discovery: %d USD pairs, avg 24h volume $%.0f",
-            len(valid_volumes), avg_volume,
+            "Pair discovery: %d USD pairs, avg 24h volume $%.0f, threshold $%.0f",
+            len(valid_volumes), avg_volume, volume_threshold,
         )
 
         # Pass 2: filter by criteria
@@ -179,7 +183,7 @@ class CoinbasePairDiscovery(PairDiscovery):
                 continue
 
             vol = self._safe_float(item.get("approximate_quote_24h_volume"))
-            if vol >= avg_volume:
+            if vol >= volume_threshold:
                 symbol = item.get("product_id", "")
                 if symbol:
                     filtered.append((symbol, vol))

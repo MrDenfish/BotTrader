@@ -16,7 +16,24 @@ async def collect_trade_log(
     start: datetime,
     end: datetime,
 ) -> list[TradeLogEntry]:
-    """Fetch every fill in the period and annotate sells with FIFO P&L."""
+    """Fetch every fill in the period and annotate sells with FIFO P&L.
+
+    Pre-populates buy queues with all historical buys before the period
+    so that cross-period sells get correct FIFO P&L instead of $0.00.
+    """
+    # Fetch all fills BEFORE the period to build prior buy queues
+    prior_rows = await pool.fetch(
+        """
+        SELECT symbol, side, price, qty, fee
+        FROM v2_fills
+        WHERE timestamp < $1
+        ORDER BY timestamp ASC
+        """,
+        start,
+    )
+    prior_queues = _build_prior_buy_queues(prior_rows)
+
+    # Fetch fills in this period
     rows = await pool.fetch(
         """
         SELECT symbol, side, price, qty, fee, is_maker, timestamp
@@ -27,13 +44,43 @@ async def collect_trade_log(
         start,
         end,
     )
-    return _annotate_with_pnl(rows)
+    return _annotate_with_pnl(rows, prior_queues)
 
 
-def _annotate_with_pnl(rows: list) -> list[TradeLogEntry]:
+def _build_prior_buy_queues(rows: list) -> dict[str, deque]:
+    """Replay all historical fills to compute remaining buy lots per symbol."""
+    buy_queues: dict[str, deque] = defaultdict(deque)
+    for row in rows:
+        symbol = row["symbol"]
+        side = row["side"].upper()
+        qty = float(row["qty"])
+        price = float(row["price"])
+        fee = float(row["fee"])
+
+        if side == "BUY":
+            fee_per_unit = fee / qty if qty else 0.0
+            buy_queues[symbol].append((qty, price, fee_per_unit))
+        elif side == "SELL":
+            remaining = qty
+            while remaining > 1e-12 and buy_queues[symbol]:
+                bq_qty, bq_price, bq_fee_per_unit = buy_queues[symbol][0]
+                matched = min(remaining, bq_qty)
+                leftover = bq_qty - matched
+                if leftover > 1e-12:
+                    buy_queues[symbol][0] = (leftover, bq_price, bq_fee_per_unit)
+                else:
+                    buy_queues[symbol].popleft()
+                remaining -= matched
+    return buy_queues
+
+
+def _annotate_with_pnl(
+    rows: list,
+    prior_queues: dict[str, deque] | None = None,
+) -> list[TradeLogEntry]:
     """Attach realized P&L to sell fills using FIFO matching."""
     # Per-symbol buy queue: deque of (remaining_qty, price, fee_per_unit)
-    buy_queues: dict[str, deque] = defaultdict(deque)
+    buy_queues: dict[str, deque] = prior_queues if prior_queues else defaultdict(deque)
     entries: list[TradeLogEntry] = []
 
     for row in rows:

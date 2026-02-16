@@ -34,6 +34,7 @@ pair_discovery:
   key_file: "/app/Config/websocket_api_info.json"
   config:
     refresh_interval_minutes: 30
+    min_quote_volume: 1000000   # hard floor: skip coins with < $1M 24h volume
     shill_coins: ["UNFI", "TRUMP", "MATIC"]
     seed_symbols: ["BTC-USD", "ETH-USD"]
     max_pairs: 50

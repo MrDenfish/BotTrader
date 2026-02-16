@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from v2.core.event_bus import EventBus
 from v2.core import registry
 from v2.core.types import (
     CandleEvent,
+    Direction,
     FillEvent,
     OrderEvent,
     OrderStatus,
@@ -48,6 +50,10 @@ class App:
 
         # Backtest results
         self.backtest_results: dict | None = None
+
+        # Sell de-duplication: {symbol: timestamp} of last approved sell
+        self._last_sell_approved: dict[str, float] = {}
+        self._sell_dedup_window: float = 30.0  # seconds
 
     # ------------------------------------------------------------------
     # Public API
@@ -209,11 +215,26 @@ class App:
     def _on_signal_risk_check(self, event: SignalEvent) -> None:
         """Chain signal through all risk managers, then forward to execution."""
         approved = event.signal
+
+        # De-duplicate sell signals: only one sell per symbol within the window
+        if approved.direction == Direction.SELL:
+            now = time.monotonic()
+            last = self._last_sell_approved.get(approved.symbol, 0.0)
+            if now - last < self._sell_dedup_window:
+                logger.debug(
+                    "Sell de-dup: %s already sold %.1fs ago, skipping",
+                    approved.symbol, now - last,
+                )
+                return
+
         for rm in self._risk_managers:
             approved = rm.check_signal(approved, self.portfolio)
             if approved is None:
                 return
+
         if approved and self._execution:
+            if approved.direction == Direction.SELL:
+                self._last_sell_approved[approved.symbol] = time.monotonic()
             asyncio.ensure_future(
                 self._execution.execute_signal(approved, self._exchange)
             )
