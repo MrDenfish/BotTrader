@@ -67,6 +67,9 @@ class CompositeScoringStrategy(Strategy):
         # 24h ROC from live ticker (only populated in live mode)
         self._roc_24h: dict[str, float] = {}
 
+        # Per-symbol momentum cooldown: bar_idx at which momo signals re-enable
+        self._momo_cooldown: dict[str, int] = {}
+
     # ------------------------------------------------------------------
     # Strategy ABC
     # ------------------------------------------------------------------
@@ -123,6 +126,7 @@ class CompositeScoringStrategy(Strategy):
             "guardrails": self._guardrails.get_state(),
             "bar_idx": dict(self._bar_idx),
             "roc_24h": dict(self._roc_24h),
+            "momo_cooldown": dict(self._momo_cooldown),
         }
 
     def load_state(self, state: dict) -> None:
@@ -130,6 +134,7 @@ class CompositeScoringStrategy(Strategy):
             self._guardrails.load_state(state["guardrails"])
         self._bar_idx = dict(state.get("bar_idx", {}))
         self._roc_24h = dict(state.get("roc_24h", {}))
+        self._momo_cooldown = dict(state.get("momo_cooldown", {}))
 
     # ------------------------------------------------------------------
     # Core evaluation
@@ -211,15 +216,22 @@ class CompositeScoringStrategy(Strategy):
         roc_value = ind.get("_ROC")
         rsi_value = ind.get("_RSI")
 
-        if roc_value is not None and rsi_value is not None:
+        # Momentum cooldown: skip ROC momentum signals if one was emitted
+        # for this symbol within the last cooldown_bars candles
+        momo_cd = self._momo_cooldown.get(symbol, -1)
+        momo_ok = bar_idx >= momo_cd
+
+        if momo_ok and roc_value is not None and rsi_value is not None:
             lo, hi = cfg.roc_20m_rsi_buy_range
             if roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
+                self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_20m",
                     {"roc_20m": roc_value, "rsi": rsi_value},
                 )
             lo, hi = cfg.roc_20m_rsi_sell_range
             if roc_value < cfg.roc_20m_sell_threshold and lo <= rsi_value <= hi:
+                self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.SELL, symbol, candle, "roc_momo_20m",
                     {"roc_20m": roc_value, "rsi": rsi_value},
@@ -227,14 +239,16 @@ class CompositeScoringStrategy(Strategy):
 
         # --- Priority: 24-hour momentum runners ---
         roc_24h = self._roc_24h.get(symbol)
-        if roc_24h is not None and rsi_value is not None:
+        if momo_ok and roc_24h is not None and rsi_value is not None:
             lo, hi = cfg.roc_24h_rsi_range
             if roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
+                self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_24h",
                     {"roc_24h": roc_24h, "rsi": rsi_value},
                 )
             if roc_24h < cfg.roc_24h_sell_threshold and lo <= rsi_value <= hi:
+                self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.SELL, symbol, candle, "roc_momo_24h",
                     {"roc_24h": roc_24h, "rsi": rsi_value},
