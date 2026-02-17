@@ -91,12 +91,20 @@ risk:
   - type: "basic"
     pass_through: false
     hodl_symbols: []  # Set to ["BTC-USD", "ETH-USD", "ATOM-USD"] for live mode
+  - type: "performance_filter"
+    window_days: 30
+    min_trades: 3
+    min_win_rate: 0.30
+    min_avg_pnl: -5.0
+    min_total_pnl: -50.0
   - type: "exit_manager"
     hard_stop_pct: 0.045          # -4.5% emergency exit
     soft_stop_pct: 0.03           # -3.0% normal stop-loss
     trailing_activation_pct: 0.03 # +3.0% profit activates trailing
     trailing_distance_pct: 0.03   # trail 3% below peak
     check_interval_sec: 5         # throttle ticker checks
+    signal_exit_enabled: true     # approve strategy SELL when P&L >= 0%
+    signal_exit_min_pnl_pct: 0.0  # minimum P&L % for signal-based exit
   - type: "circuit_breaker"
     max_losses_in_window: 5
     loss_window_minutes: 30
@@ -109,6 +117,8 @@ execution:
   max_retries: 3
   post_only: true
   default_notional: 50
+  stale_timeout_seconds: 300    # 5 minutes
+  cancel_drift_pct: 0.005       # 0.5%
 
 storage:
   type: "postgres"

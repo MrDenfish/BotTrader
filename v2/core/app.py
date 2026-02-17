@@ -56,6 +56,9 @@ class App:
         self._last_sell_approved: dict[str, float] = {}
         self._sell_dedup_window: float = 30.0  # seconds
 
+        # Stale order check throttle
+        self._last_stale_check: float = 0.0
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -194,6 +197,16 @@ class App:
                 if hasattr(rm, "on_ticker"):
                     bus.subscribe(TickerEvent, lambda e, r=rm: r.on_ticker(e, self.portfolio))
 
+        # Execution: forward fills/orders for stale order tracking
+        if self._execution and hasattr(self._execution, "on_fill"):
+            bus.subscribe(FillEvent, lambda e: self._execution.on_fill(e.fill.order_id))
+        if self._execution and hasattr(self._execution, "on_order_event"):
+            bus.subscribe(OrderEvent, lambda e: self._execution.on_order_event(e.order))
+
+        # Execution: ticker-driven stale order check (throttled)
+        if self._execution and hasattr(self._execution, "check_stale_orders"):
+            bus.subscribe(TickerEvent, lambda e: self._check_stale_orders())
+
         # Persistence receives fills and orders
         if self._storage:
             bus.subscribe(FillEvent, lambda e: self._on_fill_storage(e))
@@ -277,6 +290,16 @@ class App:
                 cost_basis=fill.price * fill.qty,
                 entry_time=fill.timestamp,
             )
+
+    def _check_stale_orders(self) -> None:
+        """Throttled stale order check — runs at most every 30 seconds."""
+        now = time.monotonic()
+        if now - self._last_stale_check < 30:
+            return
+        self._last_stale_check = now
+        asyncio.ensure_future(
+            self._execution.check_stale_orders(self._exchange)
+        )
 
     # ------------------------------------------------------------------
     # Backtest mode

@@ -59,6 +59,10 @@ class ExitManager(RiskManager):
         self._trailing_distance_pct = float(kwargs.get("trailing_distance_pct", 0.03))
         self._check_interval_sec = float(kwargs.get("check_interval_sec", 5.0))
 
+        # Signal-based exit config
+        self._signal_exit_enabled = bool(kwargs.get("signal_exit_enabled", True))
+        self._signal_exit_min_pnl_pct = float(kwargs.get("signal_exit_min_pnl_pct", 0.0))
+
         # Per-symbol tracking state
         self._peak_price: dict[str, float] = {}
         self._trailing_active: dict[str, bool] = {}
@@ -77,13 +81,40 @@ class ExitManager(RiskManager):
                 self._trailing_distance_pct = float(config["trailing_distance_pct"])
             if "check_interval_sec" in config:
                 self._check_interval_sec = float(config["check_interval_sec"])
+            if "signal_exit_enabled" in config:
+                self._signal_exit_enabled = bool(config["signal_exit_enabled"])
+            if "signal_exit_min_pnl_pct" in config:
+                self._signal_exit_min_pnl_pct = float(config["signal_exit_min_pnl_pct"])
 
     # ------------------------------------------------------------------
-    # Signal validation (pass-through — exit manager doesn't filter)
+    # Signal validation — signal-based exits
     # ------------------------------------------------------------------
 
     def check_signal(self, signal: Signal, portfolio: Portfolio) -> Signal | None:
-        """Pass through all signals — exit manager only generates, not filters."""
+        """Signal-based exits: approve strategy SELL when position is profitable.
+
+        If trailing stop is active for the symbol, block the strategy sell
+        (trailing has priority). Otherwise, tag profitable sells with
+        exit_reason metadata.
+        """
+        if not self._signal_exit_enabled or signal.direction != Direction.SELL:
+            return signal
+
+        symbol = signal.symbol
+
+        # If trailing stop is active, let trailing handle it
+        if self._trailing_active.get(symbol, False):
+            logger.debug("Signal-based sell blocked for %s: trailing stop active", symbol)
+            return None
+
+        # Tag profitable sells with signal_exit metadata
+        pos = portfolio.positions.get(symbol)
+        if pos and pos.qty > 0 and float(pos.avg_entry_price) > 0 and signal.price:
+            pnl_pct = (signal.price - float(pos.avg_entry_price)) / float(pos.avg_entry_price)
+            if pnl_pct >= self._signal_exit_min_pnl_pct:
+                signal.metadata["exit_reason"] = "signal_exit"
+                signal.metadata["pnl_pct"] = round(pnl_pct * 100, 2)
+
         return signal
 
     # ------------------------------------------------------------------

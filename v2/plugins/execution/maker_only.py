@@ -10,6 +10,7 @@ Ported from webhook/webhook_order_types.py ``place_limit_order()``.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
@@ -58,6 +59,13 @@ class MakerOnlyExecution(ExecutionManager):
         )
         self._mode: str = kwargs.get("mode", "live")
 
+        # Stale order cancellation config
+        self._stale_timeout_seconds = float(kwargs.get("stale_timeout_seconds", 300))
+        self._cancel_drift_pct = float(kwargs.get("cancel_drift_pct", 0.005))
+
+        # Tracked open orders: {order_id: {symbol, side, price, timestamp}}
+        self._tracked_orders: dict[str, dict] = {}
+
     def configure(self, config: Any) -> None:
         if isinstance(config, dict):
             self._max_retries = config.get("max_retries", self._max_retries)
@@ -69,6 +77,10 @@ class MakerOnlyExecution(ExecutionManager):
                 self._buffer_increment = Decimal(str(config["buffer_increment"]))
             if "default_notional" in config:
                 self._default_notional = Decimal(str(config["default_notional"]))
+            if "stale_timeout_seconds" in config:
+                self._stale_timeout_seconds = float(config["stale_timeout_seconds"])
+            if "cancel_drift_pct" in config:
+                self._cancel_drift_pct = float(config["cancel_drift_pct"])
 
     async def execute_signal(
         self, signal: Signal, exchange: ExchangeAdapter
@@ -146,6 +158,14 @@ class MakerOnlyExecution(ExecutionManager):
                     "Order submitted: %s %s %s @ %s (attempt %d)",
                     side.value, qty, signal.symbol, price, attempt,
                 )
+                # Track OPEN orders for stale cancellation
+                if result.status == OrderStatus.OPEN:
+                    self._tracked_orders[result.order_id] = {
+                        "symbol": signal.symbol,
+                        "side": side,
+                        "price": price,
+                        "timestamp": time.monotonic(),
+                    }
                 return result
 
         logger.warning(
@@ -222,3 +242,89 @@ class MakerOnlyExecution(ExecutionManager):
                 "ask": Decimal(str(ticker.ask)),
             }
         return None
+
+    # ------------------------------------------------------------------
+    # Stale order tracking and cancellation
+    # ------------------------------------------------------------------
+
+    def on_fill(self, order_id: str) -> None:
+        """Remove filled order from tracking."""
+        self._tracked_orders.pop(order_id, None)
+
+    def on_order_event(self, order: Order) -> None:
+        """Remove orders that are no longer open."""
+        if order.status in (OrderStatus.FILLED, OrderStatus.CANCELLED, OrderStatus.REJECTED):
+            self._tracked_orders.pop(order.order_id, None)
+
+    async def check_stale_orders(self, exchange: ExchangeAdapter) -> None:
+        """Cancel tracked orders that have exceeded timeout and price has drifted.
+
+        Called periodically from app.py (throttled to every 30s).
+        """
+        if not self._tracked_orders:
+            return
+
+        now = time.monotonic()
+        to_cancel: list[str] = []
+
+        for order_id, info in list(self._tracked_orders.items()):
+            age = now - info["timestamp"]
+            if age < self._stale_timeout_seconds:
+                continue
+
+            # Get current bid/ask
+            bba = await self._get_bid_ask(exchange, info["symbol"])
+            if bba is None:
+                continue
+
+            order_price = info["price"]
+            side = info["side"]
+
+            # Check price drift
+            if side == Side.BUY:
+                # BUY order is stale if ask has risen beyond drift threshold
+                ask = float(bba["ask"])
+                drift = (ask - float(order_price)) / float(order_price)
+                if drift > self._cancel_drift_pct:
+                    to_cancel.append(order_id)
+                    logger.info(
+                        "Stale BUY order %s for %s: age=%.0fs, drift=+%.2f%%",
+                        order_id[:8], info["symbol"], age, drift * 100,
+                    )
+            else:
+                # SELL order is stale if bid has dropped beyond drift threshold
+                bid = float(bba["bid"])
+                drift = (float(order_price) - bid) / float(order_price)
+                if drift > self._cancel_drift_pct:
+                    to_cancel.append(order_id)
+                    logger.info(
+                        "Stale SELL order %s for %s: age=%.0fs, drift=+%.2f%%",
+                        order_id[:8], info["symbol"], age, drift * 100,
+                    )
+
+        for order_id in to_cancel:
+            try:
+                cancelled = await exchange.cancel_order(order_id)
+                if cancelled:
+                    info = self._tracked_orders.pop(order_id, {})
+                    logger.warning(
+                        "Cancelled stale order %s (%s %s)",
+                        order_id[:8], info.get("side", "?"), info.get("symbol", "?"),
+                    )
+                    if self._bus:
+                        self._bus.publish(OrderEvent(
+                            order=Order(
+                                order_id=order_id,
+                                symbol=info.get("symbol", ""),
+                                side=info.get("side", Side.BUY),
+                                order_type=OrderType.LIMIT,
+                                price=info.get("price", Decimal("0")),
+                                qty=Decimal("0"),
+                                status=OrderStatus.CANCELLED,
+                                timestamp=datetime.now(timezone.utc),
+                                metadata={"reason": "stale_order_cancelled"},
+                            ),
+                            event_type="cancelled",
+                        ))
+            except Exception:
+                logger.exception("Failed to cancel stale order %s", order_id[:8])
