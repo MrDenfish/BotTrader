@@ -137,7 +137,7 @@ observers:
     slack:
       webhook_url_env: "SLACK_WEBHOOK_URL"
     comparison:
-      enabled: true
+      enabled: false
       v1_signal_log: "/app/logs/scores.jsonl"
       v2_signal_log: "/app/logs/v2_score_log.jsonl"
       match_window_seconds: 60
