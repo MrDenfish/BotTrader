@@ -84,6 +84,8 @@ strategies:
       # Guardrails
       min_indicators_required: 3
       cooldown_bars: 2  # 2 × 5min = 10min (v1 uses 7 × 1min = 7min; rounding up)
+      # Post-loss buy lockout: block re-entry after exit manager sells at a loss
+      loss_lockout_bars: 12  # 12 × 5min = 1h base; hard_stop=2h, soft_stop=1h, trailing=30m
 
 risk:
   - type: "basic"

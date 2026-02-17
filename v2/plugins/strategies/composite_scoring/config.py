@@ -74,6 +74,15 @@ class CompositeScoreConfig:
     cooldown_bars: int = 7              # Bars to block opposite side after flip
     min_indicators_required: int = 2    # Multi-indicator confirmation gate
 
+    # Post-loss buy lockout: block re-entry after exit manager sells at a loss.
+    # Prevents death-spiral where oversold indicators trigger immediate re-buy.
+    loss_lockout_bars: int = 12         # Base lockout bars (~1h at 5-min candles)
+    loss_lockout_scale: dict[str, float] = field(default_factory=lambda: {
+        "hard_stop": 2.0,      # 2× base = 24 bars = 2 hours
+        "soft_stop": 1.0,      # 1× base = 12 bars = 1 hour
+        "trailing_stop": 0.5,  # 0.5× base = 6 bars = 30 minutes
+    })
+
     # ------------------------------------------------------------------
     # ROC Momentum strategies (priority over composite scoring)
     # ------------------------------------------------------------------

@@ -27,6 +27,7 @@ from v2.core.types import (
     Direction,
     Fill,
     OrderType,
+    RiskEvent,
     Signal,
     TickerEvent,
 )
@@ -121,6 +122,23 @@ class CompositeScoringStrategy(Strategy):
             self._roc_24h[ticker.symbol] = ticker.change_24h_pct
         return None
 
+    def on_risk_event(self, event: RiskEvent) -> None:
+        """Handle exit manager loss exits — set post-loss buy lockout.
+
+        When the exit manager closes a position at a loss (soft_stop,
+        hard_stop, trailing_stop), we block re-buying that symbol for
+        a configurable number of bars to prevent the death spiral where
+        oversold indicators immediately trigger a re-buy.
+        """
+        if event.event_type != "exit_triggered":
+            return
+        symbol = event.metadata.get("symbol")
+        reason = event.reason
+        if not symbol or symbol not in self._bar_idx:
+            return
+        bar_idx = self._bar_idx[symbol]
+        self._guardrails.record_loss_exit(symbol, bar_idx, reason, self._config)
+
     def get_state(self) -> dict:
         return {
             "guardrails": self._guardrails.get_state(),
@@ -203,6 +221,9 @@ class CompositeScoringStrategy(Strategy):
         cfg = self._config
         bar_idx = self._bar_idx[symbol]
 
+        # Post-loss buy lockout — blocks ALL buy signal paths (momentum + composite)
+        buy_locked = self._guardrails.is_buy_locked_by_loss(symbol, bar_idx)
+
         # Build DataFrame from buffer
         df = pd.DataFrame(list(self._bars[symbol]))
         df.set_index("timestamp", inplace=True)
@@ -223,7 +244,7 @@ class CompositeScoringStrategy(Strategy):
 
         if momo_ok and roc_value is not None and rsi_value is not None:
             lo, hi = cfg.roc_20m_rsi_buy_range
-            if roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
+            if not buy_locked and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_20m",
@@ -241,7 +262,7 @@ class CompositeScoringStrategy(Strategy):
         roc_24h = self._roc_24h.get(symbol)
         if momo_ok and roc_24h is not None and rsi_value is not None:
             lo, hi = cfg.roc_24h_rsi_range
-            if roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
+            if not buy_locked and roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_24h",

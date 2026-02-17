@@ -8,7 +8,7 @@ import pytest
 
 from v2.core import registry
 from v2.core.event_bus import EventBus
-from v2.core.types import Candle, Direction, TickerEvent
+from v2.core.types import Candle, Direction, RiskEvent, TickerEvent
 from v2.plugins.strategies.composite_scoring.config import CompositeScoreConfig
 from v2.plugins.strategies.composite_scoring.guardrails import Guardrails
 from v2.plugins.strategies.composite_scoring.indicators import compute_indicators
@@ -402,6 +402,250 @@ class TestGuardrails:
         g2 = Guardrails()
         g2.load_state(state)
         assert g2._last_side["BTC-USD"] == "long"
+
+
+# ------------------------------------------------------------------
+# Loss lockout guardrails
+# ------------------------------------------------------------------
+
+class TestLossLockout:
+    def test_record_soft_stop_sets_lockout(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        g.record_loss_exit("ORCA-USD", 50, "soft_stop", cfg)
+        # soft_stop scale = 1.0 → lockout until bar 62
+        assert g.is_buy_locked_by_loss("ORCA-USD", 50)
+        assert g.is_buy_locked_by_loss("ORCA-USD", 61)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 62)
+
+    def test_record_hard_stop_doubles_lockout(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        g.record_loss_exit("ORCA-USD", 50, "hard_stop", cfg)
+        # hard_stop scale = 2.0 → lockout until bar 74
+        assert g.is_buy_locked_by_loss("ORCA-USD", 73)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 74)
+
+    def test_record_trailing_stop_halves_lockout(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        g.record_loss_exit("ORCA-USD", 50, "trailing_stop", cfg)
+        # trailing_stop scale = 0.5 → lockout until bar 56
+        assert g.is_buy_locked_by_loss("ORCA-USD", 55)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 56)
+
+    def test_lockout_extends_never_shortens(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        # Hard stop at bar 50 → lockout until 74
+        g.record_loss_exit("ORCA-USD", 50, "hard_stop", cfg)
+        # Soft stop at bar 60 → would be 72, but 74 > 72, so no change
+        g.record_loss_exit("ORCA-USD", 60, "soft_stop", cfg)
+        assert g.is_buy_locked_by_loss("ORCA-USD", 73)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 74)
+
+    def test_lockout_extends_when_later_exit_is_longer(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        # Soft stop at bar 50 → lockout until 62
+        g.record_loss_exit("ORCA-USD", 50, "soft_stop", cfg)
+        # Hard stop at bar 60 → lockout until 84 (extends)
+        g.record_loss_exit("ORCA-USD", 60, "hard_stop", cfg)
+        assert g.is_buy_locked_by_loss("ORCA-USD", 83)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 84)
+
+    def test_lockout_does_not_affect_other_symbols(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        g.record_loss_exit("ORCA-USD", 50, "soft_stop", cfg)
+        assert not g.is_buy_locked_by_loss("BTC-USD", 50)
+
+    def test_lockout_disabled_when_bars_zero(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=0)
+        g.record_loss_exit("ORCA-USD", 50, "hard_stop", cfg)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 50)
+
+    def test_unknown_reason_uses_scale_1(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=10)
+        g.record_loss_exit("ORCA-USD", 50, "unknown_reason", cfg)
+        # Default scale = 1.0 → lockout until bar 60
+        assert g.is_buy_locked_by_loss("ORCA-USD", 59)
+        assert not g.is_buy_locked_by_loss("ORCA-USD", 60)
+
+    def test_apply_suppresses_buy_during_lockout(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12, cooldown_bars=0)
+        g.record_loss_exit("ORCA-USD", 50, "soft_stop", cfg)
+
+        # Attempt buy at bar 55 (within lockout window)
+        _, _, action, note = g.apply(
+            "ORCA-USD", (1, 6.0, 5.5), (0, 1.0, 5.5), 6.0, 1.0, 55, cfg,
+        )
+        assert action == "hold"
+        assert "loss_lockout" in note
+
+    def test_apply_allows_buy_after_lockout(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12, cooldown_bars=0)
+        g.record_loss_exit("ORCA-USD", 50, "soft_stop", cfg)
+
+        # Buy at bar 62 (lockout expired)
+        _, _, action, _ = g.apply(
+            "ORCA-USD", (1, 6.0, 5.5), (0, 1.0, 5.5), 6.0, 1.0, 62, cfg,
+        )
+        assert action == "buy"
+
+    def test_apply_allows_sell_during_lockout(self):
+        """Loss lockout only blocks buys, not sells."""
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12, cooldown_bars=0)
+        g.record_loss_exit("ORCA-USD", 50, "soft_stop", cfg)
+
+        _, _, action, _ = g.apply(
+            "ORCA-USD", (0, 1.0, 5.5), (1, 6.0, 5.5), 1.0, 6.0, 55, cfg,
+        )
+        assert action == "sell"
+
+    def test_lockout_state_persistence(self):
+        g = Guardrails()
+        cfg = CompositeScoreConfig(loss_lockout_bars=12)
+        g.record_loss_exit("ORCA-USD", 50, "hard_stop", cfg)
+
+        state = g.get_state()
+        assert state["loss_lockout_until"]["ORCA-USD"] == 74
+
+        g2 = Guardrails()
+        g2.load_state(state)
+        assert g2.is_buy_locked_by_loss("ORCA-USD", 73)
+        assert not g2.is_buy_locked_by_loss("ORCA-USD", 74)
+
+
+# ------------------------------------------------------------------
+# Strategy — on_risk_event integration
+# ------------------------------------------------------------------
+
+class TestStrategyRiskEvent:
+    def setup_method(self):
+        registry.discover_plugins()
+
+    def test_on_risk_event_sets_lockout(self):
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"loss_lockout_bars": 10})
+
+        # Simulate the strategy having processed some bars
+        s._bar_idx["ORCA-USD"] = 100
+
+        event = RiskEvent(
+            event_type="exit_triggered",
+            reason="soft_stop",
+            metadata={"symbol": "ORCA-USD", "pnl_pct": -3.0, "price": 0.20},
+        )
+        s.on_risk_event(event)
+
+        # Lockout should be set: 100 + 10 = 110
+        assert s._guardrails.is_buy_locked_by_loss("ORCA-USD", 105)
+        assert not s._guardrails.is_buy_locked_by_loss("ORCA-USD", 110)
+
+    def test_on_risk_event_ignores_non_exit_events(self):
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"loss_lockout_bars": 10})
+        s._bar_idx["ORCA-USD"] = 100
+
+        event = RiskEvent(
+            event_type="trailing_activated",
+            reason="trailing_stop",
+            metadata={"symbol": "ORCA-USD"},
+        )
+        s.on_risk_event(event)
+        assert not s._guardrails.is_buy_locked_by_loss("ORCA-USD", 100)
+
+    def test_on_risk_event_ignores_unknown_symbol(self):
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"loss_lockout_bars": 10})
+        # ORCA-USD has no bar_idx (never seen a candle)
+
+        event = RiskEvent(
+            event_type="exit_triggered",
+            reason="hard_stop",
+            metadata={"symbol": "ORCA-USD", "pnl_pct": -5.0},
+        )
+        # Should not crash
+        s.on_risk_event(event)
+        assert not s._guardrails.is_buy_locked_by_loss("ORCA-USD", 0)
+
+    def test_lockout_blocks_momentum_buy(self):
+        """Loss lockout blocks momentum BUY paths in _evaluate()."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({
+            "min_bars": 5,
+            "loss_lockout_bars": 10,
+            "candle_interval_minutes": 1,
+        })
+
+        # Feed enough candles for warmup
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="ORCA-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=0.20, high=0.22, low=0.19, close=0.21, volume=1000.0,
+            )
+            s.on_candle(candle, {})
+
+        # Now simulate a loss exit at the current bar
+        current_bar = s._bar_idx["ORCA-USD"]
+        event = RiskEvent(
+            event_type="exit_triggered",
+            reason="soft_stop",
+            metadata={"symbol": "ORCA-USD", "pnl_pct": -3.0},
+        )
+        s.on_risk_event(event)
+
+        # Mock indicators to force a momentum buy signal
+        mock_ind = {
+            "_ROC": 5.0,  # Strong positive ROC
+            "_RSI": 50.0,  # RSI within buy range (45-60)
+        }
+
+        with patch(
+            "v2.plugins.strategies.composite_scoring.strategy.compute_indicators",
+            return_value=mock_ind,
+        ):
+            candle = Candle(
+                symbol="ORCA-USD",
+                timestamp=base_ts + timedelta(minutes=10),
+                open=0.20, high=0.22, low=0.19, close=0.21, volume=1000.0,
+            )
+            result = s.on_candle(candle, {})
+
+        # Buy should be blocked by loss lockout
+        assert result is None or result.direction != Direction.BUY
+
+    def test_lockout_state_roundtrip(self):
+        """Loss lockout state survives get_state/load_state cycle."""
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({"loss_lockout_bars": 10})
+        s._bar_idx["ORCA-USD"] = 100
+
+        event = RiskEvent(
+            event_type="exit_triggered",
+            reason="hard_stop",
+            metadata={"symbol": "ORCA-USD", "pnl_pct": -5.0},
+        )
+        s.on_risk_event(event)
+
+        state = s.get_state()
+        assert state["guardrails"]["loss_lockout_until"]["ORCA-USD"] == 120
+
+        s2 = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s2.configure({"loss_lockout_bars": 10})
+        s2.load_state(state)
+        assert s2._guardrails.is_buy_locked_by_loss("ORCA-USD", 119)
+        assert not s2._guardrails.is_buy_locked_by_loss("ORCA-USD", 120)
 
 
 # ------------------------------------------------------------------

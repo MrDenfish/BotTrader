@@ -20,6 +20,7 @@ from v2.core.types import (
     OrderEvent,
     OrderStatus,
     Portfolio,
+    RiskEvent,
     SignalEvent,
     TickerEvent,
 )
@@ -175,11 +176,13 @@ class App:
         """Subscribe plugins to appropriate event types."""
         bus = self.bus
 
-        # Strategies receive candles, fills, tickers
+        # Strategies receive candles, fills, tickers, and (optionally) risk events
         for strategy in self._strategies:
             bus.subscribe(CandleEvent, lambda e, s=strategy: self._on_candle(s, e))
             bus.subscribe(FillEvent, lambda e, s=strategy: s.on_fill(e.fill))
             bus.subscribe(TickerEvent, lambda e, s=strategy: s.on_ticker(e))
+            if hasattr(strategy, "on_risk_event"):
+                bus.subscribe(RiskEvent, lambda e, s=strategy: s.on_risk_event(e))
 
         # Risk managers check signals, receive fills, track rejections, and
         # (optionally) monitor tickers for dynamic exits
