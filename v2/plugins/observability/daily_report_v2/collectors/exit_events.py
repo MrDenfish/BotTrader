@@ -18,6 +18,7 @@ class ExitEventAccumulator:
         self._hard_stops = 0
         self._soft_stops = 0
         self._trailing_stops = 0
+        self._signal_exits = 0
         self._trailing_activations = 0
         self._events: list[ExitEventDetail] = []
 
@@ -32,6 +33,8 @@ class ExitEventAccumulator:
             self._soft_stops += 1
         elif reason == "trailing_stop":
             self._trailing_stops += 1
+        elif reason == "signal_exit":
+            self._signal_exits += 1
 
         if len(self._events) < MAX_EVENTS:
             self._events.append(ExitEventDetail(
@@ -49,11 +52,12 @@ class ExitEventAccumulator:
 
     def snapshot(self) -> ExitManagerStats:
         """Return a snapshot of the current stats."""
-        total = self._hard_stops + self._soft_stops + self._trailing_stops
+        total = self._hard_stops + self._soft_stops + self._trailing_stops + self._signal_exits
         return ExitManagerStats(
             hard_stops=self._hard_stops,
             soft_stops=self._soft_stops,
             trailing_stops=self._trailing_stops,
+            signal_exits=self._signal_exits,
             trailing_activations=self._trailing_activations,
             total_exits=total,
             events=list(self._events),
@@ -64,5 +68,6 @@ class ExitEventAccumulator:
         self._hard_stops = 0
         self._soft_stops = 0
         self._trailing_stops = 0
+        self._signal_exits = 0
         self._trailing_activations = 0
         self._events.clear()

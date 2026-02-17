@@ -64,8 +64,10 @@ class RiskStats:
     """Risk event statistics for the reporting period."""
 
     vetoes: int = 0
+    performance_filter_vetoes: int = 0
     circuit_breaker_trips: int = 0
     rejections: int = 0
+    stale_cancellations: int = 0
     events: list[str] = field(default_factory=list)
 
 
@@ -88,6 +90,7 @@ class ExitManagerStats:
     hard_stops: int = 0
     soft_stops: int = 0
     trailing_stops: int = 0
+    signal_exits: int = 0
     trailing_activations: int = 0
     total_exits: int = 0
     events: list[ExitEventDetail] = field(default_factory=list)
@@ -106,6 +109,7 @@ class TradeLogEntry:
     fee: float
     is_maker: bool
     realized_pnl: float | None = None
+    exit_reason: str | None = None
 
 
 @dataclass

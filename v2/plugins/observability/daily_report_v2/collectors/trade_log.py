@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict, deque
 from datetime import datetime
 from decimal import Decimal
@@ -24,7 +25,7 @@ async def collect_trade_log(
     # Fetch all fills BEFORE the period to build prior buy queues
     prior_rows = await pool.fetch(
         """
-        SELECT symbol, side, price, qty, fee
+        SELECT symbol, side, price, qty, fee, metadata
         FROM v2_fills
         WHERE timestamp < $1
         ORDER BY timestamp ASC
@@ -36,7 +37,7 @@ async def collect_trade_log(
     # Fetch fills in this period
     rows = await pool.fetch(
         """
-        SELECT symbol, side, price, qty, fee, is_maker, timestamp
+        SELECT symbol, side, price, qty, fee, is_maker, timestamp, metadata
         FROM v2_fills
         WHERE timestamp >= $1 AND timestamp < $2
         ORDER BY timestamp ASC
@@ -95,6 +96,16 @@ def _annotate_with_pnl(
         notional = price * qty
         realized_pnl = None
 
+        # Extract exit_reason from metadata JSONB
+        exit_reason = None
+        raw_meta = row.get("metadata")
+        if raw_meta:
+            try:
+                meta = json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+                exit_reason = meta.get("exit_reason") or meta.get("signal_reason")
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+
         if side == "BUY":
             fee_per_unit = fee / qty if qty else 0.0
             buy_queues[symbol].append((qty, price, fee_per_unit))
@@ -132,6 +143,7 @@ def _annotate_with_pnl(
             fee=fee,
             is_maker=is_maker,
             realized_pnl=realized_pnl,
+            exit_reason=exit_reason,
         ))
 
     return entries

@@ -156,7 +156,7 @@
   <div class="section">
     <h2>Trade Log</h2>
     <table>
-      <tr><th>Time</th><th>Symbol</th><th>Side</th><th class="r">Price</th><th class="r">Notional</th><th class="r">P&amp;L</th></tr>
+      <tr><th>Time</th><th>Symbol</th><th>Side</th><th class="r">Price</th><th class="r">Notional</th><th class="r">P&amp;L</th><th>Reason</th></tr>
       {% for t in data.trade_log %}
       <tr>
         <td class="muted">{{ t.timestamp.strftime('%H:%M:%S') }}</td>
@@ -167,6 +167,7 @@
         <td class="r {% if t.realized_pnl is not none and t.realized_pnl > 0 %}green{% elif t.realized_pnl is not none and t.realized_pnl < 0 %}red{% endif %}">
           {{ t.realized_pnl | money if t.realized_pnl is not none else '—' }}
         </td>
+        <td class="muted">{{ t.exit_reason or '—' }}</td>
       </tr>
       {% endfor %}
     </table>
@@ -214,6 +215,12 @@
       <span class="hl-label">Trailing stops</span>
       <span class="hl-value">{{ data.exit_manager.trailing_stops }}</span>
     </div>
+    {% if data.exit_manager.signal_exits %}
+    <div class="hl-row">
+      <span class="hl-label">Signal exits</span>
+      <span class="hl-value green">{{ data.exit_manager.signal_exits }}</span>
+    </div>
+    {% endif %}
     {% if data.exit_manager.trailing_activations %}
     <div class="hl-row">
       <span class="hl-label">Trailing activations</span>
@@ -250,11 +257,12 @@
       <span class="hl-label">Symbols active</span>
       <span class="hl-value">{{ data.signals.by_symbol | length if data.signals.by_symbol else data.trade_stats.symbols_traded | length }}</span>
     </div>
-    {% if data.risk.vetoes or data.risk.circuit_breaker_trips or data.risk.rejections %}
+    {% if data.risk.vetoes or data.risk.circuit_breaker_trips or data.risk.rejections or data.risk.stale_cancellations %}
     <div class="alert{% if data.risk.circuit_breaker_trips %} danger{% endif %}" style="margin-top: 8px;">
-      {% if data.risk.vetoes %}<div>{{ data.risk.vetoes }} signal{{ 's' if data.risk.vetoes != 1 }} vetoed by risk manager</div>{% endif %}
+      {% if data.risk.vetoes %}<div>{{ data.risk.vetoes }} signal{{ 's' if data.risk.vetoes != 1 }} vetoed by risk manager{% if data.risk.performance_filter_vetoes %} ({{ data.risk.performance_filter_vetoes }} by perf filter){% endif %}</div>{% endif %}
       {% if data.risk.circuit_breaker_trips %}<div>{{ data.risk.circuit_breaker_trips }} circuit breaker trip{{ 's' if data.risk.circuit_breaker_trips != 1 }}</div>{% endif %}
       {% if data.risk.rejections %}<div>{{ data.risk.rejections }} order{{ 's' if data.risk.rejections != 1 }} rejected</div>{% endif %}
+      {% if data.risk.stale_cancellations %}<div>{{ data.risk.stale_cancellations }} stale order{{ 's' if data.risk.stale_cancellations != 1 }} cancelled</div>{% endif %}
     </div>
     {% if data.risk.events %}
     <div style="margin-top: 6px; font-size: 12px; color: #888;">

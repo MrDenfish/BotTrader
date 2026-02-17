@@ -360,6 +360,7 @@ class PaperExchange(ExchangeAdapter):
             fee_currency="USD",
             is_maker=is_maker,
             timestamp=datetime.now(timezone.utc),
+            metadata=order.metadata,
         )
 
         if self._bus:

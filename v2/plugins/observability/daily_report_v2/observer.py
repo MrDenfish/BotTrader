@@ -114,6 +114,11 @@ class DailyReportV2Observer(Observer):
             if event.order.status == OrderStatus.REJECTED:
                 reason = event.order.metadata.get("reject_reason", "unknown")
                 self._risk_acc.record_rejection(reason)
+            elif event.order.status == OrderStatus.CANCELLED:
+                reason = event.order.metadata.get("reason", "")
+                if reason == "stale_order_cancelled":
+                    self._has_activity = True
+                    self._risk_acc.record_stale_cancellation(event.order.symbol)
         elif isinstance(event, TickerEvent):
             self._portfolio_tracker.on_ticker(event.symbol, event.price)
 
@@ -128,6 +133,8 @@ class DailyReportV2Observer(Observer):
             self._risk_acc.record_veto(reason)
         elif etype == "circuit_breaker":
             self._risk_acc.record_circuit_breaker(reason)
+        elif etype == "signal_vetoed" and "performance_filter" in reason:
+            self._risk_acc.record_performance_veto(reason)
         else:
             self._risk_acc.record_veto(f"{etype}: {reason}")
 
@@ -280,7 +287,7 @@ class DailyReportV2Observer(Observer):
             positions=positions,
             signals=signals,
             risk=risk,
-            exit_manager=exit_manager if exit_manager.total_exits > 0 or exit_manager.trailing_activations > 0 else None,
+            exit_manager=exit_manager if exit_manager.total_exits > 0 or exit_manager.trailing_activations > 0 or exit_manager.signal_exits > 0 else None,
             trade_log=trade_log if trade_log else None,
             portfolio=portfolio,
             comparison=comparison,

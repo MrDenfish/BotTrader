@@ -551,3 +551,248 @@ class TestStaleOrderCancellation:
         await ex.check_stale_orders(exchange)
 
         exchange.get_ticker.assert_not_called()
+
+
+# ======================================================================
+# Report Visibility Tests
+# ======================================================================
+
+
+class TestReportRiskEventAccumulator:
+    """Tests for performance filter and stale cancellation tracking."""
+
+    def _make_acc(self):
+        from v2.plugins.observability.daily_report_v2.collectors.risk_events import (
+            RiskEventAccumulator,
+        )
+        return RiskEventAccumulator()
+
+    def test_performance_veto_increments_both_counters(self):
+        acc = self._make_acc()
+        acc.record_performance_veto("performance_filter: BTC-USD excluded")
+        snap = acc.snapshot()
+        assert snap.vetoes == 1
+        assert snap.performance_filter_vetoes == 1
+
+    def test_regular_veto_does_not_increment_perf_filter(self):
+        acc = self._make_acc()
+        acc.record_veto("basic: no position")
+        snap = acc.snapshot()
+        assert snap.vetoes == 1
+        assert snap.performance_filter_vetoes == 0
+
+    def test_stale_cancellation_tracked(self):
+        acc = self._make_acc()
+        acc.record_stale_cancellation("ETH-USD")
+        acc.record_stale_cancellation("BTC-USD")
+        snap = acc.snapshot()
+        assert snap.stale_cancellations == 2
+
+    def test_reset_clears_all_counters(self):
+        acc = self._make_acc()
+        acc.record_performance_veto("test")
+        acc.record_stale_cancellation("SOL-USD")
+        acc.record_circuit_breaker("trip")
+        acc.reset()
+        snap = acc.snapshot()
+        assert snap.vetoes == 0
+        assert snap.performance_filter_vetoes == 0
+        assert snap.stale_cancellations == 0
+        assert snap.circuit_breaker_trips == 0
+
+
+class TestReportExitEventAccumulator:
+    """Tests for signal exit tracking in ExitEventAccumulator."""
+
+    def _make_acc(self):
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import (
+            ExitEventAccumulator,
+        )
+        return ExitEventAccumulator()
+
+    def test_signal_exit_tracked(self):
+        from v2.core.types import RiskEvent
+        acc = self._make_acc()
+        event = RiskEvent(
+            event_type="exit_triggered",
+            reason="signal_exit",
+            metadata={"symbol": "BTC-USD", "price": 50000.0, "pnl_pct": 2.5},
+        )
+        acc.record_exit(event)
+        snap = acc.snapshot()
+        assert snap.signal_exits == 1
+        assert snap.total_exits == 1
+
+    def test_signal_exit_in_total_with_others(self):
+        from v2.core.types import RiskEvent
+        acc = self._make_acc()
+        acc.record_exit(RiskEvent(
+            event_type="exit_triggered", reason="hard_stop",
+            metadata={"symbol": "ETH-USD", "price": 3000.0, "pnl_pct": -4.5},
+        ))
+        acc.record_exit(RiskEvent(
+            event_type="exit_triggered", reason="signal_exit",
+            metadata={"symbol": "BTC-USD", "price": 50000.0, "pnl_pct": 1.0},
+        ))
+        snap = acc.snapshot()
+        assert snap.hard_stops == 1
+        assert snap.signal_exits == 1
+        assert snap.total_exits == 2
+
+    def test_reset_clears_signal_exits(self):
+        from v2.core.types import RiskEvent
+        acc = self._make_acc()
+        acc.record_exit(RiskEvent(
+            event_type="exit_triggered", reason="signal_exit",
+            metadata={"symbol": "BTC-USD", "price": 50000.0, "pnl_pct": 1.0},
+        ))
+        acc.reset()
+        snap = acc.snapshot()
+        assert snap.signal_exits == 0
+        assert snap.total_exits == 0
+
+
+class TestReportObserverRouting:
+    """Tests for observer event routing to accumulators."""
+
+    def _make_observer(self):
+        from v2.plugins.observability.daily_report_v2.observer import (
+            DailyReportV2Observer,
+        )
+        return DailyReportV2Observer()
+
+    def test_performance_filter_veto_routed(self):
+        from v2.core.types import RiskEvent
+        obs = self._make_observer()
+        event = RiskEvent(
+            event_type="signal_vetoed",
+            reason="performance_filter: BTC-USD excluded",
+            metadata={"symbol": "BTC-USD", "direction": "buy"},
+        )
+        obs._on_risk(event)
+        snap = obs._risk_acc.snapshot()
+        assert snap.performance_filter_vetoes == 1
+        assert snap.vetoes == 1
+
+    def test_non_perf_filter_veto_not_routed_to_perf(self):
+        from v2.core.types import RiskEvent
+        obs = self._make_observer()
+        event = RiskEvent(
+            event_type="signal_vetoed",
+            reason="basic: no position for sell",
+            metadata={"symbol": "ETH-USD", "direction": "sell"},
+        )
+        obs._on_risk(event)
+        snap = obs._risk_acc.snapshot()
+        assert snap.performance_filter_vetoes == 0
+        assert snap.vetoes == 1  # generic veto
+
+    def test_cancelled_stale_order_tracked(self):
+        from v2.core.types import OrderEvent, OrderStatus
+        obs = self._make_observer()
+        event = OrderEvent(
+            order=Order(
+                order_id="stale-1",
+                symbol="SOL-USD",
+                side=Side.BUY,
+                order_type=OrderType.LIMIT,
+                price=Decimal("100"),
+                qty=Decimal("1"),
+                status=OrderStatus.CANCELLED,
+                timestamp=datetime.now(timezone.utc),
+                metadata={"reason": "stale_order_cancelled"},
+            ),
+            event_type="cancelled",
+        )
+        obs.on_event(event)
+        snap = obs._risk_acc.snapshot()
+        assert snap.stale_cancellations == 1
+
+    def test_non_stale_cancellation_ignored(self):
+        from v2.core.types import OrderEvent, OrderStatus
+        obs = self._make_observer()
+        event = OrderEvent(
+            order=Order(
+                order_id="manual-1",
+                symbol="SOL-USD",
+                side=Side.BUY,
+                order_type=OrderType.LIMIT,
+                price=Decimal("100"),
+                qty=Decimal("1"),
+                status=OrderStatus.CANCELLED,
+                timestamp=datetime.now(timezone.utc),
+                metadata={"reason": "user_cancelled"},
+            ),
+            event_type="cancelled",
+        )
+        obs.on_event(event)
+        snap = obs._risk_acc.snapshot()
+        assert snap.stale_cancellations == 0
+
+
+class TestSignalExitEmitsRiskEvent:
+    """Tests that ExitManager emits RiskEvent for signal exits."""
+
+    def _make_exit_manager(self, **kwargs):
+        from v2.plugins.risk.exit_manager import ExitManager
+        defaults = {
+            "signal_exit_enabled": True,
+            "signal_exit_min_pnl_pct": 0.0,
+        }
+        defaults.update(kwargs)
+        bus = EventBus()
+        em = ExitManager(event_bus=bus, **defaults)
+        return em, bus
+
+    def test_signal_exit_emits_risk_event(self):
+        from v2.core.types import RiskEvent
+        em, bus = self._make_exit_manager()
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+
+        portfolio = Portfolio(
+            cash_balance=Decimal("10000"),
+            positions={
+                "BTC-USD": Position(
+                    symbol="BTC-USD", qty=Decimal("0.1"),
+                    avg_entry_price=Decimal("50000"),
+                    cost_basis=Decimal("5000"),
+                ),
+            },
+        )
+        signal = Signal(
+            direction=Direction.SELL, symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=51000.0, reason="composite_scoring",
+        )
+        result = em.check_signal(signal, portfolio)
+        assert result is not None
+        assert len(events) == 1
+        assert events[0].event_type == "exit_triggered"
+        assert events[0].reason == "signal_exit"
+        assert events[0].metadata["symbol"] == "BTC-USD"
+
+    def test_signal_exit_no_risk_event_when_unprofitable(self):
+        from v2.core.types import RiskEvent
+        em, bus = self._make_exit_manager(signal_exit_min_pnl_pct=0.0)
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+
+        portfolio = Portfolio(
+            cash_balance=Decimal("10000"),
+            positions={
+                "BTC-USD": Position(
+                    symbol="BTC-USD", qty=Decimal("0.1"),
+                    avg_entry_price=Decimal("50000"),
+                    cost_basis=Decimal("5000"),
+                ),
+            },
+        )
+        signal = Signal(
+            direction=Direction.SELL, symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=49000.0, reason="composite_scoring",
+        )
+        result = em.check_signal(signal, portfolio)
+        assert result is not None  # passes through
+        assert len(events) == 0  # no RiskEvent for unprofitable

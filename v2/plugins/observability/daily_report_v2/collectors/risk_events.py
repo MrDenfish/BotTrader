@@ -15,8 +15,10 @@ class RiskEventAccumulator:
 
     def __init__(self) -> None:
         self._vetoes = 0
+        self._performance_filter_vetoes = 0
         self._circuit_breaker_trips = 0
         self._rejections = 0
+        self._stale_cancellations = 0
         self._events: list[str] = []
 
     def record_veto(self, reason: str) -> None:
@@ -27,24 +29,37 @@ class RiskEventAccumulator:
         self._circuit_breaker_trips += 1
         self._add_event(f"circuit_breaker: {reason}")
 
+    def record_performance_veto(self, reason: str) -> None:
+        self._vetoes += 1
+        self._performance_filter_vetoes += 1
+        self._add_event(f"perf_filter: {reason}")
+
     def record_rejection(self, reason: str) -> None:
         self._rejections += 1
         self._add_event(f"rejection: {reason}")
+
+    def record_stale_cancellation(self, symbol: str) -> None:
+        self._stale_cancellations += 1
+        self._add_event(f"stale_cancel: {symbol}")
 
     def snapshot(self) -> RiskStats:
         """Return a snapshot of the current stats."""
         return RiskStats(
             vetoes=self._vetoes,
+            performance_filter_vetoes=self._performance_filter_vetoes,
             circuit_breaker_trips=self._circuit_breaker_trips,
             rejections=self._rejections,
+            stale_cancellations=self._stale_cancellations,
             events=list(self._events),
         )
 
     def reset(self) -> None:
         """Reset all counters for the next period."""
         self._vetoes = 0
+        self._performance_filter_vetoes = 0
         self._circuit_breaker_trips = 0
         self._rejections = 0
+        self._stale_cancellations = 0
         self._events.clear()
 
     def _add_event(self, description: str) -> None:

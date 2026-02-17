@@ -114,6 +114,16 @@ class ExitManager(RiskManager):
             if pnl_pct >= self._signal_exit_min_pnl_pct:
                 signal.metadata["exit_reason"] = "signal_exit"
                 signal.metadata["pnl_pct"] = round(pnl_pct * 100, 2)
+                if self._bus:
+                    self._bus.publish(RiskEvent(
+                        event_type="exit_triggered",
+                        reason="signal_exit",
+                        metadata={
+                            "symbol": symbol,
+                            "price": signal.price,
+                            "pnl_pct": round(pnl_pct * 100, 2),
+                        },
+                    ))
 
         return signal
 

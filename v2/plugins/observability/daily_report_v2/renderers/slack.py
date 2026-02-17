@@ -82,8 +82,9 @@ class SlackRenderer:
             for t in data.trade_log[:10]:
                 side_icon = ":large_green_circle:" if t.side == "BUY" else ":red_circle:"
                 pnl_str = f" P&L ${t.realized_pnl:+,.2f}" if t.realized_pnl is not None else ""
+                reason_str = f" [{t.exit_reason}]" if t.exit_reason else ""
                 lines.append(
-                    f"{side_icon} {t.symbol} {t.side} {t.qty:.4f} @ ${t.price:,.2f}{pnl_str}"
+                    f"{side_icon} {t.symbol} {t.side} {t.qty:.4f} @ ${t.price:,.2f}{pnl_str}{reason_str}"
                 )
             if len(data.trade_log) > 10:
                 lines.append(f"_...and {len(data.trade_log) - 10} more_")
@@ -95,11 +96,18 @@ class SlackRenderer:
 
         # 3. System health
         health = f"*Signals:* {data.signals.total} ({data.signals.buy_count}B / {data.signals.sell_count}S)"
-        if data.risk.vetoes or data.risk.circuit_breaker_trips:
-            health += (
-                f"\n:warning: {data.risk.vetoes} vetoes, "
-                f"{data.risk.circuit_breaker_trips} CB trips"
-            )
+        if data.risk.vetoes or data.risk.circuit_breaker_trips or data.risk.stale_cancellations:
+            parts = []
+            if data.risk.vetoes:
+                veto_str = f"{data.risk.vetoes} vetoes"
+                if data.risk.performance_filter_vetoes:
+                    veto_str += f" ({data.risk.performance_filter_vetoes} perf filter)"
+                parts.append(veto_str)
+            if data.risk.circuit_breaker_trips:
+                parts.append(f"{data.risk.circuit_breaker_trips} CB trips")
+            if data.risk.stale_cancellations:
+                parts.append(f"{data.risk.stale_cancellations} stale cancels")
+            health += f"\n:warning: {', '.join(parts)}"
 
         blocks.append({"type": "divider"})
         blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": health}})
@@ -110,7 +118,7 @@ class SlackRenderer:
             exit_text = (
                 f"*Exit Manager*\n"
                 f"Hard stops: {em.hard_stops} · Soft stops: {em.soft_stops} · "
-                f"Trailing stops: {em.trailing_stops}\n"
+                f"Trailing stops: {em.trailing_stops} · Signal exits: {em.signal_exits}\n"
                 f"Trailing activations: {em.trailing_activations} · "
                 f"Total exits: {em.total_exits}"
             )
