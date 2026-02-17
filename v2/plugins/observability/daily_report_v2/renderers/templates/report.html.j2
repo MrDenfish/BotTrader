@@ -64,8 +64,8 @@
 
   {# ── Header ── #}
   <div class="header">
-    <h1>BotTrader v2 &mdash; {% if data.period_hours >= 24 %}Daily Report{% else %}{{ data.period_hours }}h Report{% endif %}</h1>
-    <div class="sub">{{ data.report_date }}{% if data.period_start and data.period_hours < 24 %} {{ data.period_start.strftime('%H:%M') }}&ndash;{{ data.period_end.strftime('%H:%M') }} UTC{% endif %} &middot; {{ data.period_hours }}h window</div>
+    <h1>BotTrader v2 — {% if data.period_hours >= 24 %}Daily Report{% else %}{{ data.period_hours }}h Report{% endif %}</h1>
+    <div class="sub">{{ data.report_date }}{% if data.period_start and data.period_hours < 24 %} {{ data.period_start.strftime('%H:%M') }}–{{ data.period_end.strftime('%H:%M') }} UTC{% endif %} · {{ data.period_hours }}h window</div>
   </div>
 
   {# ════════════════════════════════════════════════════════════
@@ -299,7 +299,7 @@
 
   {# ── Footer ── #}
   <div class="footer">
-    BotTrader v2 &middot; {{ data.generated_at.strftime('%H:%M UTC') if data.generated_at else '' }}
+    BotTrader v2 · {{ data.generated_at.strftime('%H:%M UTC') if data.generated_at else '' }}
   </div>
 
 </div>

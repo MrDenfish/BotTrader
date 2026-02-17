@@ -145,10 +145,20 @@ class DailyReportV2Observer(Observer):
         """Check if we've crossed into a new period and fire report if so."""
         current_slot = self._current_period_slot()
         if current_slot != self._current_period_start:
+            # Capture snapshots BEFORE resetting (async report runs later)
+            portfolio_snap = self._portfolio_tracker.snapshot()
+            risk_snap = self._risk_acc.snapshot()
+            exit_snap = self._exit_acc.snapshot()
+
             if self._last_report_slot != self._current_period_start and self._has_activity:
                 # Fire report for the period that just ended
                 period_start = self._current_period_start
-                asyncio.ensure_future(self._generate_and_send_period(period_start))
+                asyncio.ensure_future(self._generate_and_send_period(
+                    period_start,
+                    portfolio_snapshot=portfolio_snap,
+                    risk_snapshot=risk_snap,
+                    exit_snapshot=exit_snap,
+                ))
 
             # Advance to new period
             self._current_period_start = current_slot
@@ -195,6 +205,10 @@ class DailyReportV2Observer(Observer):
         period_hours: int | None = None,
         period_start: datetime | None = None,
         period_end: datetime | None = None,
+        *,
+        portfolio_snapshot=None,
+        risk_snapshot=None,
+        exit_snapshot=None,
     ) -> ReportData:
         """Collect all metrics and assemble a ReportData."""
         await self._ensure_pool()
@@ -233,14 +247,14 @@ class DailyReportV2Observer(Observer):
         # Signal stats (JSONL)
         signals = collect_signals(self._v2_signal_log, start, end)
 
-        # Risk stats (in-memory snapshot)
-        risk = self._risk_acc.snapshot()
+        # Risk stats (use pre-captured snapshot if available)
+        risk = risk_snapshot if risk_snapshot is not None else self._risk_acc.snapshot()
 
-        # Exit manager stats (in-memory snapshot)
-        exit_manager = self._exit_acc.snapshot()
+        # Exit manager stats
+        exit_manager = exit_snapshot if exit_snapshot is not None else self._exit_acc.snapshot()
 
         # Portfolio snapshot
-        portfolio = self._portfolio_tracker.snapshot()
+        portfolio = portfolio_snapshot if portfolio_snapshot is not None else self._portfolio_tracker.snapshot()
 
         # Comparison (optional)
         comparison = None
@@ -273,7 +287,14 @@ class DailyReportV2Observer(Observer):
             generated_at=datetime.now(timezone.utc),
         )
 
-    async def _generate_and_send_period(self, period_start: datetime) -> None:
+    async def _generate_and_send_period(
+        self,
+        period_start: datetime,
+        *,
+        portfolio_snapshot=None,
+        risk_snapshot=None,
+        exit_snapshot=None,
+    ) -> None:
         """Generate and deliver report for a completed period."""
         period_end = period_start + timedelta(hours=self._report_interval_hours)
         try:
@@ -281,6 +302,9 @@ class DailyReportV2Observer(Observer):
                 period_hours=self._report_interval_hours,
                 period_start=period_start,
                 period_end=period_end,
+                portfolio_snapshot=portfolio_snapshot,
+                risk_snapshot=risk_snapshot,
+                exit_snapshot=exit_snapshot,
             )
             self._last_report_slot = period_start
 
