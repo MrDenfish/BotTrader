@@ -458,8 +458,9 @@ class WebSocketDataProvider(DataProvider):
             "granularity": "ONE_MINUTE",
         }
 
+        jwt_uri = jwt_generator.format_jwt_uri("GET", path)
         jwt_token = jwt_generator.build_rest_jwt(
-            f"GET {path}", self._api_key, self._api_secret,
+            jwt_uri, self._api_key, self._api_secret,
         )
         headers = {"Authorization": f"Bearer {jwt_token}"}
 
