@@ -347,9 +347,9 @@ class WebSocketDataProvider(DataProvider):
         )
         self._bus.publish(CandleEvent(candle=candle))
         logger.debug(
-            "Candle emitted: %s %s O=%.2f H=%.2f L=%.2f C=%.2f",
+            "Candle emitted: %s %s O=%.2f H=%.2f L=%.2f C=%.2f V=%.4f",
             symbol, state["minute"].strftime("%H:%M"),
-            candle.open, candle.high, candle.low, candle.close,
+            candle.open, candle.high, candle.low, candle.close, candle.volume,
         )
 
     def _flush_all_candles(self) -> None:
