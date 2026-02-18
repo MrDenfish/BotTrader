@@ -175,6 +175,38 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
     results["Buy Swing"] = _norm(buy_swing, last["close"], 0.0)
     results["Sell Swing"] = _norm(sell_swing, last["close"], 0.0)
 
+    # === 7. VOLUME DIVERGENCE ===
+    # Detect when price and volume trends diverge — a leading reversal signal.
+    # Bullish: price falling + volume declining (selling exhaustion).
+    # Bearish: price rising + volume declining (buying on fading interest).
+    buy_vol_div = False
+    sell_vol_div = False
+    vol_slope = 0.0
+
+    volume_available = df["volume"].sum() > 0
+    div_window = min(cfg.volume_div_window, n)
+
+    if volume_available and div_window >= 3:
+        tail = df.iloc[-div_window:]
+        x = np.arange(div_window, dtype=float)
+        # Linear regression slopes (price and volume)
+        price_slope = np.polyfit(x, tail["close"].values, 1)[0]
+        vol_slope = np.polyfit(x, tail["volume"].values, 1)[0]
+
+        # Bullish divergence: price declining, volume declining
+        buy_vol_div = bool(price_slope < 0 and vol_slope < 0)
+        # Bearish divergence: price rising, volume declining
+        sell_vol_div = bool(price_slope > 0 and vol_slope < 0)
+
+    results["Buy Volume Div"] = _norm(buy_vol_div, vol_slope, 0.0)
+    results["Sell Volume Div"] = _norm(sell_vol_div, vol_slope, 0.0)
+
+    # Relative volume (RVOL) — used by volume confirmation gate in strategy.py
+    vol_mean = df["volume"].rolling(window=cfg.atr_window, min_periods=1).mean()
+    last_vol_mean = float(vol_mean.iloc[-1]) if not pd.isna(vol_mean.iloc[-1]) else 0.0
+    rvol = float(last["volume"]) / last_vol_mean if last_vol_mean > 0 else 0.0
+    results["_RVOL"] = rvol
+
     # === Raw values for diagnostics ===
     results["_upper"] = last_upper
     results["_lower"] = last_lower

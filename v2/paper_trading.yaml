@@ -81,6 +81,10 @@ strategies:
       sma_volatility: 10
       atr_window: 8
       swing_window: 10
+      # Volume confirmation
+      volume_confirm_buy: true
+      volume_confirm_threshold: 0.7
+      volume_div_window: 10
       # Guardrails
       min_indicators_required: 3
       cooldown_bars: 2  # 2 × 5min = 10min (v1 uses 7 × 1min = 7min; rounding up)

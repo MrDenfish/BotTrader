@@ -56,15 +56,26 @@ class CompositeScoreConfig:
     swing_window: int = 20
 
     # ------------------------------------------------------------------
+    # Volume confirmation gate
+    # ------------------------------------------------------------------
+    volume_confirm_buy: bool = True        # Require above-avg volume to allow buys
+    volume_confirm_threshold: float = 0.7  # Min RVOL (current / rolling avg) for buy
+
+    # ------------------------------------------------------------------
+    # Volume divergence
+    # ------------------------------------------------------------------
+    volume_div_window: int = 10  # Lookback bars for price/volume slope comparison
+
+    # ------------------------------------------------------------------
     # Strategy weights  (indicator name → weight)
     # ------------------------------------------------------------------
     weights: dict[str, float] = field(default_factory=lambda: {
         "Buy Ratio": 1.2,  "Buy Touch": 1.5,  "W-Bottom": 2.0,
         "Buy RSI": 1.5,    "Buy ROC": 2.0,    "Buy MACD": 1.8,
-        "Buy Swing": 2.2,
+        "Buy Swing": 2.2,  "Buy Volume Div": 1.5,
         "Sell Ratio": 1.2,  "Sell Touch": 1.5,  "M-Top": 2.0,
         "Sell RSI": 1.5,    "Sell ROC": 2.0,    "Sell MACD": 1.8,
-        "Sell Swing": 2.2,
+        "Sell Swing": 2.2,  "Sell Volume Div": 1.5,
     })
 
     # ------------------------------------------------------------------

@@ -233,6 +233,18 @@ class CompositeScoringStrategy(Strategy):
         if not ind:
             return None
 
+        # --- Volume confirmation gate (gates ALL buy paths) ---
+        volume_ok = True
+        rvol = ind.get("_RVOL", 0.0)
+        if cfg.volume_confirm_buy:
+            volume_available = rvol > 0  # 0 means no volume data
+            if volume_available and rvol < cfg.volume_confirm_threshold:
+                volume_ok = False
+                logger.debug(
+                    "Volume gate: %s RVOL=%.2f < %.2f — buys blocked",
+                    symbol, rvol, cfg.volume_confirm_threshold,
+                )
+
         # --- Priority: 20-minute momentum scalps ---
         roc_value = ind.get("_ROC")
         rsi_value = ind.get("_RSI")
@@ -244,11 +256,11 @@ class CompositeScoringStrategy(Strategy):
 
         if momo_ok and roc_value is not None and rsi_value is not None:
             lo, hi = cfg.roc_20m_rsi_buy_range
-            if not buy_locked and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
+            if not buy_locked and volume_ok and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_20m",
-                    {"roc_20m": roc_value, "rsi": rsi_value},
+                    {"roc_20m": roc_value, "rsi": rsi_value, "rvol": rvol},
                 )
             lo, hi = cfg.roc_20m_rsi_sell_range
             if roc_value < cfg.roc_20m_sell_threshold and lo <= rsi_value <= hi:
@@ -262,11 +274,11 @@ class CompositeScoringStrategy(Strategy):
         roc_24h = self._roc_24h.get(symbol)
         if momo_ok and roc_24h is not None and rsi_value is not None:
             lo, hi = cfg.roc_24h_rsi_range
-            if not buy_locked and roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
+            if not buy_locked and volume_ok and roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_24h",
-                    {"roc_24h": roc_24h, "rsi": rsi_value},
+                    {"roc_24h": roc_24h, "rsi": rsi_value, "rvol": rvol},
                 )
             if roc_24h < cfg.roc_24h_sell_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
@@ -290,6 +302,10 @@ class CompositeScoringStrategy(Strategy):
 
         direction = Direction.BUY if action == "buy" else Direction.SELL
 
+        # --- Volume confirmation gate (composite buy path) ---
+        if direction == Direction.BUY and not volume_ok:
+            return None
+
         # --- Red-day gate: block buys when 24h change is negative ---
         if direction == Direction.BUY and not cfg.allow_buys_on_red_day:
             roc_24h = self._roc_24h.get(symbol)
@@ -310,6 +326,7 @@ class CompositeScoringStrategy(Strategy):
             "buy_signal": buy_signal,
             "sell_signal": sell_signal,
             "guardrail": note,
+            "rvol": rvol,
         }
 
         return self._make_signal(direction, symbol, candle, reason, metadata)

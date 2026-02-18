@@ -432,8 +432,9 @@ class WebSocketDataProvider(DataProvider):
                     if not cache:
                         del self._volume_cache[sym]
 
-                # Sleep 5 minutes before next fetch cycle
-                await asyncio.sleep(300)
+                # Sleep ~1 minute before next fetch cycle so volume
+                # is available for most 1-min candles before emission
+                await asyncio.sleep(65)
 
             except asyncio.CancelledError:
                 break

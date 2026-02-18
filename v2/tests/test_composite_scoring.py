@@ -67,7 +67,10 @@ class TestCompositeScoreConfig:
         assert cfg.bb_window == 20
         assert cfg.macd_fast == 12
         assert cfg.rsi_window == 14
-        assert len(cfg.weights) == 14
+        assert len(cfg.weights) == 16
+        assert cfg.volume_confirm_buy is True
+        assert cfg.volume_confirm_threshold == 0.7
+        assert cfg.volume_div_window == 10
 
     def test_override(self):
         cfg = CompositeScoreConfig(score_buy_target=4.0, cooldown_bars=10)
@@ -102,7 +105,8 @@ class TestIndicators:
             "Buy MACD", "Sell MACD", "Buy RSI", "Sell RSI",
             "Buy ROC", "Sell ROC", "W-Bottom", "M-Top",
             "Buy Swing", "Sell Swing",
-            "_RSI", "_ROC", "_upper", "_lower", "_MACD_Hist",
+            "Buy Volume Div", "Sell Volume Div",
+            "_RSI", "_ROC", "_RVOL", "_upper", "_lower", "_MACD_Hist",
         }
         assert expected_keys.issubset(set(result.keys()))
 
@@ -941,3 +945,296 @@ class TestCandleAggregation:
         """Default candle_interval_minutes is 1 (backward compatible)."""
         cfg = CompositeScoreConfig()
         assert cfg.candle_interval_minutes == 1
+
+
+# ------------------------------------------------------------------
+# Volume divergence indicator
+# ------------------------------------------------------------------
+
+class TestVolumeDivergence:
+    def test_bullish_divergence_fires(self):
+        """Price falling + volume declining = bullish divergence."""
+        n = 50
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        # Price declining over last 10 bars
+        closes = np.full(n, 100.0)
+        closes[-10:] = np.linspace(100.0, 90.0, 10)
+        # Volume declining over last 10 bars
+        volumes = np.full(n, 5.0)
+        volumes[-10:] = np.linspace(5.0, 1.0, 10)
+
+        df = pd.DataFrame({
+            "open": closes, "high": closes + 1, "low": closes - 1,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        cfg = CompositeScoreConfig(volume_div_window=10)
+        result = compute_indicators(df, cfg)
+        assert result["Buy Volume Div"][0] == 1, "Bullish divergence should fire"
+        assert result["Sell Volume Div"][0] == 0
+
+    def test_bearish_divergence_fires(self):
+        """Price rising + volume declining = bearish divergence."""
+        n = 50
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        # Price rising over last 10 bars
+        closes = np.full(n, 100.0)
+        closes[-10:] = np.linspace(100.0, 110.0, 10)
+        # Volume declining over last 10 bars
+        volumes = np.full(n, 5.0)
+        volumes[-10:] = np.linspace(5.0, 1.0, 10)
+
+        df = pd.DataFrame({
+            "open": closes, "high": closes + 1, "low": closes - 1,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        cfg = CompositeScoreConfig(volume_div_window=10)
+        result = compute_indicators(df, cfg)
+        assert result["Sell Volume Div"][0] == 1, "Bearish divergence should fire"
+        assert result["Buy Volume Div"][0] == 0
+
+    def test_no_divergence_when_both_rising(self):
+        """Price rising + volume rising = no divergence."""
+        n = 50
+        timestamps = [datetime(2026, 1, 1) + timedelta(minutes=i) for i in range(n)]
+        closes = np.full(n, 100.0)
+        closes[-10:] = np.linspace(100.0, 110.0, 10)
+        volumes = np.full(n, 5.0)
+        volumes[-10:] = np.linspace(5.0, 10.0, 10)  # Volume also rising
+
+        df = pd.DataFrame({
+            "open": closes, "high": closes + 1, "low": closes - 1,
+            "close": closes, "volume": volumes,
+        }, index=pd.DatetimeIndex(timestamps, name="timestamp"))
+
+        cfg = CompositeScoreConfig(volume_div_window=10)
+        result = compute_indicators(df, cfg)
+        assert result["Buy Volume Div"][0] == 0
+        assert result["Sell Volume Div"][0] == 0
+
+    def test_neutral_when_no_volume_data(self):
+        """Zero volume data → divergence indicators return neutral."""
+        df = _make_df(n=100)
+        df["volume"] = 0.0  # No volume data
+        cfg = CompositeScoreConfig()
+        result = compute_indicators(df, cfg)
+        assert result["Buy Volume Div"][0] == 0
+        assert result["Sell Volume Div"][0] == 0
+
+    def test_rvol_computed(self):
+        """_RVOL is computed when volume data is present."""
+        df = _make_df(n=100)
+        cfg = CompositeScoreConfig()
+        result = compute_indicators(df, cfg)
+        assert "_RVOL" in result
+        assert result["_RVOL"] > 0
+
+    def test_rvol_zero_when_no_volume(self):
+        """_RVOL is 0 when volume data is absent."""
+        df = _make_df(n=100)
+        df["volume"] = 0.0
+        cfg = CompositeScoreConfig()
+        result = compute_indicators(df, cfg)
+        assert result["_RVOL"] == 0.0
+
+
+# ------------------------------------------------------------------
+# Volume confirmation gate
+# ------------------------------------------------------------------
+
+class TestVolumeConfirmationGate:
+    def setup_method(self):
+        registry.discover_plugins()
+
+    def test_buy_suppressed_when_rvol_low(self):
+        """Buy blocked when RVOL is below threshold."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({
+            "min_bars": 5,
+            "volume_confirm_buy": True,
+            "volume_confirm_threshold": 0.7,
+            "candle_interval_minutes": 1,
+        })
+
+        # Mock indicators: force a buy via composite scoring + low RVOL
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3}
+        mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.5,
+            )
+            s.on_candle(candle, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=((1, 6.0, 5.5), (0, 0.0, 5.5), "buy", None)):
+
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=10),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.5,
+            )
+            result = s.on_candle(candle, {})
+
+        assert result is None, "Buy should be suppressed when RVOL < threshold"
+
+    def test_buy_allowed_when_rvol_high(self):
+        """Buy passes when RVOL is above threshold."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({
+            "min_bars": 5,
+            "volume_confirm_buy": True,
+            "volume_confirm_threshold": 0.7,
+            "candle_interval_minutes": 1,
+        })
+
+        # Mock indicators: force a buy via composite scoring + high RVOL
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 1.5}
+        mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=2.0,
+            )
+            s.on_candle(candle, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=((1, 6.0, 5.5), (0, 0.0, 5.5), "buy", None)):
+
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=10),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=2.0,
+            )
+            result = s.on_candle(candle, {})
+
+        assert result is not None
+        assert result.direction == Direction.BUY
+
+    def test_buy_allowed_when_no_volume_data(self):
+        """Graceful bypass: buy allowed when volume data is unavailable (RVOL=0)."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({
+            "min_bars": 5,
+            "volume_confirm_buy": True,
+            "volume_confirm_threshold": 0.7,
+            "candle_interval_minutes": 1,
+        })
+
+        # Mock indicators: force buy + RVOL=0 (no volume data)
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.0}
+        mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.0,
+            )
+            s.on_candle(candle, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=((1, 6.0, 5.5), (0, 0.0, 5.5), "buy", None)):
+
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=10),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.0,
+            )
+            result = s.on_candle(candle, {})
+
+        assert result is not None, "Buy should bypass volume gate when no volume data"
+        assert result.direction == Direction.BUY
+
+    def test_sell_not_affected_by_volume_gate(self):
+        """Volume gate only blocks buys, not sells."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({
+            "min_bars": 5,
+            "volume_confirm_buy": True,
+            "volume_confirm_threshold": 0.7,
+            "candle_interval_minutes": 1,
+        })
+
+        # Mock: force sell signal + low RVOL
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3}
+        mock_scores = (0.0, 6.0, (0, 0.0, 5.5), (1, 6.0, 5.5), {"buy": [], "sell": [], "suppression": None})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.5,
+            )
+            s.on_candle(candle, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=((0, 0.0, 5.5), (1, 6.0, 5.5), "sell", None)):
+
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=10),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.5,
+            )
+            result = s.on_candle(candle, {})
+
+        assert result is not None
+        assert result.direction == Direction.SELL
+
+    def test_gate_disabled_allows_low_rvol_buy(self):
+        """When volume_confirm_buy=False, low RVOL doesn't block buys."""
+        from unittest.mock import patch
+
+        s = registry.create_strategy("composite_scoring", event_bus=EventBus())
+        s.configure({
+            "min_bars": 5,
+            "volume_confirm_buy": False,
+            "candle_interval_minutes": 1,
+        })
+
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3}
+        mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
+
+        base_ts = datetime(2026, 1, 1)
+        for i in range(10):
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=i),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.5,
+            )
+            s.on_candle(candle, {})
+
+        with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
+             patch("v2.plugins.strategies.composite_scoring.strategy.compute_scores", return_value=mock_scores), \
+             patch.object(s._guardrails, "apply", return_value=((1, 6.0, 5.5), (0, 0.0, 5.5), "buy", None)):
+
+            candle = Candle(
+                symbol="BTC-USD",
+                timestamp=base_ts + timedelta(minutes=10),
+                open=97000.0, high=97100.0, low=96900.0, close=97000.0, volume=0.5,
+            )
+            result = s.on_candle(candle, {})
+
+        assert result is not None
+        assert result.direction == Direction.BUY
