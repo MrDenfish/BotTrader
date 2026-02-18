@@ -68,13 +68,17 @@ class CoinbaseExchange(ExchangeAdapter):
         api_secret: str | None = None,
         api_key_env: str = "COINBASE_API_KEY",
         api_secret_env: str = "COINBASE_API_SECRET",
+        key_file: str | None = None,
         rest_url: str = "https://api.coinbase.com",
         ws_url: str = "wss://advanced-trade-ws-user.coinbase.com",
         **kwargs: Any,
     ) -> None:
+        from v2.utils.credentials import resolve_credentials
+
         self._bus = event_bus
-        self._api_key = api_key or os.environ.get(api_key_env, "")
-        self._api_secret = api_secret or os.environ.get(api_secret_env, "")
+        self._api_key, self._api_secret = resolve_credentials(
+            api_key, api_secret, api_key_env, api_secret_env, key_file,
+        )
         self._rest_url = rest_url
         self._ws_url = ws_url
 

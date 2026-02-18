@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 from typing import Any
 
 import aiohttp
@@ -51,12 +50,12 @@ class CoinbasePairDiscovery(PairDiscovery):
         key_file: str | None = None,
         **kwargs: Any,
     ) -> None:
-        self._bus = event_bus
-        self._api_key = api_key or os.environ.get(api_key_env, "")
-        self._api_secret = api_secret or os.environ.get(api_secret_env, "")
+        from v2.utils.credentials import resolve_credentials
 
-        if not self._api_key and not self._api_secret and key_file:
-            self._load_key_file(key_file)
+        self._bus = event_bus
+        self._api_key, self._api_secret = resolve_credentials(
+            api_key, api_secret, api_key_env, api_secret_env, key_file,
+        )
 
         self._session: aiohttp.ClientSession | None = None
         self._refresh_task: asyncio.Task | None = None
@@ -69,21 +68,6 @@ class CoinbasePairDiscovery(PairDiscovery):
         self._max_pairs: int = 100
         self._min_quote_volume: float = 0.0  # hard floor for 24h USD volume
         self._configured = False
-
-    # ------------------------------------------------------------------
-    # Credential loading (same pattern as WebSocket provider)
-    # ------------------------------------------------------------------
-
-    def _load_key_file(self, path: str) -> None:
-        """Load API credentials from a Coinbase CDP JSON key file."""
-        try:
-            with open(path) as f:
-                data = json.load(f)
-            self._api_key = data.get("name", "")
-            self._api_secret = data.get("signing_key", "") or data.get("privateKey", "")
-            logger.info("PairDiscovery: loaded credentials from %s", path)
-        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            logger.warning("PairDiscovery: failed to load key file %s: %s", path, e)
 
     # ------------------------------------------------------------------
     # PairDiscovery ABC

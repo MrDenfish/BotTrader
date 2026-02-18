@@ -53,13 +53,12 @@ class WebSocketDataProvider(DataProvider):
         idle_timeout: float = 90.0,
         **kwargs: Any,
     ) -> None:
-        self._bus = event_bus
-        self._api_key = api_key or os.environ.get(api_key_env, "")
-        self._api_secret = api_secret or os.environ.get(api_secret_env, "")
+        from v2.utils.credentials import resolve_credentials
 
-        # Load from JSON key file if env vars are empty
-        if not self._api_key and not self._api_secret and key_file:
-            self._load_key_file(key_file)
+        self._bus = event_bus
+        self._api_key, self._api_secret = resolve_credentials(
+            api_key, api_secret, api_key_env, api_secret_env, key_file,
+        )
         self._ws_url = ws_url
         self._channels = channels or ["ticker_batch", "heartbeats"]
         self._idle_timeout = idle_timeout
@@ -84,17 +83,6 @@ class WebSocketDataProvider(DataProvider):
         # {symbol: {minute_datetime: volume_float}}
         self._volume_cache: dict[str, dict[datetime, float]] = {}
         self._volume_task: asyncio.Task | None = None
-
-    def _load_key_file(self, path: str) -> None:
-        """Load API credentials from a Coinbase CDP JSON key file."""
-        try:
-            with open(path) as f:
-                data = json.load(f)
-            self._api_key = data.get("name", "")
-            self._api_secret = data.get("signing_key", "") or data.get("privateKey", "")
-            logger.info("Loaded API credentials from %s (key_len=%d)", path, len(self._api_key))
-        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            logger.warning("Failed to load key file %s: %s", path, e)
 
     # ------------------------------------------------------------------
     # DataProvider interface
