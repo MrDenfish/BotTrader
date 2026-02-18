@@ -78,9 +78,10 @@ export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD D
 wait_for_postgres
 
 # 4) Create log directories
-mkdir -p /app/logs/v2
-chmod -R 0775 /app/logs/v2 || true
+mkdir -p /app/logs/v2 /app/logs/v2_kraken
+chmod -R 0775 /app/logs/v2 /app/logs/v2_kraken || true
 
 # 5) Launch v2 in paper mode
-log "Starting v2 paper trading..."
-exec python -u -m v2 --config /app/v2/paper_trading.yaml --log-level "${LOG_LEVEL:-INFO}"
+V2_CONFIG="${V2_CONFIG:-/app/v2/paper_trading.yaml}"
+log "Starting v2 paper trading (config: ${V2_CONFIG})..."
+exec python -u -m v2 --config "${V2_CONFIG}" --log-level "${LOG_LEVEL:-INFO}"

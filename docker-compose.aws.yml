@@ -202,6 +202,44 @@ services:
           memory: 512M
     restart: unless-stopped
 
+  v2-kraken:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.v2
+    container_name: v2-kraken
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      TZ: ${TZ}
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      V2_CONFIG: "/app/v2/kraken_paper_trading.yaml"
+      DATABASE_URL: "postgresql://${DB_USER:-bot_user}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}"
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - /opt/bot/.env:/app/.env:ro
+      - /opt/bot/logs:/app/logs
+    entrypoint: [ "/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.v2.sh" ]
+    healthcheck:
+      test: [ "CMD-SHELL", "python -c \"import os,time,sys;p='/app/logs/v2_kraken/heartbeat';sys.exit(0) if (os.path.exists(p) and (time.time()-os.path.getmtime(p)<300)) else sys.exit(1)\"" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
   report-job:
     build:
       context: .
