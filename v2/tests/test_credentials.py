@@ -4,7 +4,11 @@ import json
 import os
 import pytest
 
-from v2.utils.credentials import load_coinbase_key_file, resolve_credentials
+from v2.utils.credentials import (
+    load_coinbase_key_file,
+    load_kraken_key_file,
+    resolve_credentials,
+)
 
 
 # ------------------------------------------------------------------
@@ -135,3 +139,94 @@ def test_resolve_no_sources(monkeypatch):
     key, secret = resolve_credentials()
     assert key == ""
     assert secret == ""
+
+
+# ------------------------------------------------------------------
+# load_kraken_key_file
+# ------------------------------------------------------------------
+
+def test_load_kraken_key_file_valid(tmp_path):
+    key_file = tmp_path / "kraken.json"
+    key_file.write_text(json.dumps({
+        "api_key": "kraken_key_123",
+        "api_secret": "a3Jha2VuX3NlY3JldA==",
+        "rest_api_url": "https://api.kraken.com",
+    }))
+    api_key, api_secret = load_kraken_key_file(str(key_file))
+    assert api_key == "kraken_key_123"
+    assert api_secret == "a3Jha2VuX3NlY3JldA=="
+
+
+def test_load_kraken_key_file_missing_fields(tmp_path):
+    key_file = tmp_path / "kraken.json"
+    key_file.write_text(json.dumps({"api_key": "only_key"}))
+    with pytest.raises(ValueError, match="missing"):
+        load_kraken_key_file(str(key_file))
+
+
+def test_load_kraken_key_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        load_kraken_key_file("/nonexistent/kraken.json")
+
+
+def test_load_kraken_key_file_invalid_json(tmp_path):
+    key_file = tmp_path / "kraken.json"
+    key_file.write_text("not json")
+    with pytest.raises(json.JSONDecodeError):
+        load_kraken_key_file(str(key_file))
+
+
+# ------------------------------------------------------------------
+# resolve_credentials with key_file_format
+# ------------------------------------------------------------------
+
+def test_resolve_kraken_key_file(tmp_path, monkeypatch):
+    """Kraken key file format loads correctly."""
+    monkeypatch.delenv("KRAKEN_API_KEY", raising=False)
+    monkeypatch.delenv("KRAKEN_API_SECRET", raising=False)
+    key_file = tmp_path / "kraken.json"
+    key_file.write_text(json.dumps({
+        "api_key": "kraken_key",
+        "api_secret": "kraken_secret",
+    }))
+    key, secret = resolve_credentials(
+        api_key_env="KRAKEN_API_KEY",
+        api_secret_env="KRAKEN_API_SECRET",
+        key_file=str(key_file),
+        key_file_format="kraken",
+    )
+    assert key == "kraken_key"
+    assert secret == "kraken_secret"
+
+
+def test_resolve_kraken_env_overrides_key_file(tmp_path, monkeypatch):
+    """Env vars beat key file for Kraken too."""
+    monkeypatch.setenv("KRAKEN_API_KEY", "env_key")
+    monkeypatch.setenv("KRAKEN_API_SECRET", "env_secret")
+    key_file = tmp_path / "kraken.json"
+    key_file.write_text(json.dumps({
+        "api_key": "file_key",
+        "api_secret": "file_secret",
+    }))
+    key, secret = resolve_credentials(
+        api_key_env="KRAKEN_API_KEY",
+        api_secret_env="KRAKEN_API_SECRET",
+        key_file=str(key_file),
+        key_file_format="kraken",
+    )
+    assert key == "env_key"
+    assert secret == "env_secret"
+
+
+def test_resolve_default_format_is_coinbase(tmp_path, monkeypatch):
+    """Default key_file_format is coinbase (backward compat)."""
+    monkeypatch.delenv("COINBASE_API_KEY", raising=False)
+    monkeypatch.delenv("COINBASE_API_SECRET", raising=False)
+    key_file = tmp_path / "key.json"
+    key_file.write_text(json.dumps({
+        "name": "coinbase_key",
+        "signing_key": "coinbase_secret",
+    }))
+    key, secret = resolve_credentials(key_file=str(key_file))
+    assert key == "coinbase_key"
+    assert secret == "coinbase_secret"
