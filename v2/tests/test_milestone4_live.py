@@ -525,6 +525,47 @@ class TestWebSocketDataProvider:
 
 
 # =====================================================================
+# WebSocket per-channel activity monitoring
+# =====================================================================
+
+
+class TestChannelMonitoring:
+    def test_per_channel_tracking(self, bus):
+        """Process message updates per-channel last_seen timestamps."""
+        from v2.plugins.data.websocket import WebSocketDataProvider
+        ws = WebSocketDataProvider(event_bus=bus)
+
+        msg = json.dumps({
+            "channel": "ticker_batch",
+            "events": [{"tickers": [{"product_id": "BTC-USD", "price": "50000"}]}],
+        })
+        ws._process_message(msg)
+        assert "ticker_batch" in ws._channel_last_seen
+
+        msg_hb = json.dumps({"channel": "heartbeats"})
+        ws._process_message(msg_hb)
+        assert "heartbeats" in ws._channel_last_seen
+
+    def test_kraken_per_channel_tracking(self, bus):
+        """Kraken WS also tracks per-channel activity."""
+        from v2.plugins.data.kraken_websocket import KrakenWebSocketDataProvider
+        from v2.utils.symbol_mapper import KrakenSymbolMapper
+        mapper = KrakenSymbolMapper()
+        ws = KrakenWebSocketDataProvider(event_bus=bus, mapper=mapper)
+
+        msg = json.dumps({
+            "channel": "ticker", "type": "update",
+            "data": [{"symbol": "XBT/USD", "last": "50000"}],
+        })
+        ws._process_message(msg)
+        assert "ticker" in ws._channel_last_seen
+
+        msg_hb = json.dumps({"channel": "heartbeat"})
+        ws._process_message(msg_hb)
+        assert "heartbeat" in ws._channel_last_seen
+
+
+# =====================================================================
 # MakerOnlyExecution
 # =====================================================================
 
@@ -696,6 +737,127 @@ class TestMakerOnlyExecution:
 
 
 # =====================================================================
+# Market order execution (hard stops / severe soft stops)
+# =====================================================================
+
+
+class TestMarketOrderExecution:
+    @pytest.fixture
+    def maker(self, bus):
+        from v2.plugins.execution.maker_only import MakerOnlyExecution
+        return MakerOnlyExecution(event_bus=bus, mode="live", default_notional=500)
+
+    @pytest.mark.asyncio
+    async def test_market_order_bypasses_post_only(self, maker):
+        """Market order signal skips post-only loop, submits directly."""
+        mock_exchange = AsyncMock()
+        mock_exchange.submit_order = AsyncMock(return_value=Order(
+            order_id="mkt-1", symbol="BTC-USD", side=Side.SELL,
+            order_type=OrderType.MARKET, price=Decimal("95000"),
+            qty=Decimal("0.001"), status=OrderStatus.FILLED,
+            timestamp=datetime.now(timezone.utc),
+        ))
+
+        sig = Signal(
+            direction=Direction.SELL,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=95000.0,
+            qty=0.001,
+            reason="hard_stop",
+            order_type=OrderType.MARKET,
+        )
+        result = await maker.execute_signal(sig, mock_exchange)
+
+        assert result is not None
+        assert result.order_type == OrderType.MARKET
+        # get_best_bid_ask should NOT be called (no price negotiation needed)
+        assert not hasattr(mock_exchange, 'get_best_bid_ask') or \
+               not mock_exchange.get_best_bid_ask.called
+
+    @pytest.mark.asyncio
+    async def test_market_order_rejected(self, maker):
+        """Market order rejection returns None."""
+        mock_exchange = AsyncMock()
+        mock_exchange.submit_order = AsyncMock(return_value=Order(
+            order_id="mkt-rej", symbol="BTC-USD", side=Side.SELL,
+            order_type=OrderType.MARKET, price=Decimal("95000"),
+            qty=Decimal("0.001"), status=OrderStatus.REJECTED,
+            timestamp=datetime.now(timezone.utc),
+            metadata={"reject_reason": "insufficient_funds"},
+        ))
+
+        sig = Signal(
+            direction=Direction.SELL,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=95000.0,
+            qty=0.001,
+            reason="hard_stop",
+            order_type=OrderType.MARKET,
+        )
+        result = await maker.execute_signal(sig, mock_exchange)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_limit_order_still_works(self, maker):
+        """Regular LIMIT signals still go through post-only path."""
+        mock_exchange = AsyncMock()
+        mock_exchange.get_best_bid_ask = AsyncMock(return_value={
+            "bid": Decimal("96999"), "ask": Decimal("97001"),
+        })
+        mock_exchange.submit_order = AsyncMock(return_value=Order(
+            order_id="lim-1", symbol="BTC-USD", side=Side.BUY,
+            order_type=OrderType.LIMIT, price=Decimal("96904"),
+            qty=Decimal("0.001"), status=OrderStatus.OPEN,
+            timestamp=datetime.now(timezone.utc),
+        ))
+
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=97000.0,
+            qty=0.001,
+            reason="score",
+            order_type=OrderType.LIMIT,
+        )
+        result = await maker.execute_signal(sig, mock_exchange)
+        assert result is not None
+        # Should have called get_best_bid_ask (post-only path)
+        mock_exchange.get_best_bid_ask.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_market_order_metadata(self, maker):
+        """Market order carries signal metadata through."""
+        mock_exchange = AsyncMock()
+        mock_exchange.submit_order = AsyncMock(return_value=Order(
+            order_id="mkt-2", symbol="BTC-USD", side=Side.SELL,
+            order_type=OrderType.MARKET, price=Decimal("95000"),
+            qty=Decimal("0.001"), status=OrderStatus.FILLED,
+            timestamp=datetime.now(timezone.utc),
+        ))
+
+        sig = Signal(
+            direction=Direction.SELL,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=95000.0,
+            qty=0.001,
+            reason="hard_stop",
+            order_type=OrderType.MARKET,
+            metadata={"pnl_pct": -5.0},
+        )
+        await maker.execute_signal(sig, mock_exchange)
+
+        # Verify the order passed to exchange has market_order=True
+        submitted = mock_exchange.submit_order.call_args[0][0]
+        assert submitted.order_type == OrderType.MARKET
+        assert submitted.metadata.get("market_order") is True
+        assert submitted.metadata.get("signal_reason") == "hard_stop"
+
+
+# =====================================================================
 # BracketExecution
 # =====================================================================
 
@@ -819,3 +981,170 @@ class TestPaperWithExecution:
         assert result.status == OrderStatus.OPEN
 
         await paper.disconnect()
+
+
+# =====================================================================
+# Trigger-Based Order Sizing (Phase 6)
+# =====================================================================
+
+
+class TestTriggerBasedSizing:
+    """Tests for notional_by_trigger-based order sizing in MakerOnlyExecution."""
+
+    @pytest.fixture
+    def maker_with_triggers(self, bus):
+        from v2.plugins.execution.maker_only import MakerOnlyExecution
+        return MakerOnlyExecution(
+            event_bus=bus,
+            mode="live",
+            default_notional=50,
+            notional_by_trigger={"score": 50, "roc_momo_20m": 30, "roc_momo_24h": 30},
+        )
+
+    def test_trigger_match_via_metadata(self, maker_with_triggers):
+        """Signal with trigger in metadata gets trigger-specific notional."""
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=50000.0,
+            reason="test",
+            metadata={"trigger": "roc_momo_20m"},
+        )
+        qty = maker_with_triggers._determine_qty(sig)
+        # $30 / $50000 = 0.0006
+        assert qty == Decimal("30") / Decimal("50000")
+
+    def test_trigger_match_via_reason(self, maker_with_triggers):
+        """Signal with reason matching a trigger name gets trigger-specific notional."""
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=50000.0,
+            reason="score",
+        )
+        qty = maker_with_triggers._determine_qty(sig)
+        # $50 / $50000 = 0.001
+        assert qty == Decimal("50") / Decimal("50000")
+
+    def test_unknown_trigger_falls_back_to_default(self, maker_with_triggers):
+        """Signal with unknown trigger falls back to default_notional."""
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=50000.0,
+            reason="unknown_trigger",
+        )
+        qty = maker_with_triggers._determine_qty(sig)
+        # $50 (default) / $50000 = 0.001
+        assert qty == Decimal("50") / Decimal("50000")
+
+    def test_signal_qty_overrides_trigger(self, maker_with_triggers):
+        """Explicit signal.qty takes priority over trigger notional."""
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=50000.0,
+            qty=0.123,
+            reason="score",
+            metadata={"trigger": "score"},
+        )
+        qty = maker_with_triggers._determine_qty(sig)
+        assert qty == Decimal("0.123")
+
+    def test_signal_notional_overrides_trigger(self, maker_with_triggers):
+        """Explicit signal.notional takes priority over trigger notional."""
+        sig = Signal(
+            direction=Direction.BUY,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=50000.0,
+            notional=100.0,
+            reason="roc_momo_20m",
+            metadata={"trigger": "roc_momo_20m"},
+        )
+        qty = maker_with_triggers._determine_qty(sig)
+        # $100 (signal) / $50000 = 0.002, not $30 (trigger)
+        assert qty == Decimal("100") / Decimal("50000")
+
+    def test_configure_notional_by_trigger(self, bus):
+        """configure() updates notional_by_trigger map."""
+        from v2.plugins.execution.maker_only import MakerOnlyExecution
+        maker = MakerOnlyExecution(event_bus=bus, mode="live")
+        maker.configure({"notional_by_trigger": {"scalp": 25}})
+        assert "scalp" in maker._notional_by_trigger
+        assert maker._notional_by_trigger["scalp"] == Decimal("25")
+
+
+# =====================================================================
+# Min Order Validation (Phase 7)
+# =====================================================================
+
+
+class TestMinOrderValidation:
+    """Tests for minimum order fiat validation in MakerOnlyExecution."""
+
+    @pytest.fixture
+    def maker_min10(self, bus):
+        from v2.plugins.execution.maker_only import MakerOnlyExecution
+        return MakerOnlyExecution(
+            event_bus=bus, mode="live", default_notional=500, min_order_fiat=10,
+        )
+
+    @pytest.mark.asyncio
+    async def test_below_min_fiat_skipped(self, maker_min10):
+        """Orders below min_order_fiat are silently skipped."""
+        mock_exchange = AsyncMock()
+        # qty=0.0001, price=50000 → $5 < $10 min
+        sig = _make_signal(price=50000.0, qty=0.0001)
+        result = await maker_min10.execute_signal(sig, mock_exchange)
+        assert result is None
+        mock_exchange.submit_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_at_min_fiat_submitted(self, maker_min10):
+        """Orders at exactly min_order_fiat are submitted."""
+        mock_exchange = AsyncMock()
+        mock_exchange.get_best_bid_ask = AsyncMock(return_value={
+            "bid": Decimal("49999"), "ask": Decimal("50001"),
+        })
+        mock_exchange.submit_order = AsyncMock(return_value=Order(
+            order_id="ok-1", symbol="BTC-USD", side=Side.BUY,
+            order_type=OrderType.LIMIT, price=Decimal("49950"),
+            qty=Decimal("0.0002"), status=OrderStatus.OPEN,
+            timestamp=datetime.now(timezone.utc),
+        ))
+        # qty=0.0002, price=50000 → $10 == $10 min
+        sig = _make_signal(price=50000.0, qty=0.0002)
+        result = await maker_min10.execute_signal(sig, mock_exchange)
+        assert result is not None
+        assert result.status == OrderStatus.OPEN
+
+    @pytest.mark.asyncio
+    async def test_above_min_fiat_submitted(self, maker_min10):
+        """Orders above min_order_fiat are submitted normally."""
+        mock_exchange = AsyncMock()
+        mock_exchange.get_best_bid_ask = AsyncMock(return_value={
+            "bid": Decimal("49999"), "ask": Decimal("50001"),
+        })
+        mock_exchange.submit_order = AsyncMock(return_value=Order(
+            order_id="ok-2", symbol="BTC-USD", side=Side.BUY,
+            order_type=OrderType.LIMIT, price=Decimal("49950"),
+            qty=Decimal("0.01"), status=OrderStatus.OPEN,
+            timestamp=datetime.now(timezone.utc),
+        ))
+        # qty=0.01, price=50000 → $500 >> $10 min
+        sig = _make_signal(price=50000.0, qty=0.01)
+        result = await maker_min10.execute_signal(sig, mock_exchange)
+        assert result is not None
+        assert result.status == OrderStatus.OPEN
+
+    def test_configure_min_order_fiat(self, bus):
+        """configure() updates min_order_fiat."""
+        from v2.plugins.execution.maker_only import MakerOnlyExecution
+        maker = MakerOnlyExecution(event_bus=bus, mode="live")
+        maker.configure({"min_order_fiat": 25})
+        assert maker._min_order_fiat == Decimal("25")

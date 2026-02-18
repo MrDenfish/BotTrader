@@ -71,6 +71,10 @@ class WebSocketDataProvider(DataProvider):
         self._last_message_time: float = 0.0
         self._watchdog_task: asyncio.Task | None = None
 
+        # Per-channel activity tracking for silent channel detection
+        self._channel_last_seen: dict[str, float] = {}
+        self._ticker_silent_threshold: float = float(kwargs.get("ticker_silent_threshold", 120.0))
+
         # Candle aggregation: per-symbol partial 1-minute bars
         # Key: symbol, Value: {minute: datetime, open, high, low, close}
         self._candle_state: dict[str, dict] = {}
@@ -220,6 +224,10 @@ class WebSocketDataProvider(DataProvider):
             return
 
         channel = data.get("channel", "")
+
+        # Track per-channel activity for silent channel detection
+        if channel:
+            self._channel_last_seen[channel] = time.time()
 
         if channel == "ticker_batch":
             self._process_ticker_batch(data)
@@ -497,27 +505,53 @@ class WebSocketDataProvider(DataProvider):
     # ------------------------------------------------------------------
 
     async def _idle_watchdog(self) -> None:
-        """Monitor for idle WebSocket and force reconnect."""
+        """Monitor for idle WebSocket and force reconnect.
+
+        Two checks:
+        1. Global idle: no messages at all for idle_timeout seconds
+        2. Silent ticker: heartbeats alive but ticker_batch silent for
+           ticker_silent_threshold seconds (channel-level problem)
+        """
         while self._running:
             try:
                 await asyncio.sleep(self._idle_timeout / 2)
                 if not self._running:
                     break
 
-                elapsed = time.time() - self._last_message_time
+                now = time.time()
+                should_reconnect = False
+                reason = ""
+
+                # Check 1: Global idle
+                elapsed = now - self._last_message_time
                 if self._last_message_time > 0 and elapsed > self._idle_timeout:
-                    logger.warning(
-                        "Market WS idle for %.0fs (threshold: %.0fs) — forcing reconnect",
-                        elapsed, self._idle_timeout,
-                    )
-                    # Cancel the WS task to trigger reconnection
+                    should_reconnect = True
+                    reason = f"globally idle for {elapsed:.0f}s"
+
+                # Check 2: Silent ticker channel (heartbeats alive but tickers dead)
+                if not should_reconnect:
+                    hb_last = self._channel_last_seen.get("heartbeats", 0)
+                    ticker_last = self._channel_last_seen.get("ticker_batch", 0)
+                    if ticker_last > 0 and hb_last > 0:
+                        ticker_silent = now - ticker_last
+                        hb_age = now - hb_last
+                        if ticker_silent > self._ticker_silent_threshold and hb_age < 30:
+                            should_reconnect = True
+                            reason = (
+                                f"ticker_batch silent for {ticker_silent:.0f}s "
+                                f"but heartbeats alive ({hb_age:.0f}s ago)"
+                            )
+
+                if should_reconnect:
+                    logger.warning("Market WS: %s — forcing reconnect", reason)
                     if self._ws_task and not self._ws_task.done():
                         self._ws_task.cancel()
                         try:
                             await self._ws_task
                         except asyncio.CancelledError:
                             pass
-                    # Restart
+                    # Reset per-channel tracking
+                    self._channel_last_seen.clear()
                     if self._running:
                         self._ws_task = asyncio.create_task(self._ws_loop())
 

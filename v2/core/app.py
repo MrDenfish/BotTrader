@@ -126,6 +126,11 @@ class App:
             for o in cfg.observers
         ]
 
+        # Wire exchange reference to risk managers that need it (e.g. exit_manager for fee refresh)
+        for rm in self._risk_managers:
+            if hasattr(rm, "_exchange") and rm._exchange is None:
+                rm._exchange = self._exchange
+
         # Wire event subscriptions
         self._wire_events()
 
@@ -133,6 +138,19 @@ class App:
         await self._exchange.connect()
         if self._storage:
             await self._storage.connect()
+
+            # Restore positions from storage on startup
+            try:
+                positions = await self._storage.get_positions()
+                restored = 0
+                for pos in positions:
+                    if pos.qty > 0:
+                        self.portfolio.positions[pos.symbol] = pos
+                        restored += 1
+                if restored:
+                    logger.info("Restored %d positions from storage", restored)
+            except Exception:
+                logger.warning("Failed to restore positions from storage", exc_info=True)
 
         # Pair discovery (optional — replaces static symbol list)
         if cfg.pair_discovery and cfg.pair_discovery.type:
@@ -196,6 +214,8 @@ class App:
             for rm in self._risk_managers:
                 if hasattr(rm, "on_ticker"):
                     bus.subscribe(TickerEvent, lambda e, r=rm: r.on_ticker(e, self.portfolio))
+                if hasattr(rm, "on_candle"):
+                    bus.subscribe(CandleEvent, lambda e, r=rm: r.on_candle(e.candle))
 
         # Execution: forward fills/orders for stale order tracking
         if self._execution and hasattr(self._execution, "on_fill"):
@@ -272,7 +292,7 @@ class App:
             asyncio.ensure_future(self._storage.record_fill(event.fill))
 
     def _on_fill_portfolio(self, event: FillEvent) -> None:
-        """Update portfolio position from fill."""
+        """Update portfolio position from fill and persist to storage."""
         fill = event.fill
         symbol = fill.symbol
         side_sign = Decimal("1") if fill.side.value == "buy" else Decimal("-1")
@@ -283,13 +303,19 @@ class App:
             pos.qty += delta_qty
         else:
             from v2.core.types import Position
-            self.portfolio.positions[symbol] = Position(
+            pos = Position(
                 symbol=symbol,
                 qty=delta_qty,
                 avg_entry_price=fill.price,
                 cost_basis=fill.price * fill.qty,
                 entry_time=fill.timestamp,
             )
+            self.portfolio.positions[symbol] = pos
+
+        # Persist updated position to storage
+        if self._storage and hasattr(self._storage, "save_position"):
+            pos = self.portfolio.positions[symbol]
+            asyncio.ensure_future(self._storage.save_position(pos))
 
     def _check_stale_orders(self) -> None:
         """Throttled stale order check — runs at most every 30 seconds."""

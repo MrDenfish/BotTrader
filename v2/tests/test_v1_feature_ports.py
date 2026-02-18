@@ -66,6 +66,8 @@ class TestSignalBasedExits:
         defaults = {
             "signal_exit_enabled": True,
             "signal_exit_min_pnl_pct": 0.0,
+            "maker_fee_pct": 0.0,
+            "taker_fee_pct": 0.0,
         }
         defaults.update(kwargs)
         return ExitManager(event_bus=EventBus(), **defaults)
@@ -552,6 +554,54 @@ class TestStaleOrderCancellation:
 
         exchange.get_ticker.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_per_side_drift_buy_uses_buy_threshold(self):
+        """BUY orders use cancel_drift_buy_pct threshold."""
+        ex = self._make_execution(
+            stale_timeout_seconds=60,
+            cancel_drift_buy_pct=0.002,   # Tight: 0.2% buy drift
+            cancel_drift_sell_pct=0.01,   # Wide: 1.0% sell drift
+        )
+        ex._tracked_orders["buy-order"] = {
+            "symbol": "BTC-USD",
+            "side": Side.BUY,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 120,
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        exchange.get_ticker = AsyncMock(return_value=TickerEvent(
+            symbol="BTC-USD", price=50200.0,
+            timestamp=datetime.now(timezone.utc),
+            bid=50150.0, ask=50200.0,  # ask drifted 0.4% > 0.2% buy threshold
+        ))
+        exchange.cancel_order = AsyncMock(return_value=True)
+        await ex.check_stale_orders(exchange)
+        exchange.cancel_order.assert_called_once_with("buy-order")
+
+    @pytest.mark.asyncio
+    async def test_per_side_drift_sell_uses_sell_threshold(self):
+        """SELL orders use cancel_drift_sell_pct threshold."""
+        ex = self._make_execution(
+            stale_timeout_seconds=60,
+            cancel_drift_buy_pct=0.01,    # Wide buy threshold
+            cancel_drift_sell_pct=0.002,  # Tight: 0.2% sell drift
+        )
+        ex._tracked_orders["sell-order"] = {
+            "symbol": "BTC-USD",
+            "side": Side.SELL,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 120,
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        exchange.get_ticker = AsyncMock(return_value=TickerEvent(
+            symbol="BTC-USD", price=49850.0,
+            timestamp=datetime.now(timezone.utc),
+            bid=49850.0, ask=49900.0,  # bid drifted 0.3% > 0.2% sell threshold
+        ))
+        exchange.cancel_order = AsyncMock(return_value=True)
+        await ex.check_stale_orders(exchange)
+        exchange.cancel_order.assert_called_once_with("sell-order")
+
 
 # ======================================================================
 # Report Visibility Tests
@@ -738,6 +788,8 @@ class TestSignalExitEmitsRiskEvent:
         defaults = {
             "signal_exit_enabled": True,
             "signal_exit_min_pnl_pct": 0.0,
+            "maker_fee_pct": 0.0,
+            "taker_fee_pct": 0.0,
         }
         defaults.update(kwargs)
         bus = EventBus()

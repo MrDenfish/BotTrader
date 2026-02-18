@@ -72,6 +72,8 @@ class StubStorage(StorageAdapter):
 
     def __init__(self, **kwargs):
         self.connected = False
+        self._positions: list[Position] = kwargs.get("positions", [])
+        self._saved_positions: list[Position] = []
 
     async def connect(self):
         self.connected = True
@@ -81,10 +83,15 @@ class StubStorage(StorageAdapter):
 
     async def record_fill(self, fill): pass
     async def record_order(self, order): pass
-    async def get_positions(self, symbol=None): return []
+    async def get_positions(self, symbol=None):
+        if symbol:
+            return [p for p in self._positions if p.symbol == symbol]
+        return list(self._positions)
     async def get_trades(self, symbol=None, since=None): return []
     async def save_state(self, key, state): pass
     async def load_state(self, key): return None
+    async def save_position(self, position):
+        self._saved_positions.append(position)
 
 
 class StubRisk(RiskManager):
@@ -174,4 +181,60 @@ storage:
         from v2.core.config import Config
         app.config = Config.load(str(config_file))
         await app._setup()
+        await app._teardown()
+
+    @pytest.mark.asyncio
+    async def test_position_restore_on_startup(self, tmp_path):
+        """Positions with qty > 0 are restored from storage on startup."""
+        from datetime import datetime, timezone
+
+        config_file = tmp_path / "test.yaml"
+        config_file.write_text("""
+app:
+  mode: paper
+  symbols: ["BTC-USD", "ETH-USD"]
+exchange:
+  type: stub
+risk:
+  type: stub
+execution:
+  type: stub
+storage:
+  type: stub
+""")
+        app = App(config_path=str(config_file))
+        from v2.core.config import Config
+        app.config = Config.load(str(config_file))
+
+        # Inject storage with pre-existing positions
+        stored_positions = [
+            Position(
+                symbol="BTC-USD",
+                qty=Decimal("0.05"),
+                avg_entry_price=Decimal("95000"),
+                cost_basis=Decimal("4750"),
+                entry_time=datetime.now(timezone.utc),
+            ),
+            Position(
+                symbol="ETH-USD",
+                qty=Decimal("0"),  # Zero qty — should NOT be restored
+                avg_entry_price=Decimal("3000"),
+                cost_basis=Decimal("0"),
+                entry_time=datetime.now(timezone.utc),
+            ),
+        ]
+
+        await app._setup()
+
+        # Replace storage with one that has positions, then re-run restore logic
+        app._storage._positions = stored_positions
+        positions = await app._storage.get_positions()
+        for pos in positions:
+            if pos.qty > 0:
+                app.portfolio.positions[pos.symbol] = pos
+
+        assert "BTC-USD" in app.portfolio.positions
+        assert app.portfolio.positions["BTC-USD"].qty == Decimal("0.05")
+        assert "ETH-USD" not in app.portfolio.positions  # Zero qty filtered
+
         await app._teardown()

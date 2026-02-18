@@ -91,9 +91,22 @@ risk:
     soft_stop_pct: 0.03
     trailing_activation_pct: 0.03
     trailing_distance_pct: 0.03
+    trailing_mode: "atr"
+    atr_period: 14
+    atr_mult: 2.0
+    trailing_min_distance_pct: 0.01
+    trailing_max_distance_pct: 0.02
     check_interval_sec: 5
     signal_exit_enabled: true
     signal_exit_min_pnl_pct: 0.0
+    maker_fee_pct: 0.0025         # Kraken base tier maker fee (refreshed from API)
+    taker_fee_pct: 0.004          # Kraken base tier taker fee (refreshed from API)
+    peak_tracking_enabled: true
+    peak_drawdown_pct: 0.05       # -5% drawdown from SMA-smoothed peak
+    peak_min_profit_pct: 0.06     # +6% profit before peak tracking activates
+    peak_smoothing_prices: 5      # 5-price SMA for peak smoothing
+    peak_max_hold_minutes: 1440   # 24-hour max hold for momentum trades
+    peak_triggers: ["roc_momo_20m", "roc_momo_24h"]
   - type: "circuit_breaker"
     max_losses_in_window: 5
     loss_window_minutes: 30
@@ -106,6 +119,11 @@ execution:
   max_retries: 3
   post_only: true
   default_notional: 50
+  notional_by_trigger:
+    score: 50
+    roc_momo_20m: 30
+    roc_momo_24h: 30
+  min_order_fiat: 10
   stale_timeout_seconds: 300
   cancel_drift_pct: 0.005
 

@@ -173,6 +173,27 @@ class PostgresStorage(StorageAdapter):
     # Query
     # ------------------------------------------------------------------
 
+    async def save_position(self, position: Position) -> None:
+        """Upsert position into v2_positions."""
+        await self._pool.execute(
+            """INSERT INTO v2_positions (symbol, qty, avg_entry_price, cost_basis, unrealized_pnl, realized_pnl, entry_time)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (symbol) DO UPDATE SET
+                 qty = EXCLUDED.qty,
+                 avg_entry_price = EXCLUDED.avg_entry_price,
+                 cost_basis = EXCLUDED.cost_basis,
+                 unrealized_pnl = EXCLUDED.unrealized_pnl,
+                 realized_pnl = EXCLUDED.realized_pnl,
+                 entry_time = EXCLUDED.entry_time""",
+            position.symbol,
+            float(position.qty),
+            float(position.avg_entry_price),
+            float(position.cost_basis),
+            float(position.unrealized_pnl or 0),
+            float(position.realized_pnl or 0),
+            position.entry_time,
+        )
+
     async def get_positions(self, symbol: str | None = None) -> list[Position]:
         if symbol:
             rows = await self._pool.fetch(

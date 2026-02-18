@@ -62,6 +62,18 @@ class MakerOnlyExecution(ExecutionManager):
         # Stale order cancellation config
         self._stale_timeout_seconds = float(kwargs.get("stale_timeout_seconds", 300))
         self._cancel_drift_pct = float(kwargs.get("cancel_drift_pct", 0.005))
+        # Per-side drift overrides (fall back to cancel_drift_pct if not set)
+        self._cancel_drift_buy_pct = float(kwargs.get("cancel_drift_buy_pct", 0)) or self._cancel_drift_pct
+        self._cancel_drift_sell_pct = float(kwargs.get("cancel_drift_sell_pct", 0)) or self._cancel_drift_pct
+
+        # Trigger-based order sizing: {trigger_name: notional_usd}
+        raw_map = kwargs.get("notional_by_trigger", {})
+        self._notional_by_trigger: dict[str, Decimal] = {
+            k: Decimal(str(v)) for k, v in raw_map.items()
+        } if raw_map else {}
+
+        # Min order validation
+        self._min_order_fiat = Decimal(str(kwargs.get("min_order_fiat", "10")))
 
         # Tracked open orders: {order_id: {symbol, side, price, timestamp}}
         self._tracked_orders: dict[str, dict] = {}
@@ -81,11 +93,26 @@ class MakerOnlyExecution(ExecutionManager):
                 self._stale_timeout_seconds = float(config["stale_timeout_seconds"])
             if "cancel_drift_pct" in config:
                 self._cancel_drift_pct = float(config["cancel_drift_pct"])
+                # Update per-side defaults if not explicitly overridden
+                if "cancel_drift_buy_pct" not in config:
+                    self._cancel_drift_buy_pct = self._cancel_drift_pct
+                if "cancel_drift_sell_pct" not in config:
+                    self._cancel_drift_sell_pct = self._cancel_drift_pct
+            if "cancel_drift_buy_pct" in config:
+                self._cancel_drift_buy_pct = float(config["cancel_drift_buy_pct"])
+            if "cancel_drift_sell_pct" in config:
+                self._cancel_drift_sell_pct = float(config["cancel_drift_sell_pct"])
+            if "notional_by_trigger" in config:
+                self._notional_by_trigger = {
+                    k: Decimal(str(v)) for k, v in config["notional_by_trigger"].items()
+                }
+            if "min_order_fiat" in config:
+                self._min_order_fiat = Decimal(str(config["min_order_fiat"]))
 
     async def execute_signal(
         self, signal: Signal, exchange: ExchangeAdapter
     ) -> Order | None:
-        """Execute signal as a post-only limit order.
+        """Execute signal as a post-only limit order (or market order for emergencies).
 
         Returns the submitted Order on success, or None if all retries fail.
         In backtest mode, returns None (strategies handle fills internally).
@@ -100,6 +127,20 @@ class MakerOnlyExecution(ExecutionManager):
         if qty is None or qty <= 0:
             logger.warning("Cannot execute signal: no valid quantity (signal=%s)", signal)
             return None
+
+        # Min order validation: skip dust orders below minimum fiat value
+        if signal.price and signal.price > 0:
+            order_fiat = qty * Decimal(str(signal.price))
+            if order_fiat < self._min_order_fiat:
+                logger.debug(
+                    "Order below min_order_fiat ($%.2f < $%s): %s %s — skipping",
+                    float(order_fiat), self._min_order_fiat, signal.symbol, signal.reason,
+                )
+                return None
+
+        # Market order path: bypass post-only loop (used for hard stops / severe soft stops)
+        if signal.order_type == OrderType.MARKET:
+            return await self._execute_market_order(signal, exchange, side, qty)
 
         buffer_pct = self._initial_buffer_pct
 
@@ -188,17 +229,76 @@ class MakerOnlyExecution(ExecutionManager):
         return None
 
     # ------------------------------------------------------------------
+    # Market order execution
+    # ------------------------------------------------------------------
+
+    async def _execute_market_order(
+        self, signal: Signal, exchange: ExchangeAdapter, side: Side, qty: Decimal,
+    ) -> Order | None:
+        """Submit a market order directly (no post-only, no retries).
+
+        Used for emergency exits (hard stops, severe soft stops) where
+        speed is critical and slippage is acceptable.
+        """
+        order_id = str(uuid.uuid4())
+        order = Order(
+            order_id=order_id,
+            symbol=signal.symbol,
+            side=side,
+            order_type=OrderType.MARKET,
+            price=Decimal(str(signal.price)) if signal.price else Decimal("0"),
+            qty=qty,
+            status=OrderStatus.PENDING,
+            timestamp=datetime.now(timezone.utc),
+            metadata={
+                "post_only": False,
+                "signal_reason": signal.reason,
+                "market_order": True,
+                **signal.metadata,
+            },
+        )
+
+        logger.warning(
+            "MARKET ORDER: %s %s %s (reason: %s)",
+            side.value, qty, signal.symbol, signal.reason,
+        )
+
+        result = await exchange.submit_order(order)
+
+        if result.status == OrderStatus.REJECTED:
+            logger.error(
+                "Market order rejected for %s: %s",
+                signal.symbol, result.metadata.get("reject_reason", "unknown"),
+            )
+            if self._bus:
+                self._bus.publish(OrderEvent(order=result, event_type="rejected"))
+            return None
+
+        logger.info(
+            "Market order submitted: %s %s %s @ market",
+            side.value, qty, signal.symbol,
+        )
+        return result
+
+    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
     def _determine_qty(self, signal: Signal) -> Decimal | None:
         """Determine order quantity from signal.
 
-        Priority: signal.qty > signal.notional > default_notional.
+        Priority: signal.qty > signal.notional > trigger notional > default_notional.
         """
         if signal.qty is not None:
             return Decimal(str(signal.qty))
         notional = signal.notional
+
+        # Check trigger-based notional if no explicit notional
+        if notional is None and self._notional_by_trigger:
+            trigger = signal.metadata.get("trigger") or signal.reason or ""
+            if trigger in self._notional_by_trigger:
+                notional = float(self._notional_by_trigger[trigger])
+
         if notional is None and self._default_notional is not None:
             notional = float(self._default_notional)
         if notional is not None and signal.price is not None and signal.price > 0:
@@ -280,12 +380,12 @@ class MakerOnlyExecution(ExecutionManager):
             order_price = info["price"]
             side = info["side"]
 
-            # Check price drift
+            # Check price drift (per-side thresholds)
             if side == Side.BUY:
                 # BUY order is stale if ask has risen beyond drift threshold
                 ask = float(bba["ask"])
                 drift = (ask - float(order_price)) / float(order_price)
-                if drift > self._cancel_drift_pct:
+                if drift > self._cancel_drift_buy_pct:
                     to_cancel.append(order_id)
                     logger.info(
                         "Stale BUY order %s for %s: age=%.0fs, drift=+%.2f%%",
@@ -295,7 +395,7 @@ class MakerOnlyExecution(ExecutionManager):
                 # SELL order is stale if bid has dropped beyond drift threshold
                 bid = float(bba["bid"])
                 drift = (float(order_price) - bid) / float(order_price)
-                if drift > self._cancel_drift_pct:
+                if drift > self._cancel_drift_sell_pct:
                     to_cancel.append(order_id)
                     logger.info(
                         "Stale SELL order %s for %s: age=%.0fs, drift=+%.2f%%",

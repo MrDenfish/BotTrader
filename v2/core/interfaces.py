@@ -195,6 +195,10 @@ class StorageAdapter(ABC):
     @abstractmethod
     async def get_positions(self, symbol: str | None = None) -> list[Position]: ...
 
+    async def save_position(self, position: Position) -> None:
+        """Upsert a position. Default no-op for backends that don't support it."""
+        pass
+
     @abstractmethod
     async def get_trades(
         self, symbol: str | None = None, since: datetime | None = None
