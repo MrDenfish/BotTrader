@@ -139,3 +139,19 @@ observers:
   - type: "heartbeat"
     path: "/app/logs/v2_kraken/heartbeat"
     interval: 10.0
+  - type: "daily_report_v2"
+    dsn_env: "DATABASE_URL"
+    report_interval_hours: 4
+    initial_balance_usd: 10000
+    email:
+      backend: "smtp"
+      sender: "reports@a1zoobies.com"
+      recipients: ["dennfish@gmail.com"]
+      smtp_host: "email-smtp.us-west-2.amazonaws.com"
+      smtp_port: 587
+      smtp_user_env: "SMTP_USERNAME"
+      smtp_password_env: "SMTP_PASSWORD"
+    slack:
+      webhook_url_env: "SLACK_WEBHOOK_URL"
+    comparison:
+      enabled: false

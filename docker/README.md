@@ -2,13 +2,15 @@ BotTrader Docker
 
 This folder contains Dockerfiles and bootstrap/entrypoint scripts for:
 
-Bot runtime (Dockerfile.bot) — runs the trading bot
+Bot runtime (Dockerfile.bot) — runs the v1 trading bot (webhook/sighook)
 
-Daily report (Dockerfile.report) — runs the reporting job
+v2 runtime (Dockerfile.v2) — runs the v2 trading bot (v2-paper, v2-kraken)
 
 SSM bootstrap (docker/bootstrap/ssm-env.sh) — loads config from AWS SSM
 
-Bot entrypoint (docker/entrypoint/entrypoint.bot.sh) — sources SSM, sanity‑prints config, launches bot
+Bot entrypoint (docker/entrypoint/entrypoint.bot.sh) — sources SSM, sanity‑prints config, launches v1 bot
+
+v2 entrypoint (docker/entrypoint/entrypoint.v2.sh) — launches v2 with config from V2_CONFIG env var
 
 Directory layout
 
@@ -16,10 +18,11 @@ docker/
 ├─ bootstrap/
 │  └─ ssm-env.sh                # Loads /bottrader/<env> params into env vars (DB_*, etc.)
 ├─ entrypoint/
-│  └─ entrypoint.bot.sh         # Sources ssm-env, prints config, starts bot
+│  ├─ entrypoint.bot.sh         # Sources ssm-env, prints config, starts v1 bot
+│  └─ entrypoint.v2.sh          # Starts v2 bot (V2_CONFIG selects YAML config)
 ├─ README.md                    # (this file)
-Dockerfile.bot                  # Trading bot image
-Dockerfile.report               # Reporting image
+Dockerfile.bot                  # v1 trading bot image
+Dockerfile.v2                   # v2 trading bot image
 
 Prerequisites
 
@@ -66,11 +69,11 @@ Keep key names UPPERCASE and avoid duplicates (no lowercase name/user/password/h
 Build
 
 From repo root:
-# Bot image
+# v1 bot image
 docker build -f Dockerfile.bot -t bottrader:prod .
 
-# Reporting image
-docker build -f Dockerfile.report -t bottrader-report:prod .
+# v2 bot image
+docker build -f docker/Dockerfile.v2 -t bottrader-v2:prod .
 
 Run (one‑off)
 Verify SSM export only (no app)
@@ -89,27 +92,15 @@ docker run -d --name bot \
 docker logs -f bot
 # Early logs show a sanitized DB snapshot from entrypoint.bot.sh
 
-Run the reporting job (on demand)
-docker run --rm \
-  -e AWS_REGION=us-west-2 \
-  -e SSM_ROOT=/bottrader/prod \
-  bottrader-report:prod
+Compose (production)
 
-Compose (example)
-services:
-  bot:
-    image: bottrader:prod
-    environment:
-      AWS_REGION: us-west-2
-      SSM_ROOT: /bottrader/prod
-    restart: unless-stopped
+See docker-compose.aws.yml at the repo root. Active services:
+- db — PostgreSQL (shared)
+- v2-paper — Coinbase paper trading
+- v2-kraken — Kraken paper trading
 
-  report:
-    image: bottrader-report:prod
-    environment:
-      AWS_REGION: us-west-2
-      SSM_ROOT: /bottrader/prod
-    # schedule externally (cron, ECS scheduled task, etc.)
+Daily reporting is handled by the daily_report_v2 observer plugin
+inside each v2 container (no separate report container needed).
 
 How config is loaded
 

@@ -24,13 +24,9 @@ When asked to deploy to AWS or after committing changes:
    ssh bottrader-aws "cd /opt/bot && git pull origin main"
    ```
 
-3. **Rebuild and restart containers (v2-paper uses baked-in code, restart alone won't pick up changes):**
+3. **Rebuild and restart v2 containers (code baked into image, restart alone won't pick up changes):**
    ```bash
-   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-paper"
-   ```
-   For v1 containers that mount code as volumes, restart is sufficient:
-   ```bash
-   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml restart webhook sighook"
+   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-paper v2-kraken"
    ```
 
 4. **Verify deployment:**
@@ -51,15 +47,16 @@ See `.claude/DEPLOYMENT.md` for complete deployment documentation.
 ## Project Structure
 
 - **Production Branch:** `main`
-- **Active Development:** `refactor/plugin-architecture`
 - **AWS Location:** `/opt/bot`
 - **Docker Compose:** `docker-compose.aws.yml`
 
 ## Container Names
 
-- `webhook` - Main trading webhook and WebSocket manager
-- `sighook` - Signal processing and strategy execution
-- `db` - PostgreSQL database
-- `bottrader-report` - Daily email reporting
-- `v2-paper` - v2 paper trading (code baked into image — needs `--build` on deploy)
-- `bottrader-aws-leaderboard-job-1` - Leaderboard updates
+### Active
+- `db` - PostgreSQL database (shared by v1 and v2)
+- `v2-paper` - v2 Coinbase paper trading (code baked into image — needs `--build` on deploy)
+- `v2-kraken` - v2 Kraken paper trading (code baked into image — needs `--build` on deploy)
+
+### Stopped (v1 — definitions retained in docker-compose but not running)
+- `webhook` - v1 trading webhook and WebSocket manager
+- `sighook` - v1 signal processing and strategy execution
