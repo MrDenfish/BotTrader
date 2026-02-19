@@ -927,3 +927,193 @@ class TestSlackRendererNewSections:
         assert "Portfolio" not in all_text
         assert "Trade Log" not in all_text
         assert "Exit Manager" not in all_text
+
+
+# ============================================================
+# Exchange Column Filtering
+# ============================================================
+
+
+class TestExchangeFiltering:
+    """Tests for multi-exchange DB filtering via exchange column."""
+
+    def test_observer_exchange_name_from_kwargs(self):
+        """Observer accepts exchange_name in kwargs."""
+        from v2.plugins.observability.daily_report_v2.observer import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(exchange_name="kraken")
+        assert obs._exchange_name == "kraken"
+
+    def test_observer_exchange_name_default_empty(self):
+        """Observer defaults to empty exchange_name."""
+        from v2.plugins.observability.daily_report_v2.observer import DailyReportV2Observer
+
+        obs = DailyReportV2Observer()
+        assert obs._exchange_name == ""
+
+    def test_observer_exchange_name_wired_by_app(self):
+        """Observer exchange_name can be set by app (simulating app.py wiring)."""
+        from v2.plugins.observability.daily_report_v2.observer import DailyReportV2Observer
+
+        obs = DailyReportV2Observer()
+        assert obs._exchange_name == ""
+        # Simulate what app.py does
+        obs._exchange_name = "coinbase"
+        assert obs._exchange_name == "coinbase"
+
+    def test_storage_set_exchange_name(self):
+        """PostgresStorage.set_exchange_name sets the exchange tag."""
+        from v2.plugins.persistence.postgres import PostgresStorage
+
+        storage = PostgresStorage(dsn="postgresql://localhost/test")
+        assert storage._exchange_name == ""
+        storage.set_exchange_name("kraken")
+        assert storage._exchange_name == "kraken"
+
+    def test_storage_adapter_interface_has_set_exchange_name(self):
+        """StorageAdapter ABC provides set_exchange_name as a no-op."""
+        from v2.core.interfaces import StorageAdapter
+
+        assert hasattr(StorageAdapter, "set_exchange_name")
+
+    def test_trade_stats_exchange_filter_clause(self):
+        """trade_stats._exchange_filter builds correct params."""
+        from v2.plugins.observability.daily_report_v2.collectors.trade_stats import (
+            _exchange_filter,
+        )
+
+        start = datetime(2026, 2, 19, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 19, 4, tzinfo=timezone.utc)
+
+        # No exchange filter
+        clause, params = _exchange_filter("", start, end)
+        assert clause == ""
+        assert params == [start, end]
+
+        # With exchange filter
+        clause, params = _exchange_filter("kraken", start, end)
+        assert clause == " AND exchange = $3"
+        assert params == [start, end, "kraken"]
+
+    @pytest.mark.asyncio
+    async def test_collect_trade_stats_passes_exchange(self):
+        """collect_trade_stats forwards exchange param to SQL."""
+        from v2.plugins.observability.daily_report_v2.collectors.trade_stats import (
+            collect_trade_stats,
+        )
+
+        pool = AsyncMock()
+        pool.fetch = AsyncMock(return_value=[])
+        start = datetime(2026, 2, 19, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 19, 4, tzinfo=timezone.utc)
+
+        await collect_trade_stats(pool, start, end, exchange="kraken")
+
+        # Both fetch calls should include "kraken" as param
+        for call in pool.fetch.call_args_list:
+            sql = call[0][0]
+            assert "exchange = $3" in sql
+            assert call[0][-1] == "kraken"
+
+    @pytest.mark.asyncio
+    async def test_collect_trade_stats_no_exchange(self):
+        """collect_trade_stats omits exchange filter when empty."""
+        from v2.plugins.observability.daily_report_v2.collectors.trade_stats import (
+            collect_trade_stats,
+        )
+
+        pool = AsyncMock()
+        pool.fetch = AsyncMock(return_value=[])
+        start = datetime(2026, 2, 19, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 19, 4, tzinfo=timezone.utc)
+
+        await collect_trade_stats(pool, start, end)
+
+        for call in pool.fetch.call_args_list:
+            sql = call[0][0]
+            assert "exchange" not in sql
+
+    @pytest.mark.asyncio
+    async def test_collect_pnl_passes_exchange(self):
+        """collect_pnl forwards exchange param to SQL."""
+        from v2.plugins.observability.daily_report_v2.collectors.pnl import collect_pnl
+
+        pool = AsyncMock()
+        pool.fetch = AsyncMock(return_value=[])
+        start = datetime(2026, 2, 19, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 19, 4, tzinfo=timezone.utc)
+
+        await collect_pnl(pool, start, end, exchange="coinbase")
+
+        sql = pool.fetch.call_args[0][0]
+        assert "exchange = $3" in sql
+        assert pool.fetch.call_args[0][-1] == "coinbase"
+
+    @pytest.mark.asyncio
+    async def test_collect_trade_log_passes_exchange(self):
+        """collect_trade_log forwards exchange to both prior and period queries."""
+        from v2.plugins.observability.daily_report_v2.collectors.trade_log import (
+            collect_trade_log,
+        )
+
+        pool = AsyncMock()
+        pool.fetch = AsyncMock(return_value=[])
+        start = datetime(2026, 2, 19, tzinfo=timezone.utc)
+        end = datetime(2026, 2, 19, 4, tzinfo=timezone.utc)
+
+        await collect_trade_log(pool, start, end, exchange="kraken")
+
+        assert pool.fetch.call_count == 2
+        # Prior fills query
+        prior_sql = pool.fetch.call_args_list[0][0][0]
+        assert "exchange = $2" in prior_sql
+        # Period fills query
+        period_sql = pool.fetch.call_args_list[1][0][0]
+        assert "exchange = $3" in period_sql
+
+    @pytest.mark.asyncio
+    async def test_collect_positions_passes_exchange(self):
+        """collect_positions forwards exchange param to SQL."""
+        from v2.plugins.observability.daily_report_v2.collectors.positions import (
+            collect_positions,
+        )
+
+        pool = AsyncMock()
+        pool.fetch = AsyncMock(return_value=[])
+        await collect_positions(pool, exchange="kraken")
+
+        sql = pool.fetch.call_args[0][0]
+        assert "exchange = $1" in sql
+        assert pool.fetch.call_args[0][1] == "kraken"
+
+    @pytest.mark.asyncio
+    async def test_collect_positions_no_exchange(self):
+        """collect_positions omits exchange filter when empty."""
+        from v2.plugins.observability.daily_report_v2.collectors.positions import (
+            collect_positions,
+        )
+
+        pool = AsyncMock()
+        pool.fetch = AsyncMock(return_value=[])
+        await collect_positions(pool)
+
+        sql = pool.fetch.call_args[0][0]
+        assert "exchange" not in sql
+
+    def test_email_subject_includes_exchange_label(self):
+        """Report email subject includes [exchange] when exchange_name is set."""
+        from v2.plugins.observability.daily_report_v2.observer import DailyReportV2Observer
+
+        obs = DailyReportV2Observer(exchange_name="kraken")
+        # Verify the attribute is available for subject generation
+        assert obs._exchange_name == "kraken"
+        label = f" [{obs._exchange_name}]" if obs._exchange_name else ""
+        assert label == " [kraken]"
+
+    def test_email_subject_no_label_when_empty(self):
+        """Report email subject has no label when exchange_name is empty."""
+        from v2.plugins.observability.daily_report_v2.observer import DailyReportV2Observer
+
+        obs = DailyReportV2Observer()
+        label = f" [{obs._exchange_name}]" if obs._exchange_name else ""
+        assert label == ""

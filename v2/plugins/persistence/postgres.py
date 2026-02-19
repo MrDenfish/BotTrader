@@ -50,6 +50,7 @@ class PostgresStorage(StorageAdapter):
         self._clean_dsn = ""  # Set in connect() after stripping +asyncpg
         self._pool_size = pool_size
         self._pool = None  # asyncpg.Pool
+        self._exchange_name: str = ""  # Set by app after setup
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -118,6 +119,10 @@ class PostgresStorage(StorageAdapter):
     # Record
     # ------------------------------------------------------------------
 
+    def set_exchange_name(self, name: str) -> None:
+        """Set exchange name for tagging fills and positions."""
+        self._exchange_name = name
+
     async def record_fill(self, fill: Fill) -> None:
         for attempt in range(1, 3):
             try:
@@ -125,8 +130,8 @@ class PostgresStorage(StorageAdapter):
                     await conn.execute(
                         """INSERT INTO v2_fills
                            (fill_id, order_id, symbol, side, price, qty, fee,
-                            fee_currency, is_maker, timestamp, metadata)
-                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                            fee_currency, is_maker, timestamp, metadata, exchange)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                            ON CONFLICT (fill_id) DO NOTHING""",
                         fill.fill_id,
                         fill.order_id,
@@ -139,6 +144,7 @@ class PostgresStorage(StorageAdapter):
                         fill.is_maker,
                         fill.timestamp,
                         json.dumps(fill.metadata, default=str),
+                        self._exchange_name,
                     )
                 return
             except Exception:
@@ -176,9 +182,9 @@ class PostgresStorage(StorageAdapter):
     async def save_position(self, position: Position) -> None:
         """Upsert position into v2_positions."""
         await self._pool.execute(
-            """INSERT INTO v2_positions (symbol, qty, avg_entry_price, cost_basis, unrealized_pnl, realized_pnl, entry_time)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (symbol) DO UPDATE SET
+            """INSERT INTO v2_positions (symbol, exchange, qty, avg_entry_price, cost_basis, unrealized_pnl, realized_pnl, entry_time)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (symbol, exchange) DO UPDATE SET
                  qty = EXCLUDED.qty,
                  avg_entry_price = EXCLUDED.avg_entry_price,
                  cost_basis = EXCLUDED.cost_basis,
@@ -186,6 +192,7 @@ class PostgresStorage(StorageAdapter):
                  realized_pnl = EXCLUDED.realized_pnl,
                  entry_time = EXCLUDED.entry_time""",
             position.symbol,
+            self._exchange_name,
             float(position.qty),
             float(position.avg_entry_price),
             float(position.cost_basis),
@@ -195,12 +202,20 @@ class PostgresStorage(StorageAdapter):
         )
 
     async def get_positions(self, symbol: str | None = None) -> list[Position]:
+        query = "SELECT * FROM v2_positions WHERE TRUE"
+        params: list = []
+        idx = 1
+
+        if self._exchange_name:
+            query += f" AND exchange = ${idx}"
+            params.append(self._exchange_name)
+            idx += 1
         if symbol:
-            rows = await self._pool.fetch(
-                "SELECT * FROM v2_positions WHERE symbol = $1", symbol,
-            )
-        else:
-            rows = await self._pool.fetch("SELECT * FROM v2_positions")
+            query += f" AND symbol = ${idx}"
+            params.append(symbol)
+            idx += 1
+
+        rows = await self._pool.fetch(query, *params)
         return [self._row_to_position(r) for r in rows]
 
     async def get_trades(
@@ -210,6 +225,10 @@ class PostgresStorage(StorageAdapter):
         params: list = []
         idx = 1
 
+        if self._exchange_name:
+            query += f" AND exchange = ${idx}"
+            params.append(self._exchange_name)
+            idx += 1
         if symbol:
             query += f" AND symbol = ${idx}"
             params.append(symbol)
@@ -252,7 +271,7 @@ class PostgresStorage(StorageAdapter):
     # ------------------------------------------------------------------
 
     async def _create_tables(self) -> None:
-        """Create v2 tables if they don't exist."""
+        """Create v2 tables if they don't exist, then run migrations."""
         await self._pool.execute("""
             CREATE TABLE IF NOT EXISTS v2_fills (
                 fill_id TEXT PRIMARY KEY,
@@ -265,7 +284,8 @@ class PostgresStorage(StorageAdapter):
                 fee_currency TEXT DEFAULT 'USD',
                 is_maker BOOLEAN DEFAULT FALSE,
                 timestamp TIMESTAMPTZ NOT NULL,
-                metadata JSONB DEFAULT '{}'
+                metadata JSONB DEFAULT '{}',
+                exchange TEXT NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS idx_v2_fills_symbol
@@ -274,6 +294,8 @@ class PostgresStorage(StorageAdapter):
                 ON v2_fills (timestamp);
             CREATE INDEX IF NOT EXISTS idx_v2_fills_order_id
                 ON v2_fills (order_id);
+            CREATE INDEX IF NOT EXISTS idx_v2_fills_exchange
+                ON v2_fills (exchange);
         """)
 
         await self._pool.execute("""
@@ -297,13 +319,15 @@ class PostgresStorage(StorageAdapter):
 
         await self._pool.execute("""
             CREATE TABLE IF NOT EXISTS v2_positions (
-                symbol TEXT PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                exchange TEXT NOT NULL DEFAULT '',
                 qty DOUBLE PRECISION NOT NULL DEFAULT 0,
                 avg_entry_price DOUBLE PRECISION NOT NULL DEFAULT 0,
                 cost_basis DOUBLE PRECISION NOT NULL DEFAULT 0,
                 unrealized_pnl DOUBLE PRECISION DEFAULT 0,
                 realized_pnl DOUBLE PRECISION DEFAULT 0,
-                entry_time TIMESTAMPTZ
+                entry_time TIMESTAMPTZ,
+                PRIMARY KEY (symbol, exchange)
             );
         """)
 
@@ -315,7 +339,42 @@ class PostgresStorage(StorageAdapter):
             );
         """)
 
+        # Run migrations for existing tables
+        await self._migrate_tables()
+
         logger.debug("PostgreSQL tables verified/created")
+
+    async def _migrate_tables(self) -> None:
+        """Add columns to existing tables if missing."""
+        # v2_fills: add exchange column
+        await self._pool.execute("""
+            ALTER TABLE v2_fills
+            ADD COLUMN IF NOT EXISTS exchange TEXT NOT NULL DEFAULT '';
+        """)
+        await self._pool.execute("""
+            CREATE INDEX IF NOT EXISTS idx_v2_fills_exchange
+            ON v2_fills (exchange);
+        """)
+
+        # v2_positions: add exchange column and migrate primary key
+        col_exists = await self._pool.fetchval("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'v2_positions' AND column_name = 'exchange'
+            )
+        """)
+        if not col_exists:
+            await self._pool.execute("""
+                ALTER TABLE v2_positions
+                ADD COLUMN exchange TEXT NOT NULL DEFAULT '';
+            """)
+            # Migrate PK from (symbol) to (symbol, exchange)
+            await self._pool.execute("""
+                ALTER TABLE v2_positions DROP CONSTRAINT IF EXISTS v2_positions_pkey;
+            """)
+            await self._pool.execute("""
+                ALTER TABLE v2_positions ADD PRIMARY KEY (symbol, exchange);
+            """)
 
     # ------------------------------------------------------------------
     # Row converters

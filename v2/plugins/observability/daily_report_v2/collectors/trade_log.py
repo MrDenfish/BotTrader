@@ -16,34 +16,46 @@ async def collect_trade_log(
     pool: asyncpg.Pool,
     start: datetime,
     end: datetime,
+    exchange: str = "",
 ) -> list[TradeLogEntry]:
     """Fetch every fill in the period and annotate sells with FIFO P&L.
 
     Pre-populates buy queues with all historical buys before the period
     so that cross-period sells get correct FIFO P&L instead of $0.00.
     """
+    exchange_clause_1 = ""
+    prior_params: list = [start]
+    if exchange:
+        prior_params.append(exchange)
+        exchange_clause_1 = f" AND exchange = ${len(prior_params)}"
+
     # Fetch all fills BEFORE the period to build prior buy queues
     prior_rows = await pool.fetch(
-        """
+        f"""
         SELECT symbol, side, price, qty, fee, metadata
         FROM v2_fills
-        WHERE timestamp < $1
+        WHERE timestamp < $1{exchange_clause_1}
         ORDER BY timestamp ASC
         """,
-        start,
+        *prior_params,
     )
     prior_queues = _build_prior_buy_queues(prior_rows)
 
+    period_params: list = [start, end]
+    exchange_clause_2 = ""
+    if exchange:
+        period_params.append(exchange)
+        exchange_clause_2 = f" AND exchange = ${len(period_params)}"
+
     # Fetch fills in this period
     rows = await pool.fetch(
-        """
+        f"""
         SELECT symbol, side, price, qty, fee, is_maker, timestamp, metadata
         FROM v2_fills
-        WHERE timestamp >= $1 AND timestamp < $2
+        WHERE timestamp >= $1 AND timestamp < $2{exchange_clause_2}
         ORDER BY timestamp ASC
         """,
-        start,
-        end,
+        *period_params,
     )
     return _annotate_with_pnl(rows, prior_queues)
 

@@ -77,6 +77,9 @@ class DailyReportV2Observer(Observer):
         self._v2_signal_log = comp_cfg.get("v2_signal_log", "/app/logs/v2_score_log.jsonl")
         self._match_window = float(comp_cfg.get("match_window_seconds", 60))
 
+        # Exchange name for DB filtering (auto-wired by app.py)
+        self._exchange_name: str = kwargs.get("exchange_name", "")
+
         # In-memory accumulators
         self._risk_acc = RiskEventAccumulator()
         self._exit_acc = ExitEventAccumulator()
@@ -192,14 +195,21 @@ class DailyReportV2Observer(Observer):
             await self._hydrate_portfolio()
 
     async def _hydrate_portfolio(self) -> None:
-        """Replay all historical v2_fills to hydrate the portfolio tracker."""
+        """Replay historical v2_fills to hydrate the portfolio tracker."""
         try:
+            params: list = []
+            exchange_clause = ""
+            if self._exchange_name:
+                params.append(self._exchange_name)
+                exchange_clause = f" WHERE exchange = ${len(params)}"
             rows = await self._pool.fetch(
-                "SELECT symbol, side, price, qty, fee FROM v2_fills ORDER BY timestamp ASC",
+                f"SELECT symbol, side, price, qty, fee FROM v2_fills{exchange_clause} ORDER BY timestamp ASC",
+                *params,
             )
             if rows:
                 self._portfolio_tracker.replay_fills(rows)
-                logger.info("Portfolio tracker hydrated from %d historical fills", len(rows))
+                logger.info("Portfolio tracker hydrated from %d historical fills (exchange=%s)",
+                            len(rows), self._exchange_name or "all")
             else:
                 logger.info("Portfolio tracker: no historical fills to replay")
         except Exception:
@@ -241,10 +251,11 @@ class DailyReportV2Observer(Observer):
         from .models import TradeStats, PnLSummary
 
         if self._pool:
-            trade_stats = await collect_trade_stats(self._pool, start, end)
-            pnl = await collect_pnl(self._pool, start, end)
-            positions = await collect_positions(self._pool)
-            trade_log = await collect_trade_log(self._pool, start, end)
+            ex = self._exchange_name
+            trade_stats = await collect_trade_stats(self._pool, start, end, exchange=ex)
+            pnl = await collect_pnl(self._pool, start, end, exchange=ex)
+            positions = await collect_positions(self._pool, exchange=ex)
+            trade_log = await collect_trade_log(self._pool, start, end, exchange=ex)
         else:
             trade_stats = TradeStats()
             pnl = PnLSummary()
@@ -317,11 +328,12 @@ class DailyReportV2Observer(Observer):
 
             # HTML render + email
             html = self._html_renderer.render(data)
+            ex_label = f" [{self._exchange_name}]" if self._exchange_name else ""
             if self._report_interval_hours >= 24:
-                subject = f"BotTrader v2 Daily Report — {data.report_date}"
+                subject = f"BotTrader v2{ex_label} Daily Report — {data.report_date}"
             else:
                 subject = (
-                    f"BotTrader v2 {self._report_interval_hours}h Report — "
+                    f"BotTrader v2{ex_label} {self._report_interval_hours}h Report — "
                     f"{data.report_date} {period_start.strftime('%H:%M')}-{period_end.strftime('%H:%M')} UTC"
                 )
 

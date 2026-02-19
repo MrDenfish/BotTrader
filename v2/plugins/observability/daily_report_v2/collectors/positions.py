@@ -7,15 +7,22 @@ import asyncpg
 from ..models import PositionSnapshot
 
 
-async def collect_positions(pool: asyncpg.Pool) -> list[PositionSnapshot]:
+async def collect_positions(pool: asyncpg.Pool, exchange: str = "") -> list[PositionSnapshot]:
     """Fetch all open positions (qty > 0) from v2_positions."""
+    params: list = []
+    exchange_clause = ""
+    if exchange:
+        params.append(exchange)
+        exchange_clause = f" AND exchange = ${len(params)}"
+
     rows = await pool.fetch(
-        """
+        f"""
         SELECT symbol, qty, avg_entry_price, cost_basis, unrealized_pnl
         FROM v2_positions
-        WHERE qty > 0
+        WHERE qty > 0{exchange_clause}
         ORDER BY symbol
-        """
+        """,
+        *params,
     )
     return [
         PositionSnapshot(

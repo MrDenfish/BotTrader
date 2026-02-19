@@ -15,17 +15,22 @@ async def collect_pnl(
     pool: asyncpg.Pool,
     start: datetime,
     end: datetime,
+    exchange: str = "",
 ) -> PnLSummary:
     """Compute FIFO-based realized P&L for fills in the period."""
+    params: list = [start, end]
+    exchange_clause = ""
+    if exchange:
+        params.append(exchange)
+        exchange_clause = f" AND exchange = ${len(params)}"
     rows = await pool.fetch(
-        """
+        f"""
         SELECT symbol, side, price, qty, fee
         FROM v2_fills
-        WHERE timestamp >= $1 AND timestamp < $2
+        WHERE timestamp >= $1 AND timestamp < $2{exchange_clause}
         ORDER BY timestamp ASC
         """,
-        start,
-        end,
+        *params,
     )
     return compute_fifo_pnl(rows)
 

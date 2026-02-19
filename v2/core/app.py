@@ -131,6 +131,11 @@ class App:
             if hasattr(rm, "_exchange") and rm._exchange is None:
                 rm._exchange = self._exchange
 
+        # Wire exchange name to observers that need it (e.g. daily_report_v2 for DB filtering)
+        for observer in self._observers:
+            if hasattr(observer, "_exchange_name") and not observer._exchange_name:
+                observer._exchange_name = self._exchange.name
+
         # Wire event subscriptions
         self._wire_events()
 
@@ -138,6 +143,7 @@ class App:
         await self._exchange.connect()
         if self._storage:
             await self._storage.connect()
+            self._storage.set_exchange_name(self._exchange.name)
 
             # Restore positions from storage on startup
             try:

@@ -186,6 +186,9 @@ class StorageAdapter(ABC):
     @abstractmethod
     async def disconnect(self) -> None: ...
 
+    def set_exchange_name(self, name: str) -> None:
+        """Tag all persisted records with the exchange name."""
+
     @abstractmethod
     async def record_fill(self, fill: Fill) -> None: ...
 
