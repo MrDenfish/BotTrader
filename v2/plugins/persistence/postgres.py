@@ -272,6 +272,7 @@ class PostgresStorage(StorageAdapter):
 
     async def _create_tables(self) -> None:
         """Create v2 tables if they don't exist, then run migrations."""
+        # Base table schemas (without exchange — migration adds it)
         await self._pool.execute("""
             CREATE TABLE IF NOT EXISTS v2_fills (
                 fill_id TEXT PRIMARY KEY,
@@ -284,8 +285,7 @@ class PostgresStorage(StorageAdapter):
                 fee_currency TEXT DEFAULT 'USD',
                 is_maker BOOLEAN DEFAULT FALSE,
                 timestamp TIMESTAMPTZ NOT NULL,
-                metadata JSONB DEFAULT '{}',
-                exchange TEXT NOT NULL DEFAULT ''
+                metadata JSONB DEFAULT '{}'
             );
 
             CREATE INDEX IF NOT EXISTS idx_v2_fills_symbol
@@ -294,8 +294,6 @@ class PostgresStorage(StorageAdapter):
                 ON v2_fills (timestamp);
             CREATE INDEX IF NOT EXISTS idx_v2_fills_order_id
                 ON v2_fills (order_id);
-            CREATE INDEX IF NOT EXISTS idx_v2_fills_exchange
-                ON v2_fills (exchange);
         """)
 
         await self._pool.execute("""
@@ -319,15 +317,13 @@ class PostgresStorage(StorageAdapter):
 
         await self._pool.execute("""
             CREATE TABLE IF NOT EXISTS v2_positions (
-                symbol TEXT NOT NULL,
-                exchange TEXT NOT NULL DEFAULT '',
+                symbol TEXT PRIMARY KEY,
                 qty DOUBLE PRECISION NOT NULL DEFAULT 0,
                 avg_entry_price DOUBLE PRECISION NOT NULL DEFAULT 0,
                 cost_basis DOUBLE PRECISION NOT NULL DEFAULT 0,
                 unrealized_pnl DOUBLE PRECISION DEFAULT 0,
                 realized_pnl DOUBLE PRECISION DEFAULT 0,
-                entry_time TIMESTAMPTZ,
-                PRIMARY KEY (symbol, exchange)
+                entry_time TIMESTAMPTZ
             );
         """)
 
@@ -339,7 +335,7 @@ class PostgresStorage(StorageAdapter):
             );
         """)
 
-        # Run migrations for existing tables
+        # Add exchange columns and migrate existing tables
         await self._migrate_tables()
 
         logger.debug("PostgreSQL tables verified/created")
