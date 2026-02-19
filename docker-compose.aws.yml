@@ -240,54 +240,6 @@ services:
           memory: 512M
     restart: unless-stopped
 
-  report-job:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.report
-    container_name: bottrader-report
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - /opt/bot/logs:/app/logs:rw
-      - /opt/bot/.env:/app/.env:ro
-    environment:
-      TZ: ${TZ}
-      AWS_REGION: ${AWS_REGION:-us-west-2}
-      PYTHONPATH: /app
-      IN_DOCKER: "true"
-      SCORE_JSONL_PATH: "/app/logs/scores.jsonl"
-      TP_SL_LOG_PATH: "/app/logs/tpsl.jsonl"
-    env_file:
-      - /opt/bot/.env
-    # Optional: send daily email reports
-    command: python -m botreport --hours 24 --send
-    restart: "no"
-  leaderboard-job:
-    build:
-      context: .
-      dockerfile: ./docker/Dockerfile.report
-    depends_on:
-      db:
-        condition: service_healthy
-      webhook:
-        condition: service_healthy
-      sighook:
-        condition: service_healthy
-    working_dir: /app
-    environment:
-      TZ: ${TZ}
-      AWS_REGION: ${AWS_REGION:-us-west-2}
-      PYTHONPATH: /app
-      SCORE_JSONL_PATH: "/app/logs/scores.jsonl"
-      TP_SL_LOG_PATH: "/app/logs/tpsl.jsonl"
-
-    env_file:
-      - /opt/bot/.env
-    volumes:
-      - /opt/bot/logs:/app/logs:rw
-    entrypoint: [ "python", "-u", "-m", "SharedDataManager.leaderboard_runner" ]
-    restart: "no"
 volumes:
   pg_data:
     external: true
