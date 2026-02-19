@@ -52,11 +52,6 @@ See `.claude/DEPLOYMENT.md` for complete deployment documentation.
 
 ## Container Names
 
-### Active
-- `db` - PostgreSQL database (shared by v1 and v2)
+- `db` - PostgreSQL database
 - `v2-paper` - v2 Coinbase paper trading (code baked into image — needs `--build` on deploy)
 - `v2-kraken` - v2 Kraken paper trading (code baked into image — needs `--build` on deploy)
-
-### Stopped (v1 — definitions retained in docker-compose but not running)
-- `webhook` - v1 trading webhook and WebSocket manager
-- `sighook` - v1 signal processing and strategy execution
