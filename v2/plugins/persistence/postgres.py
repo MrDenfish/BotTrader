@@ -353,18 +353,16 @@ class PostgresStorage(StorageAdapter):
         """)
 
         # v2_positions: add exchange column and migrate primary key
-        col_exists = await self._pool.fetchval("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'v2_positions' AND column_name = 'exchange'
-            )
+        await self._pool.execute("""
+            ALTER TABLE v2_positions
+            ADD COLUMN IF NOT EXISTS exchange TEXT NOT NULL DEFAULT '';
         """)
-        if not col_exists:
-            await self._pool.execute("""
-                ALTER TABLE v2_positions
-                ADD COLUMN exchange TEXT NOT NULL DEFAULT '';
-            """)
-            # Migrate PK from (symbol) to (symbol, exchange)
+        # Migrate PK to (symbol, exchange) if not already composite
+        pk_cols = await self._pool.fetchval("""
+            SELECT array_length(conkey, 1) FROM pg_constraint
+            WHERE conrelid = 'v2_positions'::regclass AND contype = 'p'
+        """)
+        if pk_cols == 1:
             await self._pool.execute("""
                 ALTER TABLE v2_positions DROP CONSTRAINT IF EXISTS v2_positions_pkey;
             """)
