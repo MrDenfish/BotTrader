@@ -41,6 +41,7 @@ pair_discovery:
 
 exchange:
   type: "paper"
+  exchange_name: "paper-coinbase"
   initial_balance_usd: 10000
   maker_fee: 0.006
   taker_fee: 0.012

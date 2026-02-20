@@ -206,6 +206,19 @@ class TestPaperExchange:
             slippage_bps=0.0,  # No slippage for test determinism
         )
 
+    def test_default_name(self, paper):
+        assert paper.name == "paper"
+
+    def test_custom_exchange_name(self, bus):
+        from v2.plugins.exchanges.paper import PaperExchange
+        p = PaperExchange(event_bus=bus, exchange_name="paper-kraken")
+        assert p.name == "paper-kraken"
+
+    def test_empty_exchange_name_keeps_default(self, bus):
+        from v2.plugins.exchanges.paper import PaperExchange
+        p = PaperExchange(event_bus=bus, exchange_name="")
+        assert p.name == "paper"
+
     @pytest.mark.asyncio
     async def test_connect_disconnect(self, paper):
         await paper.connect()

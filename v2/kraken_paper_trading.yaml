@@ -37,6 +37,7 @@ pair_discovery:
 
 exchange:
   type: "paper"
+  exchange_name: "paper-kraken"
   initial_balance_usd: 10000
   maker_fee: 0.0025    # Kraken base tier: 0.25% maker
   taker_fee: 0.004     # Kraken base tier: 0.40% taker

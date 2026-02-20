@@ -52,8 +52,11 @@ class PaperExchange(ExchangeAdapter):
         maker_fee: float = 0.006,
         taker_fee: float = 0.012,
         slippage_bps: float = 1.0,
+        exchange_name: str = "",
         **kwargs: Any,
     ) -> None:
+        if exchange_name:
+            self.name = exchange_name
         self._bus = event_bus
         self._maker_fee = Decimal(str(maker_fee))
         self._taker_fee = Decimal(str(taker_fee))
