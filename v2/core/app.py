@@ -155,6 +155,9 @@ class App:
                         restored += 1
                 if restored:
                     logger.info("Restored %d positions from storage", restored)
+                    # Seed paper exchange balances so sells for restored positions work
+                    if hasattr(self._exchange, "restore_positions"):
+                        self._exchange.restore_positions(self.portfolio.positions)
             except Exception:
                 logger.warning("Failed to restore positions from storage", exc_info=True)
 

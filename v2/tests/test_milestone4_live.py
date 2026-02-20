@@ -458,6 +458,63 @@ class TestPaperExchange:
 
         await paper.disconnect()
 
+    def test_restore_positions_seeds_balances(self, paper):
+        """restore_positions seeds paper exchange balances from portfolio."""
+        from v2.core.types import Position
+
+        positions = {
+            "BTC-USD": Position(symbol="BTC-USD", qty=Decimal("0.5"), avg_entry_price=Decimal("50000"), cost_basis=Decimal("25000")),
+            "ETH-USD": Position(symbol="ETH-USD", qty=Decimal("2.0"), avg_entry_price=Decimal("2500"), cost_basis=Decimal("5000")),
+        }
+        paper.restore_positions(positions)
+        assert paper._balances["BTC"] == Decimal("0.5")
+        assert paper._balances["ETH"] == Decimal("2.0")
+        assert paper._balances["USD"] == Decimal("10000")  # unchanged
+
+    def test_restore_positions_skips_zero_qty(self, paper):
+        """restore_positions ignores positions with zero qty."""
+        from v2.core.types import Position
+
+        positions = {
+            "ADA-USD": Position(symbol="ADA-USD", qty=Decimal("0"), avg_entry_price=Decimal("0.5"), cost_basis=Decimal("0")),
+        }
+        paper.restore_positions(positions)
+        assert "ADA" not in paper._balances
+
+    @pytest.mark.asyncio
+    async def test_restored_position_sell_succeeds(self, paper, bus, now):
+        """A sell for a restored position should fill, not be rejected."""
+        from v2.core.types import Position
+
+        await paper.connect()
+
+        # Restore a position
+        paper.restore_positions({
+            "VVV-USD": Position(symbol="VVV-USD", qty=Decimal("6.5"), avg_entry_price=Decimal("4.75"), cost_basis=Decimal("30.875")),
+        })
+
+        # Set price
+        paper._on_ticker(TickerEvent(symbol="VVV-USD", price=4.34, timestamp=now, bid=4.33, ask=4.35))
+
+        # Sell should succeed
+        order = Order(
+            order_id="test-restore-sell",
+            symbol="VVV-USD",
+            side=Side.SELL,
+            order_type=OrderType.MARKET,
+            price=Decimal("4.34"),
+            qty=Decimal("6.5"),
+            status=OrderStatus.PENDING,
+            timestamp=now,
+        )
+        result = await paper.submit_order(order)
+        assert result.status == OrderStatus.FILLED
+
+        balances = await paper.get_balances()
+        assert balances.get("VVV", Decimal("0")) == Decimal("0")
+
+        await paper.disconnect()
+
 
 # =====================================================================
 # WebSocketDataProvider

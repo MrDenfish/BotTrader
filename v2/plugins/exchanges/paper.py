@@ -259,6 +259,18 @@ class PaperExchange(ExchangeAdapter):
     # Account
     # ------------------------------------------------------------------
 
+    def restore_positions(self, positions: dict[str, Any]) -> None:
+        """Seed internal balances from restored positions.
+
+        Called by app.py after loading positions from storage so that
+        sells for restored positions are not rejected.
+        """
+        for symbol, pos in positions.items():
+            if pos.qty > Decimal("0"):
+                base = symbol.split("-")[0] if "-" in symbol else symbol
+                self._balances[base] = self._balances.get(base, Decimal("0")) + pos.qty
+        logger.info("Paper exchange: seeded balances for %d restored positions", len(positions))
+
     async def get_balances(self) -> dict[str, Decimal]:
         return dict(self._balances)
 
