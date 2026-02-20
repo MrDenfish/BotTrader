@@ -26,7 +26,7 @@ When asked to deploy to AWS or after committing changes:
 
 3. **Rebuild and restart v2 containers (code baked into image, restart alone won't pick up changes):**
    ```bash
-   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-paper v2-kraken"
+   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-kraken"
    ```
 
 4. **Verify deployment:**
@@ -53,5 +53,4 @@ See `.claude/DEPLOYMENT.md` for complete deployment documentation.
 ## Container Names
 
 - `db` - PostgreSQL database
-- `v2-paper` - v2 Coinbase paper trading (code baked into image — needs `--build` on deploy)
 - `v2-kraken` - v2 Kraken paper trading (code baked into image — needs `--build` on deploy)
