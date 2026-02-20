@@ -12,15 +12,16 @@ class SlackRenderer:
         blocks: list[dict] = []
 
         # Header — period-aware
+        ex_label = f" [{data.exchange_name}]" if data.exchange_name else ""
         if data.period_hours and data.period_hours < 24:
             title = (
-                f"BotTrader v2 — {data.period_hours}h Report "
+                f"BotTrader v2{ex_label} — {data.period_hours}h Report "
                 f"({data.report_date} "
                 f"{data.period_start.strftime('%H:%M') if data.period_start else ''}-"
                 f"{data.period_end.strftime('%H:%M') if data.period_end else ''} UTC)"
             )
         else:
-            title = f"BotTrader v2 — Daily Report ({data.report_date})"
+            title = f"BotTrader v2{ex_label} — Daily Report ({data.report_date})"
 
         blocks.append({
             "type": "header",

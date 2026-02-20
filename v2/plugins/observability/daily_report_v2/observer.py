@@ -302,6 +302,7 @@ class DailyReportV2Observer(Observer):
             trade_log=trade_log if trade_log else None,
             portfolio=portfolio,
             comparison=comparison,
+            exchange_name=self._exchange_name,
             generated_at=datetime.now(timezone.utc),
         )
 

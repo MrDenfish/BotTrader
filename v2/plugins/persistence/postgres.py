@@ -338,6 +338,11 @@ class PostgresStorage(StorageAdapter):
         # Add exchange columns and migrate existing tables
         await self._migrate_tables()
 
+        # Clean up dust positions left by float precision artifacts
+        await self._pool.execute(
+            "DELETE FROM v2_positions WHERE qty > 0 AND qty < 1e-9"
+        )
+
         logger.debug("PostgreSQL tables verified/created")
 
     async def _migrate_tables(self) -> None:

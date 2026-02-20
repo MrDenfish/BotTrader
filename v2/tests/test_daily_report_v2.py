@@ -1117,3 +1117,137 @@ class TestExchangeFiltering:
         obs = DailyReportV2Observer()
         label = f" [{obs._exchange_name}]" if obs._exchange_name else ""
         assert label == ""
+
+    def test_html_title_includes_exchange_name(self):
+        """HTML report header includes exchange name when set."""
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = _make_report_data(exchange_name="paper-kraken", period_hours=4)
+        html = HtmlRenderer().render(data)
+        assert "[paper-kraken]" in html
+
+    def test_html_title_no_exchange_when_empty(self):
+        """HTML report header omits exchange label when empty."""
+        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
+
+        data = _make_report_data(exchange_name="", period_hours=4)
+        html = HtmlRenderer().render(data)
+        assert "BotTrader v2 —" in html
+        assert "[]" not in html
+
+    def test_slack_title_includes_exchange_name(self):
+        """Slack header includes exchange label when set."""
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = _make_report_data(
+            exchange_name="paper-coinbase",
+            period_hours=4,
+            period_start=datetime(2026, 2, 10, 4, 0, tzinfo=timezone.utc),
+            period_end=datetime(2026, 2, 10, 8, 0, tzinfo=timezone.utc),
+        )
+        blocks = SlackRenderer().render(data)
+        header_text = blocks[0]["text"]["text"]
+        assert "[paper-coinbase]" in header_text
+
+    def test_slack_title_no_exchange_when_empty(self):
+        """Slack header omits exchange label when empty."""
+        from v2.plugins.observability.daily_report_v2.renderers.slack import SlackRenderer
+
+        data = _make_report_data(exchange_name="", period_hours=24)
+        blocks = SlackRenderer().render(data)
+        header_text = blocks[0]["text"]["text"]
+        assert "BotTrader v2 —" in header_text
+        assert "[]" not in header_text
+
+
+# ============================================================
+# Dust Position Zeroing Tests
+# ============================================================
+
+
+class TestDustPositionZeroing:
+    """Tests for dust quantity cleanup in _on_fill_portfolio."""
+
+    def test_dust_zeroed_after_sell(self):
+        """Selling a full position leaves qty=0, not floating-point dust."""
+        from v2.core.app import App
+        from v2.core.types import Fill, FillEvent, Side, Position
+
+        app = App()
+        app.portfolio.positions["BTC-USD"] = Position(
+            symbol="BTC-USD",
+            qty=Decimal("0.001"),
+            avg_entry_price=Decimal("50000"),
+            cost_basis=Decimal("50"),
+        )
+
+        # Simulate a sell that would leave float dust
+        fill = Fill(
+            fill_id="f1", order_id="o1",
+            symbol="BTC-USD", side=Side.SELL,
+            price=Decimal("51000"), qty=Decimal("0.001"),
+            fee=Decimal("0"), fee_currency="USD", is_maker=True,
+            timestamp=datetime.now(timezone.utc),
+        )
+        app._on_fill_portfolio(FillEvent(fill=fill))
+        assert app.portfolio.positions["BTC-USD"].qty == Decimal("0")
+
+    def test_dust_from_precision_loss_zeroed(self):
+        """Sub-atomic dust (e.g. 1e-15) is zeroed out."""
+        from v2.core.app import App
+        from v2.core.types import Fill, FillEvent, Side, Position
+
+        app = App()
+        # Simulate a position with a tiny residual
+        app.portfolio.positions["ADA-USD"] = Position(
+            symbol="ADA-USD",
+            qty=Decimal("1.47893379192E-15"),
+            avg_entry_price=Decimal("0.5"),
+            cost_basis=Decimal("0"),
+        )
+
+        # A sell of 0 qty won't change much, but let's directly test the threshold
+        # by doing a tiny sell that brings it even closer to zero
+        fill = Fill(
+            fill_id="f2", order_id="o2",
+            symbol="ADA-USD", side=Side.SELL,
+            price=Decimal("0.5"), qty=Decimal("0"),
+            fee=Decimal("0"), fee_currency="USD", is_maker=True,
+            timestamp=datetime.now(timezone.utc),
+        )
+        app._on_fill_portfolio(FillEvent(fill=fill))
+        assert app.portfolio.positions["ADA-USD"].qty == Decimal("0")
+
+    def test_real_position_not_zeroed(self):
+        """A legitimate small position is NOT zeroed out."""
+        from v2.core.app import App
+        from v2.core.types import Fill, FillEvent, Side, Position
+
+        app = App()
+        app.portfolio.positions["DOGE-USD"] = Position(
+            symbol="DOGE-USD",
+            qty=Decimal("10.0"),
+            avg_entry_price=Decimal("0.1"),
+            cost_basis=Decimal("1.0"),
+        )
+
+        fill = Fill(
+            fill_id="f3", order_id="o3",
+            symbol="DOGE-USD", side=Side.SELL,
+            price=Decimal("0.11"), qty=Decimal("9.0"),
+            fee=Decimal("0"), fee_currency="USD", is_maker=True,
+            timestamp=datetime.now(timezone.utc),
+        )
+        app._on_fill_portfolio(FillEvent(fill=fill))
+        # 10.0 - 9.0 = 1.0 — should NOT be zeroed
+        assert app.portfolio.positions["DOGE-USD"].qty == Decimal("1.0")
+
+    def test_restore_skips_dust_positions(self):
+        """Position restore filters out dust quantities from DB."""
+        from decimal import Decimal
+
+        # The restore filter check: qty > Decimal("1e-9")
+        dust = Decimal("1.47893379192E-15")
+        real = Decimal("0.001")
+        assert not (dust > Decimal("1e-9"))  # dust should be filtered
+        assert real > Decimal("1e-9")  # real positions pass

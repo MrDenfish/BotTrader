@@ -64,7 +64,7 @@
 
   {# ── Header ── #}
   <div class="header">
-    <h1>BotTrader v2 — {% if data.period_hours >= 24 %}Daily Report{% else %}{{ data.period_hours }}h Report{% endif %}</h1>
+    <h1>BotTrader v2{% if data.exchange_name %} [{{ data.exchange_name }}]{% endif %} — {% if data.period_hours >= 24 %}Daily Report{% else %}{{ data.period_hours }}h Report{% endif %}</h1>
     <div class="sub">{{ data.report_date }}{% if data.period_start and data.period_hours < 24 %} {{ data.period_start.strftime('%H:%M') }}–{{ data.period_end.strftime('%H:%M') }} UTC{% endif %} · {{ data.period_hours }}h window</div>
   </div>
 

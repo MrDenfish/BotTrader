@@ -158,4 +158,5 @@ class ReportData:
     trade_log: list[TradeLogEntry] | None = None
     portfolio: PortfolioSnapshot | None = None
     comparison: ComparisonData | None = None
+    exchange_name: str = ""
     generated_at: datetime | None = None

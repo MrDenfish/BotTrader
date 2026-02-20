@@ -150,7 +150,7 @@ class App:
                 positions = await self._storage.get_positions()
                 restored = 0
                 for pos in positions:
-                    if pos.qty > 0:
+                    if pos.qty > Decimal("1e-9"):
                         self.portfolio.positions[pos.symbol] = pos
                         restored += 1
                 if restored:
@@ -307,6 +307,9 @@ class App:
         if symbol in self.portfolio.positions:
             pos = self.portfolio.positions[symbol]
             pos.qty += delta_qty
+            # Zero out dust from float precision artifacts
+            if abs(pos.qty) < Decimal("1e-9"):
+                pos.qty = Decimal("0")
         else:
             from v2.core.types import Position
             pos = Position(
