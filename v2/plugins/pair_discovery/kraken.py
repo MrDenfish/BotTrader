@@ -67,6 +67,7 @@ class KrakenPairDiscovery(PairDiscovery):
         self._seed_symbols: list[str] = []
         self._max_pairs: int = 100
         self._min_quote_volume: float = 0.0
+        self._max_spread_bps: float = 0.0  # 0 = disabled
         self._configured = False
 
     # ------------------------------------------------------------------
@@ -83,6 +84,7 @@ class KrakenPairDiscovery(PairDiscovery):
         self._seed_symbols = list(config.get("seed_symbols", []))
         self._max_pairs = config.get("max_pairs", 100)
         self._min_quote_volume = float(config.get("min_quote_volume", 0))
+        self._max_spread_bps = float(config.get("max_spread_bps", 0))
         self._configured = True
 
     async def discover(self) -> list[str]:
@@ -104,11 +106,11 @@ class KrakenPairDiscovery(PairDiscovery):
             logger.warning("No USD pairs found on Kraken")
             return list(self._seed_symbols)
 
-        # Fetch 24h volumes for all USD pairs
-        volumes = await self._fetch_volumes(usd_pairs)
+        # Fetch 24h volumes and bid-ask spreads for all USD pairs
+        volumes, spreads = await self._fetch_volumes(usd_pairs)
 
-        # Apply two-pass filter
-        symbols = self._filter_by_volume(usd_pairs, volumes)
+        # Apply two-pass filter (volume + spread)
+        symbols = self._filter_by_volume(usd_pairs, volumes, spreads)
         self._current_symbols = symbols
         return symbols
 
@@ -161,12 +163,17 @@ class KrakenPairDiscovery(PairDiscovery):
         self,
         usd_pairs: dict[str, str],
         volumes: dict[str, float],
+        spreads: dict[str, float] | None = None,
     ) -> list[str]:
-        """Apply v1-style two-pass volume filter.
+        """Apply v1-style two-pass volume filter with optional spread gate.
 
         Pass 1: Calculate average 24h USD quote volume.
-        Pass 2: Keep pairs above threshold, exclude shill coins.
+        Pass 2: Keep pairs above threshold, exclude shill coins and
+                 pairs with bid-ask spread exceeding ``max_spread_bps``.
         """
+        if spreads is None:
+            spreads = {}
+
         # Pass 1: collect valid volumes
         valid_volumes: list[float] = []
         for rest_name in usd_pairs:
@@ -185,16 +192,36 @@ class KrakenPairDiscovery(PairDiscovery):
             len(valid_volumes), avg_volume, volume_threshold,
         )
 
-        # Pass 2: filter
+        # Pass 2: filter by volume, spread, and shill coins
         filtered: list[tuple[str, float]] = []
+        spread_rejected = 0
         for rest_name, internal in usd_pairs.items():
             base = internal.split("-")[0].upper()
             if base in self._shill_coins:
                 continue
 
             vol = volumes.get(rest_name, 0.0)
-            if vol >= volume_threshold:
-                filtered.append((internal, vol))
+            if vol < volume_threshold:
+                continue
+
+            # Spread gate: reject pairs with wide bid-ask spread
+            if self._max_spread_bps > 0:
+                spread = spreads.get(rest_name, 0.0)
+                if spread > self._max_spread_bps:
+                    spread_rejected += 1
+                    logger.debug(
+                        "Spread gate: %s rejected (%.0f bps > %.0f bps)",
+                        internal, spread, self._max_spread_bps,
+                    )
+                    continue
+
+            filtered.append((internal, vol))
+
+        if spread_rejected:
+            logger.info(
+                "Spread gate: %d pairs rejected (> %.0f bps)",
+                spread_rejected, self._max_spread_bps,
+            )
 
         # Sort by volume descending
         filtered.sort(key=lambda x: x[1], reverse=True)
@@ -289,17 +316,24 @@ class KrakenPairDiscovery(PairDiscovery):
             logger.error("Kraken AssetPairs network error: %s", e)
             return {}
 
-    async def _fetch_volumes(self, usd_pairs: dict[str, str]) -> dict[str, float]:
-        """Fetch 24h volumes for a set of pairs via ``/0/public/Ticker``.
+    async def _fetch_volumes(
+        self, usd_pairs: dict[str, str],
+    ) -> tuple[dict[str, float], dict[str, float]]:
+        """Fetch 24h volumes and bid-ask spreads via ``/0/public/Ticker``.
 
-        Returns ``{rest_pair_name: 24h_usd_volume}``.
+        Returns ``(volumes, spreads)`` where:
+        - ``volumes``: ``{rest_pair_name: 24h_usd_volume}``
+        - ``spreads``: ``{rest_pair_name: spread_in_bps}``
+
         Volume is approximated as ``volume * vwap`` (volume in base * avg price).
+        Spread is ``(ask - bid) / midpoint * 10000`` in basis points.
         """
         session = await self._ensure_session()
 
         # Kraken accepts comma-separated pair names
         pair_names = list(usd_pairs.keys())
         volumes: dict[str, float] = {}
+        spreads: dict[str, float] = {}
 
         # Batch in groups of 30 to avoid URL length limits
         batch_size = 30
@@ -331,6 +365,13 @@ class KrakenPairDiscovery(PairDiscovery):
                             vwap_24h = float(ticker["p"][1])  # 24h VWAP
                             usd_volume = vol_24h * vwap_24h
                             volumes[pair_name] = usd_volume
+
+                            # a = [price, ...], b = [price, ...]
+                            ask = float(ticker["a"][0])
+                            bid = float(ticker["b"][0])
+                            mid = (ask + bid) / 2
+                            if mid > 0:
+                                spreads[pair_name] = (ask - bid) / mid * 10_000
                         except (KeyError, IndexError, ValueError, TypeError):
                             continue
 
@@ -344,4 +385,4 @@ class KrakenPairDiscovery(PairDiscovery):
                 await asyncio.sleep(0.5)
 
         logger.info("Kraken volumes fetched for %d/%d pairs", len(volumes), len(pair_names))
-        return volumes
+        return volumes, spreads

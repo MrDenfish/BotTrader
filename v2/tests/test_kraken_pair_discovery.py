@@ -68,6 +68,15 @@ SAMPLE_VOLUMES = {
 # Average = (3M + 2M + 2M + 100 + 2M) / 5 = ~1.8M
 # Threshold = max(1.8M, 500K) = 1.8M
 
+# Tight spreads for all pairs (won't be filtered)
+SAMPLE_SPREADS = {
+    "XXBTZUSD": 1.0,     # 0.01% — very tight
+    "XETHZUSD": 2.0,     # 0.02%
+    "SOLUSD": 5.0,        # 0.05%
+    "ADAUSD": 20.0,       # 0.20%
+    "TRUMPUSD": 50.0,     # 0.50%
+}
+
 
 # ------------------------------------------------------------------
 # Tests
@@ -90,6 +99,12 @@ class TestKrakenPairDiscovery:
         assert self.discovery._seed_symbols == ["BTC-USD", "ETH-USD"]
         assert self.discovery._max_pairs == 50
 
+    def test_configure_spread(self):
+        """max_spread_bps is parsed from config."""
+        d = KrakenPairDiscovery()
+        d.configure({"max_spread_bps": 100})
+        assert d._max_spread_bps == 100.0
+
     def test_configure_no_dict(self):
         """Non-dict config is ignored."""
         d = KrakenPairDiscovery()
@@ -100,16 +115,10 @@ class TestKrakenPairDiscovery:
     async def test_discover_filters_by_volume(self):
         """Pairs below volume threshold are excluded."""
         self.discovery._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
-        self.discovery._fetch_volumes = AsyncMock(return_value=SAMPLE_VOLUMES)
+        self.discovery._fetch_volumes = AsyncMock(return_value=(SAMPLE_VOLUMES, SAMPLE_SPREADS))
 
         symbols = await self.discovery.discover()
 
-        # BTC-USD: $250M ✓
-        # ETH-USD: $60M ✓
-        # SOL-USD: $5M ✓
-        # ADA-USD: $500 ✗ (below threshold)
-        # TRUMP-USD: excluded by shill_coins
-        # ETH/XBT: excluded (not USD)
         assert "BTC-USD" in symbols
         assert "ETH-USD" in symbols
         assert "SOL-USD" in symbols
@@ -128,9 +137,10 @@ class TestKrakenPairDiscovery:
             },
         }
         small_volumes = {"ADAUSD": 50.0}
+        small_spreads = {"ADAUSD": 10.0}
 
         self.discovery._fetch_asset_pairs = AsyncMock(return_value=small_pairs)
-        self.discovery._fetch_volumes = AsyncMock(return_value=small_volumes)
+        self.discovery._fetch_volumes = AsyncMock(return_value=(small_volumes, small_spreads))
 
         symbols = await self.discovery.discover()
 
@@ -142,7 +152,7 @@ class TestKrakenPairDiscovery:
     async def test_discover_excludes_shill_coins(self):
         """Shill coins are excluded regardless of volume."""
         self.discovery._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
-        self.discovery._fetch_volumes = AsyncMock(return_value=SAMPLE_VOLUMES)
+        self.discovery._fetch_volumes = AsyncMock(return_value=(SAMPLE_VOLUMES, SAMPLE_SPREADS))
 
         symbols = await self.discovery.discover()
         assert "TRUMP-USD" not in symbols
@@ -159,7 +169,7 @@ class TestKrakenPairDiscovery:
     async def test_discover_populates_mapper(self):
         """discover() populates the symbol mapper."""
         self.discovery._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
-        self.discovery._fetch_volumes = AsyncMock(return_value=SAMPLE_VOLUMES)
+        self.discovery._fetch_volumes = AsyncMock(return_value=(SAMPLE_VOLUMES, SAMPLE_SPREADS))
 
         await self.discovery.discover()
 
@@ -195,13 +205,130 @@ class TestKrakenPairDiscovery:
         """max_pairs caps the number of returned symbols."""
         self.discovery._max_pairs = 2
         self.discovery._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
-        self.discovery._fetch_volumes = AsyncMock(return_value=SAMPLE_VOLUMES)
+        self.discovery._fetch_volumes = AsyncMock(return_value=(SAMPLE_VOLUMES, SAMPLE_SPREADS))
 
         symbols = await self.discovery.discover()
 
         # 2 from filter + 2 seeds (if not already included)
         # BTC-USD and ETH-USD are both top-volume AND seeds
         assert len(symbols) <= 4  # At most max_pairs + seeds
+
+
+# ------------------------------------------------------------------
+# Spread filter tests
+# ------------------------------------------------------------------
+
+class TestSpreadFilter:
+    def setup_method(self):
+        self.discovery = KrakenPairDiscovery(event_bus=None)
+        self.discovery.configure({
+            "min_quote_volume": 500_000,
+            "max_spread_bps": 100,        # 1.0% max spread
+            "shill_coins": [],
+            "seed_symbols": ["BTC-USD"],
+            "max_pairs": 50,
+        })
+        self.discovery.mapper.load_from_asset_pairs(SAMPLE_ASSET_PAIRS)
+
+    def test_spread_rejects_wide_spread_pair(self):
+        """Pairs with spread > max_spread_bps are excluded."""
+        usd_pairs = self.discovery._collect_usd_pairs(SAMPLE_ASSET_PAIRS)
+
+        volumes = {
+            "XXBTZUSD": 5_000_000,
+            "XETHZUSD": 5_000_000,
+            "SOLUSD": 5_000_000,
+            "ADAUSD": 5_000_000,   # passes volume but has wide spread
+        }
+        spreads = {
+            "XXBTZUSD": 2.0,      # 0.02% — tight
+            "XETHZUSD": 5.0,      # 0.05% — tight
+            "SOLUSD": 50.0,        # 0.50% — OK
+            "ADAUSD": 200.0,       # 2.00% — TOO WIDE
+        }
+
+        symbols = self.discovery._filter_by_volume(usd_pairs, volumes, spreads)
+
+        assert "BTC-USD" in symbols
+        assert "ETH-USD" in symbols
+        assert "SOL-USD" in symbols
+        assert "ADA-USD" not in symbols   # rejected by spread gate
+
+    def test_spread_filter_disabled_when_zero(self):
+        """When max_spread_bps=0, no pairs are filtered by spread."""
+        self.discovery._max_spread_bps = 0.0
+        usd_pairs = self.discovery._collect_usd_pairs(SAMPLE_ASSET_PAIRS)
+
+        volumes = {
+            "XXBTZUSD": 5_000_000,
+            "ADAUSD": 5_000_000,
+        }
+        spreads = {
+            "XXBTZUSD": 2.0,
+            "ADAUSD": 500.0,      # 5% spread — would be rejected if enabled
+        }
+
+        symbols = self.discovery._filter_by_volume(usd_pairs, volumes, spreads)
+
+        assert "BTC-USD" in symbols
+        assert "ADA-USD" in symbols  # NOT rejected because filter disabled
+
+    def test_spread_missing_data_passes(self):
+        """Pairs with no spread data are NOT rejected (graceful degradation)."""
+        usd_pairs = self.discovery._collect_usd_pairs(SAMPLE_ASSET_PAIRS)
+
+        volumes = {
+            "XXBTZUSD": 5_000_000,
+            "XETHZUSD": 5_000_000,
+        }
+        spreads = {
+            "XXBTZUSD": 2.0,
+            # XETHZUSD intentionally missing — should still pass
+        }
+
+        symbols = self.discovery._filter_by_volume(usd_pairs, volumes, spreads)
+
+        assert "BTC-USD" in symbols
+        assert "ETH-USD" in symbols  # passes because spread=0.0 < 100
+
+    def test_spread_borderline_at_threshold(self):
+        """Pair at exactly max_spread_bps passes; just above is rejected."""
+        usd_pairs = self.discovery._collect_usd_pairs(SAMPLE_ASSET_PAIRS)
+
+        volumes = {"XXBTZUSD": 5_000_000, "SOLUSD": 5_000_000, "ADAUSD": 5_000_000}
+        spreads = {"XXBTZUSD": 2.0, "SOLUSD": 100.0, "ADAUSD": 100.1}
+
+        symbols = self.discovery._filter_by_volume(usd_pairs, volumes, spreads)
+
+        assert "BTC-USD" in symbols
+        assert "SOL-USD" in symbols       # exactly 100 is NOT > 100 → passes
+        assert "ADA-USD" not in symbols   # 100.1 > 100 → rejected
+
+    @pytest.mark.asyncio
+    async def test_spread_end_to_end_discover(self):
+        """Full discover() flow with spread filtering."""
+        self.discovery._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
+
+        volumes = {
+            "XXBTZUSD": 5_000_000,
+            "XETHZUSD": 5_000_000,
+            "SOLUSD": 5_000_000,
+            "ADAUSD": 5_000_000,
+        }
+        spreads = {
+            "XXBTZUSD": 2.0,
+            "XETHZUSD": 3.0,
+            "SOLUSD": 50.0,
+            "ADAUSD": 150.0,       # rejected: 1.5% > 1.0%
+        }
+        self.discovery._fetch_volumes = AsyncMock(return_value=(volumes, spreads))
+
+        symbols = await self.discovery.discover()
+
+        assert "BTC-USD" in symbols
+        assert "ETH-USD" in symbols
+        assert "SOL-USD" in symbols
+        assert "ADA-USD" not in symbols
 
 
 class TestKrakenPairDiscoveryLifecycle:
