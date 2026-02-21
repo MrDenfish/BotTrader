@@ -199,6 +199,11 @@ class App:
         if self._pair_discovery:
             await self._pair_discovery.start()
 
+        # Start observers that need async initialization (e.g. DB pool hydration)
+        for observer in self._observers:
+            if hasattr(observer, "start") and callable(observer.start):
+                await observer.start()
+
         logger.info("Setup complete — %d strategies, %d data providers",
                      len(self._strategies), len(self._data_providers))
 

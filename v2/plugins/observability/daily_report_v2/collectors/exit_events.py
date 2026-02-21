@@ -1,8 +1,14 @@
-"""Exit event accumulator — in-memory tracker for exit manager activity."""
+"""Exit event accumulator — in-memory tracker for exit manager activity.
+
+Also provides ``collect_exit_stats_from_db()`` to reconstruct exit counts
+from v2_fills metadata, so stats survive container restarts.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
+import asyncpg
 
 from v2.core.types import RiskEvent
 
@@ -71,3 +77,77 @@ class ExitEventAccumulator:
         self._signal_exits = 0
         self._trailing_activations = 0
         self._events.clear()
+
+
+async def collect_exit_stats_from_db(
+    pool: asyncpg.Pool,
+    start: datetime,
+    end: datetime,
+    exchange: str = "",
+) -> ExitManagerStats:
+    """Reconstruct exit manager stats from v2_fills metadata.
+
+    Sell fills store the exit reason in ``metadata->>'signal_reason'``.
+    This lets us recover hard_stop/soft_stop/trailing_stop/signal_exit
+    counts even after a container restart.
+    """
+    params: list = [start, end]
+    exchange_clause = ""
+    if exchange:
+        params.append(exchange)
+        exchange_clause = f" AND exchange = ${len(params)}"
+
+    rows = await pool.fetch(
+        f"""
+        SELECT metadata->>'signal_reason' AS reason, COUNT(*)::int AS cnt
+        FROM v2_fills
+        WHERE side = 'sell'
+          AND timestamp >= $1 AND timestamp < $2{exchange_clause}
+          AND metadata->>'signal_reason' IS NOT NULL
+        GROUP BY metadata->>'signal_reason'
+        """,
+        *params,
+    )
+
+    hard = soft = trailing = signal = 0
+    for row in rows:
+        reason = row["reason"]
+        cnt = row["cnt"]
+        if reason == "hard_stop":
+            hard = cnt
+        elif reason == "soft_stop":
+            soft = cnt
+        elif reason == "trailing_stop":
+            trailing = cnt
+        elif reason == "signal_exit":
+            signal = cnt
+
+    total = hard + soft + trailing + signal
+    return ExitManagerStats(
+        hard_stops=hard,
+        soft_stops=soft,
+        trailing_stops=trailing,
+        signal_exits=signal,
+        trailing_activations=0,  # not stored in fills — only in-memory
+        total_exits=total,
+    )
+
+
+def merge_exit_stats(
+    in_memory: ExitManagerStats,
+    from_db: ExitManagerStats,
+) -> ExitManagerStats:
+    """Merge in-memory and DB exit stats, taking the max of each counter.
+
+    In-memory has trailing_activations (not in DB) and events detail.
+    DB has the authoritative exit counts (survives restarts).
+    """
+    return ExitManagerStats(
+        hard_stops=max(in_memory.hard_stops, from_db.hard_stops),
+        soft_stops=max(in_memory.soft_stops, from_db.soft_stops),
+        trailing_stops=max(in_memory.trailing_stops, from_db.trailing_stops),
+        signal_exits=max(in_memory.signal_exits, from_db.signal_exits),
+        trailing_activations=in_memory.trailing_activations,  # only in-memory
+        total_exits=max(in_memory.total_exits, from_db.total_exits),
+        events=in_memory.events,  # detail events only from in-memory
+    )

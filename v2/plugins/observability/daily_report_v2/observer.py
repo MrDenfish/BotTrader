@@ -20,7 +20,7 @@ from v2.core.interfaces import Observer
 from v2.core.types import FillEvent, OrderEvent, RiskEvent, SignalEvent, Side, TickerEvent
 
 from .collectors.comparison import collect_comparison
-from .collectors.exit_events import ExitEventAccumulator
+from .collectors.exit_events import ExitEventAccumulator, collect_exit_stats_from_db, merge_exit_stats
 from .collectors.portfolio_tracker import PortfolioTracker
 from .collectors.positions import collect_positions
 from .collectors.pnl import collect_pnl
@@ -96,6 +96,15 @@ class DailyReportV2Observer(Observer):
     # ------------------------------------------------------------------
     # Observer interface
     # ------------------------------------------------------------------
+
+    async def start(self) -> None:
+        """Eagerly create DB pool and hydrate portfolio tracker.
+
+        Called by app.py during startup, before events flow.  This ensures
+        the portfolio tracker reflects the true portfolio state so the
+        first period-boundary snapshot is accurate (not $10k / $0).
+        """
+        await self._ensure_pool()
 
     def on_event(self, event: Any) -> None:
         """Process events: accumulate stats + check period boundaries."""
@@ -254,7 +263,10 @@ class DailyReportV2Observer(Observer):
             ex = self._exchange_name
             trade_stats = await collect_trade_stats(self._pool, start, end, exchange=ex)
             pnl = await collect_pnl(self._pool, start, end, exchange=ex)
-            positions = await collect_positions(self._pool, exchange=ex)
+            positions = await collect_positions(
+                self._pool, exchange=ex,
+                last_prices=self._portfolio_tracker._last_prices,
+            )
             trade_log = await collect_trade_log(self._pool, start, end, exchange=ex)
         else:
             trade_stats = TradeStats()
@@ -268,8 +280,15 @@ class DailyReportV2Observer(Observer):
         # Risk stats (use pre-captured snapshot if available)
         risk = risk_snapshot if risk_snapshot is not None else self._risk_acc.snapshot()
 
-        # Exit manager stats
-        exit_manager = exit_snapshot if exit_snapshot is not None else self._exit_acc.snapshot()
+        # Exit manager stats — merge in-memory with DB-derived counts
+        exit_in_memory = exit_snapshot if exit_snapshot is not None else self._exit_acc.snapshot()
+        if self._pool:
+            exit_from_db = await collect_exit_stats_from_db(
+                self._pool, start, end, exchange=self._exchange_name,
+            )
+            exit_manager = merge_exit_stats(exit_in_memory, exit_from_db)
+        else:
+            exit_manager = exit_in_memory
 
         # Portfolio snapshot
         portfolio = portfolio_snapshot if portfolio_snapshot is not None else self._portfolio_tracker.snapshot()

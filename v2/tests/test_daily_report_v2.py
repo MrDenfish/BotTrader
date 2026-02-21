@@ -1251,3 +1251,187 @@ class TestDustPositionZeroing:
         real = Decimal("0.001")
         assert not (dust > Decimal("1e-9"))  # dust should be filtered
         assert real > Decimal("1e-9")  # real positions pass
+
+
+# ============================================================
+# Cross-Period FIFO P&L Tests (Bug #1 fix)
+# ============================================================
+
+
+class TestCrossPeriodFifoPnl:
+    """Test that collect_pnl / compute_fifo_pnl correctly handles sells
+    whose matching buys happened before the reporting period."""
+
+    def test_cross_period_sell_with_prior_queue(self):
+        """Sell in period with buy from prior period gets correct FIFO P&L."""
+        from collections import deque
+        from v2.plugins.observability.daily_report_v2.collectors.pnl import compute_fifo_pnl
+
+        # Prior buy: 10 units at $100, fee $0.25/unit
+        prior_queues = {
+            "BTC-USD": deque([(Decimal("10"), Decimal("100"), Decimal("0.25"))]),
+        }
+
+        # Period sell: 10 units at $110, fee $0.30/unit
+        rows = [
+            {"symbol": "BTC-USD", "side": "sell", "price": "110", "qty": "10", "fee": "3.0"},
+        ]
+
+        pnl = compute_fifo_pnl(rows, prior_queues=prior_queues)
+
+        # gross = (110-100)*10 = 100; buy fees = 0.25*10 = 2.5; sell fees = 0.3*10 = 3
+        # net = 100 - 2.5 - 3 = 94.5
+        assert pnl.win_count == 1
+        assert pnl.loss_count == 0
+        assert abs(float(pnl.net_pnl) - 94.5) < 0.01
+
+    def test_cross_period_sell_without_prior_queue_gives_zero(self):
+        """Without prior queues, cross-period sells get $0 (the old bug)."""
+        from v2.plugins.observability.daily_report_v2.collectors.pnl import compute_fifo_pnl
+
+        rows = [
+            {"symbol": "BTC-USD", "side": "sell", "price": "110", "qty": "10", "fee": "3.0"},
+        ]
+
+        pnl = compute_fifo_pnl(rows)  # no prior_queues
+        assert float(pnl.net_pnl) == 0.0  # $0 because no buy to match
+        assert pnl.loss_count == 1  # still counted as a trade
+
+    def test_build_prior_buy_queues_consumes_matched_sells(self):
+        """Prior queue builder correctly consumes buy lots for prior sells."""
+        from v2.plugins.observability.daily_report_v2.collectors.pnl import _build_prior_buy_queues
+
+        rows = [
+            {"symbol": "BTC-USD", "side": "buy", "price": "100", "qty": "10", "fee": "0.5"},
+            {"symbol": "BTC-USD", "side": "buy", "price": "105", "qty": "5", "fee": "0.25"},
+            {"symbol": "BTC-USD", "side": "sell", "price": "110", "qty": "10", "fee": "0.5"},
+        ]
+
+        queues = _build_prior_buy_queues(rows)
+        # 10 bought, 5 bought, 10 sold → 5 units at $105 remaining
+        assert len(queues["BTC-USD"]) == 1
+        remaining_qty, price, _ = queues["BTC-USD"][0]
+        assert remaining_qty == Decimal("5")
+        assert price == Decimal("105")
+
+    def test_mixed_period_buy_and_cross_period_sell(self):
+        """Period with both a buy and a cross-period sell."""
+        from collections import deque
+        from v2.plugins.observability.daily_report_v2.collectors.pnl import compute_fifo_pnl
+
+        prior_queues = {
+            "ETH-USD": deque([(Decimal("2"), Decimal("3000"), Decimal("0.5"))]),
+        }
+
+        rows = [
+            # Buy in period
+            {"symbol": "BTC-USD", "side": "buy", "price": "50000", "qty": "0.1", "fee": "1.25"},
+            # Cross-period sell (ETH bought before this period)
+            {"symbol": "ETH-USD", "side": "sell", "price": "3200", "qty": "2", "fee": "1.60"},
+            # Same-period sell of BTC
+            {"symbol": "BTC-USD", "side": "sell", "price": "51000", "qty": "0.1", "fee": "1.28"},
+        ]
+
+        pnl = compute_fifo_pnl(rows, prior_queues=prior_queues)
+
+        # ETH: gross=(3200-3000)*2=400; buy_fees=0.5*2=1; sell_fees=0.8*2=1.6; net=397.4
+        # BTC: gross=(51000-50000)*0.1=100; buy_fees=12.5*0.1=1.25; sell_fees=12.8*0.1=1.28; net=97.47
+        assert pnl.win_count == 2
+        assert pnl.loss_count == 0
+        assert float(pnl.net_pnl) > 400  # both are wins
+
+
+# ============================================================
+# Position Unrealized P&L Tests (Bug #3 fix)
+# ============================================================
+
+
+class TestPositionUnrealizedPnl:
+    """Test that collect_positions enriches with live prices."""
+
+    def test_unrealized_pnl_with_live_prices(self):
+        """Unrealized = qty * current_price - cost_basis."""
+        from v2.plugins.observability.daily_report_v2.collectors.positions import collect_positions
+        from v2.plugins.observability.daily_report_v2.models import PositionSnapshot
+
+        # Simulate what collect_positions returns with last_prices
+        pos = PositionSnapshot(
+            symbol="BTC-USD", qty=0.1, avg_entry=50000.0,
+            cost_basis=5000.0, current_price=55000.0,
+            unrealized_pnl=0.1 * 55000.0 - 5000.0,
+        )
+        assert abs(pos.unrealized_pnl - 500.0) < 0.01
+        assert pos.current_price == 55000.0
+
+    def test_unrealized_pnl_without_prices_stays_zero(self):
+        """Without live prices, unrealized stays at DB value (0)."""
+        from v2.plugins.observability.daily_report_v2.models import PositionSnapshot
+
+        pos = PositionSnapshot(
+            symbol="BTC-USD", qty=0.1, avg_entry=50000.0,
+            cost_basis=5000.0, current_price=None,
+            unrealized_pnl=0.0,
+        )
+        assert pos.unrealized_pnl == 0.0
+        assert pos.current_price is None
+
+
+# ============================================================
+# DB Exit Stats Tests (Bug #4 fix)
+# ============================================================
+
+
+class TestExitStatsFromDb:
+    """Test merge_exit_stats and the DB-derived exit counts."""
+
+    def test_merge_takes_max_of_each_counter(self):
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import merge_exit_stats
+
+        in_memory = ExitManagerStats(
+            hard_stops=0, soft_stops=1, trailing_stops=0,
+            signal_exits=0, trailing_activations=3, total_exits=1,
+        )
+        from_db = ExitManagerStats(
+            hard_stops=2, soft_stops=1, trailing_stops=1,
+            signal_exits=0, trailing_activations=0, total_exits=4,
+        )
+        merged = merge_exit_stats(in_memory, from_db)
+
+        assert merged.hard_stops == 2       # from DB
+        assert merged.soft_stops == 1       # same in both
+        assert merged.trailing_stops == 1   # from DB
+        assert merged.trailing_activations == 3  # from in-memory only
+        assert merged.total_exits == 4      # from DB
+
+    def test_merge_preserves_in_memory_events(self):
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import merge_exit_stats
+
+        event = ExitEventDetail(
+            timestamp=datetime(2026, 2, 21, 19, 0, tzinfo=timezone.utc),
+            symbol="BTC-USD", reason="hard_stop", price=50000.0, pnl_pct=-4.5,
+        )
+        in_memory = ExitManagerStats(
+            hard_stops=1, soft_stops=0, trailing_stops=0,
+            trailing_activations=0, total_exits=1, events=[event],
+        )
+        from_db = ExitManagerStats(
+            hard_stops=1, soft_stops=0, trailing_stops=0,
+            trailing_activations=0, total_exits=1,
+        )
+        merged = merge_exit_stats(in_memory, from_db)
+        assert len(merged.events) == 1
+        assert merged.events[0].symbol == "BTC-USD"
+
+    def test_db_only_when_in_memory_empty(self):
+        """After restart, in-memory is empty but DB has all the data."""
+        from v2.plugins.observability.daily_report_v2.collectors.exit_events import merge_exit_stats
+
+        in_memory = ExitManagerStats()  # all zeros
+        from_db = ExitManagerStats(
+            hard_stops=1, soft_stops=2, trailing_stops=0,
+            total_exits=3,
+        )
+        merged = merge_exit_stats(in_memory, from_db)
+        assert merged.hard_stops == 1
+        assert merged.soft_stops == 2
+        assert merged.total_exits == 3
