@@ -787,8 +787,9 @@ class TestMarketOrders:
         assert published[0].signal.order_type == OrderType.MARKET
         assert published[0].signal.reason == "hard_stop"
 
-    def test_normal_soft_stop_emits_limit_order(self, bus):
-        """Normal soft stop (just past threshold) uses OrderType.LIMIT."""
+    def test_soft_stop_emits_market_order(self, bus):
+        """All soft stops use OrderType.MARKET — limit orders on illiquid
+        pairs get cancelled as stale, leaving the position stuck."""
         em = _make_exit_manager(bus, hard_stop_pct=0.10, soft_stop_pct=0.03)
         portfolio = _make_portfolio(avg_entry=100_000.0)
 
@@ -797,24 +798,8 @@ class TestMarketOrders:
 
         em.on_ticker(_make_ticker(price=97_000.0), portfolio)  # -3%
         assert len(published) == 1
-        assert published[0].signal.order_type == OrderType.LIMIT
-        assert published[0].signal.reason == "soft_stop"
-        assert published[0].signal.metadata.get("severe") is False
-
-    def test_severe_soft_stop_emits_market_order(self, bus):
-        """Severe soft stop (>0.5% past threshold) uses OrderType.MARKET."""
-        em = _make_exit_manager(bus, hard_stop_pct=0.10, soft_stop_pct=0.03)
-        portfolio = _make_portfolio(avg_entry=100_000.0)
-
-        published = []
-        bus.subscribe(SignalEvent, lambda e: published.append(e))
-
-        # -3.6% is >0.5% past the -3% soft stop threshold → severe
-        em.on_ticker(_make_ticker(price=96_400.0), portfolio)
-        assert len(published) == 1
         assert published[0].signal.order_type == OrderType.MARKET
         assert published[0].signal.reason == "soft_stop"
-        assert published[0].signal.metadata.get("severe") is True
 
     def test_trailing_stop_emits_limit_order(self, bus):
         """Trailing stop uses the default OrderType.LIMIT."""

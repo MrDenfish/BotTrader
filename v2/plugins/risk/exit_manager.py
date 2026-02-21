@@ -419,17 +419,15 @@ class ExitManager(RiskManager):
             return
 
         # --- Layer 3: SOFT STOP ---
-        # Severe soft stop (>0.5% past threshold): use MARKET for urgency
-        severe_threshold = self._soft_stop_pct + 0.005
+        # Always use MARKET for soft stops — limit orders on illiquid pairs
+        # get cancelled as stale, leaving the position stuck at a loss.
         if pnl_pct <= -self._soft_stop_pct:
-            is_severe = pnl_pct <= -severe_threshold
             self._emit_exit(symbol, price, "soft_stop", {
                 "pnl_pct": round(pnl_pct * 100, 2),
                 "pnl_raw_pct": round(pnl_raw * 100, 2),
                 "threshold_pct": round(-self._soft_stop_pct * 100, 2),
                 "avg_entry": avg_entry,
-                "severe": is_severe,
-            }, order_type=OrderType.MARKET if is_severe else OrderType.LIMIT)
+            }, order_type=OrderType.MARKET)
             return
 
         # --- Layer 3: TRAILING STOP ---
