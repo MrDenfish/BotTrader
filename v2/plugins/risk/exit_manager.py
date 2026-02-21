@@ -340,7 +340,11 @@ class ExitManager(RiskManager):
 
         symbol = signal.symbol
 
-        # If trailing stop is active, let trailing handle it
+        # Pass through our own exit signals (already in _pending_exits)
+        if symbol in self._pending_exits:
+            return signal
+
+        # If trailing stop is active, block strategy sells (trailing has priority)
         if self._trailing_active.get(symbol, False):
             logger.debug("Signal-based sell blocked for %s: trailing stop active", symbol)
             return None

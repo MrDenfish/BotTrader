@@ -120,6 +120,57 @@ class TestCheckSignalPassThrough:
         result = em.check_signal(signal, portfolio)
         assert result is signal
 
+    def test_own_exit_signal_not_blocked_by_trailing(self, bus):
+        """Regression: exit manager must not block its own trailing stop signals.
+
+        When the exit manager emits a trailing_stop sell, the signal goes through
+        the risk manager chain which includes the exit manager's own check_signal().
+        Previously, check_signal() saw _trailing_active=True and returned None,
+        killing the signal before execution.
+        """
+        em = _make_exit_manager(bus, trailing_activation_pct=0.03, trailing_distance_pct=0.03)
+        portfolio = _make_portfolio(avg_entry=100_000.0)
+
+        # Activate trailing and trigger exit
+        em.on_ticker(_make_ticker(price=105_000.0), portfolio)
+        assert em._trailing_active["BTC-USD"] is True
+
+        em.on_ticker(_make_ticker(price=101_800.0), portfolio)
+        assert "BTC-USD" in em._pending_exits
+
+        # Now simulate the risk manager chain: the emitted signal goes through check_signal()
+        trailing_signal = Signal(
+            direction=Direction.SELL,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=101_800.0,
+            reason="trailing_stop",
+        )
+        result = em.check_signal(trailing_signal, portfolio)
+        # MUST pass through — not be blocked
+        assert result is trailing_signal
+
+    def test_strategy_sell_blocked_when_trailing_active(self, bus):
+        """Strategy-generated sells should still be blocked when trailing is active."""
+        em = _make_exit_manager(bus, trailing_activation_pct=0.03, trailing_distance_pct=0.03)
+        portfolio = _make_portfolio(avg_entry=100_000.0)
+
+        # Activate trailing (but don't trigger exit)
+        em.on_ticker(_make_ticker(price=105_000.0), portfolio)
+        assert em._trailing_active["BTC-USD"] is True
+        assert "BTC-USD" not in em._pending_exits
+
+        # Strategy sell should be blocked (trailing has priority)
+        strategy_signal = Signal(
+            direction=Direction.SELL,
+            symbol="BTC-USD",
+            timestamp=datetime.now(timezone.utc),
+            price=105_000.0,
+            reason="score",
+        )
+        result = em.check_signal(strategy_signal, portfolio)
+        assert result is None
+
 
 # =====================================================================
 # Hard stop
