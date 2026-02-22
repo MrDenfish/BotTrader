@@ -314,10 +314,29 @@ class App:
 
         if symbol in self.portfolio.positions:
             pos = self.portfolio.positions[symbol]
-            pos.qty += delta_qty
+            old_qty = pos.qty
+
+            if fill.side.value == "buy" and old_qty > Decimal("0"):
+                # Weighted average entry for additional buys
+                old_cost = pos.avg_entry_price * old_qty
+                new_cost = fill.price * fill.qty
+                new_qty = old_qty + fill.qty
+                pos.avg_entry_price = (old_cost + new_cost) / new_qty
+                pos.cost_basis += fill.price * fill.qty
+                pos.qty = new_qty
+            elif fill.side.value == "buy":
+                # Position was zeroed out — treat as fresh entry
+                pos.qty = fill.qty
+                pos.avg_entry_price = fill.price
+                pos.cost_basis = fill.price * fill.qty
+                pos.entry_time = fill.timestamp
+            else:
+                # Sell — reduce qty
+                pos.qty += delta_qty
+
             # Zero out dust from float precision artifacts
             if abs(pos.qty) < Decimal("1e-9"):
-                pos.qty = Decimal("0")
+                del self.portfolio.positions[symbol]
         else:
             from v2.core.types import Position
             pos = Position(
@@ -330,7 +349,7 @@ class App:
             self.portfolio.positions[symbol] = pos
 
         # Persist updated position to storage
-        if self._storage and hasattr(self._storage, "save_position"):
+        if symbol in self.portfolio.positions and self._storage and hasattr(self._storage, "save_position"):
             pos = self.portfolio.positions[symbol]
             asyncio.ensure_future(self._storage.save_position(pos))
 

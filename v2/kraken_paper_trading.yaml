@@ -82,6 +82,9 @@ risk:
   - type: "basic"
     pass_through: false
     hodl_symbols: []
+    maker_fee_pct: 0.0025          # Kraken base tier: 0.25% maker
+    taker_fee_pct: 0.004           # Kraken base tier: 0.40% taker
+    max_round_trip_fee_pct: 0.01   # Veto all buys if round-trip fees > 1.0%
   - type: "performance_filter"
     window_days: 30
     min_trades: 3
@@ -101,6 +104,8 @@ risk:
     check_interval_sec: 5
     signal_exit_enabled: true
     signal_exit_min_pnl_pct: 0.0
+    max_hold_hours: 48              # Eject stale score-triggered positions after 48h
+    reentry_cooldown_minutes: 30    # Block re-entry into same symbol for 30 min after exit
     maker_fee_pct: 0.0025         # Kraken base tier maker fee (refreshed from API)
     taker_fee_pct: 0.004          # Kraken base tier taker fee (refreshed from API)
     peak_tracking_enabled: true
@@ -145,6 +150,7 @@ observers:
     dsn_env: "DATABASE_URL"
     report_interval_hours: 4
     initial_balance_usd: 10000
+    signal_log: "/app/logs/v2_kraken_score_log.jsonl"
     email:
       backend: "smtp"
       sender: "reports@a1zoobies.com"

@@ -441,6 +441,89 @@ class TestBasicRiskManager:
         result = rm.check_signal(signal, portfolio)
         assert result is signal
 
+    # --- Fee-aware gate tests ---
+
+    def test_fee_gate_passes_within_ceiling(self):
+        """Kraken fees (0.65%) pass with 1% ceiling."""
+        rm = self._create(
+            maker_fee_pct=0.0025,
+            taker_fee_pct=0.004,
+            max_round_trip_fee_pct=0.01,
+        )
+        signal = _make_signal(price=97000.0, qty=0.001)
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is not None
+        # Fee metadata should be enriched
+        assert result.metadata["round_trip_fee_pct"] == 0.65
+
+    def test_fee_gate_vetoes_above_ceiling(self, bus):
+        """3% round-trip fees should be vetoed with 1% ceiling."""
+        rm = self._create(
+            bus=bus,
+            maker_fee_pct=0.015,
+            taker_fee_pct=0.015,
+            max_round_trip_fee_pct=0.01,
+        )
+        events = []
+        bus.subscribe(RiskEvent, lambda e: events.append(e))
+        signal = _make_signal(price=97000.0, qty=0.001)
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is None
+        assert len(events) == 1
+        assert "fee_hurdle" in events[0].reason
+
+    def test_fee_gate_disabled_with_zero_fees(self):
+        """No fee config = no gate (zero fees are below any ceiling)."""
+        rm = self._create()  # defaults: maker=0, taker=0
+        signal = _make_signal(price=97000.0, qty=0.001)
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is signal  # Passes unchanged (no fee enrichment)
+
+    def test_fee_gate_configure_updates(self):
+        """configure() should update fee params."""
+        rm = self._create()
+        rm.configure({
+            "maker_fee_pct": 0.005,
+            "taker_fee_pct": 0.005,
+            "max_round_trip_fee_pct": 0.005,
+        })
+        assert rm._maker_fee_pct == 0.005
+        assert rm._taker_fee_pct == 0.005
+        assert rm._max_round_trip_fee_pct == 0.005
+
+    def test_fee_metadata_enriched(self):
+        """Buy signals should carry round_trip_fee_pct in metadata."""
+        rm = self._create(maker_fee_pct=0.0025, taker_fee_pct=0.004)
+        signal = _make_signal(price=97000.0, qty=0.001, trigger="score")
+        portfolio = _make_portfolio()
+        result = rm.check_signal(signal, portfolio)
+        assert result is not None
+        assert "round_trip_fee_pct" in result.metadata
+        assert abs(result.metadata["round_trip_fee_pct"] - 0.65) < 0.001
+
+    def test_fee_gate_sell_unaffected(self):
+        """Fee gate should not affect sell signals."""
+        rm = self._create(
+            maker_fee_pct=0.015,
+            taker_fee_pct=0.015,
+            max_round_trip_fee_pct=0.01,
+        )
+        signal = _make_signal(direction=Direction.SELL, symbol="BTC-USD")
+        positions = {
+            "BTC-USD": Position(
+                symbol="BTC-USD",
+                qty=Decimal("0.01"),
+                avg_entry_price=Decimal("97000"),
+                cost_basis=Decimal("970"),
+            ),
+        }
+        portfolio = _make_portfolio(positions=positions)
+        result = rm.check_signal(signal, portfolio)
+        assert result is not None  # Sell passes even with high fees
+
 
 # =====================================================================
 # CircuitBreakerRiskManager

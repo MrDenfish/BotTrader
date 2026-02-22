@@ -70,11 +70,15 @@ class DailyReportV2Observer(Observer):
         slack_cfg = kwargs.get("slack", {})
         self._slack_webhook_url_env = slack_cfg.get("webhook_url_env", "SLACK_WEBHOOK_URL")
 
+        # Signal log path — explicit > comparison config > default
+        self._v2_signal_log = kwargs.get("signal_log", "")
+
         # Comparison config
         comp_cfg = kwargs.get("comparison", {})
         self._comparison_enabled = comp_cfg.get("enabled", False)
         self._v1_signal_log = comp_cfg.get("v1_signal_log", "/app/logs/scores.jsonl")
-        self._v2_signal_log = comp_cfg.get("v2_signal_log", "/app/logs/v2_score_log.jsonl")
+        if not self._v2_signal_log:
+            self._v2_signal_log = comp_cfg.get("v2_signal_log", "/app/logs/v2_score_log.jsonl")
         self._match_window = float(comp_cfg.get("match_window_seconds", 60))
 
         # Exchange name for DB filtering (auto-wired by app.py)
@@ -147,6 +151,8 @@ class DailyReportV2Observer(Observer):
             self._risk_acc.record_circuit_breaker(reason)
         elif etype == "signal_vetoed" and "performance_filter" in reason:
             self._risk_acc.record_performance_veto(reason)
+        elif etype == "signal_vetoed" and "no_position" in reason:
+            pass  # Expected — strategy sell signals for unheld symbols; not a risk event
         else:
             self._risk_acc.record_veto(f"{etype}: {reason}")
 
@@ -346,8 +352,9 @@ class DailyReportV2Observer(Observer):
             )
             self._last_report_slot = period_start
 
-            # HTML render + email
+            # HTML + plain-text render + email
             html = self._html_renderer.render(data)
+            text = self._html_renderer.render_text(data)
             ex_label = f" [{self._exchange_name}]" if self._exchange_name else ""
             if self._report_interval_hours >= 24:
                 subject = f"BotTrader v2{ex_label} Daily Report — {data.report_date}"
@@ -358,7 +365,7 @@ class DailyReportV2Observer(Observer):
                 )
 
             if self._email_config.sender and self._email_config.recipients:
-                send_email(subject, html, self._email_config)
+                send_email(subject, html, self._email_config, text_body=text)
 
             # Slack render + webhook
             blocks = self._slack_renderer.render(data)

@@ -86,6 +86,12 @@ class ExitManager(RiskManager):
         self._trailing_min_distance_pct: float = float(kwargs.get("trailing_min_distance_pct", 0.01))
         self._trailing_max_distance_pct: float = float(kwargs.get("trailing_max_distance_pct", 0.02))
 
+        # Stale position time-limit (0 = disabled)
+        self._max_hold_hours: float = float(kwargs.get("max_hold_hours", 0))
+
+        # Per-symbol re-entry cooldown after exit (0 = disabled)
+        self._reentry_cooldown_minutes: float = float(kwargs.get("reentry_cooldown_minutes", 0))
+
         # Peak tracking for ROC momentum trades
         self._peak_tracking_enabled: bool = kwargs.get("peak_tracking_enabled", False)
         self._peak_drawdown_pct: float = float(kwargs.get("peak_drawdown_pct", 0.05))
@@ -107,6 +113,9 @@ class ExitManager(RiskManager):
 
         # Peak tracking state: {symbol: {peak_price, price_history, entry_time, trigger_type, breakeven_activated}}
         self._peak_state: dict[str, dict] = {}
+
+        # Re-entry cooldown: symbol → last exit timestamp (epoch)
+        self._last_exit_time: dict[str, float] = {}
 
     def configure(self, config: Any) -> None:
         if isinstance(config, dict):
@@ -138,6 +147,10 @@ class ExitManager(RiskManager):
                 self._trailing_min_distance_pct = float(config["trailing_min_distance_pct"])
             if "trailing_max_distance_pct" in config:
                 self._trailing_max_distance_pct = float(config["trailing_max_distance_pct"])
+            if "max_hold_hours" in config:
+                self._max_hold_hours = float(config["max_hold_hours"])
+            if "reentry_cooldown_minutes" in config:
+                self._reentry_cooldown_minutes = float(config["reentry_cooldown_minutes"])
             if "peak_tracking_enabled" in config:
                 self._peak_tracking_enabled = bool(config["peak_tracking_enabled"])
             if "peak_drawdown_pct" in config:
@@ -329,12 +342,33 @@ class ExitManager(RiskManager):
     # ------------------------------------------------------------------
 
     def check_signal(self, signal: Signal, portfolio: Portfolio) -> Signal | None:
-        """Signal-based exits: approve strategy SELL when position is profitable.
+        """Signal-based exits + re-entry cooldown enforcement.
 
-        If trailing stop is active for the symbol, block the strategy sell
-        (trailing has priority). Otherwise, tag profitable sells with
-        exit_reason metadata.
+        BUY signals: blocked if the symbol is within the re-entry cooldown window.
+        SELL signals: if trailing stop is active, block strategy sell (trailing
+        has priority). Otherwise, tag profitable sells with exit_reason metadata.
         """
+        # Re-entry cooldown: block BUY signals too soon after an exit
+        if (
+            signal.direction == Direction.BUY
+            and self._reentry_cooldown_minutes > 0
+            and signal.symbol in self._last_exit_time
+        ):
+            elapsed = time.time() - self._last_exit_time[signal.symbol]
+            if elapsed < self._reentry_cooldown_minutes * 60:
+                remaining = self._reentry_cooldown_minutes - elapsed / 60
+                logger.info(
+                    "Re-entry cooldown: %s blocked (%.0f min remaining)",
+                    signal.symbol, remaining,
+                )
+                if self._bus:
+                    self._bus.publish(RiskEvent(
+                        event_type="signal_vetoed",
+                        reason=f"reentry_cooldown: {signal.symbol} ({remaining:.0f} min remaining)",
+                        metadata={"symbol": signal.symbol, "direction": "BUY"},
+                    ))
+                return None
+
         if not self._signal_exit_enabled or signal.direction != Direction.SELL:
             return signal
 
@@ -434,7 +468,26 @@ class ExitManager(RiskManager):
             }, order_type=OrderType.MARKET)
             return
 
-        # --- Layer 3: TRAILING STOP ---
+        # --- Layer 3.5: STALE POSITION TIME-LIMIT ---
+        # Eject positions held longer than max_hold_hours (if configured).
+        # Peak-tracked positions have their own time limit; skip them here.
+        if (
+            self._max_hold_hours > 0
+            and position.entry_time is not None
+            and symbol not in self._peak_state
+        ):
+            held_seconds = (datetime.now(timezone.utc) - position.entry_time).total_seconds()
+            if held_seconds >= self._max_hold_hours * 3600:
+                self._emit_exit(symbol, price, "stale_exit", {
+                    "pnl_pct": round(pnl_pct * 100, 2),
+                    "pnl_raw_pct": round(pnl_raw * 100, 2),
+                    "held_hours": round(held_seconds / 3600, 1),
+                    "max_hold_hours": self._max_hold_hours,
+                    "avg_entry": avg_entry,
+                }, order_type=OrderType.MARKET)
+                return
+
+        # --- Layer 4: TRAILING STOP ---
         # Update peak price (only ratchets up)
         peak = self._peak_price.get(symbol, avg_entry)
         if price > peak:
@@ -534,6 +587,9 @@ class ExitManager(RiskManager):
             self._last_check.pop(symbol, None)
             self._stop_price.pop(symbol, None)
             self._peak_state.pop(symbol, None)
+            # Record exit time for re-entry cooldown
+            if self._reentry_cooldown_minutes > 0:
+                self._last_exit_time[symbol] = time.time()
             # Keep candle_history — it's useful for the next position
             logger.debug("Exit manager: tracking cleared for %s", symbol)
 

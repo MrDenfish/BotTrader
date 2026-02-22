@@ -1190,10 +1190,10 @@ class TestDustPositionZeroing:
             timestamp=datetime.now(timezone.utc),
         )
         app._on_fill_portfolio(FillEvent(fill=fill))
-        assert app.portfolio.positions["BTC-USD"].qty == Decimal("0")
+        assert "BTC-USD" not in app.portfolio.positions
 
     def test_dust_from_precision_loss_zeroed(self):
-        """Sub-atomic dust (e.g. 1e-15) is zeroed out."""
+        """Sub-atomic dust (e.g. 1e-15) is removed from portfolio."""
         from v2.core.app import App
         from v2.core.types import Fill, FillEvent, Side, Position
 
@@ -1206,8 +1206,7 @@ class TestDustPositionZeroing:
             cost_basis=Decimal("0"),
         )
 
-        # A sell of 0 qty won't change much, but let's directly test the threshold
-        # by doing a tiny sell that brings it even closer to zero
+        # A sell of 0 qty triggers the dust check and removes the position
         fill = Fill(
             fill_id="f2", order_id="o2",
             symbol="ADA-USD", side=Side.SELL,
@@ -1216,7 +1215,7 @@ class TestDustPositionZeroing:
             timestamp=datetime.now(timezone.utc),
         )
         app._on_fill_portfolio(FillEvent(fill=fill))
-        assert app.portfolio.positions["ADA-USD"].qty == Decimal("0")
+        assert "ADA-USD" not in app.portfolio.positions
 
     def test_real_position_not_zeroed(self):
         """A legitimate small position is NOT zeroed out."""

@@ -61,6 +61,11 @@ class BasicRiskManager(RiskManager):
         self._pass_through = kwargs.get("pass_through", False)
         self._hodl_symbols: set[str] = set(kwargs.get("hodl_symbols", []))
 
+        # Fee-aware gate — veto buys if round-trip fees are too high
+        self._maker_fee_pct = float(kwargs.get("maker_fee_pct", 0))
+        self._taker_fee_pct = float(kwargs.get("taker_fee_pct", 0))
+        self._max_round_trip_fee_pct = float(kwargs.get("max_round_trip_fee_pct", 0.02))  # 2% default ceiling
+
         # Daily loss tracking
         self._daily_realized_pnl = Decimal("0")
         self._pnl_date: date | None = None
@@ -83,6 +88,12 @@ class BasicRiskManager(RiskManager):
             self._pass_through = config.get("pass_through", self._pass_through)
             if "hodl_symbols" in config:
                 self._hodl_symbols = set(config["hodl_symbols"])
+            if "maker_fee_pct" in config:
+                self._maker_fee_pct = float(config["maker_fee_pct"])
+            if "taker_fee_pct" in config:
+                self._taker_fee_pct = float(config["taker_fee_pct"])
+            if "max_round_trip_fee_pct" in config:
+                self._max_round_trip_fee_pct = float(config["max_round_trip_fee_pct"])
 
     # ------------------------------------------------------------------
     # Signal validation
@@ -136,6 +147,16 @@ class BasicRiskManager(RiskManager):
             )
             return None
 
+        # Fee-aware gate — veto if round-trip fees exceed ceiling
+        round_trip_fee = self._maker_fee_pct + self._taker_fee_pct
+        if round_trip_fee > self._max_round_trip_fee_pct:
+            self._publish_veto(
+                signal,
+                f"fee_hurdle: round-trip {round_trip_fee:.3%} > "
+                f"ceiling {self._max_round_trip_fee_pct:.3%}",
+            )
+            return None
+
         # Max positions
         open_positions = sum(
             1 for p in portfolio.positions.values() if p.qty > 0
@@ -167,6 +188,12 @@ class BasicRiskManager(RiskManager):
                 f"order_too_large: {order_notional} > {self._max_order_size}",
             )
             return None
+
+        # Enrich signal metadata with fee info for downstream observability
+        if round_trip_fee > 0:
+            enriched_meta = dict(signal.metadata) if signal.metadata else {}
+            enriched_meta["round_trip_fee_pct"] = round(round_trip_fee * 100, 3)
+            return replace(signal, metadata=enriched_meta)
 
         return signal
 

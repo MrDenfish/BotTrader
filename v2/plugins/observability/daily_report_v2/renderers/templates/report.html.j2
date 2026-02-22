@@ -80,11 +80,12 @@
       <span>{{ data.trade_stats.total_fees | money }} fees</span>
     </div>
     {% if data.pnl.best_trade or data.pnl.worst_trade %}
+    {% set same_trade = data.pnl.best_trade and data.pnl.worst_trade and data.pnl.best_trade[0] == data.pnl.worst_trade[0] and data.pnl.best_trade[1] == data.pnl.worst_trade[1] %}
     <div class="hero-meta" style="margin-top: 4px;">
       {% if data.pnl.best_trade %}
       <span class="green">Best: {{ data.pnl.best_trade[0] }} {{ data.pnl.best_trade[1] | money }}</span>
       {% endif %}
-      {% if data.pnl.worst_trade %}
+      {% if data.pnl.worst_trade and not same_trade %}
       <span class="red">Worst: {{ data.pnl.worst_trade[0] }} {{ data.pnl.worst_trade[1] | money }}</span>
       {% endif %}
     </div>
