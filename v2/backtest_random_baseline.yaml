@@ -1,0 +1,93 @@
+# BotTrader v2 — Random Entry Baseline Configuration
+# Usage: python -m v2 --config v2/backtest_random_baseline.yaml
+#
+# Same exit manager, risk chain, and sizing as the real strategy but with
+# random buy timing. This is the control experiment:
+# - If random ≈ real → exit manager is the problem, not entries
+# - If random < real → indicators have value, exits need tuning
+# - If random > real → indicators are actively harmful (anti-edge)
+
+app:
+  name: "BotTrader"
+  mode: "backtest"
+  symbols:
+    - "BTC-USD"
+    - "ETH-USD"
+    - "SOL-USD"
+    - "XRP-USD"
+    - "DOGE-USD"
+    - "ADA-USD"
+    - "LINK-USD"
+    - "DOT-USD"
+
+exchange:
+  type: "backtest_sim"
+  initial_balance_usd: 10000
+  maker_fee: 0.0025
+  taker_fee: 0.004
+  slippage_bps: 1.0
+
+data_providers:
+  - type: "csv_replay"
+    data_dir: "backtest/data"
+    days: 180
+    resolution: "1m"
+
+strategies:
+  - type: "random_entry"
+    config:
+      mean_interval_bars: 5000
+      seed: 42
+
+risk:
+  - type: "basic"
+    pass_through: false
+    hodl_symbols: []
+    maker_fee_pct: 0.0025
+    taker_fee_pct: 0.004
+    max_round_trip_fee_pct: 0.01
+  - type: "exit_manager"
+    hard_stop_pct: 0.045
+    soft_stop_pct: 0.03
+    trailing_activation_pct: 0.03
+    trailing_distance_pct: 0.03
+    trailing_mode: "atr"
+    atr_period: 14
+    atr_mult: 2.0
+    trailing_min_distance_pct: 0.01
+    trailing_max_distance_pct: 0.02
+    check_interval_sec: 0
+    signal_exit_enabled: true
+    signal_exit_min_pnl_pct: 0.0
+    max_hold_hours: 48
+    reentry_cooldown_minutes: 30
+    maker_fee_pct: 0.0025
+    taker_fee_pct: 0.004
+    peak_tracking_enabled: false      # No peak tracking for random entries
+    peak_triggers: []
+  - type: "circuit_breaker"
+    max_losses_in_window: 5
+    loss_window_minutes: 30
+    large_loss_threshold_usd: 50
+    max_consecutive_rejections: 10
+    cooldown_minutes: 30
+
+execution:
+  type: "maker_only"
+  max_retries: 1
+  post_only: false
+  default_notional: 50
+  min_order_fiat: 10
+  stale_timeout_seconds: 0
+
+storage:
+  type: ""
+
+observers:
+  - type: "backtest_results"
+    initial_balance_usd: 10000
+  - type: "backtest_diagnostics"
+    output_dir: "backtest/diagnostic_output_random"
+    post_exit_window_bars: 60
+  - type: "structured_log"
+    level: "WARNING"

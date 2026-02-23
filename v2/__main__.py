@@ -138,6 +138,86 @@ def _print_backtest_results(stats: dict, app) -> None:
         if hasattr(strategy, "print_enhanced_diagnostics"):
             print(strategy.print_enhanced_diagnostics())
 
+    # Print diagnostic summary if available
+    diag = stats.get("diagnostics_backtest_diagnostics")
+    if diag:
+        _print_diagnostic_summary(diag)
+
+
+def _print_diagnostic_summary(diag: dict) -> None:
+    """Print diagnostic backtest summary (MFE/MAE, regime, triggers, correlations)."""
+    print("\n" + "=" * 70)
+    print("DIAGNOSTIC SUMMARY")
+    print("=" * 70)
+
+    n = diag.get("diagnostic_trades", 0)
+    print(f"  Diagnostic trades: {n}")
+    if diag.get("jsonl_path"):
+        print(f"  Output: {diag['jsonl_path']}")
+
+    if n == 0:
+        return
+
+    # P&L by trigger type
+    by_trigger = diag.get("pnl_by_trigger", {})
+    if by_trigger:
+        print(f"\n  P&L by Entry Trigger:")
+        print(f"  {'Trigger':<20} {'Trades':>6} {'P&L':>10} {'Win%':>7}")
+        print("  " + "-" * 45)
+        for trigger, data in sorted(by_trigger.items(), key=lambda x: -x[1]["count"]):
+            win_rate = data["wins"] / data["count"] * 100 if data["count"] > 0 else 0
+            print(f"  {trigger:<20} {data['count']:>6} ${data['pnl']:>9.2f} {win_rate:>6.1f}%")
+
+    # P&L by market regime
+    by_regime = diag.get("pnl_by_regime", {})
+    if by_regime:
+        print(f"\n  P&L by Market Regime:")
+        print(f"  {'Regime':<25} {'Trades':>6} {'P&L':>10} {'Win%':>7}")
+        print("  " + "-" * 50)
+        for regime, data in sorted(by_regime.items(), key=lambda x: -x[1]["count"]):
+            win_rate = data["wins"] / data["count"] * 100 if data["count"] > 0 else 0
+            print(f"  {regime:<25} {data['count']:>6} ${data['pnl']:>9.2f} {win_rate:>6.1f}%")
+
+    # P&L by exit reason
+    by_exit = diag.get("pnl_by_exit_reason", {})
+    if by_exit:
+        print(f"\n  P&L by Exit Reason:")
+        print(f"  {'Reason':<25} {'Trades':>6} {'P&L':>10}")
+        print("  " + "-" * 43)
+        for reason, data in sorted(by_exit.items(), key=lambda x: -x[1]["count"]):
+            print(f"  {reason:<25} {data['count']:>6} ${data['pnl']:>9.2f}")
+
+    # MFE/MAE statistics
+    mfe_mae = diag.get("mfe_mae_stats", {})
+    if mfe_mae:
+        print(f"\n  MFE/MAE Statistics (how close trades get to profit):")
+        print(f"    MFE avg:    {mfe_mae.get('mfe_avg_pct', 0):>7.3f}%  (best unrealized gain)")
+        print(f"    MFE median: {mfe_mae.get('mfe_median_pct', 0):>7.3f}%")
+        print(f"    MAE avg:    {mfe_mae.get('mae_avg_pct', 0):>7.3f}%  (worst unrealized loss)")
+        print(f"    MAE median: {mfe_mae.get('mae_median_pct', 0):>7.3f}%")
+
+        if "winners_mfe_avg_pct" in mfe_mae:
+            print(f"\n    Winners MFE avg: {mfe_mae['winners_mfe_avg_pct']:>7.3f}%")
+            print(f"    Winners MAE avg: {mfe_mae['winners_mae_avg_pct']:>7.3f}%")
+        if "losers_mfe_avg_pct" in mfe_mae:
+            print(f"    Losers MFE avg:  {mfe_mae['losers_mfe_avg_pct']:>7.3f}%")
+            print(f"    Losers MAE avg:  {mfe_mae['losers_mae_avg_pct']:>7.3f}%")
+
+        post_fav = mfe_mae.get("post_exit_favorable_avg_pct", 0)
+        if post_fav:
+            print(f"\n    Post-exit favorable avg: {post_fav:>7.3f}%  (money left on table)")
+            print(f"    Post-exit favorable med: {mfe_mae.get('post_exit_favorable_median_pct', 0):>7.3f}%")
+
+    # Top correlated indicator pairs
+    correlations = diag.get("indicator_correlations", {})
+    if correlations:
+        print(f"\n  Top Correlated Indicator Pairs:")
+        sorted_corr = sorted(correlations.items(), key=lambda x: -abs(x[1]))
+        for pair, r in sorted_corr[:10]:
+            print(f"    {pair:<40} r={r:>6.3f}")
+
+    print("=" * 70)
+
 
 if __name__ == "__main__":
     main()

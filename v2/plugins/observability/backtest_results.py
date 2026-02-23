@@ -35,6 +35,8 @@ class ClosedTrade:
     entry_fee: Decimal
     exit_fee: Decimal
     exit_reason: str = ""
+    entry_metadata: dict = field(default_factory=dict)
+    exit_metadata: dict = field(default_factory=dict)
 
     @property
     def gross_pnl(self) -> Decimal:
@@ -68,6 +70,7 @@ class BuyLot:
     qty: Decimal
     fee: Decimal
     timestamp: datetime
+    metadata: dict = field(default_factory=dict)
 
 
 @registry.plugin("observer", "backtest_results")
@@ -120,6 +123,7 @@ class BacktestResultsCollector(Observer):
                 qty=fill.qty,
                 fee=fill.fee,
                 timestamp=fill.timestamp,
+                metadata=dict(fill.metadata) if fill.metadata else {},
             ))
         elif fill.side == Side.SELL:
             self._sell_fills += 1
@@ -152,6 +156,8 @@ class BacktestResultsCollector(Observer):
                 entry_fee=entry_fee_share,
                 exit_fee=exit_fee_share,
                 exit_reason=fill.metadata.get("signal_reason", ""),
+                entry_metadata=dict(lot.metadata) if lot.metadata else {},
+                exit_metadata=dict(fill.metadata) if fill.metadata else {},
             )
             self._trades.append(trade)
 
@@ -220,7 +226,7 @@ class BacktestResultsCollector(Observer):
         # Trade log for detailed output
         trade_log = []
         for t in trades:
-            trade_log.append({
+            entry = {
                 "symbol": t.symbol,
                 "entry_price": float(t.entry_price),
                 "exit_price": float(t.exit_price),
@@ -232,7 +238,15 @@ class BacktestResultsCollector(Observer):
                 "exit_reason": t.exit_reason,
                 "entry_time": t.entry_time.isoformat(),
                 "exit_time": t.exit_time.isoformat(),
-            })
+                "entry_trigger": t.entry_metadata.get("trigger", ""),
+                "entry_score": t.entry_metadata.get("buy_score", 0.0),
+            }
+            # Include indicator snapshot if present
+            snapshot = t.entry_metadata.get("indicator_snapshot")
+            if snapshot:
+                fired = [k for k, v in snapshot.items() if v.get("decision") == 1]
+                entry["entry_indicators_fired"] = fired
+            trade_log.append(entry)
 
         return {
             "trades": total,

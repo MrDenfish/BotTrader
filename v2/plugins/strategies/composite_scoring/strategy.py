@@ -261,16 +261,20 @@ class CompositeScoringStrategy(Strategy):
             lo, hi = cfg.roc_20m_rsi_buy_range
             if not buy_locked and volume_ok and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
+                meta = {"roc_20m": roc_value, "rsi": rsi_value, "rvol": rvol,
+                        "trigger": "roc_momo_20m"}
+                meta.update(self._build_diagnostic_metadata(ind, None))
                 return self._make_signal(
-                    Direction.BUY, symbol, candle, "roc_momo_20m",
-                    {"roc_20m": roc_value, "rsi": rsi_value, "rvol": rvol},
+                    Direction.BUY, symbol, candle, "roc_momo_20m", meta,
                 )
             lo, hi = cfg.roc_20m_rsi_sell_range
             if roc_value < cfg.roc_20m_sell_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
+                meta = {"roc_20m": roc_value, "rsi": rsi_value,
+                        "trigger": "roc_momo_20m"}
+                meta.update(self._build_diagnostic_metadata(ind, None))
                 return self._make_signal(
-                    Direction.SELL, symbol, candle, "roc_momo_20m",
-                    {"roc_20m": roc_value, "rsi": rsi_value},
+                    Direction.SELL, symbol, candle, "roc_momo_20m", meta,
                 )
 
         # --- Priority: 24-hour momentum runners ---
@@ -279,15 +283,19 @@ class CompositeScoringStrategy(Strategy):
             lo, hi = cfg.roc_24h_rsi_range
             if not buy_locked and volume_ok and roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
+                meta = {"roc_24h": roc_24h, "rsi": rsi_value, "rvol": rvol,
+                        "trigger": "roc_momo_24h"}
+                meta.update(self._build_diagnostic_metadata(ind, None))
                 return self._make_signal(
-                    Direction.BUY, symbol, candle, "roc_momo_24h",
-                    {"roc_24h": roc_24h, "rsi": rsi_value, "rvol": rvol},
+                    Direction.BUY, symbol, candle, "roc_momo_24h", meta,
                 )
             if roc_24h < cfg.roc_24h_sell_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
+                meta = {"roc_24h": roc_24h, "rsi": rsi_value,
+                        "trigger": "roc_momo_24h"}
+                meta.update(self._build_diagnostic_metadata(ind, None))
                 return self._make_signal(
-                    Direction.SELL, symbol, candle, "roc_momo_24h",
-                    {"roc_24h": roc_24h, "rsi": rsi_value},
+                    Direction.SELL, symbol, candle, "roc_momo_24h", meta,
                 )
 
         # --- Composite scoring ---
@@ -332,11 +340,49 @@ class CompositeScoringStrategy(Strategy):
             "rvol": rvol,
         }
 
+        # Enrich with per-indicator breakdown for diagnostics
+        metadata.update(self._build_diagnostic_metadata(ind, components))
+
         return self._make_signal(direction, symbol, candle, reason, metadata)
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _build_diagnostic_metadata(self, ind: dict, components: dict | None) -> dict:
+        """Build diagnostic metadata from indicator values and score components.
+
+        Returns a dict with:
+        - score_components: per-indicator breakdown (if composite score path)
+        - indicator_snapshot: all 16 indicator decision tuples
+        - raw_values: RSI, ROC, RVOL, MACD histogram, BB upper/lower
+        """
+        diag: dict = {}
+
+        # Per-indicator breakdown from composite scoring (only on score path)
+        if components:
+            diag["score_components"] = components
+
+        # All 16 indicator decision tuples
+        snapshot = {}
+        for name, val in ind.items():
+            if name.startswith("_"):
+                continue  # Raw values handled separately
+            if isinstance(val, tuple) and len(val) == 3:
+                snapshot[name] = {"decision": val[0], "value": val[1], "threshold": val[2]}
+        diag["indicator_snapshot"] = snapshot
+
+        # Raw values for analysis
+        diag["raw_values"] = {
+            "rsi": ind.get("_RSI", 0.0),
+            "roc": ind.get("_ROC", 0.0),
+            "rvol": ind.get("_RVOL", 0.0),
+            "macd_hist": ind.get("_MACD_Hist", 0.0),
+            "bb_upper": ind.get("_upper", 0.0),
+            "bb_lower": ind.get("_lower", 0.0),
+        }
+
+        return diag
 
     def _make_signal(
         self,

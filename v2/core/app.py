@@ -497,12 +497,21 @@ class App:
                     for k, v in strategy.get_statistics().items():
                         if k not in results:
                             results[k] = v
-            return results
+        else:
+            results = {}
+            for strategy in self._strategies:
+                if hasattr(strategy, "get_statistics"):
+                    results.update(strategy.get_statistics())
 
-        results = {}
-        for strategy in self._strategies:
-            if hasattr(strategy, "get_statistics"):
-                results.update(strategy.get_statistics())
+        # Collect diagnostic results from observers that support get_results()
+        for obs in self._observers:
+            if obs is results_collector:
+                continue  # Already collected above
+            if hasattr(obs, "get_results"):
+                diag = obs.get_results()
+                if diag:
+                    results[f"diagnostics_{obs.name}"] = diag
+
         return results
 
     def _run_backtest_legacy(self, provider, cfg) -> dict:
