@@ -71,6 +71,9 @@ class CompositeScoringStrategy(Strategy):
         # Per-symbol momentum cooldown: bar_idx at which momo signals re-enable
         self._momo_cooldown: dict[str, int] = {}
 
+        # Signal counters (for backtest statistics)
+        self._signal_counts: dict[str, int] = {"buy": 0, "sell": 0, "hold": 0}
+
     # ------------------------------------------------------------------
     # Strategy ABC
     # ------------------------------------------------------------------
@@ -335,14 +338,15 @@ class CompositeScoringStrategy(Strategy):
     # Helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _make_signal(
+        self,
         direction: Direction,
         symbol: str,
         candle: Candle,
         reason: str,
         metadata: dict,
     ) -> Signal:
+        self._signal_counts[direction.value] = self._signal_counts.get(direction.value, 0) + 1
         return Signal(
             direction=direction,
             symbol=symbol,
@@ -352,3 +356,13 @@ class CompositeScoringStrategy(Strategy):
             reason=reason,
             metadata=metadata,
         )
+
+    def get_statistics(self) -> dict:
+        """Return signal-level statistics for backtest reporting."""
+        return {
+            "signals_buy": self._signal_counts.get("buy", 0),
+            "signals_sell": self._signal_counts.get("sell", 0),
+            "signals_hold": self._signal_counts.get("hold", 0),
+            "symbols_tracked": len(self._bars),
+            "total_bars_processed": sum(self._bar_idx.values()),
+        }

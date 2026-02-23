@@ -1,44 +1,119 @@
-# BotTrader v2 — Backtest: Composite Scoring Strategy
+# BotTrader v2 — Backtest Configuration (Composite Scoring)
 # Usage: python -m v2 --config v2/backtest_composite.yaml
 #
-# The composite scoring strategy computes its own indicators from raw 1m
-# candle data (BB, MACD, RSI, ROC, W-Bottom/M-Top, Swing), so no
-# Hybrid4hConfig is needed by the data provider.
+# Runs composite_scoring strategy over historical CSV data with full
+# pipeline: strategy → risk chain → execution → fills → exit manager.
+# Parameters mirror kraken_paper_trading.yaml (production config).
 
 app:
   name: "BotTrader"
   mode: "backtest"
-  symbols: ["BTC-USD"]
+  symbols:
+    - "BTC-USD"
+    - "ETH-USD"
+    - "SOL-USD"
+    - "XRP-USD"
+    - "DOGE-USD"
+    - "ADA-USD"
+    - "LINK-USD"
+    - "DOT-USD"
 
 exchange:
-  type: "backtest"
+  type: "backtest_sim"
+  initial_balance_usd: 10000
+  maker_fee: 0.0025       # Kraken base tier: 0.25% maker
+  taker_fee: 0.004        # Kraken base tier: 0.40% taker
+  slippage_bps: 1.0
 
 data_providers:
   - type: "csv_replay"
     data_dir: "backtest/data"
-    days: 60
+    days: 180
     resolution: "1m"
-    # No config needed — composite scoring computes its own indicators
 
+# Strategy — same params as production (kraken_paper_trading.yaml)
 strategies:
   - type: "composite_scoring"
-    # Uses default CompositeScoreConfig.
-    # Override parameters inline:
-    # config:
-    #   score_buy_target: 5.5
-    #   score_sell_target: 5.5
-    #   rsi_buy: 20.0
-    #   rsi_sell: 80.0
+    config:
+      candle_interval_minutes: 5
+      score_buy_target: 2.0
+      score_sell_target: 2.0
+      allow_buys_on_red_day: true
+      bb_window: 10
+      buy_ratio: 1.05
+      macd_fast: 8
+      macd_slow: 21
+      macd_signal: 5
+      rsi_buy: 25.0
+      rsi_sell: 75.0
+      roc_window: 4
+      roc_buy_threshold: 2.0
+      roc_sell_threshold: -1.0
+      sma_volatility: 10
+      atr_window: 8
+      swing_window: 10
+      volume_confirm_buy: true
+      volume_confirm_threshold: 0.7
+      volume_div_window: 10
+      min_indicators_required: 3
+      cooldown_bars: 2
+      loss_lockout_bars: 12
 
+# Risk chain — same as production (skip performance_filter for backtest)
 risk:
   - type: "basic"
+    pass_through: false
+    hodl_symbols: []
+    maker_fee_pct: 0.0025
+    taker_fee_pct: 0.004
+    max_round_trip_fee_pct: 0.01
+  - type: "exit_manager"
+    hard_stop_pct: 0.045
+    soft_stop_pct: 0.03
+    trailing_activation_pct: 0.03
+    trailing_distance_pct: 0.03
+    trailing_mode: "atr"
+    atr_period: 14
+    atr_mult: 2.0
+    trailing_min_distance_pct: 0.01
+    trailing_max_distance_pct: 0.02
+    check_interval_sec: 0           # No throttle in backtest — check every bar
+    signal_exit_enabled: true
+    signal_exit_min_pnl_pct: 0.0
+    max_hold_hours: 48
+    reentry_cooldown_minutes: 30
+    maker_fee_pct: 0.0025
+    taker_fee_pct: 0.004
+    peak_tracking_enabled: true
+    peak_drawdown_pct: 0.05
+    peak_min_profit_pct: 0.06
+    peak_smoothing_prices: 5
+    peak_max_hold_minutes: 1440
+    peak_triggers: ["roc_momo_20m", "roc_momo_24h"]
+  - type: "circuit_breaker"
+    max_losses_in_window: 5
+    loss_window_minutes: 30
+    large_loss_threshold_usd: 50
+    max_consecutive_rejections: 10
+    cooldown_minutes: 30
 
 execution:
   type: "maker_only"
+  max_retries: 1
+  post_only: false              # No post-only in backtest (all fills immediate)
+  default_notional: 50
+  notional_by_trigger:
+    score: 50
+    roc_momo_20m: 30
+    roc_momo_24h: 30
+  min_order_fiat: 10
+  stale_timeout_seconds: 0      # No stale order cancellation in backtest
 
 storage:
-  type: "sqlite"
+  type: ""                         # No persistence needed for backtest
 
 observers:
+  - type: "backtest_results"
+    initial_balance_usd: 10000
   - type: "structured_log"
-    level: "INFO"
+    level: "WARNING"

@@ -14,6 +14,7 @@ from v2.core.config import Config
 from v2.core.event_bus import EventBus
 from v2.core import registry
 from v2.core.types import (
+    Candle,
     CandleEvent,
     Direction,
     FillEvent,
@@ -51,6 +52,9 @@ class App:
 
         # Backtest results
         self.backtest_results: dict | None = None
+        self._backtest_mode: bool = False
+        # Queue of pending execution coroutines (backtest mode only)
+        self._pending_executions: list = []
 
         # Sell de-duplication: {symbol: timestamp} of last approved sell
         self._last_sell_approved: dict[str, float] = {}
@@ -81,7 +85,8 @@ class App:
         await self._setup()
         try:
             if self.config.app.mode == "backtest":
-                self.backtest_results = self._run_backtest()
+                self._backtest_mode = True
+                self.backtest_results = await self._run_backtest()
                 return self.backtest_results
             else:
                 await self._run_loop()
@@ -285,9 +290,12 @@ class App:
         if approved and self._execution:
             if approved.direction == Direction.SELL:
                 self._last_sell_approved[approved.symbol] = time.monotonic()
-            asyncio.ensure_future(
-                self._execution.execute_signal(approved, self._exchange)
-            )
+            coro = self._execution.execute_signal(approved, self._exchange)
+            if self._backtest_mode:
+                # Queue for immediate awaiting in the bar loop
+                self._pending_executions.append(coro)
+            else:
+                asyncio.ensure_future(coro)
 
     def _on_fill_risk(self, event: FillEvent) -> None:
         """Forward fills to all risk managers for tracking."""
@@ -367,18 +375,19 @@ class App:
     # Backtest mode
     # ------------------------------------------------------------------
 
-    def _run_backtest(self) -> dict:
-        """Synchronous bar-by-bar backtest.
+    async def _run_backtest(self) -> dict:
+        """Run backtest: event-driven (backtest_sim) or legacy (on_backtest_bar).
 
-        In backtest mode, the CsvReplayProvider has pre-loaded and pre-
-        computed all data/indicators. We iterate bar-by-bar synchronously,
-        calling each strategy's ``on_backtest_bar()`` method directly.
-        This bypasses the async event loop for deterministic execution.
+        When using backtest_sim exchange, publishes CandleEvent and TickerEvent
+        per bar on the event bus so the full v2 pipeline (strategy → risk chain
+        → execution → fills → exit manager) runs identically to live mode.
+
+        When using the legacy backtest exchange, calls on_backtest_bar() directly
+        with pre-computed indicators (for hybrid_4h_maker compatibility).
         """
-        from v2.plugins.data.csv_replay import CsvReplayProvider, BacktestCandleEvent
+        from v2.plugins.data.csv_replay import CsvReplayProvider
 
         cfg = self.config
-        results = {}
 
         # Find the CSV replay provider
         csv_providers = [
@@ -390,6 +399,119 @@ class App:
             return {"error": "No csv_replay data provider"}
 
         provider = csv_providers[0]
+
+        # Route to event-driven or legacy path based on exchange type
+        use_event_driven = cfg.exchange.type == "backtest_sim"
+        if use_event_driven:
+            return await self._run_backtest_event_driven(provider, cfg)
+        else:
+            return self._run_backtest_legacy(provider, cfg)
+
+    async def _run_backtest_event_driven(self, provider, cfg) -> dict:
+        """Event-driven backtest: publish CandleEvent/TickerEvent per bar.
+
+        Used with backtest_sim exchange for composite_scoring and other
+        strategies that compute their own indicators. The full pipeline
+        (risk chain, execution, exit manager) fires via bus events.
+        """
+        from v2.plugins.observability.backtest_results import BacktestResultsCollector
+        from collections import deque as _deque
+        from datetime import timedelta
+
+        results_collector = None
+        for obs in self._observers:
+            if isinstance(obs, BacktestResultsCollector):
+                results_collector = obs
+                break
+
+        price_history_24h: dict[str, _deque] = {}
+        roc_24h_lookback = timedelta(hours=24)
+
+        for symbol in cfg.app.symbols:
+            logger.info("Backtesting %s...", symbol)
+
+            df = provider._aligned_data.get(symbol)
+            if df is None:
+                logger.warning("%s: no data loaded — skipping", symbol)
+                continue
+
+            total_bars = len(df)
+            price_history_24h[symbol] = _deque()
+
+            for idx, (ts, row) in enumerate(df.iterrows()):
+                candle = Candle(
+                    symbol=symbol,
+                    timestamp=ts.to_pydatetime(),
+                    open=row["open"],
+                    high=row["high"],
+                    low=row["low"],
+                    close=row["close"],
+                    volume=row.get("volume", 0.0),
+                    timeframe=provider._resolution,
+                )
+                close = float(row["close"])
+                bar_ts = ts.to_pydatetime()
+
+                # --- Compute and inject 24h ROC ---
+                hist = price_history_24h[symbol]
+                hist.append((bar_ts, close))
+                cutoff = bar_ts - roc_24h_lookback
+                while hist and hist[0][0] < cutoff:
+                    hist.popleft()
+                change_24h = None
+                if len(hist) > 1 and hist[0][1] > 0:
+                    change_24h = (close - hist[0][1]) / hist[0][1] * 100
+                    for strategy in self._strategies:
+                        if hasattr(strategy, "_roc_24h"):
+                            strategy._roc_24h[symbol] = change_24h
+
+                # Publish events on bus — wired handlers process them
+                self.bus.publish(CandleEvent(candle=candle))
+                # Synthetic bid/ask so maker_only executor can place orders
+                spread = close * 0.0001  # 1 bps spread
+                self.bus.publish(TickerEvent(
+                    symbol=symbol,
+                    price=close,
+                    timestamp=bar_ts,
+                    change_24h_pct=change_24h,
+                    bid=close - spread,
+                    ask=close + spread,
+                ))
+
+                # Drain pending execution coroutines from this bar
+                if self._pending_executions:
+                    for coro in self._pending_executions:
+                        await coro
+                    self._pending_executions.clear()
+
+                if (idx + 1) % 50_000 == 0:
+                    logger.info("  %s: %d / %d bars", symbol, idx + 1, total_bars)
+
+            logger.info("  %s: complete (%d bars)", symbol, total_bars)
+
+        # Collect results
+        if results_collector:
+            results = results_collector.get_results()
+            for strategy in self._strategies:
+                if hasattr(strategy, "get_statistics"):
+                    for k, v in strategy.get_statistics().items():
+                        if k not in results:
+                            results[k] = v
+            return results
+
+        results = {}
+        for strategy in self._strategies:
+            if hasattr(strategy, "get_statistics"):
+                results.update(strategy.get_statistics())
+        return results
+
+    def _run_backtest_legacy(self, provider, cfg) -> dict:
+        """Legacy backtest: call on_backtest_bar() with pre-computed indicators.
+
+        Used with the no-op backtest exchange for strategies (like
+        hybrid_4h_maker) that need pre-computed 4h/1d indicators and context.
+        """
+        results = {}
 
         for symbol in cfg.app.symbols:
             logger.info("Backtesting %s...", symbol)
@@ -405,7 +527,6 @@ class App:
             total_bars = len(df)
 
             for idx, (ts, row) in enumerate(df.iterrows()):
-                from v2.core.types import Candle
                 candle = Candle(
                     symbol=symbol,
                     timestamp=ts.to_pydatetime(),
@@ -438,7 +559,6 @@ class App:
                     "is_1d_close": ts in ts_1d,
                 }
 
-                # Call each strategy
                 for strategy in self._strategies:
                     if hasattr(strategy, "on_backtest_bar"):
                         sig = strategy.on_backtest_bar(
@@ -454,12 +574,10 @@ class App:
 
             logger.info("  %s: complete (%d bars)", symbol, total_bars)
 
-            # Collect results from strategies
             for strategy in self._strategies:
                 if hasattr(strategy, "get_statistics"):
                     results[symbol] = strategy.get_statistics()
 
-        # If single symbol, return flat
         if len(results) == 1:
             return list(results.values())[0]
         return results

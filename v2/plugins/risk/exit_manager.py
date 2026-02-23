@@ -117,6 +117,11 @@ class ExitManager(RiskManager):
         # Re-entry cooldown: symbol → last exit timestamp (epoch)
         self._last_exit_time: dict[str, float] = {}
 
+        # Simulated time tracking (for backtest mode)
+        # When ticker events carry timestamps, we use those instead of
+        # datetime.now()/time.time() so backtests run in simulated time.
+        self._sim_time: datetime | None = None
+
     def configure(self, config: Any) -> None:
         if isinstance(config, dict):
             if "hard_stop_pct" in config:
@@ -163,6 +168,18 @@ class ExitManager(RiskManager):
                 self._peak_max_hold_minutes = int(config["peak_max_hold_minutes"])
             if "peak_triggers" in config:
                 self._peak_triggers = list(config["peak_triggers"])
+
+    # ------------------------------------------------------------------
+    # Time helpers (simulated time for backtest, wall clock for live)
+    # ------------------------------------------------------------------
+
+    def _now(self) -> datetime:
+        """Return current time — simulated if available, else wall clock."""
+        return self._sim_time if self._sim_time is not None else datetime.now(timezone.utc)
+
+    def _now_epoch(self) -> float:
+        """Return current time as epoch seconds."""
+        return self._now().timestamp()
 
     # ------------------------------------------------------------------
     # Fee-aware P&L
@@ -284,7 +301,7 @@ class ExitManager(RiskManager):
 
         # 1. Time limit check
         entry_time = state["entry_time"]
-        elapsed_min = (datetime.now(timezone.utc) - entry_time).total_seconds() / 60
+        elapsed_min = (self._now() - entry_time).total_seconds() / 60
         if elapsed_min >= self._peak_max_hold_minutes:
             self._emit_exit(symbol, price, "peak_time_limit", {
                 "pnl_pct": round(pnl_pct * 100, 2),
@@ -354,7 +371,7 @@ class ExitManager(RiskManager):
             and self._reentry_cooldown_minutes > 0
             and signal.symbol in self._last_exit_time
         ):
-            elapsed = time.time() - self._last_exit_time[signal.symbol]
+            elapsed = self._now_epoch() - self._last_exit_time[signal.symbol]
             if elapsed < self._reentry_cooldown_minutes * 60:
                 remaining = self._reentry_cooldown_minutes - elapsed / 60
                 logger.info(
@@ -418,7 +435,11 @@ class ExitManager(RiskManager):
         """
         symbol = ticker.symbol
         price = ticker.price
-        now = time.time()
+
+        # Track simulated time from ticker (for backtest mode)
+        if ticker.timestamp:
+            self._sim_time = ticker.timestamp
+        now = self._now_epoch()
 
         # Throttle: skip if checked recently
         last = self._last_check.get(symbol, 0.0)
@@ -476,7 +497,7 @@ class ExitManager(RiskManager):
             and position.entry_time is not None
             and symbol not in self._peak_state
         ):
-            held_seconds = (datetime.now(timezone.utc) - position.entry_time).total_seconds()
+            held_seconds = (self._now() - position.entry_time).total_seconds()
             if held_seconds >= self._max_hold_hours * 3600:
                 self._emit_exit(symbol, price, "stale_exit", {
                     "pnl_pct": round(pnl_pct * 100, 2),
@@ -568,7 +589,7 @@ class ExitManager(RiskManager):
                     self._peak_state[symbol] = {
                         "peak_price": float(fill.price),
                         "price_history": [],
-                        "entry_time": datetime.now(timezone.utc),
+                        "entry_time": self._now(),
                         "trigger_type": trigger,
                         "breakeven_activated": False,
                     }
@@ -589,7 +610,7 @@ class ExitManager(RiskManager):
             self._peak_state.pop(symbol, None)
             # Record exit time for re-entry cooldown
             if self._reentry_cooldown_minutes > 0:
-                self._last_exit_time[symbol] = time.time()
+                self._last_exit_time[symbol] = self._now_epoch()
             # Keep candle_history — it's useful for the next position
             logger.debug("Exit manager: tracking cleared for %s", symbol)
 
@@ -650,7 +671,7 @@ class ExitManager(RiskManager):
         signal = Signal(
             direction=Direction.SELL,
             symbol=symbol,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=self._now(),
             price=price,
             reason=reason,
             order_type=order_type,
