@@ -271,8 +271,9 @@ class App:
         """Chain signal through all risk managers, then forward to execution."""
         approved = event.signal
 
-        # De-duplicate sell signals: only one sell per symbol within the window
-        if approved.direction == Direction.SELL:
+        # De-duplicate sell signals: only one sell per symbol within the window.
+        # Skip in backtest mode — wall-clock de-dup blocks simulated exits.
+        if approved.direction == Direction.SELL and not self._backtest_mode:
             now = time.monotonic()
             last = self._last_sell_approved.get(approved.symbol, 0.0)
             if now - last < self._sell_dedup_window:
