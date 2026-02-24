@@ -9,14 +9,12 @@ app:
   name: "BotTrader"
   mode: "backtest"
   symbols:
-    - "BTC-USD"
-    - "ETH-USD"
-    - "SOL-USD"
-    - "XRP-USD"
-    - "DOGE-USD"
-    - "ADA-USD"
-    - "LINK-USD"
-    - "DOT-USD"
+    - "BTC-USD"                   # fallback only — pair_discovery overrides
+
+pair_discovery:
+  type: "csv"
+  config:
+    data_dir: "backtest/data"
 
 exchange:
   type: "backtest_sim"
@@ -36,28 +34,28 @@ strategies:
   - type: "composite_scoring"
     config:
       candle_interval_minutes: 5
-      score_buy_target: 2.0
-      score_sell_target: 2.0
+      score_buy_target: 4.5
+      score_sell_target: 4.5
       allow_buys_on_red_day: true
-      bb_window: 10
+      bb_window: 20
       buy_ratio: 1.05
       macd_fast: 8
       macd_slow: 21
       macd_signal: 5
-      rsi_buy: 25.0
-      rsi_sell: 75.0
+      rsi_buy: 22.0
+      rsi_sell: 78.0
       roc_window: 4
-      roc_buy_threshold: 2.0
-      roc_sell_threshold: -1.0
-      sma_volatility: 10
-      atr_window: 8
-      swing_window: 10
+      roc_buy_threshold: 4.0
+      roc_sell_threshold: -2.0
+      sma_volatility: 20
+      atr_window: 14
+      swing_window: 20
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
       min_indicators_required: 3
-      cooldown_bars: 2
-      loss_lockout_bars: 12
+      cooldown_bars: 6
+      loss_lockout_bars: 18
 
 # Risk chain — same as production (skip performance_filter for backtest)
 risk:
@@ -68,15 +66,15 @@ risk:
     taker_fee_pct: 0.004
     max_round_trip_fee_pct: 0.01
   - type: "exit_manager"
-    hard_stop_pct: 0.045
-    soft_stop_pct: 0.03
-    trailing_activation_pct: 0.03
-    trailing_distance_pct: 0.03
+    hard_stop_pct: 0.035
+    soft_stop_pct: 0.02
+    trailing_activation_pct: 0.015
+    trailing_distance_pct: 0.015
     trailing_mode: "atr"
     atr_period: 14
     atr_mult: 2.0
-    trailing_min_distance_pct: 0.01
-    trailing_max_distance_pct: 0.02
+    trailing_min_distance_pct: 0.008
+    trailing_max_distance_pct: 0.015
     check_interval_sec: 0           # No throttle in backtest — check every bar
     signal_exit_enabled: true
     signal_exit_min_pnl_pct: 0.0
@@ -91,11 +89,11 @@ risk:
     peak_max_hold_minutes: 1440
     peak_triggers: ["roc_momo_20m", "roc_momo_24h"]
   - type: "circuit_breaker"
-    max_losses_in_window: 5
-    loss_window_minutes: 30
+    max_losses_in_window: 3
+    loss_window_minutes: 60
     large_loss_threshold_usd: 50
     max_consecutive_rejections: 10
-    cooldown_minutes: 30
+    cooldown_minutes: 60
 
 execution:
   type: "maker_only"
