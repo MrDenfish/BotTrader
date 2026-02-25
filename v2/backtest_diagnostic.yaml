@@ -9,14 +9,12 @@ app:
   name: "BotTrader"
   mode: "backtest"
   symbols:
-    - "BTC-USD"
-    - "ETH-USD"
-    - "SOL-USD"
-    - "XRP-USD"
-    - "DOGE-USD"
-    - "ADA-USD"
-    - "LINK-USD"
-    - "DOT-USD"
+    - "BTC-USD"                   # fallback only — pair_discovery overrides
+
+pair_discovery:
+  type: "csv"
+  config:
+    data_dir: "backtest/data"
 
 exchange:
   type: "backtest_sim"
@@ -35,10 +33,10 @@ strategies:
   - type: "composite_scoring"
     config:
       candle_interval_minutes: 5
-      score_buy_target: 2.0
-      score_sell_target: 2.0
+      score_buy_target: 3.5
+      score_sell_target: 3.5
       allow_buys_on_red_day: true
-      bb_window: 10
+      bb_window: 20
       buy_ratio: 1.05
       macd_fast: 8
       macd_slow: 21
@@ -46,16 +44,16 @@ strategies:
       rsi_buy: 25.0
       rsi_sell: 75.0
       roc_window: 4
-      roc_buy_threshold: 2.0
-      roc_sell_threshold: -1.0
-      sma_volatility: 10
-      atr_window: 8
-      swing_window: 10
+      roc_buy_threshold: 3.0
+      roc_sell_threshold: -1.5
+      sma_volatility: 20
+      atr_window: 14
+      swing_window: 20
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
       min_indicators_required: 3
-      cooldown_bars: 2
+      cooldown_bars: 4
       loss_lockout_bars: 12
 
 risk:

@@ -12,7 +12,6 @@ reset or the cooldown period expires.
 from __future__ import annotations
 
 import logging
-import time
 from collections import deque
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -28,6 +27,7 @@ from v2.core.types import (
     RiskEvent,
     Signal,
     Side,
+    TickerEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,9 +67,14 @@ class CircuitBreakerRiskManager(RiskManager):
         self._trip_time: float | None = None
         self._trip_reason: str = ""
 
-        # Rolling loss window: (timestamp, pnl_usd)
+        # Rolling loss window: (epoch_seconds, pnl_usd)
         self._recent_losses: deque[tuple[float, Decimal]] = deque()
         self._consecutive_rejections = 0
+
+        # Simulated time tracking (for backtest mode).
+        # Updated from TickerEvent timestamps so all time-based logic
+        # uses simulated time instead of wall-clock time.
+        self._sim_time: datetime | None = None
 
     def configure(self, config: Any) -> None:
         if isinstance(config, dict):
@@ -87,6 +92,23 @@ class CircuitBreakerRiskManager(RiskManager):
                 )
             if "cooldown_minutes" in config:
                 self._cooldown_minutes = int(config["cooldown_minutes"])
+
+    # ------------------------------------------------------------------
+    # Time helpers (simulated time for backtest, wall clock for live)
+    # ------------------------------------------------------------------
+
+    def _now(self) -> datetime:
+        """Return current time — simulated if available, else wall clock."""
+        return self._sim_time if self._sim_time is not None else datetime.now(timezone.utc)
+
+    def _now_epoch(self) -> float:
+        """Return current time as epoch seconds."""
+        return self._now().timestamp()
+
+    def on_ticker(self, ticker: TickerEvent, portfolio: Portfolio) -> None:
+        """Track simulated time from ticker events (for backtest mode)."""
+        if ticker.timestamp:
+            self._sim_time = ticker.timestamp
 
     # ------------------------------------------------------------------
     # Signal validation
@@ -139,7 +161,7 @@ class CircuitBreakerRiskManager(RiskManager):
         pnl = exit_proceeds - entry_cost
 
         if pnl < 0:
-            now = time.time()
+            now = fill.timestamp.timestamp() if fill.timestamp else self._now_epoch()
             self._recent_losses.append((now, pnl))
             self._prune_old_losses()
 
@@ -178,7 +200,7 @@ class CircuitBreakerRiskManager(RiskManager):
     def _trip(self, reason: str) -> None:
         """Activate the circuit breaker."""
         self._tripped = True
-        self._trip_time = time.time()
+        self._trip_time = self._now_epoch()
         self._trip_reason = reason
 
         logger.critical("CIRCUIT BREAKER TRIPPED: %s", reason)
@@ -210,7 +232,7 @@ class CircuitBreakerRiskManager(RiskManager):
         """Check if cooldown period has elapsed."""
         if self._trip_time is None:
             return False
-        elapsed_minutes = (time.time() - self._trip_time) / 60.0
+        elapsed_minutes = (self._now_epoch() - self._trip_time) / 60.0
         return elapsed_minutes >= self._cooldown_minutes
 
     # ------------------------------------------------------------------
@@ -219,7 +241,7 @@ class CircuitBreakerRiskManager(RiskManager):
 
     def _prune_old_losses(self) -> None:
         """Remove losses outside the rolling window."""
-        cutoff = time.time() - (self._loss_window_minutes * 60)
+        cutoff = self._now_epoch() - (self._loss_window_minutes * 60)
         while self._recent_losses and self._recent_losses[0][0] < cutoff:
             self._recent_losses.popleft()
 
