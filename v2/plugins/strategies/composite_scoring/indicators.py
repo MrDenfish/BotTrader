@@ -225,7 +225,7 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
         sma_slope_pct = 0.0
     results["_sma_slope_pct"] = sma_slope_pct
 
-    # ATR percentile: rank current 5-bar ATR vs full history (0-100)
+    # ATR percentile: rank current 5-bar ATR vs recent history (0-100)
     tr_high_low = df["high"] - df["low"]
     tr_high_close = (df["high"] - df["close"].shift(1)).abs()
     tr_low_close = (df["low"] - df["close"].shift(1)).abs()
@@ -233,7 +233,9 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
     atr_5 = true_range.rolling(window=5, min_periods=1).mean()
     if len(atr_5.dropna()) >= 2:
         current_atr = float(atr_5.iloc[-1])
-        atr_percentile = float((atr_5 <= current_atr).sum() / len(atr_5) * 100)
+        lookback = min(cfg.regime_atr_lookback, len(atr_5))
+        atr_recent = atr_5.iloc[-lookback:]
+        atr_percentile = float((atr_recent <= current_atr).sum() / len(atr_recent) * 100)
     else:
         atr_percentile = 50.0
     results["_atr_percentile"] = atr_percentile
