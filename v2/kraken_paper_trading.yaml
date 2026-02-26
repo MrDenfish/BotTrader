@@ -74,6 +74,7 @@ strategies:
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
+      enable_roc_20m_momentum: false    # Disabled: 35% win rate, actively harmful
       min_indicators_required: 3
       cooldown_bars: 2
       loss_lockout_bars: 12
@@ -93,6 +94,7 @@ risk:
     min_total_pnl: -50.0
   - type: "exit_manager"
     hard_stop_pct: 0.045
+    soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag (-$300 backtest, -$15 paper)
     soft_stop_pct: 0.03
     trailing_activation_pct: 0.03
     trailing_distance_pct: 0.03

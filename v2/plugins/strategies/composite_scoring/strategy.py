@@ -259,7 +259,7 @@ class CompositeScoringStrategy(Strategy):
 
         if momo_ok and roc_value is not None and rsi_value is not None:
             lo, hi = cfg.roc_20m_rsi_buy_range
-            if not buy_locked and volume_ok and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
+            if cfg.enable_roc_20m_momentum and not buy_locked and volume_ok and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 meta = {"roc_20m": roc_value, "rsi": rsi_value, "rvol": rvol,
                         "trigger": "roc_momo_20m"}

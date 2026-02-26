@@ -97,6 +97,7 @@ class CompositeScoreConfig:
     # ------------------------------------------------------------------
     # ROC Momentum strategies (priority over composite scoring)
     # ------------------------------------------------------------------
+    enable_roc_20m_momentum: bool = True   # Set False to disable 20m momentum entries
     roc_20m_buy_threshold: float = 2.0
     roc_20m_sell_threshold: float = -2.0
     roc_20m_rsi_buy_range: tuple[float, float] = (45.0, 60.0)

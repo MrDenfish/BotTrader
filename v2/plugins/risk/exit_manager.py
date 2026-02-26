@@ -62,6 +62,7 @@ class ExitManager(RiskManager):
 
         # Configurable thresholds
         self._hard_stop_pct = float(kwargs.get("hard_stop_pct", 0.045))
+        self._soft_stop_enabled = bool(kwargs.get("soft_stop_enabled", True))
         self._soft_stop_pct = float(kwargs.get("soft_stop_pct", 0.03))
         self._trailing_activation_pct = float(kwargs.get("trailing_activation_pct", 0.03))
         self._trailing_distance_pct = float(kwargs.get("trailing_distance_pct", 0.03))
@@ -126,6 +127,8 @@ class ExitManager(RiskManager):
         if isinstance(config, dict):
             if "hard_stop_pct" in config:
                 self._hard_stop_pct = float(config["hard_stop_pct"])
+            if "soft_stop_enabled" in config:
+                self._soft_stop_enabled = bool(config["soft_stop_enabled"])
             if "soft_stop_pct" in config:
                 self._soft_stop_pct = float(config["soft_stop_pct"])
             if "trailing_activation_pct" in config:
@@ -480,7 +483,7 @@ class ExitManager(RiskManager):
         # --- Layer 3: SOFT STOP ---
         # Always use MARKET for soft stops — limit orders on illiquid pairs
         # get cancelled as stale, leaving the position stuck at a loss.
-        if pnl_pct <= -self._soft_stop_pct:
+        if self._soft_stop_enabled and pnl_pct <= -self._soft_stop_pct:
             self._emit_exit(symbol, price, "soft_stop", {
                 "pnl_pct": round(pnl_pct * 100, 2),
                 "pnl_raw_pct": round(pnl_raw * 100, 2),
