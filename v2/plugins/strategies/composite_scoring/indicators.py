@@ -212,4 +212,30 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
     results["_lower"] = last_lower
     results["_MACD_Hist"] = last_hist
 
+    # === 8. REGIME METRICS ===
+    # SMA slope %: 20-bar linear regression on closes, normalized by mean price
+    sma_slope_window = min(20, n)
+    if sma_slope_window >= 3:
+        tail_close = df["close"].iloc[-sma_slope_window:].values
+        x = np.arange(sma_slope_window, dtype=float)
+        slope = np.polyfit(x, tail_close, 1)[0]
+        mean_price = tail_close.mean()
+        sma_slope_pct = (slope / mean_price * 100) if mean_price > 0 else 0.0
+    else:
+        sma_slope_pct = 0.0
+    results["_sma_slope_pct"] = sma_slope_pct
+
+    # ATR percentile: rank current 5-bar ATR vs full history (0-100)
+    tr_high_low = df["high"] - df["low"]
+    tr_high_close = (df["high"] - df["close"].shift(1)).abs()
+    tr_low_close = (df["low"] - df["close"].shift(1)).abs()
+    true_range = pd.concat([tr_high_low, tr_high_close, tr_low_close], axis=1).max(axis=1)
+    atr_5 = true_range.rolling(window=5, min_periods=1).mean()
+    if len(atr_5.dropna()) >= 2:
+        current_atr = float(atr_5.iloc[-1])
+        atr_percentile = float((atr_5 <= current_atr).sum() / len(atr_5) * 100)
+    else:
+        atr_percentile = 50.0
+    results["_atr_percentile"] = atr_percentile
+
     return results

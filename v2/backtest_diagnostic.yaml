@@ -53,6 +53,8 @@ strategies:
       sma_volatility: 10
       atr_window: 8
       swing_window: 10
+      regime_filter_enabled: true
+      regime_max_atr_percentile: 60
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
@@ -76,10 +78,10 @@ risk:
     min_avg_pnl: -5.0
     min_total_pnl: -50.0
   - type: "exit_manager"
-    hard_stop_pct: 0.045
+    hard_stop_pct: 0.055
     soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag
     soft_stop_pct: 0.03
-    trailing_activation_pct: 0.03
+    trailing_activation_pct: 0.02
     trailing_distance_pct: 0.03
     trailing_mode: "atr"
     atr_period: 14

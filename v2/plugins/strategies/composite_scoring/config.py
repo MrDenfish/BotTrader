@@ -56,6 +56,13 @@ class CompositeScoreConfig:
     swing_window: int = 20
 
     # ------------------------------------------------------------------
+    # Regime filter
+    # ------------------------------------------------------------------
+    regime_filter_enabled: bool = False       # Off by default for backward compat
+    regime_max_atr_percentile: float = 60.0   # Block buys when ATR percentile > this
+    regime_require_uptrend: bool = False       # Optionally require positive SMA slope
+
+    # ------------------------------------------------------------------
     # Volume confirmation gate
     # ------------------------------------------------------------------
     volume_confirm_buy: bool = True        # Require above-avg volume to allow buys
