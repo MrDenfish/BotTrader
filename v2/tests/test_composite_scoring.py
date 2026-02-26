@@ -324,6 +324,36 @@ class TestScoring:
         assert buy_sig[0] == 0
         assert "suppressed" in comps["suppression"]
 
+    def test_sell_indicator_gate_independent(self):
+        """min_sell_indicators_required overrides shared gate for sells only."""
+        cfg = CompositeScoreConfig(
+            score_buy_target=2.0,
+            score_sell_target=2.0,
+            min_indicators_required=2,
+            min_sell_indicators_required=4,
+            weights={
+                "Buy RSI": 3.0, "Buy ROC": 3.0,
+                "Sell RSI": 1.5, "Sell ROC": 1.5, "Sell MACD": 1.5, "Sell Swing": 1.5,
+            },
+        )
+        indicators = {
+            # 2 buy indicators fire → passes shared gate (2)
+            "Buy RSI": (1, 15.0, 20.0),
+            "Buy ROC": (1, 6.0, 5.0),
+            # 3 sell indicators fire → passes shared gate (2) but fails sell gate (4)
+            "Sell RSI": (1, 85.0, 80.0),
+            "Sell ROC": (1, -3.0, -2.0),
+            "Sell MACD": (1, -0.5, 0.0),
+            "Sell Swing": (0, 0.5, 1.0),
+        }
+        _, _, buy_sig, sell_sig, comps = compute_scores(indicators, cfg)
+        # Buy passes (2 fired >= min 2)
+        assert buy_sig[0] == 1
+        # Sell suppressed (3 fired < min_sell 4)
+        assert sell_sig[0] == 0
+        assert "sell_suppressed" in comps["suppression"]
+        assert "_3_of_4" in comps["suppression"]
+
 
 # ------------------------------------------------------------------
 # Guardrails

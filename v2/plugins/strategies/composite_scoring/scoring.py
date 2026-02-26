@@ -92,9 +92,10 @@ def compute_scores(
         )
         buy_signal = (0, buy_signal[1], buy_signal[2])
 
-    if sell_signal[0] == 1 and sell_fired < cfg.min_indicators_required:
+    sell_min = cfg.min_sell_indicators_required or cfg.min_indicators_required
+    if sell_signal[0] == 1 and sell_fired < sell_min:
         suppression_note = (
-            f"sell_suppressed_insufficient_indicators_{sell_fired}_of_{cfg.min_indicators_required}"
+            f"sell_suppressed_insufficient_indicators_{sell_fired}_of_{sell_min}"
         )
         sell_signal = (0, sell_signal[1], sell_signal[2])
 
