@@ -1,15 +1,18 @@
 # BotTrader v2 — Diagnostic Backtest Configuration
 # Usage: python -m v2 --config v2/backtest_diagnostic.yaml
 #
-# Same as backtest_composite.yaml but with the diagnostic observer enabled.
-# Captures MFE/MAE, post-exit tracking, market regime, indicator correlations.
-# Writes diagnostic_trades.jsonl for post-hoc analysis.
+# IMPORTANT: Strategy, risk, and execution parameters MUST match
+# kraken_paper_trading.yaml exactly. Only infrastructure sections
+# (app.mode, pair_discovery, exchange, data_providers, storage,
+# observers) differ for backtest operation.
+#
+# Last synced with kraken_paper_trading.yaml: 2026-02-25
 
 app:
   name: "BotTrader"
   mode: "backtest"
   symbols:
-    - "BTC-USD"                   # fallback only — pair_discovery overrides
+    - "BTC-USD"                   # fallback only — csv pair_discovery overrides
 
 pair_discovery:
   type: "csv"
@@ -19,24 +22,25 @@ pair_discovery:
 exchange:
   type: "backtest_sim"
   initial_balance_usd: 10000
-  maker_fee: 0.0025
-  taker_fee: 0.004
+  maker_fee: 0.0025              # Kraken base tier: 0.25% maker
+  taker_fee: 0.004               # Kraken base tier: 0.40% taker
   slippage_bps: 1.0
 
 data_providers:
   - type: "csv_replay"
     data_dir: "backtest/data"
-    days: 180
+    days: 60
     resolution: "1m"
 
+# ─── Strategy — MUST match kraken_paper_trading.yaml ───
 strategies:
   - type: "composite_scoring"
     config:
       candle_interval_minutes: 5
-      score_buy_target: 3.5
-      score_sell_target: 3.5
+      score_buy_target: 2.0
+      score_sell_target: 2.0
       allow_buys_on_red_day: true
-      bb_window: 20
+      bb_window: 10
       buy_ratio: 1.05
       macd_fast: 8
       macd_slow: 21
@@ -44,18 +48,20 @@ strategies:
       rsi_buy: 25.0
       rsi_sell: 75.0
       roc_window: 4
-      roc_buy_threshold: 3.0
-      roc_sell_threshold: -1.5
-      sma_volatility: 20
-      atr_window: 14
-      swing_window: 20
+      roc_buy_threshold: 2.0
+      roc_sell_threshold: -1.0
+      sma_volatility: 10
+      atr_window: 8
+      swing_window: 10
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
+      enable_roc_20m_momentum: false    # Disabled: 35% win rate, actively harmful
       min_indicators_required: 3
-      cooldown_bars: 4
+      cooldown_bars: 2
       loss_lockout_bars: 12
 
+# ─── Risk — MUST match kraken_paper_trading.yaml ───
 risk:
   - type: "basic"
     pass_through: false
@@ -63,8 +69,15 @@ risk:
     maker_fee_pct: 0.0025
     taker_fee_pct: 0.004
     max_round_trip_fee_pct: 0.01
+  - type: "performance_filter"
+    window_days: 30
+    min_trades: 3
+    min_win_rate: 0.30
+    min_avg_pnl: -5.0
+    min_total_pnl: -50.0
   - type: "exit_manager"
     hard_stop_pct: 0.045
+    soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag
     soft_stop_pct: 0.03
     trailing_activation_pct: 0.03
     trailing_distance_pct: 0.03
@@ -73,7 +86,7 @@ risk:
     atr_mult: 2.0
     trailing_min_distance_pct: 0.01
     trailing_max_distance_pct: 0.02
-    check_interval_sec: 0
+    check_interval_sec: 0                # backtest: no throttle
     signal_exit_enabled: true
     signal_exit_min_pnl_pct: 0.0
     max_hold_hours: 48
@@ -93,18 +106,20 @@ risk:
     max_consecutive_rejections: 10
     cooldown_minutes: 30
 
+# ─── Execution — MUST match kraken_paper_trading.yaml ───
 execution:
   type: "maker_only"
-  max_retries: 1
-  post_only: false
+  max_retries: 3
+  post_only: true
   default_notional: 50
   notional_by_trigger:
     score: 50
     roc_momo_20m: 30
     roc_momo_24h: 30
   min_order_fiat: 10
-  stale_timeout_seconds: 0
+  stale_timeout_seconds: 0               # backtest: instant fills
 
+# ─── Backtest-only infrastructure ───
 storage:
   type: ""
 
