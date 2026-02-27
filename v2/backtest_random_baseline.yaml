@@ -30,7 +30,7 @@ exchange:
 data_providers:
   - type: "csv_replay"
     data_dir: "backtest/data"
-    days: 180
+    days: 60
     resolution: "1m"
 
 strategies:
@@ -47,9 +47,10 @@ risk:
     taker_fee_pct: 0.004
     max_round_trip_fee_pct: 0.01
   - type: "exit_manager"
-    hard_stop_pct: 0.045
+    hard_stop_pct: 0.055
+    soft_stop_enabled: false
     soft_stop_pct: 0.03
-    trailing_activation_pct: 0.03
+    trailing_activation_pct: 0.02
     trailing_distance_pct: 0.03
     trailing_mode: "atr"
     atr_period: 14
