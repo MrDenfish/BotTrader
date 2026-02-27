@@ -345,7 +345,14 @@ class App:
 
             # Zero out dust from float precision artifacts
             if abs(pos.qty) < Decimal("1e-9"):
+                # Save zeroed position to DB BEFORE removing from memory,
+                # so v2_positions reflects the closed state. Without this,
+                # stale positions get restored on container restart.
+                if self._storage and hasattr(self._storage, "save_position"):
+                    pos.qty = Decimal("0")
+                    asyncio.ensure_future(self._storage.save_position(pos))
                 del self.portfolio.positions[symbol]
+                return
         else:
             from v2.core.types import Position
             pos = Position(

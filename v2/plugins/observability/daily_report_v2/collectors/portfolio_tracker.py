@@ -98,9 +98,15 @@ class PortfolioTracker:
                 self._positions[symbol] = new_qty
                 self._last_prices[symbol] = float(price)
             elif side_str == "SELL":
-                self._cash += notional - fee
                 existing_qty = self._positions.get(symbol, Decimal("0"))
-                new_qty = existing_qty - qty
+                # Cap sell qty at available position to ignore phantom sells
+                # (from stale v2_positions restores on prior container restarts)
+                sell_qty = min(qty, existing_qty) if existing_qty > 0 else Decimal("0")
+                if sell_qty <= 0:
+                    continue  # Skip phantom sell — no position to sell
+                sell_notional = price * sell_qty
+                self._cash += sell_notional - fee
+                new_qty = existing_qty - sell_qty
                 if new_qty <= Decimal("1e-12"):
                     self._positions.pop(symbol, None)
                     self._avg_entries.pop(symbol, None)
