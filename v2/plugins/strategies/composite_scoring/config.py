@@ -92,6 +92,7 @@ class CompositeScoreConfig:
     cooldown_bars: int = 7              # Bars to block opposite side after flip
     min_indicators_required: int = 2    # Multi-indicator confirmation gate
     min_sell_indicators_required: int = 0  # Sell-side override (0 = use min_indicators_required)
+    require_trend_for_buy: bool = True     # Require ≥1 trend indicator (MACD/ROC/Swing) for buys
 
     # Post-loss buy lockout: block re-entry after exit manager sells at a loss.
     # Prevents death-spiral where oversold indicators trigger immediate re-buy.

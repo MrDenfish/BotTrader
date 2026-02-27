@@ -92,6 +92,19 @@ def compute_scores(
         )
         buy_signal = (0, buy_signal[1], buy_signal[2])
 
+    # Trend confirmation gate: require at least one trend-confirming indicator
+    # (MACD, ROC, or Swing) to prevent buying purely on counter-trend signals
+    # (Touch + RSI + Volume Div) which catch falling knives.
+    _TREND_INDICATORS = {"Buy MACD", "Buy ROC", "Buy Swing"}
+    if buy_signal[0] == 1 and cfg.require_trend_for_buy:
+        trend_fired = any(
+            indicators.get(name, (0,))[0] == 1
+            for name in _TREND_INDICATORS
+        )
+        if not trend_fired:
+            suppression_note = "buy_suppressed_no_trend_confirmation"
+            buy_signal = (0, buy_signal[1], buy_signal[2])
+
     sell_min = cfg.min_sell_indicators_required or cfg.min_indicators_required
     if sell_signal[0] == 1 and sell_fired < sell_min:
         suppression_note = (
