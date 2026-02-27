@@ -6,7 +6,7 @@
 # (app.mode, pair_discovery, exchange, data_providers, storage,
 # observers) differ for backtest operation.
 #
-# Last synced with kraken_paper_trading.yaml: 2026-02-25
+# Last synced with kraken_paper_trading.yaml: 2026-02-27
 
 app:
   name: "BotTrader"

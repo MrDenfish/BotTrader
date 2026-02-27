@@ -96,10 +96,10 @@ risk:
     min_avg_pnl: -5.0
     min_total_pnl: -50.0
   - type: "exit_manager"
-    hard_stop_pct: 0.045
+    hard_stop_pct: 0.055
     soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag (-$300 backtest, -$15 paper)
     soft_stop_pct: 0.03
-    trailing_activation_pct: 0.03
+    trailing_activation_pct: 0.02
     trailing_distance_pct: 0.03
     trailing_mode: "atr"
     atr_period: 14
