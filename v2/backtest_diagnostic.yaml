@@ -59,6 +59,7 @@ strategies:
       volume_confirm_threshold: 0.7
       volume_div_window: 10
       enable_roc_20m_momentum: false    # Disabled: 35% win rate, actively harmful
+      enable_roc_24h_momentum: false   # Disabled: 28% hard stop rate, biggest P&L drag
       min_indicators_required: 3
       min_sell_indicators_required: 5
       cooldown_bars: 2
@@ -118,9 +119,9 @@ execution:
   type: "maker_only"
   max_retries: 3
   post_only: true
-  default_notional: 50
+  default_notional: 75
   notional_by_trigger:
-    score: 50
+    score: 75
     roc_momo_20m: 30
     roc_momo_24h: 30
   min_order_fiat: 10

@@ -507,13 +507,18 @@ class ExitManager(RiskManager):
         # --- Layer 1: HARD STOP (highest priority, MARKET order) ---
         hard_threshold = self._get_hard_stop_threshold(symbol, price)
         if pnl_pct <= -hard_threshold:
-            self._emit_exit(symbol, price, "hard_stop", {
+            hard_meta = {
                 "pnl_pct": round(pnl_pct * 100, 2),
                 "pnl_raw_pct": round(pnl_raw * 100, 2),
                 "threshold_pct": round(-hard_threshold * 100, 2),
                 "avg_entry": avg_entry,
                 "hard_stop_mode": self._hard_stop_mode,
-            }, order_type=OrderType.MARKET)
+            }
+            if self._hard_stop_mode == "atr":
+                raw_atr = self._compute_raw_atr_pct(symbol, price)
+                hard_meta["atr_pct"] = round(raw_atr * 100, 4) if raw_atr else None
+                hard_meta["hard_stop_atr_mult"] = self._hard_stop_atr_mult
+            self._emit_exit(symbol, price, "hard_stop", hard_meta, order_type=OrderType.MARKET)
             return
 
         # --- Layer 2: PEAK TRACKING (ROC momentum trades) ---

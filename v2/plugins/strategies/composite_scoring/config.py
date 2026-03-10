@@ -112,6 +112,7 @@ class CompositeScoreConfig:
     roc_20m_rsi_buy_range: tuple[float, float] = (45.0, 60.0)
     roc_20m_rsi_sell_range: tuple[float, float] = (40.0, 55.0)
 
+    enable_roc_24h_momentum: bool = True   # Set False to disable 24h momentum entries
     roc_24h_buy_threshold: float = 8.5
     roc_24h_sell_threshold: float = -5.0
     roc_24h_rsi_range: tuple[float, float] = (45.0, 55.0)
