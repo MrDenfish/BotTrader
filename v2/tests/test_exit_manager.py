@@ -1237,3 +1237,168 @@ class TestPeakTracking:
         em.on_ticker(_make_ticker(price=95.0), portfolio)
         assert len(published) == 1
         assert published[0].signal.reason == "hard_stop"
+
+
+# =====================================================================
+# ATR-based hard stops
+# =====================================================================
+
+
+class TestATRHardStop:
+    """Tests for ATR-based dynamic hard stops."""
+
+    def _make_candle(self, symbol, high, low, close):
+        from types import SimpleNamespace
+        return SimpleNamespace(symbol=symbol, high=high, low=low, close=close)
+
+    def _feed_candles(self, em, symbol, candles):
+        for h, l, c in candles:
+            em.on_candle(self._make_candle(symbol, h, l, c))
+
+    def test_fixed_mode_unchanged(self, bus):
+        """mode='fixed' uses flat hard_stop_pct — regression test."""
+        em = _make_exit_manager(bus, hard_stop_pct=0.045, hard_stop_mode="fixed")
+        portfolio = _make_portfolio(avg_entry=100.0)
+
+        published = []
+        bus.subscribe(SignalEvent, lambda e: published.append(e))
+
+        # -4.5% → should fire hard stop
+        em.on_ticker(_make_ticker(price=95.5), portfolio)
+        assert len(published) == 1
+        assert published[0].signal.reason == "hard_stop"
+
+    def test_atr_mode_uses_dynamic_threshold(self, bus):
+        """ATR mode computes per-symbol threshold from candle data."""
+        em = _make_exit_manager(bus,
+                                hard_stop_pct=0.055,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0,
+                                hard_stop_min_pct=0.03,
+                                hard_stop_max_pct=0.08,
+                                atr_period=3)
+        # Feed candles with moderate volatility
+        # TR values: bar1=3 (high-low=3), bar2=3, bar3=3
+        candles = [
+            (100, 97, 99),
+            (101, 98, 100),
+            (102, 99, 101),
+            (103, 100, 102),
+        ]
+        self._feed_candles(em, "BTC-USD", candles)
+
+        # ATR = 3.0, price=100 → raw_atr_pct=0.03, threshold=0.03*3=0.09 → clamped to max 0.08
+        threshold = em._get_hard_stop_threshold("BTC-USD", 100.0)
+        assert abs(threshold - 0.08) < 0.001  # clamped to max
+
+    def test_atr_mode_fallback_no_candles(self, bus):
+        """No candle history → falls back to fixed hard_stop_pct."""
+        em = _make_exit_manager(bus,
+                                hard_stop_pct=0.055,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0)
+        threshold = em._get_hard_stop_threshold("BTC-USD", 100.0)
+        assert threshold == 0.055
+
+    def test_atr_clamp_min(self, bus):
+        """Low-vol asset clamped to hard_stop_min_pct."""
+        em = _make_exit_manager(bus,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0,
+                                hard_stop_min_pct=0.03,
+                                hard_stop_max_pct=0.08,
+                                atr_period=3)
+        # Very tight candles → tiny ATR
+        candles = [
+            (100.0, 99.9, 99.95),
+            (100.05, 99.95, 100.0),
+            (100.0, 99.9, 99.95),
+            (100.05, 99.95, 100.0),
+        ]
+        self._feed_candles(em, "BTC-USD", candles)
+
+        # ATR ~0.1, price=100 → raw_pct=0.001, threshold=0.003 → clamped to min 0.03
+        threshold = em._get_hard_stop_threshold("BTC-USD", 100.0)
+        assert threshold == 0.03
+
+    def test_atr_clamp_max(self, bus):
+        """High-vol asset clamped to hard_stop_max_pct."""
+        em = _make_exit_manager(bus,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0,
+                                hard_stop_min_pct=0.03,
+                                hard_stop_max_pct=0.08,
+                                atr_period=3)
+        # Wide candles → large ATR
+        candles = [
+            (110, 90, 100),   # bar 0
+            (115, 85, 100),   # bar 1: TR=30
+            (120, 80, 100),   # bar 2: TR=40
+            (125, 75, 100),   # bar 3: TR=50
+        ]
+        self._feed_candles(em, "BTC-USD", candles)
+
+        # ATR = (30+40+50)/3 = 40, raw_pct=0.40, threshold=1.2 → clamped to 0.08
+        threshold = em._get_hard_stop_threshold("BTC-USD", 100.0)
+        assert threshold == 0.08
+
+    def test_multi_symbol_independent_thresholds(self, bus):
+        """BTC vs RIVER get different thresholds based on their own ATR."""
+        em = _make_exit_manager(bus,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0,
+                                hard_stop_min_pct=0.03,
+                                hard_stop_max_pct=0.08,
+                                atr_period=3)
+
+        # BTC: low vol → ATR ~1, price=100 → raw_pct=0.01 → threshold=0.03 (min)
+        btc_candles = [
+            (100.5, 99.5, 100.0),
+            (101.0, 100.0, 100.5),
+            (100.5, 99.5, 100.0),
+            (101.0, 100.0, 100.5),
+        ]
+        self._feed_candles(em, "BTC-USD", btc_candles)
+
+        # RIVER: high vol → ATR ~5, price=100 → raw_pct=0.05 → threshold=0.15 → clamped 0.08
+        river_candles = [
+            (105, 95, 100),
+            (106, 94, 100),
+            (107, 93, 100),
+            (108, 92, 100),
+        ]
+        self._feed_candles(em, "RIVER-USD", river_candles)
+
+        btc_threshold = em._get_hard_stop_threshold("BTC-USD", 100.0)
+        river_threshold = em._get_hard_stop_threshold("RIVER-USD", 100.0)
+
+        assert btc_threshold < river_threshold
+        assert btc_threshold == 0.03  # clamped to min
+        assert river_threshold == 0.08  # clamped to max
+
+    def test_metadata_includes_mode(self, bus):
+        """Exit signal metadata includes hard_stop_mode."""
+        em = _make_exit_manager(bus,
+                                hard_stop_pct=0.045,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0,
+                                hard_stop_min_pct=0.03,
+                                hard_stop_max_pct=0.08)
+        portfolio = _make_portfolio(avg_entry=100.0)
+
+        published = []
+        bus.subscribe(SignalEvent, lambda e: published.append(e))
+
+        # No candle data → falls back to 0.045. Price at -5% triggers it.
+        em.on_ticker(_make_ticker(price=95.0), portfolio)
+        assert len(published) == 1
+        assert published[0].signal.metadata["hard_stop_mode"] == "atr"
+
+    def test_on_candle_accumulates_for_hard_stop_mode(self, bus):
+        """Candles collected when hard_stop_mode='atr' even if trailing_mode='fixed'."""
+        em = _make_exit_manager(bus,
+                                trailing_mode="fixed",
+                                hard_stop_mode="atr")
+        em.on_candle(self._make_candle("BTC-USD", 100, 90, 95))
+        assert "BTC-USD" in em._candle_history
+        assert len(em._candle_history["BTC-USD"]) == 1

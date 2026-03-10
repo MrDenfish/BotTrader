@@ -87,6 +87,12 @@ class ExitManager(RiskManager):
         self._trailing_min_distance_pct: float = float(kwargs.get("trailing_min_distance_pct", 0.01))
         self._trailing_max_distance_pct: float = float(kwargs.get("trailing_max_distance_pct", 0.02))
 
+        # ATR-based hard stop config
+        self._hard_stop_mode: str = kwargs.get("hard_stop_mode", "fixed")  # "fixed" or "atr"
+        self._hard_stop_atr_mult: float = float(kwargs.get("hard_stop_atr_mult", 3.0))
+        self._hard_stop_min_pct: float = float(kwargs.get("hard_stop_min_pct", 0.03))
+        self._hard_stop_max_pct: float = float(kwargs.get("hard_stop_max_pct", 0.08))
+
         # Stale position time-limit (0 = disabled)
         self._max_hold_hours: float = float(kwargs.get("max_hold_hours", 0))
 
@@ -171,6 +177,14 @@ class ExitManager(RiskManager):
                 self._peak_max_hold_minutes = int(config["peak_max_hold_minutes"])
             if "peak_triggers" in config:
                 self._peak_triggers = list(config["peak_triggers"])
+            if "hard_stop_mode" in config:
+                self._hard_stop_mode = config["hard_stop_mode"]
+            if "hard_stop_atr_mult" in config:
+                self._hard_stop_atr_mult = float(config["hard_stop_atr_mult"])
+            if "hard_stop_min_pct" in config:
+                self._hard_stop_min_pct = float(config["hard_stop_min_pct"])
+            if "hard_stop_max_pct" in config:
+                self._hard_stop_max_pct = float(config["hard_stop_max_pct"])
 
     # ------------------------------------------------------------------
     # Time helpers (simulated time for backtest, wall clock for live)
@@ -230,19 +244,18 @@ class ExitManager(RiskManager):
     # ------------------------------------------------------------------
 
     def on_candle(self, candle) -> None:
-        """Accumulate candle history for ATR computation (only in atr mode)."""
-        if self._trailing_mode != "atr":
+        """Accumulate candle history for ATR computation (trailing or hard stop)."""
+        if self._trailing_mode != "atr" and self._hard_stop_mode != "atr":
             return
         symbol = candle.symbol
         if symbol not in self._candle_history:
             self._candle_history[symbol] = deque(maxlen=self._atr_period + 1)
         self._candle_history[symbol].append((candle.high, candle.low, candle.close))
 
-    def _compute_atr_distance(self, symbol: str, price: float) -> float | None:
-        """Compute ATR-based trailing distance as a fraction.
+    def _compute_raw_atr_pct(self, symbol: str, price: float) -> float | None:
+        """Compute raw ATR as a fraction of price. No clamping.
 
-        Returns the constrained distance (between min and max),
-        or None if insufficient candle history.
+        Returns None if insufficient candle history.
         """
         history = self._candle_history.get(symbol)
         if not history or len(history) < 2:
@@ -267,12 +280,37 @@ class ExitManager(RiskManager):
         # ATR as percentage of current price
         if price <= 0:
             return None
-        atr_pct = atr / price
+        return atr / price
+
+    def _compute_atr_distance(self, symbol: str, price: float) -> float | None:
+        """Compute ATR-based trailing distance as a fraction.
+
+        Returns the constrained distance (between min and max),
+        or None if insufficient candle history.
+        """
+        raw = self._compute_raw_atr_pct(symbol, price)
+        if raw is None:
+            return None
 
         # Distance = atr_mult × ATR%, constrained to [min, max]
-        distance = atr_pct * self._atr_mult
-        distance = max(self._trailing_min_distance_pct, min(distance, self._trailing_max_distance_pct))
-        return distance
+        distance = raw * self._atr_mult
+        return max(self._trailing_min_distance_pct, min(distance, self._trailing_max_distance_pct))
+
+    def _get_hard_stop_threshold(self, symbol: str, price: float) -> float:
+        """Return the hard stop threshold for a symbol.
+
+        In 'atr' mode, uses ATR% x hard_stop_atr_mult, clamped to [min, max].
+        Falls back to fixed hard_stop_pct when no candle data or mode is 'fixed'.
+        """
+        if self._hard_stop_mode != "atr":
+            return self._hard_stop_pct
+
+        raw = self._compute_raw_atr_pct(symbol, price)
+        if raw is None:
+            return self._hard_stop_pct  # fallback
+
+        threshold = raw * self._hard_stop_atr_mult
+        return max(self._hard_stop_min_pct, min(threshold, self._hard_stop_max_pct))
 
     # ------------------------------------------------------------------
     # Peak tracking for ROC momentum trades
@@ -467,12 +505,14 @@ class ExitManager(RiskManager):
         pnl_pct, pnl_raw = self._compute_pnl(price, avg_entry)
 
         # --- Layer 1: HARD STOP (highest priority, MARKET order) ---
-        if pnl_pct <= -self._hard_stop_pct:
+        hard_threshold = self._get_hard_stop_threshold(symbol, price)
+        if pnl_pct <= -hard_threshold:
             self._emit_exit(symbol, price, "hard_stop", {
                 "pnl_pct": round(pnl_pct * 100, 2),
                 "pnl_raw_pct": round(pnl_raw * 100, 2),
-                "threshold_pct": round(-self._hard_stop_pct * 100, 2),
+                "threshold_pct": round(-hard_threshold * 100, 2),
                 "avg_entry": avg_entry,
+                "hard_stop_mode": self._hard_stop_mode,
             }, order_type=OrderType.MARKET)
             return
 
