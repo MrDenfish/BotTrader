@@ -92,6 +92,7 @@ class ExitManager(RiskManager):
         self._hard_stop_atr_mult: float = float(kwargs.get("hard_stop_atr_mult", 3.0))
         self._hard_stop_min_pct: float = float(kwargs.get("hard_stop_min_pct", 0.03))
         self._hard_stop_max_pct: float = float(kwargs.get("hard_stop_max_pct", 0.08))
+        self._hard_stop_atr_period: int = int(kwargs.get("hard_stop_atr_period", 120))  # 120 1-min bars = 2 hours
 
         # Stale position time-limit (0 = disabled)
         self._max_hold_hours: float = float(kwargs.get("max_hold_hours", 0))
@@ -185,6 +186,8 @@ class ExitManager(RiskManager):
                 self._hard_stop_min_pct = float(config["hard_stop_min_pct"])
             if "hard_stop_max_pct" in config:
                 self._hard_stop_max_pct = float(config["hard_stop_max_pct"])
+            if "hard_stop_atr_period" in config:
+                self._hard_stop_atr_period = int(config["hard_stop_atr_period"])
 
     # ------------------------------------------------------------------
     # Time helpers (simulated time for backtest, wall clock for live)
@@ -249,14 +252,23 @@ class ExitManager(RiskManager):
             return
         symbol = candle.symbol
         if symbol not in self._candle_history:
-            self._candle_history[symbol] = deque(maxlen=self._atr_period + 1)
+            max_period = max(self._atr_period, self._hard_stop_atr_period)
+            self._candle_history[symbol] = deque(maxlen=max_period + 1)
         self._candle_history[symbol].append((candle.high, candle.low, candle.close))
 
-    def _compute_raw_atr_pct(self, symbol: str, price: float) -> float | None:
+    def _compute_raw_atr_pct(self, symbol: str, price: float, period: int | None = None) -> float | None:
         """Compute raw ATR as a fraction of price. No clamping.
+
+        Args:
+            symbol: Trading symbol.
+            price: Current price for percentage calculation.
+            period: ATR lookback period. Defaults to self._atr_period (trailing).
 
         Returns None if insufficient candle history.
         """
+        if period is None:
+            period = self._atr_period
+
         history = self._candle_history.get(symbol)
         if not history or len(history) < 2:
             return None
@@ -273,8 +285,8 @@ class ExitManager(RiskManager):
         if not true_ranges:
             return None
 
-        # ATR = simple average of true ranges (up to atr_period)
-        n = min(len(true_ranges), self._atr_period)
+        # ATR = simple average of true ranges (up to period)
+        n = min(len(true_ranges), period)
         atr = sum(true_ranges[-n:]) / n
 
         # ATR as percentage of current price
@@ -300,12 +312,14 @@ class ExitManager(RiskManager):
         """Return the hard stop threshold for a symbol.
 
         In 'atr' mode, uses ATR% x hard_stop_atr_mult, clamped to [min, max].
+        Uses hard_stop_atr_period (default 120 bars = 2h at 1-min resolution)
+        for a more meaningful volatility measure than the short trailing period.
         Falls back to fixed hard_stop_pct when no candle data or mode is 'fixed'.
         """
         if self._hard_stop_mode != "atr":
             return self._hard_stop_pct
 
-        raw = self._compute_raw_atr_pct(symbol, price)
+        raw = self._compute_raw_atr_pct(symbol, price, period=self._hard_stop_atr_period)
         if raw is None:
             return self._hard_stop_pct  # fallback
 

@@ -1276,6 +1276,7 @@ class TestATRHardStop:
                                 hard_stop_atr_mult=3.0,
                                 hard_stop_min_pct=0.03,
                                 hard_stop_max_pct=0.08,
+                                hard_stop_atr_period=3,
                                 atr_period=3)
         # Feed candles with moderate volatility
         # TR values: bar1=3 (high-low=3), bar2=3, bar3=3
@@ -1307,6 +1308,7 @@ class TestATRHardStop:
                                 hard_stop_atr_mult=3.0,
                                 hard_stop_min_pct=0.03,
                                 hard_stop_max_pct=0.08,
+                                hard_stop_atr_period=3,
                                 atr_period=3)
         # Very tight candles → tiny ATR
         candles = [
@@ -1328,6 +1330,7 @@ class TestATRHardStop:
                                 hard_stop_atr_mult=3.0,
                                 hard_stop_min_pct=0.03,
                                 hard_stop_max_pct=0.08,
+                                hard_stop_atr_period=3,
                                 atr_period=3)
         # Wide candles → large ATR
         candles = [
@@ -1349,6 +1352,7 @@ class TestATRHardStop:
                                 hard_stop_atr_mult=3.0,
                                 hard_stop_min_pct=0.03,
                                 hard_stop_max_pct=0.08,
+                                hard_stop_atr_period=3,
                                 atr_period=3)
 
         # BTC: low vol → ATR ~1, price=100 → raw_pct=0.01 → threshold=0.03 (min)
@@ -1402,3 +1406,43 @@ class TestATRHardStop:
         em.on_candle(self._make_candle("BTC-USD", 100, 90, 95))
         assert "BTC-USD" in em._candle_history
         assert len(em._candle_history["BTC-USD"]) == 1
+
+    def test_hard_stop_uses_separate_atr_period(self, bus):
+        """hard_stop_atr_period is independent from trailing atr_period."""
+        em = _make_exit_manager(bus,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_mult=3.0,
+                                hard_stop_min_pct=0.01,
+                                hard_stop_max_pct=0.50,
+                                hard_stop_atr_period=5,
+                                atr_period=2)  # trailing uses 2, hard stop uses 5
+
+        # Feed 6 candles with varying TR
+        candles = [
+            (100, 98, 99),   # bar 0
+            (101, 97, 100),  # bar 1: TR=4
+            (102, 96, 99),   # bar 2: TR=6
+            (100, 95, 98),   # bar 3: TR=5
+            (101, 96, 99),   # bar 4: TR=5
+            (102, 97, 100),  # bar 5: TR=5
+        ]
+        self._feed_candles(em, "TEST-USD", candles)
+
+        # Trailing ATR (period=2): uses last 2 TRs → (5+5)/2=5, raw=5/100=0.05
+        trailing_dist = em._compute_atr_distance("TEST-USD", 100.0)
+        assert trailing_dist is not None
+
+        # Hard stop ATR (period=5): uses last 5 TRs → (4+6+5+5+5)/5=5, raw=5/100=0.05
+        hs_threshold = em._get_hard_stop_threshold("TEST-USD", 100.0)
+        # 0.05 * 3.0 = 0.15
+        assert abs(hs_threshold - 0.15) < 0.001
+
+    def test_deque_maxlen_accommodates_hard_stop_period(self, bus):
+        """Deque maxlen is max(atr_period, hard_stop_atr_period) + 1."""
+        em = _make_exit_manager(bus,
+                                hard_stop_mode="atr",
+                                hard_stop_atr_period=120,
+                                atr_period=14)
+        em.on_candle(self._make_candle("BTC-USD", 100, 90, 95))
+        # maxlen should be 121 (120 + 1), not 15 (14 + 1)
+        assert em._candle_history["BTC-USD"].maxlen == 121

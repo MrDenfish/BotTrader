@@ -100,7 +100,8 @@ risk:
     hard_stop_pct: 0.055                  # fallback when no ATR data
     hard_stop_mode: "atr"                 # "fixed" or "atr" — dynamic per-symbol hard stops
     hard_stop_atr_mult: 3.0               # 3x ATR% for hard stop threshold
-    hard_stop_min_pct: 0.03               # floor: never tighter than 3%
+    hard_stop_atr_period: 120             # 120 1-min bars (2h) for meaningful volatility
+    hard_stop_min_pct: 0.045              # floor: never tighter than 4.5% (optimal balance of win rate vs loss size)
     hard_stop_max_pct: 0.08               # ceiling: never wider than 8%
     soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag (-$300 backtest, -$15 paper)
     soft_stop_pct: 0.03
