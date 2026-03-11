@@ -23,7 +23,8 @@ from pathlib import Path
 
 import requests
 
-# Kraken symbol mappings: our CSV name → Kraken pair name
+# Kraken symbol mappings: our CSV name → Kraken pair name.
+# Add new tickers here to include them in future backfills.
 SYMBOL_MAP = {
     "BTC_USD": "XBTUSD",
     "ETH_USD": "ETHUSD",
@@ -34,6 +35,10 @@ SYMBOL_MAP = {
     "LINK_USD": "LINKUSD",
     "DOT_USD": "DOTUSD",
     "AVAX_USD": "AVAXUSD",
+    "LTC_USD": "LTCUSD",
+    "SUI_USD": "SUIUSD",
+    "NEAR_USD": "NEARUSD",
+    "ATOM_USD": "ATOMUSD",
 }
 
 DATA_DIR = Path(__file__).parent.parent / "backtest" / "data"

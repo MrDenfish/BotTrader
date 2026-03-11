@@ -29,10 +29,14 @@ DATA_DIR = Path("backtest/data")
 
 def get_active_symbols() -> List[str]:
     """Get list of active symbols."""
-    # Default list of active symbols (avoids database dependency)
+    # Default list of active symbols (avoids database dependency).
+    # These match the symbols available on Kraken and in backtest/data/.
+    # Add new tickers here to include them in future backfills.
     DEFAULT_SYMBOLS = [
         'BTC-USD', 'ETH-USD', 'SOL-USD', 'XRP-USD', 'ADA-USD',
-        'DOGE-USD', 'MATIC-USD', 'DOT-USD', 'AVAX-USD', 'LINK-USD'
+        'DOGE-USD', 'DOT-USD', 'AVAX-USD', 'LINK-USD',
+        # Uncomment to add more symbols for backtesting:
+        # 'LTC-USD', 'SUI-USD', 'NEAR-USD', 'ATOM-USD',
     ]
 
     try:
@@ -140,12 +144,10 @@ def download_candles(
 
 def save_to_csv(df: pd.DataFrame, symbol: str, data_dir: Path):
     """
-    Save DataFrame to CSV file.
+    Save DataFrame to CSV file, merging with existing data if present.
 
-    Args:
-        df: DataFrame with OHLCV data
-        symbol: Trading symbol
-        data_dir: Directory to save CSV files
+    New data overwrites existing rows for the same timestamp (dedup).
+    This allows incremental backfills without losing older data.
     """
     if df.empty:
         return
@@ -153,11 +155,22 @@ def save_to_csv(df: pd.DataFrame, symbol: str, data_dir: Path):
     # Create data directory if it doesn't exist
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save to CSV
     filename = data_dir / f"{symbol.replace('-', '_')}.csv"
-    df.to_csv(filename, index=False)
 
-    print(f"  💾 Saved {len(df):,} rows to {filename}")
+    # Merge with existing CSV if present
+    if filename.exists():
+        existing = pd.read_csv(filename)
+        time_col = "time" if "time" in existing.columns else "timestamp"
+        existing[time_col] = pd.to_datetime(existing[time_col]).dt.strftime("%Y-%m-%d %H:%M:%S")
+        df["time"] = pd.to_datetime(df["time"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+        # Concat and dedup: new data takes priority
+        merged = pd.concat([existing, df]).drop_duplicates(subset=[time_col], keep="last")
+        merged = merged.sort_values(time_col).reset_index(drop=True)
+        merged.to_csv(filename, index=False)
+        print(f"  Merged: {len(merged):,} rows ({len(existing):,} existing + {len(df):,} new, {len(merged) - len(existing):,} net new)")
+    else:
+        df.to_csv(filename, index=False)
+        print(f"  Saved {len(df):,} rows to {filename}")
 
 
 def download_all_symbols(days: int = 60, symbols: List[str] = None):
