@@ -192,7 +192,7 @@
 
 ## AWS Server Connection Issue
 
-**Problem:** AWS server (54.187.252.72) was unreachable during session
+**Problem:** AWS server (44.238.14.228) was unreachable during session
 - SSH timeout
 - Ping 100% packet loss
 - All background processes failed with exit code 255

@@ -193,5 +193,5 @@ WHERE pnl_usd IS NULL
 ---
 
 **Created:** December 27, 2025
-**AWS Server:** bottrader-aws (54.187.252.72)
+**AWS Server:** bottrader-aws (44.238.14.228)
 **Note:** AWS server was unreachable during checklist creation. Run checks when server is accessible.

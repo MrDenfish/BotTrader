@@ -109,7 +109,7 @@ asyncio.create_task(refresh_loop, interval=60)  # Phase 5: buy_sell_matrix sync
 - Checks TP/SL/Signal conditions
 - **Must verify this is working correctly**
 
-#### B) Sighook Mode (`run_sighook()` - line 820-870)
+#### B) Sighook Mode (` - line 820-870)
 **Purpose**: Generate trading signals, calculate buy_sell_matrix
 
 **Key Tasks Started**:

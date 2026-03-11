@@ -21,11 +21,10 @@ Strategy backtesting documentation, specs, and results.
 - **guides/** - Writing and running backtests
 - **test-results/** - Backtest outputs
 
-### [3-plugin-architecture/](3-plugin-architecture/) - Plugin System Design
-Refactoring plan for plugin-based strategy and risk management architecture.
-- **design/** - Plugin interface specifications
-- **migration-plan/** - Phased migration from monolithic to plugin system
-- **examples/** - Example plugin implementations
+### [3-plugin-architecture/](3-plugin-architecture/) - v2 Plugin Architecture
+v2 event-driven plugin system (7 ABCs, 15 plugins, EventBus, Registry). All code in `v2/`.
+- **design/** - Plugin interface contracts, shared types, EventBus, Registry
+- **migration-plan/** - Migration history (all 4 phases complete)
 
 ### [4-analysis/](4-analysis/) - Analysis & Performance
 Performance tracking, feasibility studies, and issue investigations.
@@ -59,8 +58,8 @@ Historical documentation, resolved bugs, and superseded plans.
 
 ### Backtesting
 - [4h Hybrid Maker Strategy](2-backtesting/strategies/4h-hybrid-maker/)
-- [Plugin Architecture Plan](3-plugin-architecture/README.md)
+- [v2 Plugin Architecture](3-plugin-architecture/README.md)
 
 ---
 
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-08
