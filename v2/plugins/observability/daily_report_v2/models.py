@@ -90,6 +90,7 @@ class ExitManagerStats:
     hard_stops: int = 0
     soft_stops: int = 0
     trailing_stops: int = 0
+    stale_exits: int = 0
     signal_exits: int = 0
     trailing_activations: int = 0
     total_exits: int = 0

@@ -127,9 +127,34 @@ class KrakenWebSocketDataProvider(DataProvider):
         self._flush_all_candles()
         logger.info("Kraken WebSocket data provider stopped")
 
+    def set_position_symbols_fn(self, fn) -> None:
+        """Set a callback that returns symbols with open positions.
+
+        Used to prevent unsubscribing from symbols that have open positions
+        even if pair discovery drops them (zombie position prevention).
+        """
+        self._position_symbols_fn = fn
+
     def _on_symbols_updated(self, event: Any) -> None:
-        """Handle dynamic symbol list changes from pair discovery."""
-        new_symbols = list(event.symbols)
+        """Handle dynamic symbol list changes from pair discovery.
+
+        Augments the new symbol list with symbols that have open positions
+        to prevent zombie positions (positions with no ticker data).
+        """
+        new_symbols = set(event.symbols)
+
+        # Keep subscriptions alive for symbols with open positions
+        if hasattr(self, "_position_symbols_fn") and self._position_symbols_fn:
+            position_syms = set(self._position_symbols_fn())
+            kept = position_syms - new_symbols
+            if kept:
+                logger.info(
+                    "Keeping %d symbols with open positions: %s",
+                    len(kept), ", ".join(sorted(kept)),
+                )
+                new_symbols |= kept
+
+        new_symbols = sorted(new_symbols)
         if set(new_symbols) == set(self._symbols):
             return
         logger.info(

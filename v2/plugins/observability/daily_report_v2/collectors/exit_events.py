@@ -24,12 +24,13 @@ class ExitEventAccumulator:
         self._hard_stops = 0
         self._soft_stops = 0
         self._trailing_stops = 0
+        self._stale_exits = 0
         self._signal_exits = 0
         self._trailing_activations = 0
         self._events: list[ExitEventDetail] = []
 
     def record_exit(self, event: RiskEvent) -> None:
-        """Record an exit trigger event (hard_stop, soft_stop, trailing_stop)."""
+        """Record an exit trigger event (hard_stop, soft_stop, trailing_stop, stale_exit)."""
         reason = event.reason
         meta = event.metadata
 
@@ -39,6 +40,8 @@ class ExitEventAccumulator:
             self._soft_stops += 1
         elif reason == "trailing_stop":
             self._trailing_stops += 1
+        elif reason == "stale_exit":
+            self._stale_exits += 1
         elif reason == "signal_exit":
             self._signal_exits += 1
 
@@ -58,11 +61,12 @@ class ExitEventAccumulator:
 
     def snapshot(self) -> ExitManagerStats:
         """Return a snapshot of the current stats."""
-        total = self._hard_stops + self._soft_stops + self._trailing_stops + self._signal_exits
+        total = self._hard_stops + self._soft_stops + self._trailing_stops + self._stale_exits + self._signal_exits
         return ExitManagerStats(
             hard_stops=self._hard_stops,
             soft_stops=self._soft_stops,
             trailing_stops=self._trailing_stops,
+            stale_exits=self._stale_exits,
             signal_exits=self._signal_exits,
             trailing_activations=self._trailing_activations,
             total_exits=total,
@@ -74,6 +78,7 @@ class ExitEventAccumulator:
         self._hard_stops = 0
         self._soft_stops = 0
         self._trailing_stops = 0
+        self._stale_exits = 0
         self._signal_exits = 0
         self._trailing_activations = 0
         self._events.clear()
@@ -109,7 +114,7 @@ async def collect_exit_stats_from_db(
         *params,
     )
 
-    hard = soft = trailing = signal = 0
+    hard = soft = trailing = stale = signal = 0
     for row in rows:
         reason = row["reason"]
         cnt = row["cnt"]
@@ -119,14 +124,17 @@ async def collect_exit_stats_from_db(
             soft = cnt
         elif reason == "trailing_stop":
             trailing = cnt
+        elif reason == "stale_exit":
+            stale = cnt
         elif reason == "signal_exit":
             signal = cnt
 
-    total = hard + soft + trailing + signal
+    total = hard + soft + trailing + stale + signal
     return ExitManagerStats(
         hard_stops=hard,
         soft_stops=soft,
         trailing_stops=trailing,
+        stale_exits=stale,
         signal_exits=signal,
         trailing_activations=0,  # not stored in fills — only in-memory
         total_exits=total,
@@ -146,6 +154,7 @@ def merge_exit_stats(
         hard_stops=max(in_memory.hard_stops, from_db.hard_stops),
         soft_stops=max(in_memory.soft_stops, from_db.soft_stops),
         trailing_stops=max(in_memory.trailing_stops, from_db.trailing_stops),
+        stale_exits=max(in_memory.stale_exits, from_db.stale_exits),
         signal_exits=max(in_memory.signal_exits, from_db.signal_exits),
         trailing_activations=in_memory.trailing_activations,  # only in-memory
         total_exits=max(in_memory.total_exits, from_db.total_exits),

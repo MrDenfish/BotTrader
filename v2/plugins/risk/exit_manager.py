@@ -93,6 +93,7 @@ class ExitManager(RiskManager):
         self._hard_stop_min_pct: float = float(kwargs.get("hard_stop_min_pct", 0.03))
         self._hard_stop_max_pct: float = float(kwargs.get("hard_stop_max_pct", 0.08))
         self._hard_stop_atr_period: int = int(kwargs.get("hard_stop_atr_period", 120))  # 120 1-min bars = 2 hours
+        self._hard_stop_atr_candle_minutes: int = int(kwargs.get("hard_stop_atr_candle_minutes", 1))  # aggregate candles
 
         # Stale position time-limit (0 = disabled)
         self._max_hold_hours: float = float(kwargs.get("max_hold_hours", 0))
@@ -118,6 +119,10 @@ class ExitManager(RiskManager):
         # ATR trailing state: candle history and ratcheting stop prices
         self._candle_history: dict[str, deque] = {}  # symbol → deque of (high, low, close)
         self._stop_price: dict[str, float] = {}  # symbol → ATR stop price (ratchet-up only)
+
+        # Aggregated candle history for hard stop ATR (when hard_stop_atr_candle_minutes > 1)
+        self._hs_atr_candle_agg: dict[str, dict] = {}  # symbol → partial bar accumulator
+        self._hs_atr_candle_history: dict[str, deque] = {}  # symbol → deque of aggregated (high, low, close)
 
         # Peak tracking state: {symbol: {peak_price, price_history, entry_time, trigger_type, breakeven_activated}}
         self._peak_state: dict[str, dict] = {}
@@ -188,6 +193,8 @@ class ExitManager(RiskManager):
                 self._hard_stop_max_pct = float(config["hard_stop_max_pct"])
             if "hard_stop_atr_period" in config:
                 self._hard_stop_atr_period = int(config["hard_stop_atr_period"])
+            if "hard_stop_atr_candle_minutes" in config:
+                self._hard_stop_atr_candle_minutes = int(config["hard_stop_atr_candle_minutes"])
 
     # ------------------------------------------------------------------
     # Time helpers (simulated time for backtest, wall clock for live)
@@ -256,6 +263,38 @@ class ExitManager(RiskManager):
             self._candle_history[symbol] = deque(maxlen=max_period + 1)
         self._candle_history[symbol].append((candle.high, candle.low, candle.close))
 
+        # Aggregate 1-min candles into N-minute bars for hard stop ATR
+        if self._hard_stop_mode == "atr" and self._hard_stop_atr_candle_minutes > 1:
+            self._aggregate_hs_candle(symbol, candle)
+
+    def _aggregate_hs_candle(self, symbol: str, candle) -> None:
+        """Aggregate 1-min candles into N-minute bars for hard stop ATR."""
+        n = self._hard_stop_atr_candle_minutes
+        agg = self._hs_atr_candle_agg.get(symbol)
+
+        if agg is None:
+            # Start a new aggregation bar
+            self._hs_atr_candle_agg[symbol] = {
+                "high": candle.high,
+                "low": candle.low,
+                "close": candle.close,
+                "count": 1,
+            }
+            return
+
+        # Update running bar
+        agg["high"] = max(agg["high"], candle.high)
+        agg["low"] = min(agg["low"], candle.low)
+        agg["close"] = candle.close
+        agg["count"] += 1
+
+        # Emit completed bar
+        if agg["count"] >= n:
+            if symbol not in self._hs_atr_candle_history:
+                self._hs_atr_candle_history[symbol] = deque(maxlen=self._hard_stop_atr_period + 1)
+            self._hs_atr_candle_history[symbol].append((agg["high"], agg["low"], agg["close"]))
+            self._hs_atr_candle_agg[symbol] = None  # reset for next bar
+
     def _compute_raw_atr_pct(self, symbol: str, price: float, period: int | None = None) -> float | None:
         """Compute raw ATR as a fraction of price. No clamping.
 
@@ -312,19 +351,51 @@ class ExitManager(RiskManager):
         """Return the hard stop threshold for a symbol.
 
         In 'atr' mode, uses ATR% x hard_stop_atr_mult, clamped to [min, max].
-        Uses hard_stop_atr_period (default 120 bars = 2h at 1-min resolution)
-        for a more meaningful volatility measure than the short trailing period.
+        When hard_stop_atr_candle_minutes > 1, uses aggregated candle history
+        (e.g., 60-min bars) for meaningful ATR values that exceed the floor.
         Falls back to fixed hard_stop_pct when no candle data or mode is 'fixed'.
         """
         if self._hard_stop_mode != "atr":
             return self._hard_stop_pct
 
-        raw = self._compute_raw_atr_pct(symbol, price, period=self._hard_stop_atr_period)
+        # Use aggregated candle history when available (e.g., hourly bars)
+        if self._hard_stop_atr_candle_minutes > 1:
+            raw = self._compute_atr_from_history(
+                self._hs_atr_candle_history.get(symbol),
+                price,
+                self._hard_stop_atr_period,
+            )
+        else:
+            raw = self._compute_raw_atr_pct(symbol, price, period=self._hard_stop_atr_period)
+
         if raw is None:
             return self._hard_stop_pct  # fallback
 
         threshold = raw * self._hard_stop_atr_mult
         return max(self._hard_stop_min_pct, min(threshold, self._hard_stop_max_pct))
+
+    @staticmethod
+    def _compute_atr_from_history(
+        history: deque | None, price: float, period: int
+    ) -> float | None:
+        """Compute ATR% from a pre-aggregated candle history buffer."""
+        if not history or len(history) < 2 or price <= 0:
+            return None
+
+        items = list(history)
+        true_ranges = []
+        for i in range(1, len(items)):
+            high, low, _ = items[i]
+            prev_close = items[i - 1][2]
+            tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+            true_ranges.append(tr)
+
+        if not true_ranges:
+            return None
+
+        n = min(len(true_ranges), period)
+        atr = sum(true_ranges[-n:]) / n
+        return atr / price
 
     # ------------------------------------------------------------------
     # Peak tracking for ROC momentum trades
@@ -532,6 +603,7 @@ class ExitManager(RiskManager):
                 raw_atr = self._compute_raw_atr_pct(symbol, price)
                 hard_meta["atr_pct"] = round(raw_atr * 100, 4) if raw_atr else None
                 hard_meta["hard_stop_atr_mult"] = self._hard_stop_atr_mult
+                hard_meta["atr_candle_minutes"] = self._hard_stop_atr_candle_minutes
             self._emit_exit(symbol, price, "hard_stop", hard_meta, order_type=OrderType.MARKET)
             return
 

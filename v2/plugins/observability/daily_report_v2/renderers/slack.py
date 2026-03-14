@@ -116,10 +116,14 @@ class SlackRenderer:
         # 3.5 Exit manager
         if data.exit_manager:
             em = data.exit_manager
+            parts = [f"Hard stops: {em.hard_stops}"]
+            if em.stale_exits:
+                parts.append(f"Stale exits: {em.stale_exits}")
+            parts.append(f"Trailing stops: {em.trailing_stops}")
+            parts.append(f"Signal exits: {em.signal_exits}")
             exit_text = (
                 f"*Exit Manager*\n"
-                f"Hard stops: {em.hard_stops} · Soft stops: {em.soft_stops} · "
-                f"Trailing stops: {em.trailing_stops} · Signal exits: {em.signal_exits}\n"
+                f"{' · '.join(parts)}\n"
                 f"Trailing activations: {em.trailing_activations} · "
                 f"Total exits: {em.total_exits}"
             )
@@ -133,24 +137,6 @@ class SlackRenderer:
                     exit_text += f"\n_...and {len(em.events) - 5} more_"
             blocks.append({"type": "divider"})
             blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": exit_text}})
-
-        # 4. Comparison (if data exists)
-        if data.comparison and (data.comparison.v1_signal_count or data.comparison.v2_signal_count):
-            rate = data.comparison.agreement_rate
-            emoji = ":white_check_mark:" if rate >= 0.8 else ":large_yellow_circle:" if rate >= 0.5 else ":red_circle:"
-            blocks.append({"type": "divider"})
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"{emoji} *v1/v2 Agreement: {rate:.1%}*\n"
-                        f"v1: {data.comparison.v1_signal_count} · "
-                        f"v2: {data.comparison.v2_signal_count} · "
-                        f"Matched: {data.comparison.agreement_count}"
-                    ),
-                },
-            })
 
         # Footer
         blocks.append({

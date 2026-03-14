@@ -209,13 +209,15 @@
       <span class="hl-value {% if data.exit_manager.hard_stops %}red{% endif %}">{{ data.exit_manager.hard_stops }}</span>
     </div>
     <div class="hl-row">
-      <span class="hl-label">Soft stops</span>
-      <span class="hl-value {% if data.exit_manager.soft_stops %}red{% endif %}">{{ data.exit_manager.soft_stops }}</span>
-    </div>
-    <div class="hl-row">
       <span class="hl-label">Trailing stops</span>
       <span class="hl-value">{{ data.exit_manager.trailing_stops }}</span>
     </div>
+    {% if data.exit_manager.stale_exits is defined and data.exit_manager.stale_exits %}
+    <div class="hl-row">
+      <span class="hl-label">Stale exits</span>
+      <span class="hl-value muted">{{ data.exit_manager.stale_exits }}</span>
+    </div>
+    {% endif %}
     {% if data.exit_manager.signal_exits %}
     <div class="hl-row">
       <span class="hl-label">Signal exits</span>
@@ -275,36 +277,6 @@
     <div style="margin-top: 4px; font-size: 12px; color: #999;">No risk events.</div>
     {% endif %}
   </div>
-
-  {# ════════════════════════════════════════════════════════════
-     5. v1 vs v2 COMPARISON  — Transition monitoring
-     ════════════════════════════════════════════════════════════ #}
-  {% if data.comparison and (data.comparison.v1_signal_count or data.comparison.v2_signal_count) %}
-  <div class="section">
-    <h2>v1 vs v2 Comparison</h2>
-    <div class="comp-box">
-      <div class="muted" style="text-align: center; font-size: 11px; margin-bottom: 2px;">Signal Agreement</div>
-      <div class="comp-rate {% if data.comparison.agreement_rate >= 0.8 %}green{% elif data.comparison.agreement_rate < 0.5 %}red{% endif %}">
-        {{ data.comparison.agreement_rate | pct }}
-      </div>
-      <div class="comp-grid">
-        <div><div class="val">{{ data.comparison.v1_signal_count }}</div><div class="muted">v1</div></div>
-        <div><div class="val">{{ data.comparison.v2_signal_count }}</div><div class="muted">v2</div></div>
-        <div><div class="val">{{ data.comparison.agreement_count }}</div><div class="muted">matched</div></div>
-      </div>
-    </div>
-    {% if data.comparison.symbols_only_v1 or data.comparison.symbols_only_v2 %}
-    <div style="margin-top: 10px; font-size: 12px;">
-      {% if data.comparison.symbols_only_v1 %}
-      <div style="margin-bottom: 3px;"><span class="muted">v1 only:</span> {% for s in data.comparison.symbols_only_v1 | sort %}<span class="badge badge-v1">{{ s }}</span> {% endfor %}</div>
-      {% endif %}
-      {% if data.comparison.symbols_only_v2 %}
-      <div><span class="muted">v2 only:</span> {% for s in data.comparison.symbols_only_v2 | sort %}<span class="badge badge-v2">{{ s }}</span> {% endfor %}</div>
-      {% endif %}
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
 
   {# ── Footer ── #}
   <div class="footer">

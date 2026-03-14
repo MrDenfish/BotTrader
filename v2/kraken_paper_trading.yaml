@@ -73,6 +73,9 @@ strategies:
       swing_window: 10
       regime_filter_enabled: true
       regime_max_atr_percentile: 60
+      adx_gate_enabled: true
+      adx_period: 14
+      adx_min_threshold: 20.0
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
@@ -99,9 +102,10 @@ risk:
   - type: "exit_manager"
     hard_stop_pct: 0.055                  # fallback when no ATR data
     hard_stop_mode: "atr"                 # "fixed" or "atr" — dynamic per-symbol hard stops
-    hard_stop_atr_mult: 3.0               # 3x ATR% for hard stop threshold
-    hard_stop_atr_period: 120             # 120 1-min bars (2h) for meaningful volatility
-    hard_stop_min_pct: 0.045              # floor: never tighter than 4.5% (optimal balance of win rate vs loss size)
+    hard_stop_atr_mult: 3.0               # 3x hourly ATR% for hard stop threshold
+    hard_stop_atr_period: 14              # 14 aggregated bars for ATR lookback
+    hard_stop_atr_candle_minutes: 60      # aggregate 1-min candles into 60-min (hourly) bars
+    hard_stop_min_pct: 0.055              # floor: never tighter than 5.5%
     hard_stop_max_pct: 0.08               # ceiling: never wider than 8%
     soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag (-$300 backtest, -$15 paper)
     soft_stop_pct: 0.03
@@ -139,6 +143,7 @@ execution:
   default_notional: 75
   notional_by_trigger:
     score: 75
+    score_high: 150            # 4+ indicators = high conviction, 2x sizing
     roc_momo_20m: 30
     roc_momo_24h: 30
   min_order_fiat: 10

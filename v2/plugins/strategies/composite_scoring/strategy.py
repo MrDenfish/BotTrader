@@ -248,6 +248,16 @@ class CompositeScoringStrategy(Strategy):
                     symbol, rvol, cfg.volume_confirm_threshold,
                 )
 
+        # --- ADX trend strength gate (gates ALL buy paths) ---
+        adx_ok = True
+        adx_value = ind.get("_ADX", 0.0)
+        if cfg.adx_gate_enabled and adx_value < cfg.adx_min_threshold:
+            adx_ok = False
+            logger.debug(
+                "ADX gate: %s ADX=%.1f < %.1f — buys blocked",
+                symbol, adx_value, cfg.adx_min_threshold,
+            )
+
         # --- Regime filter gate (gates ALL buy paths) ---
         regime_ok = True
         atr_percentile = ind.get("_atr_percentile", 50.0)
@@ -277,11 +287,11 @@ class CompositeScoringStrategy(Strategy):
 
         if momo_ok and roc_value is not None and rsi_value is not None:
             lo, hi = cfg.roc_20m_rsi_buy_range
-            if cfg.enable_roc_20m_momentum and not buy_locked and volume_ok and regime_ok and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
+            if cfg.enable_roc_20m_momentum and not buy_locked and volume_ok and regime_ok and adx_ok and roc_value > cfg.roc_20m_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 meta = {"roc_20m": roc_value, "rsi": rsi_value, "rvol": rvol,
                         "atr_percentile": atr_percentile, "sma_slope_pct": sma_slope_pct,
-                        "trigger": "roc_momo_20m"}
+                        "adx": adx_value, "trigger": "roc_momo_20m"}
                 meta.update(self._build_diagnostic_metadata(ind, None))
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_20m", meta,
@@ -300,11 +310,11 @@ class CompositeScoringStrategy(Strategy):
         roc_24h = self._roc_24h.get(symbol)
         if cfg.enable_roc_24h_momentum and momo_ok and roc_24h is not None and rsi_value is not None:
             lo, hi = cfg.roc_24h_rsi_range
-            if not buy_locked and volume_ok and regime_ok and roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
+            if not buy_locked and volume_ok and regime_ok and adx_ok and roc_24h > cfg.roc_24h_buy_threshold and lo <= rsi_value <= hi:
                 self._momo_cooldown[symbol] = bar_idx + cfg.cooldown_bars
                 meta = {"roc_24h": roc_24h, "rsi": rsi_value, "rvol": rvol,
                         "atr_percentile": atr_percentile, "sma_slope_pct": sma_slope_pct,
-                        "trigger": "roc_momo_24h"}
+                        "adx": adx_value, "trigger": "roc_momo_24h"}
                 meta.update(self._build_diagnostic_metadata(ind, None))
                 return self._make_signal(
                     Direction.BUY, symbol, candle, "roc_momo_24h", meta,
@@ -333,8 +343,8 @@ class CompositeScoringStrategy(Strategy):
 
         direction = Direction.BUY if action == "buy" else Direction.SELL
 
-        # --- Volume + regime confirmation gate (composite buy path) ---
-        if direction == Direction.BUY and (not volume_ok or not regime_ok):
+        # --- Volume + regime + ADX confirmation gate (composite buy path) ---
+        if direction == Direction.BUY and (not volume_ok or not regime_ok or not adx_ok):
             return None
 
         # --- Red-day gate: block buys when 24h change is negative ---
@@ -350,16 +360,24 @@ class CompositeScoringStrategy(Strategy):
                 return None
 
         reason = note or "score"
+        buy_fired = components.get("buy_fired", 0) if components else 0
+        trigger = (
+            "score_high"
+            if direction == Direction.BUY and buy_fired >= cfg.high_conviction_threshold
+            else "score"
+        )
         metadata = {
-            "trigger": "score",
+            "trigger": trigger,
             "buy_score": buy_score,
             "sell_score": sell_score,
             "buy_signal": buy_signal,
             "sell_signal": sell_signal,
             "guardrail": note,
+            "indicator_count": buy_fired,
             "rvol": rvol,
             "atr_percentile": atr_percentile,
             "sma_slope_pct": sma_slope_pct,
+            "adx": adx_value,
         }
 
         # Enrich with per-indicator breakdown for diagnostics
@@ -404,6 +422,7 @@ class CompositeScoringStrategy(Strategy):
             "bb_lower": ind.get("_lower", 0.0),
             "atr_percentile": ind.get("_atr_percentile", 50.0),
             "sma_slope_pct": ind.get("_sma_slope_pct", 0.0),
+            "adx": ind.get("_ADX", 0.0),
         }
 
         return diag

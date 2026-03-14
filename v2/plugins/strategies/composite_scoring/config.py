@@ -92,6 +92,7 @@ class CompositeScoreConfig:
     cooldown_bars: int = 7              # Bars to block opposite side after flip
     min_indicators_required: int = 2    # Multi-indicator confirmation gate
     min_sell_indicators_required: int = 0  # Sell-side override (0 = use min_indicators_required)
+    high_conviction_threshold: int = 4   # Indicator count >= this uses "score_high" trigger for sizing
     require_trend_for_buy: bool = True     # Require ≥1 trend indicator (MACD/ROC/Swing) for buys
 
     # Post-loss buy lockout: block re-entry after exit manager sells at a loss.
@@ -116,6 +117,13 @@ class CompositeScoreConfig:
     roc_24h_buy_threshold: float = 8.5
     roc_24h_sell_threshold: float = -5.0
     roc_24h_rsi_range: tuple[float, float] = (45.0, 55.0)
+
+    # ------------------------------------------------------------------
+    # ADX trend strength gate
+    # ------------------------------------------------------------------
+    adx_gate_enabled: bool = True       # Require minimum trend strength for buys
+    adx_period: int = 14                # Standard ADX lookback period
+    adx_min_threshold: float = 20.0     # Textbook threshold: < 20 = no trend
 
     # ------------------------------------------------------------------
     # Red-day gate

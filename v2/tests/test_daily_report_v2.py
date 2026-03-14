@@ -323,15 +323,6 @@ class TestHtmlRenderer:
         assert "hero-pnl" in html
         assert "P&amp;L by Symbol" in html
         assert "System Health" in html
-        assert "v1 vs v2 Comparison" in html
-
-    def test_renders_without_comparison(self):
-        from v2.plugins.observability.daily_report_v2.renderers.html import HtmlRenderer
-
-        data = _make_report_data(comparison=None)
-        html = HtmlRenderer().render(data)
-        assert "hero-pnl" in html
-        assert "v1 vs v2 Comparison" not in html
 
 
 # ============================================================

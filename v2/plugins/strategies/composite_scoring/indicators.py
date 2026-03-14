@@ -169,8 +169,8 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
     last_rh = float(rolling_high.iloc[-1]) if not pd.isna(rolling_high.iloc[-1]) else 0.0
     last_rl = float(rolling_low.iloc[-1]) if not pd.isna(rolling_low.iloc[-1]) else 0.0
 
-    buy_swing = (last["close"] > last_rh and last_macd > last_signal)
-    sell_swing = (last["close"] < last_rl and last_macd < last_signal)
+    buy_swing = last["close"] > last_rh
+    sell_swing = last["close"] < last_rl
 
     results["Buy Swing"] = _norm(buy_swing, last["close"], 0.0)
     results["Sell Swing"] = _norm(sell_swing, last["close"], 0.0)
@@ -237,5 +237,57 @@ def compute_indicators(df: pd.DataFrame, cfg: CompositeScoreConfig) -> dict:
     else:
         atr_percentile = 50.0
     results["_atr_percentile"] = atr_percentile
+
+    # === 9. ADX (Average Directional Index) — trend strength ===
+    adx_value = 0.0
+    adx_period = cfg.adx_period
+    if n >= adx_period + 1:
+        high = df["high"].values
+        low = df["low"].values
+        close = df["close"].values
+
+        # Directional movement
+        plus_dm = np.zeros(n)
+        minus_dm = np.zeros(n)
+        tr_arr = np.zeros(n)
+        for i in range(1, n):
+            up_move = high[i] - high[i - 1]
+            down_move = low[i - 1] - low[i]
+            plus_dm[i] = up_move if (up_move > down_move and up_move > 0) else 0.0
+            minus_dm[i] = down_move if (down_move > up_move and down_move > 0) else 0.0
+            tr_arr[i] = max(high[i] - low[i], abs(high[i] - close[i - 1]), abs(low[i] - close[i - 1]))
+
+        # Wilder smoothing (EMA with alpha = 1/period)
+        alpha = 1.0 / adx_period
+        smooth_plus = np.zeros(n)
+        smooth_minus = np.zeros(n)
+        smooth_tr = np.zeros(n)
+        smooth_plus[adx_period] = plus_dm[1:adx_period + 1].sum()
+        smooth_minus[adx_period] = minus_dm[1:adx_period + 1].sum()
+        smooth_tr[adx_period] = tr_arr[1:adx_period + 1].sum()
+        for i in range(adx_period + 1, n):
+            smooth_plus[i] = smooth_plus[i - 1] - smooth_plus[i - 1] * alpha + plus_dm[i]
+            smooth_minus[i] = smooth_minus[i - 1] - smooth_minus[i - 1] * alpha + minus_dm[i]
+            smooth_tr[i] = smooth_tr[i - 1] - smooth_tr[i - 1] * alpha + tr_arr[i]
+
+        # +DI, -DI, DX
+        dx_arr = np.zeros(n)
+        for i in range(adx_period, n):
+            if smooth_tr[i] > 0:
+                plus_di = smooth_plus[i] / smooth_tr[i] * 100
+                minus_di = smooth_minus[i] / smooth_tr[i] * 100
+                di_sum = plus_di + minus_di
+                dx_arr[i] = abs(plus_di - minus_di) / di_sum * 100 if di_sum > 0 else 0.0
+
+        # ADX = smoothed DX
+        adx_arr = np.zeros(n)
+        start = 2 * adx_period
+        if start < n:
+            adx_arr[start] = dx_arr[adx_period:start + 1].mean()
+            for i in range(start + 1, n):
+                adx_arr[i] = (adx_arr[i - 1] * (adx_period - 1) + dx_arr[i]) / adx_period
+            adx_value = float(adx_arr[-1])
+
+    results["_ADX"] = adx_value
 
     return results

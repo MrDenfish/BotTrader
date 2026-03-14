@@ -116,6 +116,8 @@ def compute_scores(
         "buy": buy_components,
         "sell": sell_components,
         "suppression": suppression_note,
+        "buy_fired": buy_fired,
+        "sell_fired": sell_fired,
     }
 
     return buy_score, sell_score, buy_signal, sell_signal, components

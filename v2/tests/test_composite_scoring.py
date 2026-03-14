@@ -820,7 +820,7 @@ class TestCompositeScoringStrategy:
         ))
 
         # Mock indicators and scoring to force a buy signal through guardrails
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_ADX": 30.0}
         mock_scores = (5.0, 0.0, True, False, {})
 
         with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
@@ -858,7 +858,7 @@ class TestCompositeScoringStrategy:
         ))
 
         # Mock indicators and scoring to force a buy signal through guardrails
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_ADX": 30.0}
         mock_scores = (5.0, 0.0, True, False, {})
 
         with patch("v2.plugins.strategies.composite_scoring.strategy.compute_indicators", return_value=mock_ind), \
@@ -1090,7 +1090,7 @@ class TestVolumeConfirmationGate:
         })
 
         # Mock indicators: force a buy via composite scoring + low RVOL
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3, "_ADX": 30.0}
         mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
 
         base_ts = datetime(2026, 1, 1)
@@ -1128,7 +1128,7 @@ class TestVolumeConfirmationGate:
         })
 
         # Mock indicators: force a buy via composite scoring + high RVOL
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 1.5}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 1.5, "_ADX": 30.0}
         mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
 
         base_ts = datetime(2026, 1, 1)
@@ -1167,7 +1167,7 @@ class TestVolumeConfirmationGate:
         })
 
         # Mock indicators: force buy + RVOL=0 (no volume data)
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.0}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.0, "_ADX": 30.0}
         mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
 
         base_ts = datetime(2026, 1, 1)
@@ -1206,7 +1206,7 @@ class TestVolumeConfirmationGate:
         })
 
         # Mock: force sell signal + low RVOL
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3, "_ADX": 30.0}
         mock_scores = (0.0, 6.0, (0, 0.0, 5.5), (1, 6.0, 5.5), {"buy": [], "sell": [], "suppression": None})
 
         base_ts = datetime(2026, 1, 1)
@@ -1243,7 +1243,7 @@ class TestVolumeConfirmationGate:
             "candle_interval_minutes": 1,
         })
 
-        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3}
+        mock_ind = {"_ROC": 0.0, "_RSI": 50.0, "_RVOL": 0.3, "_ADX": 30.0}
         mock_scores = (6.0, 0.0, (1, 6.0, 5.5), (0, 0.0, 5.5), {"buy": [], "sell": [], "suppression": None})
 
         base_ts = datetime(2026, 1, 1)

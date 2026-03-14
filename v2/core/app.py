@@ -131,6 +131,11 @@ class App:
             for o in cfg.observers
         ]
 
+        # Wire position symbols callback to data providers (zombie position prevention)
+        for dp in self._data_providers:
+            if hasattr(dp, "set_position_symbols_fn"):
+                dp.set_position_symbols_fn(lambda: list(self.portfolio.positions.keys()))
+
         # Wire exchange reference to risk managers that need it (e.g. exit_manager for fee refresh)
         for rm in self._risk_managers:
             if hasattr(rm, "_exchange") and rm._exchange is None:
