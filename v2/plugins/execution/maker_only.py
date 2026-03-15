@@ -65,6 +65,8 @@ class MakerOnlyExecution(ExecutionManager):
         # Per-side drift overrides (fall back to cancel_drift_pct if not set)
         self._cancel_drift_buy_pct = float(kwargs.get("cancel_drift_buy_pct", 0)) or self._cancel_drift_pct
         self._cancel_drift_sell_pct = float(kwargs.get("cancel_drift_sell_pct", 0)) or self._cancel_drift_pct
+        # Hard TTL for unfilled buy orders (0 = disabled, uses drift-only)
+        self._buy_order_ttl_seconds = float(kwargs.get("buy_order_ttl_seconds", 600))
 
         # Trigger-based order sizing: {trigger_name: notional_usd}
         raw_map = kwargs.get("notional_by_trigger", {})
@@ -102,6 +104,8 @@ class MakerOnlyExecution(ExecutionManager):
                 self._cancel_drift_buy_pct = float(config["cancel_drift_buy_pct"])
             if "cancel_drift_sell_pct" in config:
                 self._cancel_drift_sell_pct = float(config["cancel_drift_sell_pct"])
+            if "buy_order_ttl_seconds" in config:
+                self._buy_order_ttl_seconds = float(config["buy_order_ttl_seconds"])
             if "notional_by_trigger" in config:
                 self._notional_by_trigger = {
                     k: Decimal(str(v)) for k, v in config["notional_by_trigger"].items()
@@ -357,7 +361,8 @@ class MakerOnlyExecution(ExecutionManager):
             self._tracked_orders.pop(order.order_id, None)
 
     async def check_stale_orders(self, exchange: ExchangeAdapter) -> None:
-        """Cancel tracked orders that have exceeded timeout and price has drifted.
+        """Cancel tracked orders that have exceeded timeout and price has drifted,
+        or buy orders that have exceeded the hard TTL.
 
         Called periodically from app.py (throttled to every 30s).
         """
@@ -369,6 +374,22 @@ class MakerOnlyExecution(ExecutionManager):
 
         for order_id, info in list(self._tracked_orders.items()):
             age = now - info["timestamp"]
+            side = info["side"]
+
+            # Hard TTL for buy orders — cancel unconditionally after TTL
+            if (
+                side == Side.BUY
+                and self._buy_order_ttl_seconds > 0
+                and age >= self._buy_order_ttl_seconds
+            ):
+                to_cancel.append(order_id)
+                logger.info(
+                    "Buy TTL expired for %s (%s): age=%.0fs, ttl=%.0fs",
+                    order_id[:8], info["symbol"], age, self._buy_order_ttl_seconds,
+                )
+                continue  # Skip drift check — TTL is unconditional
+
+            # Drift-based check requires minimum age
             if age < self._stale_timeout_seconds:
                 continue
 
@@ -378,7 +399,6 @@ class MakerOnlyExecution(ExecutionManager):
                 continue
 
             order_price = info["price"]
-            side = info["side"]
 
             # Check price drift (per-side thresholds)
             if side == Side.BUY:

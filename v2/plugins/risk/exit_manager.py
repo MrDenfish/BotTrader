@@ -624,7 +624,8 @@ class ExitManager(RiskManager):
             return
 
         # --- Layer 3.5: STALE POSITION TIME-LIMIT ---
-        # Eject positions held longer than max_hold_hours (if configured).
+        # Eject positions held longer than max_hold_hours ONLY when P&L is negative.
+        # Positive P&L positions stay open for trailing/hard stops to handle.
         # Peak-tracked positions have their own time limit; skip them here.
         if (
             self._max_hold_hours > 0
@@ -632,7 +633,7 @@ class ExitManager(RiskManager):
             and symbol not in self._peak_state
         ):
             held_seconds = (self._now() - position.entry_time).total_seconds()
-            if held_seconds >= self._max_hold_hours * 3600:
+            if held_seconds >= self._max_hold_hours * 3600 and pnl_pct < 0:
                 self._emit_exit(symbol, price, "stale_exit", {
                     "pnl_pct": round(pnl_pct * 100, 2),
                     "pnl_raw_pct": round(pnl_raw * 100, 2),

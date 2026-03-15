@@ -579,6 +579,113 @@ class TestStaleOrderCancellation:
         exchange.cancel_order.assert_called_once_with("buy-order")
 
     @pytest.mark.asyncio
+    async def test_buy_ttl_cancels_without_drift(self):
+        """Buy order cancelled after TTL even with no price drift."""
+        ex = self._make_execution(
+            buy_order_ttl_seconds=120,
+            stale_timeout_seconds=300,
+            cancel_drift_pct=0.005,
+        )
+        ex._tracked_orders["order-ttl"] = {
+            "symbol": "BTC-USD",
+            "side": Side.BUY,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 150,  # Past 120s TTL
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        exchange.cancel_order = AsyncMock(return_value=True)
+        # No get_ticker call needed — TTL doesn't check drift
+
+        await ex.check_stale_orders(exchange)
+
+        exchange.cancel_order.assert_called_once_with("order-ttl")
+        assert "order-ttl" not in ex._tracked_orders
+
+    @pytest.mark.asyncio
+    async def test_buy_ttl_not_triggered_before_expiry(self):
+        """Buy order within TTL window is NOT cancelled by TTL."""
+        ex = self._make_execution(buy_order_ttl_seconds=600, stale_timeout_seconds=300)
+        ex._tracked_orders["order-young"] = {
+            "symbol": "BTC-USD",
+            "side": Side.BUY,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 200,  # Within both 600s TTL and 300s drift timeout
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        exchange.cancel_order = AsyncMock(return_value=True)
+
+        await ex.check_stale_orders(exchange)
+
+        exchange.cancel_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sell_order_not_affected_by_buy_ttl(self):
+        """SELL orders are exempt from buy TTL."""
+        ex = self._make_execution(buy_order_ttl_seconds=120, stale_timeout_seconds=300)
+        ex._tracked_orders["order-sell"] = {
+            "symbol": "BTC-USD",
+            "side": Side.SELL,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 150,  # Past buy TTL but within drift timeout
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        exchange.cancel_order = AsyncMock(return_value=True)
+
+        await ex.check_stale_orders(exchange)
+
+        exchange.cancel_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_buy_ttl_disabled_when_zero(self):
+        """When buy_order_ttl_seconds=0, TTL path is skipped."""
+        ex = self._make_execution(buy_order_ttl_seconds=0, stale_timeout_seconds=300)
+        ex._tracked_orders["order-old"] = {
+            "symbol": "BTC-USD",
+            "side": Side.BUY,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 10000,  # Very old
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        # No drift either — stale_timeout not reached? Actually it's 10000 > 300
+        # but we need no drift for the drift path to skip
+        exchange.get_ticker = AsyncMock(return_value=TickerEvent(
+            symbol="BTC-USD", price=50001.0,
+            timestamp=datetime.now(timezone.utc),
+            bid=50000.0, ask=50001.0,  # Barely any drift
+        ))
+        exchange.cancel_order = AsyncMock(return_value=True)
+
+        await ex.check_stale_orders(exchange)
+
+        exchange.cancel_order.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_drift_cancels_buy_before_ttl(self):
+        """Drift-based cancellation still works as a faster path for buys."""
+        ex = self._make_execution(
+            buy_order_ttl_seconds=600,
+            stale_timeout_seconds=60,
+            cancel_drift_pct=0.005,
+        )
+        ex._tracked_orders["order-drift"] = {
+            "symbol": "BTC-USD",
+            "side": Side.BUY,
+            "price": Decimal("50000"),
+            "timestamp": time.monotonic() - 120,  # Past drift timeout, within TTL
+        }
+        exchange = AsyncMock(spec=["get_ticker", "cancel_order"])
+        exchange.get_ticker = AsyncMock(return_value=TickerEvent(
+            symbol="BTC-USD", price=50600.0,
+            timestamp=datetime.now(timezone.utc),
+            bid=50500.0, ask=50600.0,  # 1.2% drift
+        ))
+        exchange.cancel_order = AsyncMock(return_value=True)
+
+        await ex.check_stale_orders(exchange)
+
+        exchange.cancel_order.assert_called_once_with("order-drift")
+
+    @pytest.mark.asyncio
     async def test_per_side_drift_sell_uses_sell_threshold(self):
         """SELL orders use cancel_drift_sell_pct threshold."""
         ex = self._make_execution(

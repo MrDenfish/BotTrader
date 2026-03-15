@@ -149,6 +149,7 @@ execution:
   min_order_fiat: 10
   stale_timeout_seconds: 300
   cancel_drift_pct: 0.005
+  buy_order_ttl_seconds: 600      # Hard TTL: cancel unfilled buys after 10 min
 
 storage:
   type: "postgres"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -1446,3 +1446,131 @@ class TestATRHardStop:
         em.on_candle(self._make_candle("BTC-USD", 100, 90, 95))
         # maxlen should be 121 (120 + 1), not 15 (14 + 1)
         assert em._candle_history["BTC-USD"].maxlen == 121
+
+
+# =====================================================================
+# Stale exit — conditioned on negative P&L
+# =====================================================================
+
+
+class TestStaleExit:
+    """Stale exit should only fire for positions with negative fee-aware P&L."""
+
+    def _make_stale_portfolio(self, symbol="BTC-USD", avg_entry=100.0, hours_held=49):
+        """Create a portfolio with a position held for N hours."""
+        return Portfolio(
+            cash_balance=Decimal("10000"),
+            positions={
+                symbol: Position(
+                    symbol=symbol,
+                    qty=Decimal("1"),
+                    avg_entry_price=Decimal(str(avg_entry)),
+                    cost_basis=Decimal(str(avg_entry)),
+                    entry_time=datetime.now(timezone.utc) - timedelta(hours=hours_held),
+                ),
+            },
+        )
+
+    def test_stale_exit_fires_when_negative_pnl(self, bus):
+        """Position held past max_hold_hours with negative P&L emits stale_exit."""
+        em = _make_exit_manager(bus, max_hold_hours=48, hard_stop_pct=0.99, soft_stop_pct=0.99)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=49)
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 95.0), portfolio)  # -5% P&L
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 1
+
+    def test_stale_exit_skipped_when_positive_pnl(self, bus):
+        """Position held past max_hold_hours with positive P&L is NOT stale-exited."""
+        em = _make_exit_manager(bus, max_hold_hours=48, hard_stop_pct=0.99, soft_stop_pct=0.99)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=49)
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 105.0), portfolio)  # +5% P&L
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 0
+
+    def test_stale_exit_skipped_at_breakeven(self, bus):
+        """Position at exactly breakeven (pnl_pct == 0) is NOT stale-exited."""
+        em = _make_exit_manager(bus, max_hold_hours=48, hard_stop_pct=0.99, soft_stop_pct=0.99)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=49)
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 100.0), portfolio)  # 0% P&L
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 0
+
+    def test_stale_exit_fires_at_breakeven_with_fees(self, bus):
+        """Position at raw breakeven is stale-exited because fee-aware P&L is negative."""
+        em = _make_exit_manager(bus, max_hold_hours=48, hard_stop_pct=0.99,
+                                maker_fee_pct=0.0025, taker_fee_pct=0.004)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=49)
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 100.0), portfolio)  # raw 0%, fee-aware ~-0.65%
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 1
+
+    def test_stale_exit_disabled_when_zero(self, bus):
+        """No stale exit when max_hold_hours=0."""
+        em = _make_exit_manager(bus, max_hold_hours=0, hard_stop_pct=0.99, soft_stop_pct=0.99)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=1000)
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 95.0), portfolio)
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 0
+
+    def test_stale_exit_skipped_within_hold_window(self, bus):
+        """Position within max_hold_hours is not stale-exited even with negative P&L."""
+        em = _make_exit_manager(bus, max_hold_hours=48, hard_stop_pct=0.99, soft_stop_pct=0.99)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=24)
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 95.0), portfolio)
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 0
+
+    def test_stale_exit_skipped_for_peak_tracked(self, bus):
+        """Peak-tracked positions skip stale exit (they have their own time limit)."""
+        em = _make_exit_manager(bus, max_hold_hours=48, hard_stop_pct=0.99,
+                                peak_tracking_enabled=True,
+                                peak_triggers=["roc_momo_20m"],
+                                peak_max_hold_minutes=9999)
+        portfolio = self._make_stale_portfolio(avg_entry=100.0, hours_held=49)
+
+        # Activate peak tracking for this symbol (match real state structure)
+        em._peak_state["BTC-USD"] = {
+            "peak_price": 100.0,
+            "price_history": [100.0],
+            "entry_time": datetime.now(timezone.utc) - timedelta(hours=49),
+            "trigger_type": "roc_momo_20m",
+            "breakeven_activated": False,
+        }
+
+        signals = []
+        bus.subscribe(SignalEvent, lambda e: signals.append(e))
+
+        em.on_ticker(_make_ticker("BTC-USD", 95.0), portfolio)
+
+        stale = [s for s in signals if s.signal.reason == "stale_exit"]
+        assert len(stale) == 0
