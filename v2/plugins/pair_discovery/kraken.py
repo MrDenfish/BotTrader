@@ -255,12 +255,21 @@ class KrakenPairDiscovery(PairDiscovery):
                 old_set = set(self._current_symbols)
                 new_set = set(new_symbols)
 
-                if old_set == new_set:
-                    logger.debug("Kraken pair discovery refresh: no changes (%d symbols)", len(new_symbols))
-                    continue
-
                 added = sorted(new_set - old_set)
                 removed = sorted(old_set - new_set)
+
+                if old_set == new_set:
+                    # Still publish so data providers can merge position symbols
+                    # (zombie position prevention). The WS handler deduplicates
+                    # and won't reconnect if the final symbol set is unchanged.
+                    if self._bus:
+                        self._bus.publish(SymbolsUpdatedEvent(
+                            symbols=tuple(new_symbols),
+                            added=(),
+                            removed=(),
+                        ))
+                    continue
+
                 self._current_symbols = new_symbols
 
                 logger.info(

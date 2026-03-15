@@ -192,6 +192,18 @@ class App:
             except Exception:
                 logger.exception("Pair discovery failed — using YAML symbols")
 
+        # Merge position symbols into startup symbol list (zombie prevention)
+        if self.portfolio.positions:
+            pos_syms = set(self.portfolio.positions.keys())
+            disc_set = set(cfg.app.symbols)
+            kept = sorted(pos_syms - disc_set)
+            if kept:
+                logger.info(
+                    "Adding %d position symbols to startup list: %s",
+                    len(kept), ", ".join(kept),
+                )
+                cfg.app.symbols = list(disc_set | pos_syms)
+
         # Configure and start strategies
         for s in self._strategies:
             matching = [
