@@ -175,8 +175,8 @@ class DailyReportV2Observer(Observer):
             risk_snap = self._risk_acc.snapshot()
             exit_snap = self._exit_acc.snapshot()
 
-            if self._last_report_slot != self._current_period_start and self._has_activity:
-                # Fire report for the period that just ended
+            if self._last_report_slot != self._current_period_start:
+                # Fire report for the period that just ended (even quiet periods)
                 period_start = self._current_period_start
                 asyncio.ensure_future(self._generate_and_send_period(
                     period_start,
