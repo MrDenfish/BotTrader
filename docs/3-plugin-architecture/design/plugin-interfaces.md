@@ -2,7 +2,7 @@
 
 **Source**: `v2/core/interfaces.py`, `v2/core/types.py`, `v2/core/event_bus.py`, `v2/core/registry.py`
 
-All 7 plugin ABCs, the shared type system, event bus, and registry.
+All 8 plugin ABCs, the shared type system, event bus, and registry.
 
 ---
 
@@ -35,7 +35,7 @@ class ExchangeAdapter(ABC):
     async def get_ticker(self, symbol: str) -> TickerEvent: ...
 ```
 
-**Implementations**: `coinbase` (live), `paper` (simulated), `backtest` (no-op)
+**Implementations**: `coinbase` (live Coinbase Advanced Trade), `kraken` (live Kraken REST + WS v2 executions), `paper` (simulated with live ticker prices), `backtest` (no-op), `backtest_sim` (event-driven fill simulation)
 
 ### DataProvider
 
@@ -49,7 +49,7 @@ class DataProvider(ABC):
     async def stop(self) -> None: ...
 ```
 
-**Implementations**: `websocket` (live ticker → 1m candle aggregation), `csv_replay` (historical CSV with indicator pre-computation)
+**Implementations**: `websocket` (Coinbase WS ticker → 1m candle aggregation), `kraken_websocket` (Kraken WS v2 ticker → 1m candle aggregation, REST volume backfill), `csv_replay` (historical CSV replay for backtesting)
 
 ### Strategy
 
@@ -71,11 +71,11 @@ class Strategy(ABC):
     def load_state(self, state: dict) -> None: ...     # restore from checkpoint
 ```
 
-**Implementations**: `composite_scoring` (production multi-indicator), `hybrid_4h_maker` (ROC momentum backtest)
+**Implementations**: `composite_scoring` (production: 8 indicator families, weighted scoring, guardrails), `hybrid_4h_maker` (backtest: Donchian breakout + compression), `random_entry` (diagnostic: Poisson-distributed baseline for MFE/MAE analysis)
 
 ### RiskManager
 
-Validates signals against risk limits before execution.
+Validates signals against risk limits before execution. Multiple risk managers run in sequence (chain pattern) — each can veto.
 
 ```python
 class RiskManager(ABC):
@@ -89,7 +89,7 @@ class RiskManager(ABC):
 
 `check_signal` returns the signal (approved) or `None` (vetoed). May publish `RiskEvent` via event bus when vetoing.
 
-**Implementations**: `basic` (exposure limits, daily loss, HODL gate, position count), `circuit_breaker` (drawdown monitoring)
+**Implementations**: `basic` (exposure limits, daily loss, HODL gate, fee hurdle, FIFO protection), `exit_manager` (dynamic exits: hard/soft/trailing stops, time limit, peak tracking — all fee-aware), `performance_filter` (symbol exclusion based on rolling win rate / P&L), `circuit_breaker` (drawdown protection: max losses in window, large loss threshold, cooldown)
 
 ### ExecutionManager
 
@@ -105,7 +105,7 @@ class ExecutionManager(ABC):
 
 Handles price adjustment, sizing, TP/SL, retries.
 
-**Implementations**: `maker_only` (post-only limit with buffer escalation), `bracket` (TP/SL brackets)
+**Implementations**: `maker_only` (post-only limit with buffer escalation, trigger-based sizing, stale order cancellation, buy TTL), `bracket` (TP/SL brackets)
 
 ### StorageAdapter
 
@@ -117,15 +117,17 @@ class StorageAdapter(ABC):
 
     async def connect(self) -> None: ...
     async def disconnect(self) -> None: ...
+    def set_exchange_name(self, name: str) -> None: ...       # tag records by exchange
     async def record_fill(self, fill: Fill) -> None: ...
     async def record_order(self, order: Order) -> None: ...
     async def get_positions(self, symbol: str | None = None) -> list[Position]: ...
+    async def save_position(self, position: Position) -> None: ...  # upsert on fill
     async def get_trades(self, symbol: str | None = None, since: datetime | None = None) -> list[Fill]: ...
     async def save_state(self, key: str, state: dict) -> None: ...
     async def load_state(self, key: str) -> dict | None: ...
 ```
 
-**Implementations**: `postgres` (production, v2_* prefixed tables), `sqlite` (backtest/local)
+**Implementations**: `postgres` (production — tables: `v2_fills`, `v2_orders`, `v2_positions`, `v2_state`), `sqlite` (backtest/local)
 
 ### Observer
 
@@ -138,7 +140,25 @@ class Observer(ABC):
     def on_event(self, event: Any) -> None: ...
 ```
 
-**Implementations**: `structured_log`, `signal_comparison` (JSONL for v1/v2 comparison), `heartbeat`, `alerting`, `daily_report`
+**Implementations**: `structured_log` (JSON event logging), `signal_comparison` (JSONL signal log for analysis), `heartbeat` (periodic health check file), `alerting` (alert generation on risk events), `daily_report` (legacy simple report), `daily_report_v2` (production: modular report with 7 collectors, HTML + Slack renderers, SMTP + Slack delivery), `backtest_diagnostics` (MFE/MAE, post-exit tracking, regime snapshots), `backtest_results` (backtest summary statistics)
+
+### PairDiscovery
+
+Discovers tradeable pairs from an exchange based on volume and liquidity.
+
+```python
+class PairDiscovery(ABC):
+    name: str
+
+    def configure(self, config: Any) -> None: ...
+    async def discover(self) -> list[str]: ...    # fetch and filter trading pairs
+    async def start(self) -> None: ...            # start periodic refresh
+    async def stop(self) -> None: ...             # stop refresh and close resources
+```
+
+Publishes `SymbolsUpdatedEvent` when the active pair set changes. Data providers subscribe to dynamically add/remove symbol subscriptions.
+
+**Implementations**: `kraken` (production: Kraken public API, volume + bid-ask spread filtering, seed symbol guarantee), `coinbase` (Coinbase REST pair discovery), `csv` (static CSV-based pair list)
 
 ---
 
@@ -171,12 +191,13 @@ All types live in `v2/core/types.py`. Plugins communicate exclusively through th
 | Event | Payload | Published By |
 |-------|---------|-------------|
 | `CandleEvent` | `candle: Candle` | DataProvider |
+| `TickerEvent` | `symbol, price, change_24h_pct, bid, ask` | DataProvider |
 | `SignalEvent` | `signal: Signal`, `strategy_name: str` | App (after strategy.on_candle) |
 | `OrderEvent` | `order: Order`, `event_type: str` | ExecutionManager |
 | `FillEvent` | `fill: Fill` | ExchangeAdapter |
 | `PositionEvent` | `position: Position`, `event_type: str` | App (after fill processing) |
 | `RiskEvent` | `event_type: str`, `reason: str`, `metadata: dict` | RiskManager |
-| `TickerEvent` | `symbol: str`, `price: float`, `change_24h_pct`, `bid`, `ask` | DataProvider |
+| `SymbolsUpdatedEvent` | `symbols, added, removed, source` | PairDiscovery |
 
 ---
 
@@ -218,6 +239,8 @@ class CoinbaseExchange(ExchangeAdapter):
     ...
 ```
 
+**Important**: Never put `@plugin` in `__init__.py` — `discover_plugins()` skips `__init__` modules.
+
 ### Auto-Discovery
 
 ```python
@@ -233,9 +256,9 @@ Skips modules starting with `_` and modules named `base` (ABCs, not concrete plu
 ```python
 from v2.core.registry import create_exchange, create_strategy, create_risk
 
-exchange = create_exchange("coinbase", bus=bus)
-strategy = create_strategy("composite_scoring", bus=bus)
-risk = create_risk("basic", bus=bus)
+exchange = create_exchange("kraken", event_bus=bus, key_file="...")
+strategy = create_strategy("composite_scoring", event_bus=bus)
+risk = create_risk("basic", event_bus=bus, pass_through=False)
 ```
 
 ### Introspection
@@ -244,13 +267,15 @@ risk = create_risk("basic", bus=bus)
 from v2.core.registry import list_plugins
 
 list_plugins()
-# {'exchange': ['coinbase', 'paper', 'backtest'],
-#  'data': ['websocket', 'csv_replay'],
-#  'strategy': ['composite_scoring', 'hybrid_4h_maker'],
-#  'risk': ['basic', 'circuit_breaker'],
+# {'exchange': ['backtest', 'paper', 'kraken', 'coinbase', 'backtest_sim'],
+#  'data': ['websocket', 'kraken_websocket', 'csv_replay'],
+#  'strategy': ['composite_scoring', 'hybrid_4h_maker', 'random_entry'],
+#  'risk': ['basic', 'exit_manager', 'performance_filter', 'circuit_breaker'],
 #  'execution': ['maker_only', 'bracket'],
 #  'storage': ['postgres', 'sqlite'],
-#  'observer': ['structured_log', 'signal_comparison', 'heartbeat', 'alerting', 'daily_report']}
+#  'observer': ['structured_log', 'signal_comparison', 'heartbeat', 'alerting',
+#               'daily_report', 'daily_report_v2', 'backtest_diagnostics', 'backtest_results'],
+#  'pair_discovery': ['kraken', 'coinbase', 'csv']}
 ```
 
 ---
@@ -288,5 +313,10 @@ Then reference it in your config YAML:
 ```yaml
 strategies:
   - type: "my_strategy"
-    threshold: 3.0
+    config:
+      threshold: 3.0
 ```
+
+## Last Updated
+
+2026-04-03

@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-BotTrader is a **containerized cryptocurrency trading bot** running on AWS, executing a **maker-first LIMIT order strategy** on Coinbase Advanced Trade. The system uses a dual-container architecture (webhook for execution, sighook for signals) with shared PostgreSQL state. Recent development focuses on **fee-aware strategy design** to overcome Coinbase's 0.6% round-trip fees (0.4% maker + 0.8% taker).
+BotTrader is a **containerized cryptocurrency trading bot** running on AWS, executing a **maker-first LIMIT order strategy** on Coinbase Advanced Trade or Kraken exchange. The system uses a dual-container architecture (webhook for execution, sighook for signals) with shared PostgreSQL state. Recent development focuses on **fee-aware strategy design** to overcome Coinbase's 0.6% round-trip fees (0.4% maker + 0.8% taker).
 
 ---
 

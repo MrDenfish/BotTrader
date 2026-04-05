@@ -1,4 +1,4 @@
-# BotTrader v2 — Methodology and Validation
+a# BotTrader v2 — Methodology and Validation
 
 > How do we know the program works? This document traces every design
 > decision and parameter choice back to its evidence, classifies each as

@@ -4,13 +4,13 @@
 **Container**: `db`
 **Database Name**: `bot_trader_db`
 **User**: `bot_user`
-**Password**: (in .env file)
+**Password**: (see `.env` file on AWS at `/opt/bot/.env`)
 
 ---
 
 ## Option 1: psql Interactive Terminal (Quick Queries)
 
-### Connect via SSH (Manual)
+### Connect via SSH
 
 ```bash
 # SSH to server
@@ -26,21 +26,21 @@ docker exec -it db psql -U bot_user -d bot_trader_db
 -- List all tables
 \dt
 
--- Describe trade_records table
-\d trade_records
+-- Describe v2_fills table
+\d v2_fills
 
--- Query recent sells with exit reasons
+-- Recent fills (buys and sells)
 SELECT
-    order_time,
+    timestamp,
     symbol,
     side,
-    pnl_usd,
-    exit_reason,
-    trigger->>'trigger' as trigger_type
-FROM trade_records
-WHERE side = 'sell'
-  AND order_time >= NOW() - INTERVAL '24 hours'
-ORDER BY order_time DESC
+    ROUND(price::numeric, 4) as price,
+    ROUND(qty::numeric, 6) as qty,
+    ROUND(fee::numeric, 4) as fee,
+    metadata->>'signal_reason' as exit_reason
+FROM v2_fills
+WHERE timestamp >= NOW() - INTERVAL '24 hours'
+ORDER BY timestamp DESC
 LIMIT 20;
 
 -- Exit psql
@@ -63,8 +63,6 @@ LIMIT 20;
 
 ## Option 2: Connect pgAdmin 4 from Desktop (SSH Tunnel)
 
-**Best option if you want to use pgAdmin like you do locally!**
-
 ### Step 1: Create SSH Tunnel
 
 Open a terminal on your Mac and run:
@@ -74,7 +72,7 @@ Open a terminal on your Mac and run:
 ssh -L 5433:localhost:5432 bottrader-aws -N
 ```
 
-**Leave this terminal open** - it creates the tunnel.
+**Leave this terminal open** — it creates the tunnel.
 
 ### Step 2: Add Connection in pgAdmin 4
 
@@ -87,7 +85,7 @@ ssh -L 5433:localhost:5432 bottrader-aws -N
    - Port: `5433` (not 5432!)
    - Maintenance database: `bot_trader_db`
    - Username: `bot_user`
-   - Password: `7317botTrade4ssm` (from .env)
+   - Password: (from `/opt/bot/.env` on AWS — `grep DB_PASSWORD .env`)
    - Save password: ✓
 
 5. Click **Save**
@@ -106,99 +104,81 @@ For quick queries without interactive session:
 # Recent sells with exit reasons
 ssh bottrader-aws 'docker exec db psql -U bot_user -d bot_trader_db -c "
 SELECT
-    order_time,
+    timestamp,
     symbol,
-    pnl_usd,
-    exit_reason
-FROM trade_records
+    ROUND(price::numeric, 4) as price,
+    metadata->>'\''signal_reason'\'' as exit_reason
+FROM v2_fills
 WHERE side = '\''sell'\''
-  AND order_time >= NOW() - INTERVAL '\''1 hour'\''
-ORDER BY order_time DESC
+  AND timestamp >= NOW() - INTERVAL '\''1 hour'\''
+ORDER BY timestamp DESC
 LIMIT 10;
 "'
 ```
 
 ---
 
-## Option 4: Web-based Adminer (Lightweight Alternative)
+## v2 Database Schema
 
-If you want a web UI without SSH tunnel, you can deploy Adminer:
+### Tables
 
-### Add to docker-compose.yml:
+| Table | Purpose |
+|-------|---------|
+| `v2_fills` | Every executed trade (buys and sells) |
+| `v2_orders` | Submitted orders with status tracking |
+| `v2_positions` | Current position state per symbol |
+| `v2_state` | Key-value state persistence (guardrails, strategy state) |
 
-```yaml
-adminer:
-  image: adminer:latest
-  restart: always
-  ports:
-    - "8080:8080"
-  environment:
-    ADMINER_DEFAULT_SERVER: db
-```
+### v2_fills Columns
 
-### Deploy:
+| Column | Type | Notes |
+|--------|------|-------|
+| `fill_id` | TEXT (PK) | Unique fill identifier |
+| `order_id` | TEXT | Parent order |
+| `symbol` | TEXT | e.g., `BTC-USD` |
+| `side` | TEXT | `buy` or `sell` |
+| `price` | DOUBLE PRECISION | Fill price |
+| `qty` | DOUBLE PRECISION | Fill quantity |
+| `fee` | DOUBLE PRECISION | Fee amount |
+| `fee_currency` | TEXT | Usually `USD` |
+| `is_maker` | BOOLEAN | Maker or taker fill |
+| `timestamp` | TIMESTAMPTZ | Fill time |
+| `metadata` | JSONB | Signal reason, trigger, indicator snapshot |
+| `exchange` | TEXT | e.g., `paper-kraken` |
 
-```bash
-ssh bottrader-aws
-cd /opt/bot
-docker compose up -d adminer
-```
+**Key metadata fields** (access via `metadata->>'field_name'`):
+- `signal_reason` — exit reason (e.g., `hard_stop`, `trailing_stop`, `stale_exit`)
+- `trigger` — entry trigger (e.g., `score`, `score_high`)
 
-### Access:
+### v2_positions Columns
 
-Open browser: `http://your-aws-ip:8080`
-
-**Login**:
-- System: PostgreSQL
-- Server: db
-- Username: bot_user
-- Password: 7317botTrade4ssm
-- Database: bot_trader_db
-
-**Security Note**: Only enable this temporarily or restrict to your IP!
-
----
-
-## Recommended Setup for You
-
-Since you already use pgAdmin 4, I recommend **Option 2 (SSH Tunnel)**:
-
-1. Create a saved alias in `~/.ssh/config`:
-
-```bash
-# Edit ~/.ssh/config
-Host bottrader-db-tunnel
-    HostName your-aws-ip
-    User ubuntu
-    IdentityFile ~/.ssh/your-key.pem
-    LocalForward 5433 localhost:5432
-```
-
-2. Then connecting is just:
-
-```bash
-ssh bottrader-db-tunnel -N
-```
-
-3. Add server in pgAdmin once, and you can reconnect anytime by running the SSH tunnel!
+| Column | Type | Notes |
+|--------|------|-------|
+| `symbol` | TEXT (PK) | Trading pair |
+| `qty` | DOUBLE PRECISION | Current quantity held |
+| `avg_entry_price` | DOUBLE PRECISION | Weighted average entry |
+| `cost_basis` | DOUBLE PRECISION | Total cost |
+| `unrealized_pnl` | DOUBLE PRECISION | May be stale — exit manager uses in-memory portfolio |
+| `realized_pnl` | DOUBLE PRECISION | Cumulative realized P&L |
+| `entry_time` | TIMESTAMPTZ | Position open time |
 
 ---
 
 ## Useful Queries for Monitoring
 
-### 1. Check exit_reason Population
+### 1. Exit Reason Breakdown
 
 ```sql
 SELECT
-    exit_reason,
+    metadata->>'signal_reason' as exit_reason,
     COUNT(*) as count,
-    ROUND(AVG(pnl_usd), 2) as avg_pnl,
-    MIN(order_time) as first_seen,
-    MAX(order_time) as last_seen
-FROM trade_records
+    ROUND(AVG(price * qty)::numeric, 2) as avg_notional,
+    MIN(timestamp) as first_seen,
+    MAX(timestamp) as last_seen
+FROM v2_fills
 WHERE side = 'sell'
-  AND order_time >= '2025-12-01'  -- After deployment
-GROUP BY exit_reason
+  AND timestamp >= NOW() - INTERVAL '7 days'
+GROUP BY metadata->>'signal_reason'
 ORDER BY count DESC;
 ```
 
@@ -206,68 +186,98 @@ ORDER BY count DESC;
 
 ```sql
 SELECT
-    order_time,
+    timestamp,
     symbol,
     side,
-    ROUND(CAST(price AS NUMERIC), 4) as price,
-    ROUND(CAST(size AS NUMERIC), 6) as size,
-    ROUND(CAST(pnl_usd AS NUMERIC), 2) as pnl,
-    exit_reason,
-    trigger->>'trigger' as trigger_type
-FROM trade_records
-WHERE order_time >= NOW() - INTERVAL '1 hour'
-ORDER BY order_time DESC;
+    ROUND(price::numeric, 4) as price,
+    ROUND(qty::numeric, 6) as qty,
+    ROUND(fee::numeric, 4) as fee,
+    metadata->>'signal_reason' as exit_reason,
+    metadata->>'trigger' as trigger
+FROM v2_fills
+WHERE timestamp >= NOW() - INTERVAL '4 hours'
+ORDER BY timestamp DESC;
 ```
 
-### 3. Position Monitor Performance
+### 3. Current Open Positions
 
 ```sql
--- Verify soft stops are working
 SELECT
     symbol,
-    order_time,
-    ROUND(CAST(pnl_usd AS NUMERIC), 2) as pnl,
-    exit_reason,
-    CASE
-        WHEN pnl_usd < -1.0 THEN '⚠️ Large loss'
-        WHEN pnl_usd BETWEEN -1.0 AND -0.5 THEN '✅ Normal stop'
-        ELSE 'Other'
-    END as assessment
-FROM trade_records
-WHERE exit_reason = 'SOFT_STOP'
-  AND order_time >= '2025-12-01'
-ORDER BY pnl_usd ASC
-LIMIT 20;
+    ROUND(qty::numeric, 6) as qty,
+    ROUND(avg_entry_price::numeric, 4) as avg_entry,
+    ROUND(cost_basis::numeric, 2) as cost_basis,
+    entry_time
+FROM v2_positions
+WHERE qty > 0.000001
+ORDER BY entry_time DESC;
 ```
 
-### 4. Exit Reason Effectiveness
+### 4. Daily Fill Summary
 
 ```sql
-WITH exit_stats AS (
+SELECT
+    DATE(timestamp) as day,
+    COUNT(*) FILTER (WHERE side = 'buy') as buys,
+    COUNT(*) FILTER (WHERE side = 'sell') as sells,
+    ROUND(SUM(price * qty) FILTER (WHERE side = 'buy')::numeric, 2) as buy_volume,
+    ROUND(SUM(price * qty) FILTER (WHERE side = 'sell')::numeric, 2) as sell_volume,
+    ROUND(SUM(fee)::numeric, 2) as total_fees
+FROM v2_fills
+WHERE timestamp >= NOW() - INTERVAL '14 days'
+GROUP BY DATE(timestamp)
+ORDER BY day DESC;
+```
+
+### 5. Exit Reason Effectiveness (Matched Trades)
+
+```sql
+-- For each sell, find the most recent buy of the same symbol to estimate P&L
+WITH sells AS (
     SELECT
-        exit_reason,
-        COUNT(*) as total,
-        SUM(CASE WHEN pnl_usd > 0 THEN 1 ELSE 0 END) as wins,
-        AVG(CASE WHEN pnl_usd > 0 THEN pnl_usd END) as avg_win,
-        AVG(CASE WHEN pnl_usd <= 0 THEN pnl_usd END) as avg_loss,
-        SUM(pnl_usd) as total_pnl
-    FROM trade_records
+        fill_id,
+        symbol,
+        price as sell_price,
+        qty as sell_qty,
+        timestamp as sell_time,
+        metadata->>'signal_reason' as exit_reason
+    FROM v2_fills
     WHERE side = 'sell'
-      AND order_time >= '2025-12-01'
-      AND exit_reason IS NOT NULL
-    GROUP BY exit_reason
+      AND timestamp >= NOW() - INTERVAL '14 days'
+),
+buys AS (
+    SELECT DISTINCT ON (symbol, fill_id)
+        symbol,
+        price as buy_price,
+        timestamp as buy_time
+    FROM v2_fills
+    WHERE side = 'buy'
 )
 SELECT
-    exit_reason,
-    total,
-    wins,
-    ROUND(100.0 * wins / total, 1) as win_rate_pct,
-    ROUND(avg_win::numeric, 2) as avg_win,
-    ROUND(avg_loss::numeric, 2) as avg_loss,
-    ROUND(total_pnl::numeric, 2) as total_pnl,
-    ROUND((avg_win / NULLIF(ABS(avg_loss), 0))::numeric, 2) as risk_reward_ratio
-FROM exit_stats
+    s.exit_reason,
+    COUNT(*) as total,
+    ROUND(AVG((s.sell_price - b.buy_price) / b.buy_price * 100)::numeric, 2) as avg_pnl_pct
+FROM sells s
+LEFT JOIN LATERAL (
+    SELECT buy_price, buy_time
+    FROM buys b
+    WHERE b.symbol = s.symbol AND b.buy_time < s.sell_time
+    ORDER BY b.buy_time DESC LIMIT 1
+) b ON TRUE
+WHERE s.exit_reason IS NOT NULL
+GROUP BY s.exit_reason
 ORDER BY total DESC;
+```
+
+### 6. Check Strategy State
+
+```sql
+SELECT
+    key,
+    updated_at,
+    jsonb_pretty(value) as state
+FROM v2_state
+ORDER BY updated_at DESC;
 ```
 
 ---
@@ -304,9 +314,9 @@ psql -h localhost -p 5433 -U bot_user -d bot_trader_db
 Check `.env` file for current password:
 
 ```bash
-grep DB_PASSWORD .env
+ssh bottrader-aws "grep DB_PASSWORD /opt/bot/.env"
 ```
 
 ---
 
-**My Recommendation**: Use Option 2 (SSH Tunnel + pgAdmin) for the best experience!
+**Last Updated:** 2026-04-03
