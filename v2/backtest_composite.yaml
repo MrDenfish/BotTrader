@@ -53,6 +53,8 @@ strategies:
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
+      enable_roc_20m_momentum: false    # Match production — disabled
+      enable_roc_24h_momentum: false    # Match production — disabled
       min_indicators_required: 3
       cooldown_bars: 6
       loss_lockout_bars: 18
