@@ -139,4 +139,4 @@ class CompositeScoreConfig:
     # Buffer / warmup
     # ------------------------------------------------------------------
     buffer_size: int = 500   # Rolling candle buffer for indicator calculation
-    min_bars: int = 40       # Minimum bars before evaluating
+    min_bars: int = 80       # Minimum bars before evaluating (~3x MACD slow period)

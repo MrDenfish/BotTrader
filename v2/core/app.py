@@ -183,8 +183,9 @@ class App:
                 discovered = await self._pair_discovery.discover()
                 if discovered:
                     logger.info(
-                        "Pair discovery: %d symbols (replacing %d static)",
+                        "Pair discovery: %d symbols (replacing %d static): %s",
                         len(discovered), len(cfg.app.symbols),
+                        ", ".join(sorted(discovered)),
                     )
                     cfg.app.symbols = discovered
                 else:
@@ -268,6 +269,7 @@ class App:
         # Persistence receives fills and orders
         if self._storage:
             bus.subscribe(FillEvent, lambda e: self._on_fill_storage(e))
+            bus.subscribe(OrderEvent, lambda e: self._on_order_storage(e))
 
         # Portfolio updates on fills
         bus.subscribe(FillEvent, lambda e: self._on_fill_portfolio(e))
@@ -332,6 +334,10 @@ class App:
     def _on_fill_storage(self, event: FillEvent) -> None:
         if self._storage:
             asyncio.ensure_future(self._storage.record_fill(event.fill))
+
+    def _on_order_storage(self, event: OrderEvent) -> None:
+        if self._storage:
+            asyncio.ensure_future(self._storage.record_order(event.order))
 
     def _on_fill_portfolio(self, event: FillEvent) -> None:
         """Update portfolio position from fill and persist to storage."""
