@@ -14,6 +14,9 @@ from v2.core.event_bus import EventBus
 from v2.core.types import (
     Direction,
     Fill,
+    Order,
+    OrderEvent,
+    OrderStatus,
     OrderType,
     Portfolio,
     Position,
@@ -353,6 +356,75 @@ class TestPendingExits:
         # Second tick still at -3% — should NOT fire again (pending)
         em.on_ticker(_make_ticker(price=96_500.0), portfolio)
         assert len(published) == 1  # Still 1, not 2
+
+    def test_pending_exit_cleared_on_order_cancel(self, bus):
+        """When a sell order is cancelled, pending exit is cleared so
+        the exit manager can re-evaluate on the next tick."""
+        em = _make_exit_manager(bus, soft_stop_pct=0.03, hard_stop_pct=0.045)
+        portfolio = _make_portfolio(avg_entry=100_000.0)
+
+        published = []
+        bus.subscribe(SignalEvent, lambda e: published.append(e))
+
+        # Trigger soft stop — adds to _pending_exits
+        em.on_ticker(_make_ticker(price=97_000.0), portfolio)
+        assert len(published) == 1
+        assert "BTC-USD" in em._pending_exits
+
+        # Simulate order cancellation
+        cancel_event = OrderEvent(
+            order=Order(
+                order_id="test-cancel-123",
+                symbol="BTC-USD",
+                side=Side.SELL,
+                order_type=OrderType.MARKET,
+                price=Decimal("97000"),
+                qty=Decimal("1"),
+                status=OrderStatus.CANCELLED,
+                timestamp=datetime.now(timezone.utc),
+            ),
+            event_type="cancelled",
+        )
+        em.on_order_cancel(cancel_event)
+
+        # Pending exit should be cleared
+        assert "BTC-USD" not in em._pending_exits
+
+        # Next tick should fire a new exit signal
+        em.on_ticker(_make_ticker(price=96_500.0), portfolio)
+        assert len(published) == 2
+
+    def test_pending_exit_not_cleared_on_buy_cancel(self, bus):
+        """Buy order cancellations should NOT clear pending exits."""
+        em = _make_exit_manager(bus, soft_stop_pct=0.03, hard_stop_pct=0.045)
+        portfolio = _make_portfolio(avg_entry=100_000.0)
+
+        published = []
+        bus.subscribe(SignalEvent, lambda e: published.append(e))
+
+        # Trigger soft stop
+        em.on_ticker(_make_ticker(price=97_000.0), portfolio)
+        assert len(published) == 1
+        assert "BTC-USD" in em._pending_exits
+
+        # Simulate BUY order cancellation — should be ignored
+        cancel_event = OrderEvent(
+            order=Order(
+                order_id="test-buy-cancel",
+                symbol="BTC-USD",
+                side=Side.BUY,
+                order_type=OrderType.LIMIT,
+                price=Decimal("97000"),
+                qty=Decimal("1"),
+                status=OrderStatus.CANCELLED,
+                timestamp=datetime.now(timezone.utc),
+            ),
+            event_type="cancelled",
+        )
+        em.on_order_cancel(cancel_event)
+
+        # Pending exit should still be set
+        assert "BTC-USD" in em._pending_exits
 
 
 # =====================================================================
@@ -852,8 +924,8 @@ class TestMarketOrders:
         assert published[0].signal.order_type == OrderType.MARKET
         assert published[0].signal.reason == "soft_stop"
 
-    def test_trailing_stop_emits_limit_order(self, bus):
-        """Trailing stop uses the default OrderType.LIMIT."""
+    def test_trailing_stop_emits_market_order(self, bus):
+        """Trailing stop uses OrderType.MARKET to ensure immediate fill."""
         em = _make_exit_manager(bus, trailing_activation_pct=0.03, trailing_distance_pct=0.03)
         portfolio = _make_portfolio(avg_entry=100_000.0)
 
@@ -866,7 +938,7 @@ class TestMarketOrders:
         em.on_ticker(_make_ticker(price=101_800.0), portfolio)
 
         assert len(published) == 1
-        assert published[0].signal.order_type == OrderType.LIMIT
+        assert published[0].signal.order_type == OrderType.MARKET
         assert published[0].signal.reason == "trailing_stop"
 
 

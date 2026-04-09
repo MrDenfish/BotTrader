@@ -252,6 +252,8 @@ class App:
                     bus.subscribe(TickerEvent, lambda e, r=rm: r.on_ticker(e, self.portfolio))
                 if hasattr(rm, "on_candle"):
                     bus.subscribe(CandleEvent, lambda e, r=rm: r.on_candle(e.candle))
+                if hasattr(rm, "on_order_cancel"):
+                    bus.subscribe(OrderEvent, lambda e, r=rm: r.on_order_cancel(e))
 
         # Execution: forward fills/orders for stale order tracking
         if self._execution and hasattr(self._execution, "on_fill"):

@@ -33,6 +33,8 @@ from v2.core.interfaces import RiskManager
 from v2.core.types import (
     Direction,
     Fill,
+    OrderEvent,
+    OrderStatus,
     OrderType,
     Portfolio,
     Position,
@@ -435,7 +437,7 @@ class ExitManager(RiskManager):
                 "held_minutes": round(elapsed_min, 1),
                 "peak_price": round(state["peak_price"], 6),
                 "trigger_type": state["trigger_type"],
-            })
+            }, order_type=OrderType.MARKET)
             return True
 
         # 2. Activation gate: need min_profit before peak tracking kicks in.
@@ -460,7 +462,7 @@ class ExitManager(RiskManager):
                 "fee_total": round(fee_total * 100, 2),
                 "peak_price": round(state["peak_price"], 6),
                 "trigger_type": state["trigger_type"],
-            })
+            }, order_type=OrderType.MARKET)
             return True
 
         # 4. Peak drawdown: exit if smoothed price dropped >drawdown_pct from peak
@@ -475,7 +477,7 @@ class ExitManager(RiskManager):
                     "smoothed_price": round(smoothed, 6),
                     "drawdown_pct": round(drawdown * 100, 2),
                     "trigger_type": state["trigger_type"],
-                })
+                }, order_type=OrderType.MARKET)
                 return True
 
         return False
@@ -695,7 +697,7 @@ class ExitManager(RiskManager):
                     "drawdown_pct": round(drawdown_from_peak * 100, 2),
                     "avg_entry": avg_entry,
                     "trailing_mode": self._trailing_mode,
-                })
+                }, order_type=OrderType.MARKET)
                 return
 
     # ------------------------------------------------------------------
@@ -748,6 +750,27 @@ class ExitManager(RiskManager):
                 self._last_exit_time[symbol] = self._now_epoch()
             # Keep candle_history — it's useful for the next position
             logger.debug("Exit manager: tracking cleared for %s", symbol)
+
+    # ------------------------------------------------------------------
+    # Order cancellation — clear pending exit so re-evaluation can fire
+    # ------------------------------------------------------------------
+
+    def on_order_cancel(self, order_event: OrderEvent) -> None:
+        """Clear pending exit when a sell order is cancelled.
+
+        Without this, a cancelled sell order leaves the symbol in
+        _pending_exits permanently, blocking all future exit checks.
+        """
+        order = order_event.order
+        if order.side == Side.SELL and order.status == OrderStatus.CANCELLED:
+            symbol = order.symbol
+            if symbol in self._pending_exits:
+                self._pending_exits.discard(symbol)
+                logger.warning(
+                    "Cleared pending exit for %s — sell order %s cancelled, "
+                    "exit manager will re-evaluate on next tick",
+                    symbol, order.order_id[:8],
+                )
 
     def on_position_update(self, position: Position) -> Signal | None:
         """No position-driven exits from exit manager (uses ticker instead)."""
