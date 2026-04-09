@@ -65,14 +65,16 @@ BotTrader v2 is built on an **event-driven plugin system**. Every component is a
 
 | Category | ABC | Job | Active Plugin(s) |
 |----------|-----|-----|-------------------|
-| **Exchange** | `ExchangeAdapter` | Order management, balances, fees | `paper` (sim), `kraken` (live), `coinbase` |
+| **Exchange** | `ExchangeAdapter` | Order management, balances, fees | `paper` (sim), `kraken` (live), `coinbase`, `backtest`, `backtest_sim` |
 | **Data** | `DataProvider` | Market data streaming | `kraken_websocket`, `websocket` (Coinbase), `csv_replay` |
 | **Strategy** | `Strategy` | Signal generation from candles | `composite_scoring`, `hybrid_4h_maker`, `random_entry` |
 | **Risk** | `RiskManager` | Signal validation and exit management | `basic`, `exit_manager`, `circuit_breaker`, `performance_filter` |
-| **Execution** | `ExecutionManager` | Signal → order translation | `maker_only` |
+| **Execution** | `ExecutionManager` | Signal → order translation | `maker_only`, `bracket` |
 | **Storage** | `StorageAdapter` | Persistence (fills, orders, state) | `postgres`, `sqlite` |
-| **Observer** | `Observer` | Logging, metrics, reports, alerts | `structured_log`, `signal_comparison`, `heartbeat`, `daily_report_v2` |
+| **Observer** | `Observer` | Logging, metrics, reports, alerts | `structured_log`, `signal_comparison`, `heartbeat`, `daily_report_v2`, `backtest_results`, `backtest_diagnostics`, `daily_report`, `alerting` |
 | **Pair Discovery** | `PairDiscovery` | Dynamic symbol selection | `kraken`, `coinbase`, `csv` |
+
+**30 plugins total** across 8 categories (includes backtest and development plugins).
 
 ### How Plugins Are Registered
 
@@ -127,7 +129,7 @@ BotTrader/
 │   │   ├── credentials.py           #   Shared credential loader (explicit > env > key_file)
 │   │   ├── kraken_auth.py           #   HMAC-SHA512 signature generation
 │   │   └── symbol_mapper.py         #   Kraken symbol normalization (BTC ↔ XBT)
-│   ├── tests/                       #   672 passing tests
+│   ├── tests/                       #   685+ passing tests
 │   ├── kraken_paper_trading.yaml    #   PRODUCTION config (paper trading on Kraken)
 │   ├── config.yaml                  #   Coinbase live config (dormant)
 │   └── backtest_*.yaml              #   Backtest configurations
@@ -211,11 +213,13 @@ The exit manager subscribes to `TickerEvent` independently and monitors all open
 
 | Exit Layer | Condition | Order Type | Priority |
 |-----------|-----------|------------|----------|
-| **Hard stop** | P&L < -5.5% (ATR-based, floor 5.5%, ceiling 8%) | MARKET | 1 (highest) |
+| **Hard stop** | Loss exceeds 5.5% (ATR-based, floor 5.5%, ceiling 8%) | MARKET | 1 (highest) |
 | **Trailing stop** | Activates at +2% profit, trails by ATR distance [1%-2%] | MARKET | 2 |
 | **Time limit** | Score-triggered positions held > 48 hours | LIMIT | 3 |
 | **Signal exit** | Sell signal from strategy + P&L ≥ 0% | LIMIT | 4 |
 | **Peak tracking** | For momentum trades: +6% activation, -5% drawdown exit, 24h max | MARKET | 2 |
+
+**Note:** All stop-type exits (hard, trailing, peak) use MARKET orders to ensure immediate fill. Only signal-based and time-limit exits use LIMIT.
 
 All P&L calculations are **fee-aware**: entry cost = `avg_entry × (1 + maker_fee)`, exit revenue = `price × (1 - taker_fee)`.
 
@@ -294,7 +298,7 @@ The `maker_only` execution manager handles signal-to-order translation:
 | **Order type** | Post-only LIMIT (captures maker fees) |
 | **Pricing** | BUY: `ask × (1 - buffer)`, SELL: `bid × (1 + buffer)` |
 | **Buffer** | Starts at 0.1%, +0.05% per retry (max 3 retries) |
-| **Sizing** | Trigger-based: `score: $75`, `score_high: $150` (4+ indicators) |
+| **Sizing** | Trigger-based: `score: $75`, `score_high: $150` (4+ indicators), `roc_momo_20m: $30`, `roc_momo_24h: $30` (both disabled) |
 | **Min order** | Skip dust orders below $10 notional |
 | **Stale cancellation** | Cancel if price drifts > 0.5% from order price |
 | **Buy TTL** | Hard cancel unfilled buys after 10 minutes |
@@ -489,7 +493,7 @@ The trend confirmation gate (Feb 27) eliminated the "falling knife" pattern wher
 
 ### Overfitting Awareness
 
-Five strategy changes were derived from the same 180-day, 9-symbol dataset: trend gate, ATR hard stops, peak tracking tuning, volume features, and regime filter. These are flagged for **out-of-sample validation** against newer data before being considered robust. Fee-math and microstructure changes are safe (not data-derived). See `CLAUDE.md` memory for the full policy.
+Five strategy changes were derived from the same 180-day, 9-symbol dataset: trend gate, ATR hard stops, peak tracking tuning, volume features, and regime filter. These are flagged for **out-of-sample validation** against newer data before being considered robust. As of April 2026, out-of-sample validation has not yet been performed — extended paper trading data (Mar–Apr 2026) is being collected as a potential validation set. Fee-math and microstructure changes are safe (not data-derived). See `CLAUDE.md` memory for the full policy.
 
 ---
 
@@ -555,7 +559,7 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 ## 17. What's Next
 
-### Currently Live (as of 2026-04-02)
+### Currently Live (as of 2026-04-09)
 - Paper trading on Kraken with dynamic pair discovery (16-30 pairs)
 - Composite scoring with trend confirmation gate, ADX gate, volume confirmation
 - ATR-based hard stops and trailing stops
@@ -596,7 +600,7 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 | Issue | Severity | Found | Details |
 |-------|----------|-------|---------|
-| **Backtest config drift** | Medium | 2026-04-04 | `backtest_composite.yaml` has significant parameter differences from production config (`kraken_paper_trading.yaml`): score_buy_target 4.5 vs 2.0, soft_stop enabled vs disabled, different exit thresholds, missing ADX/trend/regime gates. Cannot reliably validate production behavior until aligned. |
+| **Backtest config drift** | Medium | 2026-04-04 | Still open as of 2026-04-09. `backtest_composite.yaml` has 18 parameter differences from production config (`kraken_paper_trading.yaml`): score_buy_target 4.5 vs 2.0, missing ADX/regime/trend gates, different BB/RSI/ROC thresholds, different cooldown/lockout values. Cannot reliably validate production behavior until aligned. |
 | **roc_momo_20m sell path** | ~~High~~ Resolved | 2026-04-03 | Fixed 2026-04-04 (commit `193183a`). Moved `enable_roc_20m_momentum` to outer gate. Backtest validated, deployed. Monitoring for clean data. |
 
 ---
@@ -607,6 +611,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-09 | Exit manager MARKET order + pending exit fix | Trailing stop and peak tracking exits were using LIMIT orders instead of MARKET — a stale LIMIT sell could drift and cancel, leaving the position stuck. `_pending_exits` was never cleared on order cancellation, permanently blocking exit re-evaluation. Both fixed. Commit `a3f6198`. |
 | 2026-04-04 | roc_momo_20m exit bug fixed | `enable_roc_20m_momentum: false` now gates both buy AND sell paths. Previously only gated buys — 22 unwanted sell signals across all config eras. Commit `193183a`. |
 | 2026-04-04 | Documentation overhaul | SYSTEM_CONTEXT.md (living document), ONBOARDING.md, LOCAL_DEVELOPMENT_SETUP.md, AWS_DEPLOYMENT_GUIDE.md, OPERATIONAL_RUNBOOK.md (14 real incidents). 22 stale v1 docs archived, plugin architecture docs updated to 30 plugins / 8 categories. |
 | 2026-03-15 | Buy order TTL + stale exit conditioning | Unfilled buys auto-cancel after 10 min. `stale_exit` only fires when P&L < 0 (no longer ejects profitable positions). |
