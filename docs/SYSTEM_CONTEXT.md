@@ -600,7 +600,8 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 | Issue | Severity | Found | Details |
 |-------|----------|-------|---------|
-| **Backtest config drift** | Medium | 2026-04-04 | Still open as of 2026-04-09. `backtest_composite.yaml` has 18 parameter differences from production config (`kraken_paper_trading.yaml`): score_buy_target 4.5 vs 2.0, missing ADX/regime/trend gates, different BB/RSI/ROC thresholds, different cooldown/lockout values. Cannot reliably validate production behavior until aligned. |
+| **Backtest config drift** | ~~Medium~~ Resolved | 2026-04-04 | Fixed 2026-04-09 (commit `db46af3`). All 30 strategy/risk/sizing parameters aligned to production. Only infra params differ (retries, post_only, stale tracking). Out-of-sample validation confirmed strategy is not overfit. |
+| **Fee drag on profitability** | Medium | 2026-04-09 | All three backtest sets (training + 2 OOS) are gross profitable or near-breakeven but net negative after fees (~$50/set). At $75 notional with 0.65% round-trip fees, avg win ($1.47-$1.80) barely covers costs. Sizing or fee tier improvements needed. |
 | **roc_momo_20m sell path** | ~~High~~ Resolved | 2026-04-03 | Fixed 2026-04-04 (commit `193183a`). Moved `enable_roc_20m_momentum` to outer gate. Backtest validated, deployed. Monitoring for clean data. |
 
 ---
