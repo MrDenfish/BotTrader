@@ -1,0 +1,182 @@
+# BotTrader v2 — Paper Trading Configuration (Kraken)
+# Usage: python -m v2 --config v2/kraken_paper_trading.yaml
+#
+# Paper trading uses live Kraken WebSocket data but simulates
+# all order fills locally. No real money is used.
+#
+# Runs alongside Coinbase paper trader on AWS.
+# Only pair_discovery, exchange fees, and data_providers differ
+# from the Coinbase config — proving the exchange-agnostic architecture.
+
+app:
+  name: "BotTrader"
+  mode: "paper"
+  # Fallback symbols — used only if pair discovery fails at startup.
+  symbols:
+    - "BTC-USD"
+    - "ETH-USD"
+    - "SOL-USD"
+    - "XRP-USD"
+    - "DOGE-USD"
+    - "ADA-USD"
+    - "LINK-USD"
+    - "DOT-USD"
+    - "LTC-USD"
+
+# Dynamic pair discovery — fetches pairs from Kraken public API
+# and filters by 24h volume (same two-pass algorithm as Coinbase).
+pair_discovery:
+  type: "kraken"
+  key_file: "/app/Config/kraken_api_info.json"
+  config:
+    refresh_interval_minutes: 30
+    min_quote_volume: 2000000
+    max_spread_bps: 100             # reject pairs with bid-ask spread > 1.0%
+    shill_coins: ["TRUMP"]
+    seed_symbols: ["BTC-USD", "ETH-USD"]
+    max_pairs: 30
+
+exchange:
+  type: "paper"
+  exchange_name: "paper-kraken"
+  initial_balance_usd: 10000
+  maker_fee: 0.0025    # Kraken base tier: 0.25% maker
+  taker_fee: 0.004     # Kraken base tier: 0.40% taker
+  slippage_bps: 1.0
+
+data_providers:
+  - type: "kraken_websocket"
+    key_file: "/app/Config/kraken_api_info.json"
+    channels: ["ticker"]
+    idle_timeout: 90.0
+
+# Strategy, risk, execution, storage, observers — identical to Coinbase config
+strategies:
+  - type: "composite_scoring"
+    config:
+      candle_interval_minutes: 5
+      score_buy_target: 2.0
+      score_sell_target: 2.0
+      allow_buys_on_red_day: true
+      bb_window: 10
+      buy_ratio: 1.05
+      macd_fast: 8
+      macd_slow: 21
+      macd_signal: 5
+      rsi_buy: 25.0
+      rsi_sell: 75.0
+      roc_window: 4
+      roc_buy_threshold: 2.0
+      roc_sell_threshold: -1.0
+      sma_volatility: 10
+      atr_window: 8
+      swing_window: 10
+      regime_filter_enabled: true
+      regime_max_atr_percentile: 60
+      adx_gate_enabled: true
+      adx_period: 14
+      adx_min_threshold: 20.0
+      volume_confirm_buy: true
+      volume_confirm_threshold: 0.7
+      volume_div_window: 10
+      enable_roc_20m_momentum: false    # Disabled: 35% win rate, actively harmful
+      enable_roc_24h_momentum: false   # Disabled: 28% hard stop rate, biggest P&L drag
+      min_indicators_required: 3
+      min_sell_indicators_required: 5
+      cooldown_bars: 2
+      loss_lockout_bars: 12
+
+risk:
+  - type: "basic"
+    pass_through: false
+    hodl_symbols: []
+    maker_fee_pct: 0.0025          # Kraken base tier: 0.25% maker
+    taker_fee_pct: 0.004           # Kraken base tier: 0.40% taker
+    max_round_trip_fee_pct: 0.01   # Veto all buys if round-trip fees > 1.0%
+  - type: "performance_filter"
+    window_days: 30
+    min_trades: 3
+    min_win_rate: 0.30
+    min_avg_pnl: -5.0
+    min_total_pnl: -50.0
+  - type: "exit_manager"
+    hard_stop_pct: 0.055                  # fallback when no ATR data
+    hard_stop_mode: "atr"                 # "fixed" or "atr" — dynamic per-symbol hard stops
+    hard_stop_atr_mult: 3.0               # 3x hourly ATR% for hard stop threshold
+    hard_stop_atr_period: 14              # 14 aggregated bars for ATR lookback
+    hard_stop_atr_candle_minutes: 60      # aggregate 1-min candles into 60-min (hourly) bars
+    hard_stop_min_pct: 0.055              # floor: never tighter than 5.5%
+    hard_stop_max_pct: 0.08               # ceiling: never wider than 8%
+    soft_stop_enabled: false             # Disabled: soft stops were biggest P&L drag (-$300 backtest, -$15 paper)
+    soft_stop_pct: 0.03
+    trailing_activation_pct: 0.02
+    trailing_distance_pct: 0.03
+    trailing_mode: "atr"
+    atr_period: 14
+    atr_mult: 2.0
+    trailing_min_distance_pct: 0.01
+    trailing_max_distance_pct: 0.02
+    check_interval_sec: 5
+    signal_exit_enabled: true
+    signal_exit_min_pnl_pct: 0.0
+    max_hold_hours: 48              # Eject stale score-triggered positions after 48h
+    reentry_cooldown_minutes: 30    # Block re-entry into same symbol for 30 min after exit
+    maker_fee_pct: 0.0025         # Kraken base tier maker fee (refreshed from API)
+    taker_fee_pct: 0.004          # Kraken base tier taker fee (refreshed from API)
+    peak_tracking_enabled: true
+    peak_drawdown_pct: 0.05       # -5% drawdown from SMA-smoothed peak
+    peak_min_profit_pct: 0.06     # +6% profit before peak tracking activates
+    peak_smoothing_prices: 5      # 5-price SMA for peak smoothing
+    peak_max_hold_minutes: 1440   # 24-hour max hold for momentum trades
+    peak_triggers: ["roc_momo_20m", "roc_momo_24h"]
+  - type: "circuit_breaker"
+    max_losses_in_window: 5
+    loss_window_minutes: 30
+    large_loss_threshold_usd: 50
+    max_consecutive_rejections: 10
+    cooldown_minutes: 30
+
+execution:
+  type: "maker_only"
+  max_retries: 3
+  post_only: true
+  default_notional: 75
+  notional_by_trigger:
+    score: 75
+    score_high: 150            # 4+ indicators = high conviction, 2x sizing
+    roc_momo_20m: 30
+    roc_momo_24h: 30
+  min_order_fiat: 10
+  stale_timeout_seconds: 300
+  cancel_drift_pct: 0.005
+  buy_order_ttl_seconds: 600      # Hard TTL: cancel unfilled buys after 10 min
+
+storage:
+  type: "postgres"
+  dsn_env: "DATABASE_URL"
+
+observers:
+  - type: "structured_log"
+    level: "INFO"
+  - type: "signal_comparison"
+    log_path: "/app/logs/v2_kraken_score_log.jsonl"
+  - type: "heartbeat"
+    path: "/app/logs/v2_kraken/heartbeat"
+    interval: 10.0
+  - type: "daily_report_v2"
+    dsn_env: "DATABASE_URL"
+    report_interval_hours: 4
+    initial_balance_usd: 10000
+    signal_log: "/app/logs/v2_kraken_score_log.jsonl"
+    email:
+      backend: "smtp"
+      sender: "reports@a1zoobies.com"
+      recipients: ["dennfish@gmail.com"]
+      smtp_host: "email-smtp.us-west-2.amazonaws.com"
+      smtp_port: 587
+      smtp_user_env: "SMTP_USERNAME"
+      smtp_password_env: "SMTP_PASSWORD"
+    slack:
+      webhook_url_env: "SLACK_WEBHOOK_URL"
+    comparison:
+      enabled: false
