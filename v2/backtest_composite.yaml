@@ -3,7 +3,8 @@
 #
 # Runs composite_scoring strategy over historical CSV data with full
 # pipeline: strategy → risk chain → execution → fills → exit manager.
-# Parameters mirror kraken_paper_trading.yaml (production config).
+# Strategy/risk/sizing parameters mirror kraken_paper_trading.yaml (production).
+# Only infra params differ (retries, stale tracking, post_only, storage).
 
 app:
   name: "BotTrader"
@@ -29,37 +30,43 @@ data_providers:
     days: 180
     resolution: "1m"
 
-# Strategy — same params as production (kraken_paper_trading.yaml)
+# Strategy — aligned to production (kraken_paper_trading.yaml)
 strategies:
   - type: "composite_scoring"
     config:
       candle_interval_minutes: 5
-      score_buy_target: 4.5
-      score_sell_target: 4.5
+      score_buy_target: 2.0
+      score_sell_target: 2.0
       allow_buys_on_red_day: true
-      bb_window: 20
+      bb_window: 10
       buy_ratio: 1.05
       macd_fast: 8
       macd_slow: 21
       macd_signal: 5
-      rsi_buy: 22.0
-      rsi_sell: 78.0
+      rsi_buy: 25.0
+      rsi_sell: 75.0
       roc_window: 4
-      roc_buy_threshold: 4.0
-      roc_sell_threshold: -2.0
-      sma_volatility: 20
-      atr_window: 14
-      swing_window: 20
+      roc_buy_threshold: 2.0
+      roc_sell_threshold: -1.0
+      sma_volatility: 10
+      atr_window: 8
+      swing_window: 10
+      regime_filter_enabled: true
+      regime_max_atr_percentile: 60
+      adx_gate_enabled: true
+      adx_period: 14
+      adx_min_threshold: 20.0
       volume_confirm_buy: true
       volume_confirm_threshold: 0.7
       volume_div_window: 10
       enable_roc_20m_momentum: false    # Match production — disabled
       enable_roc_24h_momentum: false    # Match production — disabled
       min_indicators_required: 3
-      cooldown_bars: 6
-      loss_lockout_bars: 18
+      min_sell_indicators_required: 5
+      cooldown_bars: 2
+      loss_lockout_bars: 12
 
-# Risk chain — same as production (skip performance_filter for backtest)
+# Risk chain — aligned to production (skip performance_filter for backtest)
 risk:
   - type: "basic"
     pass_through: false
@@ -68,15 +75,22 @@ risk:
     taker_fee_pct: 0.004
     max_round_trip_fee_pct: 0.01
   - type: "exit_manager"
-    hard_stop_pct: 0.035
-    soft_stop_pct: 0.02
-    trailing_activation_pct: 0.015
-    trailing_distance_pct: 0.015
+    hard_stop_pct: 0.055                  # fallback when no ATR data
+    hard_stop_mode: "atr"                 # dynamic per-symbol hard stops
+    hard_stop_atr_mult: 3.0               # 3x hourly ATR% for hard stop threshold
+    hard_stop_atr_period: 14              # 14 aggregated bars for ATR lookback
+    hard_stop_atr_candle_minutes: 60      # aggregate 1-min candles into 60-min (hourly) bars
+    hard_stop_min_pct: 0.055              # floor: never tighter than 5.5%
+    hard_stop_max_pct: 0.08               # ceiling: never wider than 8%
+    soft_stop_enabled: false              # Disabled in production
+    soft_stop_pct: 0.03
+    trailing_activation_pct: 0.02
+    trailing_distance_pct: 0.03
     trailing_mode: "atr"
     atr_period: 14
     atr_mult: 2.0
-    trailing_min_distance_pct: 0.008
-    trailing_max_distance_pct: 0.015
+    trailing_min_distance_pct: 0.01
+    trailing_max_distance_pct: 0.02
     check_interval_sec: 0           # No throttle in backtest — check every bar
     signal_exit_enabled: true
     signal_exit_min_pnl_pct: 0.0
@@ -91,23 +105,24 @@ risk:
     peak_max_hold_minutes: 1440
     peak_triggers: ["roc_momo_20m", "roc_momo_24h"]
   - type: "circuit_breaker"
-    max_losses_in_window: 3
-    loss_window_minutes: 60
+    max_losses_in_window: 5
+    loss_window_minutes: 30
     large_loss_threshold_usd: 50
     max_consecutive_rejections: 10
-    cooldown_minutes: 60
+    cooldown_minutes: 30
 
 execution:
   type: "maker_only"
-  max_retries: 1
-  post_only: false              # No post-only in backtest (all fills immediate)
-  default_notional: 50
+  max_retries: 1                    # Backtest: fills are instant, no retries needed
+  post_only: false                  # Backtest: no post-only simulation
+  default_notional: 75
   notional_by_trigger:
-    score: 50
+    score: 75
+    score_high: 150                 # 4+ indicators = high conviction, 2x sizing
     roc_momo_20m: 30
     roc_momo_24h: 30
   min_order_fiat: 10
-  stale_timeout_seconds: 0      # No stale order cancellation in backtest
+  stale_timeout_seconds: 0          # Backtest: no stale order cancellation
 
 storage:
   type: ""                         # No persistence needed for backtest
