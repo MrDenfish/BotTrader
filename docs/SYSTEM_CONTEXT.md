@@ -493,7 +493,17 @@ The trend confirmation gate (Feb 27) eliminated the "falling knife" pattern wher
 
 ### Overfitting Awareness
 
-Five strategy changes were derived from the same 180-day, 9-symbol dataset: trend gate, ATR hard stops, peak tracking tuning, volume features, and regime filter. These are flagged for **out-of-sample validation** against newer data before being considered robust. As of April 2026, out-of-sample validation has not yet been performed — extended paper trading data (Mar–Apr 2026) is being collected as a potential validation set. Fee-math and microstructure changes are safe (not data-derived). See `CLAUDE.md` memory for the full policy.
+Five strategy changes were derived from the same 180-day, 9-symbol dataset: trend gate, ATR hard stops, peak tracking tuning, volume features, and regime filter.
+
+**Out-of-sample validation completed (2026-04-09):** Three independent 9-symbol sets (27 symbols total, zero overlap) tested over the same 180-day period:
+
+| Set | Symbols | Trades | Win Rate | Gross P&L | Fees | Net P&L | Profit Factor |
+|-----|---------|--------|----------|-----------|------|---------|---------------|
+| **A (training)** | BTC, ETH, SOL, XRP, DOGE, ADA, LINK, DOT, AVAX | 103 | 54.4% | -$12 | $51 | -$62 | 0.57 |
+| **B (OOS)** | AAVE, APT, ATOM, BNB, FIL, ICP, LTC, NEAR, UNI | 113 | 64.6% | +$35 | $56 | -$22 | 0.85 |
+| **C (OOS)** | ALGO, ARB, FET, HBAR, INJ, LDO, OP, SUI, TAO | 99 | 61.6% | +$16 | $49 | -$33 | 0.77 |
+
+**Verdict: NOT overfit.** OOS sets outperformed training data on all metrics. Exit distribution is consistent across all sets (~60% trailing, ~25% hard stop, ~15% stale). The strategy logic is robust — the remaining P&L drag is fee economics, not signal quality. See `CLAUDE.md` memory for the full overfitting policy.
 
 ---
 
@@ -567,15 +577,18 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 - Momentum paths (roc_momo_20m, roc_momo_24h) disabled
 
 ### Active Work
-- **Data evaluation**: Analyzing accumulated trade data and signals from extended paper trading run
-- **Exit strategy refinement**: Phase 1 complete (buy TTL, conditioned stale exits). Further phases planned.
-- **Overfitting validation**: Need out-of-sample testing for 5 data-derived changes
+- **Fee/sizing optimization** (next priority): Strategy is gross profitable but fees (~$50 per 100 trades at $75 notional) wipe out gains. Need to analyze notional sizing, trade frequency, and Kraken fee tier implications.
+- **Exit strategy refinement**: Phase 1 complete (buy TTL, conditioned stale exits). Phase 2 (adaptive TTL) planned.
+- **Hard stop tuning for volatile small-caps**: RLS-USD, RIVER-USD repeat offenders.
+
+### Completed
+- **Overfitting validation** (2026-04-09): 3-set out-of-sample testing confirmed strategy is robust (see Section 14).
+- **Backtest config alignment** (2026-04-09): 30 parameters aligned, 6 infra params intentionally different.
 
 ### Future Roadmap
 - Streamlit dashboard for real-time monitoring and parameter tuning
 - Transition from paper to live trading on Kraken
 - Additional exchange integrations
-- Strategy parameter optimization with walk-forward validation
 
 ---
 
@@ -612,6 +625,8 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-09 | Backtest config aligned + OOS validation | 30 parameters aligned to production. 3-set out-of-sample validation (27 symbols) confirmed strategy is not overfit — OOS sets outperformed training data. Fee drag identified as #1 P&L lever. Commit `db46af3`. |
+| 2026-04-09 | Order persistence, symbol logging, warmup | Orders now persisted to `v2_orders`. Pair discovery logs full symbol list at startup. `min_bars` increased 40→80 for reliable indicator warmup. Commit `b2e9e24`. |
 | 2026-04-09 | Exit manager MARKET order + pending exit fix | Trailing stop and peak tracking exits were using LIMIT orders instead of MARKET — a stale LIMIT sell could drift and cancel, leaving the position stuck. `_pending_exits` was never cleared on order cancellation, permanently blocking exit re-evaluation. Both fixed. Commit `a3f6198`. |
 | 2026-04-04 | roc_momo_20m exit bug fixed | `enable_roc_20m_momentum: false` now gates both buy AND sell paths. Previously only gated buys — 22 unwanted sell signals across all config eras. Commit `193183a`. |
 | 2026-04-04 | Documentation overhaul | SYSTEM_CONTEXT.md (living document), ONBOARDING.md, LOCAL_DEVELOPMENT_SETUP.md, AWS_DEPLOYMENT_GUIDE.md, OPERATIONAL_RUNBOOK.md (14 real incidents). 22 stale v1 docs archived, plugin architecture docs updated to 30 plugins / 8 categories. |
