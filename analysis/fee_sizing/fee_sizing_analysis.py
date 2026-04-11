@@ -207,13 +207,10 @@ def section_2(trades):
     # --- Preamble: indicator_count finding ---
     counts = Counter(t["entry_metadata"]["indicator_count"] for t in trades)
     print()
-    print("Indicator count distribution across all 320 trades:")
+    print(f"Indicator count distribution across all {len(trades)} trades:")
     for k in sorted(counts):
         print(f"  indicator_count={k}: {counts[k]} trades ({counts[k]/len(trades)*100:.1f}%)")
     print()
-    print("NOTE: The score_high trigger ($150 notional, indicator_count >= 4) fired on only")
-    print(f"4 trades in {len(trades)} — insufficient for statistical conclusions.")
-    print("The threshold may be set too high to generate meaningful volume.")
 
     # --- 2A: Indicator combo analysis ---
     sub_header("2A: Indicator Combo Analysis")
@@ -267,8 +264,8 @@ def section_2(trades):
     print()
 
     bands = [
-        ("5.0-5.5", lambda s: 5.0 <= s <= 5.5),
-        ("5.5-6.0", lambda s: 5.5 < s < 6.0),
+        ("< 5.5",   lambda s: s < 5.5),
+        ("5.5-6.0", lambda s: 5.5 <= s < 6.0),
         ("6.0+",    lambda s: s >= 6.0),
     ]
 
@@ -321,6 +318,14 @@ def section_2(trades):
     print()
     print("  * = fewer than 15 trades (low confidence)")
 
+    # Flag regimes with high hard stop rate
+    high_hard = [(r, sum(1 for t in rt if t["exit_reason"] == "hard_stop") / len(rt) * 100)
+                 for r, rt in regime_trades.items() if len(rt) >= MIN_SAMPLE
+                 and sum(1 for t in rt if t["exit_reason"] == "hard_stop") / len(rt) > 0.30]
+    if high_hard:
+        for r, pct in high_hard:
+            print(f"  WARNING: '{r}' has {pct:.1f}% hard stop rate — candidate for filtering.")
+
     # Identify if any regime is net profitable
     best_regime = None
     best_pf = 0
@@ -331,6 +336,15 @@ def section_2(trades):
             if pf > best_pf:
                 best_pf = pf
                 best_regime = regime
+
+    # --- 2D: Score High Note ---
+    sub_header("2D: Score High Note")
+    score_high_count = sum(1 for t in trades if t.get("entry_trigger") == "score_high")
+    print(f"NOTE: The score_high trigger ($150 notional, indicator_count >= 4) fired on only")
+    print(f"{score_high_count} trades in {len(trades)} — insufficient for statistical conclusions.")
+    print("The threshold may be set too high to generate meaningful volume.")
+
+    print()
     if best_regime and best_pf > 1.0:
         n = len(regime_trades[best_regime])
         print(f"KEY FINDING: '{best_regime}' regime is net profitable at $75 (PF={best_pf:.2f}, {n} trades).")
@@ -451,6 +465,13 @@ def section_4(trades):
             largest_drag_val = total_net
             largest_drag = reason
 
+    # roc_momo_20m annotation
+    if "roc_momo_20m" in exit_groups:
+        print()
+        print("NOTE: roc_momo_20m exits are signal-based — the composite scoring engine detected")
+        print("a sell condition while holding a position. These are qualitatively different from")
+        print("stop-based exits and should be evaluated separately when the momentum path is re-enabled.")
+
     # --- Per-set breakdown ---
     sub_header("Per-Set Breakdown (at $75 notional)")
     print()
@@ -545,22 +566,20 @@ def _kelly_analysis(trades, label, brief=False):
         print()
         print(f"  Expected Value per trade at $75:  {fmt_dollar(ev_at_75)}")
 
-        if kelly_notional > 0:
-            # EV at Kelly notional
-            pnls_kelly = [net_pnl_at(t, kelly_notional) for t in trades]
-            wins_k = [p for p in pnls_kelly if p > 0]
-            losses_k = [p for p in pnls_kelly if p <= 0]
-            avg_win_k = statistics.mean(wins_k) if wins_k else 0
-            avg_loss_k = abs(statistics.mean(losses_k)) if losses_k else 0
-            ev_kelly = (wr * avg_win_k) - ((1 - wr) * avg_loss_k)
-            print(f"  Expected Value per trade at Kelly ({fmt_dollar(kelly_notional)}):  {fmt_dollar(ev_kelly)}")
+        if half_kelly_notional > 0:
+            # EV at half-Kelly notional
+            pnls_hk = [net_pnl_at(t, half_kelly_notional) for t in trades]
+            wins_hk = [p for p in pnls_hk if p > 0]
+            losses_hk = [p for p in pnls_hk if p <= 0]
+            avg_win_hk = statistics.mean(wins_hk) if wins_hk else 0
+            avg_loss_hk = abs(statistics.mean(losses_hk)) if losses_hk else 0
+            ev_hk = (wr * avg_win_hk) - ((1 - wr) * avg_loss_hk)
+            print(f"  Expected Value per trade at half-Kelly ({fmt_dollar(half_kelly_notional)}):  {fmt_dollar(ev_hk)}")
 
         print()
-        if kelly <= 0:
-            print("  NOTE: Kelly fraction is NEGATIVE. The strategy's edge at $75 notional")
-            print("  with current fees does not justify sizing up. The priority should be")
-            print("  reducing fees (higher volume tier) or increasing notional to improve")
-            print("  the gross-to-fee ratio before applying Kelly sizing.")
+        if kelly <= 0 or kelly < 0.005:
+            print("  The strategy's current edge is insufficient to justify sizing up through")
+            print("  Kelly alone — fee reduction or regime filtering is required first.")
         elif kelly_notional < 75:
             print(f"  NOTE: Kelly suggests SMALLER sizing than current $75 ({fmt_dollar(kelly_notional)}).")
             print("  The edge is thin relative to variance. Half-Kelly is the conservative choice.")
