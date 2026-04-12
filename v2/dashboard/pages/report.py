@@ -13,9 +13,6 @@ import streamlit as st
 
 from v2.dashboard.db import get_pool, run_async
 from v2.dashboard.prices import fetch_live_prices
-from v2.plugins.observability.daily_report_v2.collectors.exit_events import (
-    collect_exit_stats_from_db,
-)
 from v2.plugins.observability.daily_report_v2.collectors.pnl import collect_pnl
 from v2.plugins.observability.daily_report_v2.collectors.positions import (
     collect_positions,
@@ -56,11 +53,6 @@ def _get_trade_log(_start: datetime, _end: datetime):
 @st.cache_data(ttl=60)
 def _get_positions():
     return run_async(collect_positions(get_pool(), EXCHANGE))
-
-
-@st.cache_data(ttl=60)
-def _get_exit_stats(_start: datetime, _end: datetime):
-    return run_async(collect_exit_stats_from_db(get_pool(), _start, _end, EXCHANGE))
 
 
 @st.cache_data(ttl=60)
