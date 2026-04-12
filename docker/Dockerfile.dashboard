@@ -1,0 +1,35 @@
+# ------------------------------------------------------------------------------
+# Dockerfile.dashboard
+# ------------------------------------------------------------------------------
+#
+# Purpose:
+#   Build the runtime container for the BotTrader Streamlit dashboard.
+#   Lightweight image — reads from the same PostgreSQL DB as v2-kraken.
+#
+# ------------------------------------------------------------------------------
+
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash ca-certificates curl tini \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -ms /bin/bash appuser
+WORKDIR /app
+
+# Install dashboard deps first (cached unless requirements.txt changes)
+COPY v2/dashboard/requirements.txt /app/v2/dashboard/requirements.txt
+RUN pip install --no-cache-dir -r /app/v2/dashboard/requirements.txt
+
+# Copy source (changes here don't invalidate pip cache)
+COPY . /app
+RUN rm -f /app/.env_tradebot /app/.env_tradebot_sensitive || true
+
+RUN sed -i 's/\r$//' /app/docker/entrypoint/entrypoint.dashboard.sh \
+ && chmod +x /app/docker/entrypoint/entrypoint.dashboard.sh
+
+ENV TZ=UTC
+USER appuser
+EXPOSE 8501
+
+ENTRYPOINT ["/usr/bin/tini","--","/app/docker/entrypoint/entrypoint.dashboard.sh"]
