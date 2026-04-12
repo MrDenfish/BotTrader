@@ -36,18 +36,18 @@ STARTING_CAPITAL = float(os.environ.get("STARTING_CAPITAL", "10000"))
 
 
 @st.cache_data(ttl=60)
-def _get_pnl(_start: datetime, _end: datetime):
-    return run_async(collect_pnl(get_pool(), _start, _end, EXCHANGE))
+def _get_pnl(start: datetime, end: datetime):
+    return run_async(collect_pnl(get_pool(), start, end, EXCHANGE))
 
 
 @st.cache_data(ttl=60)
-def _get_trade_stats(_start: datetime, _end: datetime):
-    return run_async(collect_trade_stats(get_pool(), _start, _end, EXCHANGE))
+def _get_trade_stats(start: datetime, end: datetime):
+    return run_async(collect_trade_stats(get_pool(), start, end, EXCHANGE))
 
 
 @st.cache_data(ttl=60)
-def _get_trade_log(_start: datetime, _end: datetime):
-    return run_async(collect_trade_log(get_pool(), _start, _end, EXCHANGE))
+def _get_trade_log(start: datetime, end: datetime):
+    return run_async(collect_trade_log(get_pool(), start, end, EXCHANGE))
 
 
 @st.cache_data(ttl=60)
@@ -56,12 +56,12 @@ def _get_positions():
 
 
 @st.cache_data(ttl=60)
-def _get_live_prices(_symbols: tuple[str, ...]) -> dict[str, float]:
-    return fetch_live_prices(list(_symbols))
+def _get_live_prices(symbols: tuple[str, ...]) -> dict[str, float]:
+    return fetch_live_prices(list(symbols))
 
 
 @st.cache_data(ttl=60)
-def _get_entry_times(_symbols: tuple[str, ...]):
+def _get_entry_times(symbols: tuple[str, ...]):
     """Most recent buy timestamp per symbol — proxy for position entry time."""
     pool = get_pool()
 
@@ -73,7 +73,7 @@ def _get_entry_times(_symbols: tuple[str, ...]):
             WHERE side = 'buy' AND symbol = ANY($1) AND exchange = $2
             ORDER BY symbol, timestamp DESC
             """,
-            list(_symbols),
+            list(symbols),
             EXCHANGE,
         )
 
@@ -284,13 +284,13 @@ def _render_positions(positions, entry_times):
                 "Current Price ($)": (
                     round(p.current_price, 4)
                     if p.current_price is not None
-                    else "\u2014"
+                    else None
                 ),
                 "Cost Basis ($)": round(p.cost_basis, 2),
                 "Unrealized P&L ($)": (
                     round(p.unrealized_pnl, 2)
                     if p.unrealized_pnl is not None
-                    else "\u2014"
+                    else None
                 ),
                 "Hold Time": hold_str,
             }
@@ -321,9 +321,9 @@ def _render_trade_log(trades):
                 "P&L ($)": (
                     round(t.realized_pnl, 2)
                     if t.realized_pnl is not None
-                    else "\u2014"
+                    else None
                 ),
-                "Exit Reason": t.exit_reason or "\u2014",
+                "Exit Reason": t.exit_reason or "",
             }
         )
 
