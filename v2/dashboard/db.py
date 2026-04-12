@@ -15,7 +15,10 @@ import streamlit as st
 
 # Module-level event loop — shared across all async calls so the asyncpg
 # pool (which is bound to a specific loop) stays valid.
+# Also set as the current loop for this thread so that libraries calling
+# asyncio.get_event_loop() (e.g. asyncpg.create_pool) find it.
 _loop = asyncio.new_event_loop()
+asyncio.set_event_loop(_loop)
 
 
 def run_async(coro):
@@ -24,6 +27,7 @@ def run_async(coro):
     Uses a module-level event loop so asyncpg connections remain valid
     across calls within the same Streamlit process.
     """
+    asyncio.set_event_loop(_loop)
     return _loop.run_until_complete(coro)
 
 
