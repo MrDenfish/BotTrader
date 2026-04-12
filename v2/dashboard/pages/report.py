@@ -156,7 +156,8 @@ def _render_hero(pnl, stats):
                 st.metric("Worst Trade", sym, f"${float(val):,.2f}")
 
 
-def _render_portfolio(pnl, positions):
+def _render_portfolio(alltime_pnl, positions):
+    """Portfolio panel always uses all-time P&L, regardless of date range."""
     st.subheader("Portfolio")
 
     total_unrealized = sum(
@@ -164,7 +165,7 @@ def _render_portfolio(pnl, positions):
     )
     has_live_prices = any(p.current_price is not None for p in positions)
 
-    realized = float(pnl.net_pnl)
+    realized = float(alltime_pnl.net_pnl)
     portfolio_value = STARTING_CAPITAL + realized + total_unrealized
     net_return_pct = (portfolio_value - STARTING_CAPITAL) / STARTING_CAPITAL
 
@@ -174,7 +175,7 @@ def _render_portfolio(pnl, positions):
     with col2:
         st.metric("Starting Capital", f"${STARTING_CAPITAL:,.2f}")
     with col3:
-        st.metric("Realized P&L", f"${realized:,.2f}")
+        st.metric("Realized P&L (All Time)", f"${realized:,.2f}")
     with col4:
         label = "Unrealized P&L" if has_live_prices else "Unrealized P&L*"
         st.metric(
@@ -346,6 +347,7 @@ st.caption(
 
 # Fetch all data
 pnl = _get_pnl(start, end)
+alltime_pnl = _get_pnl(datetime(2020, 1, 1, tzinfo=timezone.utc), end)
 stats = _get_trade_stats(start, end)
 trades = _get_trade_log(start, end)
 positions = _get_positions()
@@ -367,7 +369,7 @@ else:
 # Render all panels
 _render_hero(pnl, stats)
 st.divider()
-_render_portfolio(pnl, positions)
+_render_portfolio(alltime_pnl, positions)
 st.divider()
 _render_pnl_by_symbol(pnl)
 st.divider()
