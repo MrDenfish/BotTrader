@@ -8,4 +8,6 @@
 # ------------------------------------------------------------------------------
 set -e
 
+export PYTHONPATH="/app:${PYTHONPATH:-}"
+
 exec streamlit run v2/dashboard/app.py
