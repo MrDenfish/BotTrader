@@ -503,7 +503,26 @@ Five strategy changes were derived from the same 180-day, 9-symbol dataset: tren
 | **B (OOS)** | AAVE, APT, ATOM, BNB, FIL, ICP, LTC, NEAR, UNI | 113 | 64.6% | +$35 | $56 | -$22 | 0.85 |
 | **C (OOS)** | ALGO, ARB, FET, HBAR, INJ, LDO, OP, SUI, TAO | 99 | 61.6% | +$16 | $49 | -$33 | 0.77 |
 
-**Verdict: NOT overfit.** OOS sets outperformed training data on all metrics. Exit distribution is consistent across all sets (~60% trailing, ~25% hard stop, ~15% stale). The strategy logic is robust — the remaining P&L drag is fee economics, not signal quality. See `CLAUDE.md` memory for the full overfitting policy.
+**Verdict: NOT overfit.** OOS sets outperformed training data on all metrics. Exit distribution is consistent across all sets (~60% trailing, ~25% hard stop, ~15% stale). The strategy logic is robust. See `CLAUDE.md` memory for the full overfitting policy.
+
+### Fee/Sizing & Hard Stop Analysis (2026-04-11)
+
+**Fee analysis** (branch `fee-sizing-analysis`, script `analysis/fee_sizing/fee_sizing_analysis.py`): PF is constant at 0.73 across all notional levels — percentage-based fees scale proportionally. Avg gross return +0.187%/trade cannot cover 0.650% RT fee. Kelly fraction negative (-0.21). No Kraken fee tier reaches breakeven (need RT < 0.19%, lowest available is 0.30%).
+
+**Exit reason is the real story:**
+
+| Exit Reason | Trades | Net P&L at $75 | Avg Net | Win Rate |
+|-------------|--------|-----------------|---------|----------|
+| trailing_stop | 172 (53.8%) | +$290.56 | +$1.69 | 100% |
+| hard_stop | 72 (22.5%) | -$312.73 | -$4.34 | 0% |
+| stale_exit | 53 (16.6%) | -$49.42 | -$0.93 | 24.5% |
+| roc_momo_20m | 22 (6.9%) | -$38.61 | -$1.76 | 0% |
+
+**Hard stop reduction backtests:** Regime filtering (ATR pctile 60→40) and ADX sweep (20/25/30) both improve P&L by reducing total trade count, but hard stop % stays locked at ~21% — neither filter discriminates winners from losers at entry time.
+
+**Hard stop price path analysis** (`analysis/fee_sizing/hard_stop_path_check.py`): 83% of hard stops exit within 0.2% of the trade's absolute worst point (MAE). Post-exit recovery averages just 1.03% over 60 minutes. The stop is catching genuine bottoms. A trailing hard stop (wait for 1% bounce) has +$0.15/trade EV — marginal.
+
+**Conclusion:** The strategy is gross profitable. Hard stops and fees together create the net drag. Entry-time indicators cannot predict which trades will hit hard stops — the adverse move happens after entry and is not distinguishable from normal volatility that winners also experience. Collecting 60-90 days of live paper trading data (target: July 2026) before next analysis session.
 
 ---
 
@@ -556,6 +575,9 @@ python -m v2 --config v2/backtest_diagnostic.yaml          # Run with diagnostic
 python -m v2 --config v2/backtest_random_baseline.yaml     # Random entry baseline
 
 # ── Analysis ──
+python analysis/fee_sizing/fee_sizing_analysis.py          # Fee/sizing 5-section report
+python analysis/fee_sizing/hard_stop_analysis.py           # Hard stop reduction run comparison
+python analysis/fee_sizing/hard_stop_path_check.py         # Hard stop price path analysis
 python scripts/analyze_diagnostics.py                      # Compare real vs random trades
 python scripts/compare_signals.py                          # Compare v1/v2 signals
 python scripts/diagnose_portfolio.py                       # Portfolio reconciliation
@@ -577,15 +599,17 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 - Momentum paths (roc_momo_20m, roc_momo_24h) disabled
 
 ### Active Work
-- **Fee/sizing optimization** (next priority): Strategy is gross profitable but fees (~$50 per 100 trades at $75 notional) wipe out gains. Need to analyze notional sizing, trade frequency, and Kraken fee tier implications.
+- **Paper trading data collection** (2026-04-12 → July 2026): Collecting 60-90 days of live Kraken paper trading data. No parameter changes during this period. Target: July 2026 live data analysis session.
 - **Exit strategy refinement**: Phase 1 complete (buy TTL, conditioned stale exits). Phase 2 (adaptive TTL) planned.
-- **Hard stop tuning for volatile small-caps**: RLS-USD, RIVER-USD repeat offenders.
 
 ### Completed
+- **Fee/sizing analysis** (2026-04-11): Definitive finding — notional scaling is irrelevant with percentage-based fees (PF locked at 0.73 at all notionals). Avg gross return (+0.187%/trade) is 3.5x below RT fee (0.650%). No Kraken fee tier reaches breakeven. The strategy is not a fee problem — it is a hard stop problem. See `analysis/fee_sizing/` on branch `fee-sizing-analysis`.
+- **Hard stop reduction backtests** (2026-04-11): Two runs tested regime filtering (ATR pctile 60→40) and ADX sweep (20/25/30). Neither filter discriminates between winners and losers — hard stop % stays ~21% regardless of filter strength. Improvements come from reducing total trade count (fewer fees), not selective filtering. Hard stop price path analysis confirmed stops are catching genuine bottoms (83% exit within 0.2% of MAE). Trailing hard stop idea has marginal +$0.15/trade EV ($10.56 total across 72 HS).
 - **Overfitting validation** (2026-04-09): 3-set out-of-sample testing confirmed strategy is robust (see Section 14).
 - **Backtest config alignment** (2026-04-09): 30 parameters aligned, 6 infra params intentionally different.
 
-### Future Roadmap
+### Future Roadmap (July 2026+)
+- **Live data analysis**: Analyze 60-90 days of paper trading data for P&L, hard stop patterns, and trade quality with real market conditions vs. backtest
 - Streamlit dashboard for real-time monitoring and parameter tuning
 - Transition from paper to live trading on Kraken
 - Additional exchange integrations
@@ -614,7 +638,7 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 | Issue | Severity | Found | Details |
 |-------|----------|-------|---------|
 | **Backtest config drift** | ~~Medium~~ Resolved | 2026-04-04 | Fixed 2026-04-09 (commit `db46af3`). All 30 strategy/risk/sizing parameters aligned to production. Only infra params differ (retries, post_only, stale tracking). Out-of-sample validation confirmed strategy is not overfit. |
-| **Fee drag on profitability** | Medium | 2026-04-09 | All three backtest sets (training + 2 OOS) are gross profitable or near-breakeven but net negative after fees (~$50/set). At $75 notional with 0.65% round-trip fees, avg win ($1.47-$1.80) barely covers costs. Sizing or fee tier improvements needed. |
+| **Fee drag on profitability** | ~~Medium~~ Analyzed | 2026-04-09 | **Closed 2026-04-11.** Notional scaling irrelevant (PF constant at 0.73 across all notionals). Avg gross return +0.187% vs 0.650% RT fee. No fee tier fixes it. Real lever is hard stop reduction, not sizing. Entry filters (regime, ADX) don't discriminate winners from losers — hard stop % stays ~21% regardless. Hard stops catch genuine bottoms (83% within 0.2% of MAE). Collecting 60-90 days live data for July 2026 re-analysis. |
 | **roc_momo_20m sell path** | ~~High~~ Resolved | 2026-04-03 | Fixed 2026-04-04 (commit `193183a`). Moved `enable_roc_20m_momentum` to outer gate. Backtest validated, deployed. Monitoring for clean data. |
 
 ---
@@ -625,6 +649,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-11 | Fee/sizing & hard stop analysis complete | Fee analysis: PF constant at 0.73 across all notionals (%-based fees). Hard stop analysis: entry filters (regime, ADX) don't discriminate — HS% stays ~21%. Price path: 83% of hard stops catch genuine bottoms. Trailing HS idea: +$0.15/trade EV (marginal). Decision: collect 60-90d live data, re-analyze July 2026. Branch `fee-sizing-analysis`. |
 | 2026-04-09 | Backtest config aligned + OOS validation | 30 parameters aligned to production. 3-set out-of-sample validation (27 symbols) confirmed strategy is not overfit — OOS sets outperformed training data. Fee drag identified as #1 P&L lever. Commit `db46af3`. |
 | 2026-04-09 | Order persistence, symbol logging, warmup | Orders now persisted to `v2_orders`. Pair discovery logs full symbol list at startup. `min_bars` increased 40→80 for reliable indicator warmup. Commit `b2e9e24`. |
 | 2026-04-09 | Exit manager MARKET order + pending exit fix | Trailing stop and peak tracking exits were using LIMIT orders instead of MARKET — a stale LIMIT sell could drift and cancel, leaving the position stuck. `_pending_exits` was never cleared on order cancellation, permanently blocking exit re-evaluation. Both fixed. Commit `a3f6198`. |
