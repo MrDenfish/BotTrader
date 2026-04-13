@@ -1,0 +1,21 @@
+{$DASHBOARD_DOMAIN:localhost} {
+    basicauth * {
+        {$DASHBOARD_USER:admin} {$DASHBOARD_PASSWORD_HASH}
+    }
+
+    reverse_proxy dashboard:8501
+
+    encode gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}

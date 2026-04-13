@@ -98,10 +98,40 @@ services:
           memory: 256M
     restart: unless-stopped
 
+  caddy:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.caddy
+    container_name: caddy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+    environment:
+      DASHBOARD_DOMAIN: "${DASHBOARD_DOMAIN}"
+      DASHBOARD_USER: "${DASHBOARD_USER:-admin}"
+      DASHBOARD_PASSWORD_HASH: "${DASHBOARD_PASSWORD_HASH}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - dashboard
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    restart: unless-stopped
+
 volumes:
   pg_data:
     external: true
     name: bottrader-aws_pg_data
+  caddy_data:
+  caddy_config:
 
 
 
