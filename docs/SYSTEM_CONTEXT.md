@@ -35,23 +35,33 @@
 │  │  v2_orders     │     │  └────────┘  └───────┬───────┘  │  │
 │  │  v2_positions  │     │                      │          │  │
 │  │  v2_state      │     │  ┌───────────────────▼───────┐  │  │
-│  └───────────────┘     │  │  Maker-Only Execution     │  │  │
-│                         │  │  (post-only LIMIT orders) │  │  │
-│                         │  └──────────┬────────────────┘  │  │
-│                         │             │ REST API           │  │
-│                         │  ┌──────────▼────────────────┐  │  │
-│                         │  │  Paper Exchange (sim)     │  │  │
-│                         │  │  or Kraken REST (live)    │  │  │
-│                         │  └──────────────────────────┘  │  │
+│  └───────┬───────┘     │  │  Maker-Only Execution     │  │  │
+│          │              │  │  (post-only LIMIT orders) │  │  │
+│          │              │  └──────────┬────────────────┘  │  │
+│          │              │             │ REST API           │  │
+│          │              │  ┌──────────▼────────────────┐  │  │
+│          │              │  │  Paper Exchange (sim)     │  │  │
+│          │              │  │  or Kraken REST (live)    │  │  │
+│          │              │  └──────────────────────────┘  │  │
+│          │              └──────────────────────────────────┘  │
+│          │                                                    │
+│          │              ┌──────────────────────────────────┐  │
+│          └──────────────│        dashboard                 │  │
+│                         │  Streamlit (port 8501, SSH only) │  │
+│                         │  Report · Edge Analysis          │  │
+│                         │  Reads DB + Kraken public REST   │  │
 │                         └──────────────────────────────────┘  │
+│                                                               │
+│  Access: ssh -L 8501:localhost:8501 bottrader-aws             │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Stack:** Python 3.11 | PostgreSQL 16 | asyncio | WebSocket (Kraken v2) | Docker Compose | AWS EC2
+**Stack:** Python 3.11 | PostgreSQL 16 | asyncio | WebSocket (Kraken v2) | Docker Compose | AWS EC2 | Streamlit 1.56
 
-**Two Docker services** defined in `docker-compose.aws.yml`:
+**Three Docker services** defined in `docker-compose.aws.yml`:
 - **db** — PostgreSQL 16, persistent named volume (`bottrader-aws_pg_data`)
-- **v2-kraken** — Paper trading bot (code baked into image via `COPY . /app`)
+- **v2-kraken** — Paper trading bot (code baked into image via `COPY . /app`, 512MB limit)
+- **dashboard** — Streamlit web UI (256MB limit, `127.0.0.1:8501`, SSH tunnel access only)
 
 **Current mode:** Paper trading on Kraken (simulated fills, live market data). The system is exchange-agnostic — Coinbase plugins also exist but are dormant (fees too high).
 
@@ -129,6 +139,12 @@ BotTrader/
 │   │   ├── credentials.py           #   Shared credential loader (explicit > env > key_file)
 │   │   ├── kraken_auth.py           #   HMAC-SHA512 signature generation
 │   │   └── symbol_mapper.py         #   Kraken symbol normalization (BTC ↔ XBT)
+│   ├── dashboard/
+│   │   ├── app.py                   #   Streamlit entry point + page navigation
+│   │   ├── db.py                    #   asyncpg pool + async-to-sync bridge
+│   │   ├── prices.py                #   Kraken public REST ticker (live unrealized P&L)
+│   │   ├── trades.py                #   FIFO round-trip matcher (links buy metadata → sell outcomes)
+│   │   └── pages/                   #   report, edge_analysis, health (stub), config_editor (stub)
 │   ├── tests/                       #   685+ passing tests
 │   ├── kraken_paper_trading.yaml    #   PRODUCTION config (paper trading on Kraken)
 │   ├── config.yaml                  #   Coinbase live config (dormant)
@@ -146,8 +162,9 @@ BotTrader/
 ├── archive/v1/                      #   All v1 code (archived Feb 2026, history preserved)
 ├── docker/
 │   ├── Dockerfile.v2                #   v2 image (requirements cached, code COPYed)
+│   ├── Dockerfile.dashboard         #   Dashboard image (Streamlit + asyncpg + plotly)
 │   └── entrypoint/                  #   Container startup scripts
-├── docker-compose.aws.yml           #   Production Docker Compose (2 services)
+├── docker-compose.aws.yml           #   Production Docker Compose (3 services: db, v2-kraken, dashboard)
 └── CLAUDE.md                        #   AI assistant instructions (deployment, project structure)
 ```
 
@@ -395,9 +412,17 @@ API keys are stored in `Config/kraken_api_info.json` (gitignored).
 ## 11. Deployment
 
 ### Production Location
-- **Server:** AWS EC2 t3.medium (512MB memory limit for v2-kraken)
+- **Server:** AWS EC2 t3.medium (20GB disk, 4GB RAM)
 - **Path:** `/opt/bot` (git repository)
 - **SSH alias:** `bottrader-aws`
+
+### Docker Services
+
+| Service | Container | Memory Limit | Port | Purpose |
+|---------|-----------|-------------|------|---------|
+| db | `db` | unlimited | 127.0.0.1:5432 | PostgreSQL 16, persistent volume |
+| v2-kraken | `v2-kraken` | 512MB | none | Paper trading bot |
+| dashboard | `dashboard` | 256MB | 127.0.0.1:8501 | Streamlit web UI (SSH tunnel) |
 
 ### Deployment Workflow
 
@@ -411,16 +436,22 @@ ssh bottrader-aws "cd /opt/bot && git pull origin main"
 # 3. Rebuild and restart (--build is REQUIRED — code is baked into image)
 ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-kraken"
 
-# 4. Verify
+# 4. Rebuild dashboard (only if dashboard code changed)
+ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build dashboard"
+
+# 5. Verify
 ssh bottrader-aws "cd /opt/bot && git log --oneline -3"
 ```
 
 **Critical:** `docker compose restart` does NOT pick up code changes. The Dockerfile uses `COPY . /app`, so `--build` is always required. This was a real bug (2026-02-15) where 4 days of changes were not deployed.
 
+**Disk space:** EC2 disk can fill up during Docker builds (build cache + `COPY . /app` context). Run `docker builder prune --all -f && docker image prune -f` if builds fail with "no space left on device." Backtest data CSVs have been removed from the server (available in git repo for local use).
+
 ### Health Monitoring
 - **Heartbeat file:** `/app/logs/v2_kraken/heartbeat` (updated every 10s)
 - **Docker healthcheck:** Verifies heartbeat file is < 5 minutes old
 - **Email reports:** Every 4 hours via SES SMTP to `dennfish@gmail.com`
+- **Dashboard:** `ssh -L 8501:localhost:8501 bottrader-aws -N` then open `http://localhost:8501`
 
 ---
 
@@ -442,6 +473,33 @@ Position symbols are always preserved — if pair discovery drops a symbol you'r
 
 ## 13. Observability
 
+### Streamlit Dashboard (deployed 2026-04-12)
+
+Web-based monitoring and diagnostics, replacing the 4-hour email reports for on-demand access. Runs as the `dashboard` Docker container, accessed via SSH tunnel on port 8501.
+
+**Page 1 — Performance Report:**
+- Hero P&L metrics (net, gross, fees, win rate, best/worst trade)
+- Portfolio value (all-time realized + live unrealized from Kraken public REST)
+- P&L by symbol, exit reason breakdown, open positions with live prices, trade log
+- Date range selector (Today / 7d / 30d / All time / Custom)
+
+**Page 2 — Edge Analysis:**
+- Weekly gross vs net P&L trend (fee drag visualization)
+- Exit reason P&L trend (stacked bar by week)
+- Hard stop rate trend vs 22% backtest baseline
+- Avg trade metrics table by exit reason
+- P&L distribution histogram ($0.50 bins)
+- Peak capture scatter for trailing stops (MFE vs realized P&L)
+- Trigger filter: defaults to `score`/`score_high` only (roc_momo excluded, available via opt-in)
+
+**Technical details:**
+- Reuses existing async collectors from `daily_report_v2/collectors/` (pnl, trade_log, positions, trade_stats)
+- `trades.py` provides FIFO round-trip matching with full buy/sell metadata extraction
+- `prices.py` fetches live prices from Kraken public Ticker API (AssetPairs mapping cached 1h)
+- `db.py` bridges async asyncpg to synchronous Streamlit via module-level event loop
+- `@st.cache_data(ttl=60)` on all queries — at most one DB round trip per minute
+- `daily_report_v2/__init__.py` has try/except guard so dashboard imports collectors without needing aiohttp/jinja2
+
 ### Daily Report (every 4 hours)
 
 The `daily_report_v2` observer generates HTML reports with 5 sections:
@@ -451,7 +509,11 @@ The `daily_report_v2` observer generates HTML reports with 5 sections:
 4. **System Health** — Exit stats (hard/soft/trailing counts), signal rates
 5. **v1/v2 Comparison** — Side-by-side (disabled since v1 shutdown)
 
-Delivered via SMTP (SES) and optionally Slack webhook.
+Delivered via SMTP (SES) and optionally Slack webhook. Running in parallel with the dashboard during validation. Will be retired once the dashboard is confirmed to match email report data.
+
+### Alerting Observer
+
+Real-time email/SMS alerts for critical events: circuit breaker trips, signal vetoes, order rejections, large fills. Rate-limited (5-minute minimum between alerts). Independent from the daily report — not affected by dashboard migration.
 
 ### Signal Logging
 
@@ -591,26 +653,31 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 ## 17. What's Next
 
-### Currently Live (as of 2026-04-09)
+### Currently Live (as of 2026-04-12)
 - Paper trading on Kraken with dynamic pair discovery (16-30 pairs)
 - Composite scoring with trend confirmation gate, ADX gate, volume confirmation
 - ATR-based hard stops and trailing stops
-- 4-hour email reports via SES
+- 4-hour email reports via SES (running in parallel with dashboard)
+- Streamlit dashboard with Performance Report + Edge Analysis pages
 - Momentum paths (roc_momo_20m, roc_momo_24h) disabled
 
 ### Active Work
 - **Paper trading data collection** (2026-04-12 → July 2026): Collecting 60-90 days of live Kraken paper trading data. No parameter changes during this period. Target: July 2026 live data analysis session.
-- **Exit strategy refinement**: Phase 1 complete (buy TTL, conditioned stale exits). Phase 2 (adaptive TTL) planned.
+- **Dashboard Session 2b** (planned): Entry Quality page (indicator combos, score vs outcome, win rate by symbol). Spec at `docs/5-planning/dashboard-edge-analysis-spec.md`.
+- **EC2 maintenance**: Log rotation needed (`/opt/bot/logs/` at 2.1 GB). `.dockerignore` to reduce build context size.
+- **README.md rewrite**: Current README describes v1 (Coinbase, webhook/sighook). Needs update to reflect v2.
 
 ### Completed
+- **Streamlit dashboard Session 1 + 2a** (2026-04-12): Performance Report page (7 panels) and Edge Analysis page (6 panels) deployed. Reuses existing async collectors. FIFO round-trip matcher links buy metadata (score, indicators, ADX, RVOL) to sell outcomes (exit reason, P&L). Live prices from Kraken public REST API.
 - **Fee/sizing analysis** (2026-04-11): Definitive finding — notional scaling is irrelevant with percentage-based fees (PF locked at 0.73 at all notionals). Avg gross return (+0.187%/trade) is 3.5x below RT fee (0.650%). No Kraken fee tier reaches breakeven. The strategy is not a fee problem — it is a hard stop problem. See `analysis/fee_sizing/` on branch `fee-sizing-analysis`.
 - **Hard stop reduction backtests** (2026-04-11): Two runs tested regime filtering (ATR pctile 60→40) and ADX sweep (20/25/30). Neither filter discriminates between winners and losers — hard stop % stays ~21% regardless of filter strength. Improvements come from reducing total trade count (fewer fees), not selective filtering. Hard stop price path analysis confirmed stops are catching genuine bottoms (83% exit within 0.2% of MAE). Trailing hard stop idea has marginal +$0.15/trade EV ($10.56 total across 72 HS).
 - **Overfitting validation** (2026-04-09): 3-set out-of-sample testing confirmed strategy is robust (see Section 14).
 - **Backtest config alignment** (2026-04-09): 30 parameters aligned, 6 infra params intentionally different.
 
 ### Future Roadmap (July 2026+)
-- **Live data analysis**: Analyze 60-90 days of paper trading data for P&L, hard stop patterns, and trade quality with real market conditions vs. backtest
-- Streamlit dashboard for real-time monitoring and parameter tuning
+- **Live data analysis**: Analyze 60-90 days of paper trading data for P&L, hard stop patterns, and trade quality with real market conditions vs. backtest — dashboard Edge Analysis page will provide visual trend data for this review
+- Dashboard Pages 3-5: Entry Quality, Bot Health, Config Editor
+- Retire email reports once dashboard is validated
 - Transition from paper to live trading on Kraken
 - Additional exchange integrations
 
@@ -627,7 +694,10 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 | Plugin Architecture | `docs/3-plugin-architecture/` | 8 ABCs, 30 plugins, EventBus, Registry, migration history |
 | Methodology & Validation | `docs/4-analysis/METHODOLOGY_AND_VALIDATION.md` | Backtest datasets, overfitting policy, change tracking |
 | Backtest Docs | `docs/2-backtesting/` | 4h-hybrid strategy specs, archived strategies |
-| Planning | `docs/5-planning/` | Active plans (Streamlit dashboard) |
+| Dashboard Overview | `docs/5-planning/streamlit-dashboard-overview.md` | Architecture, resource impact, migration plan |
+| Dashboard Dev Spec | `docs/5-planning/streamlit-dashboard-devspec.md` | File structure, Docker integration, page implementations |
+| Edge Analysis Spec | `docs/5-planning/dashboard-edge-analysis-spec.md` | Session 2 spec: Edge Analysis + Entry Quality pages |
+| Planning | `docs/5-planning/` | Active plans and specs |
 | Archive | `docs/6-archive/` | v1-era docs, resolved bugs, historical sessions |
 | AI Memory | `.claude/projects/.../memory/MEMORY.md` | Detailed project state for AI assistants |
 
@@ -649,6 +719,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-12 | Streamlit dashboard deployed (Session 1 + 2a) | 3rd Docker container (`dashboard`, 256MB, Streamlit 1.56). Page 1: Performance Report (hero P&L, portfolio, P&L by symbol, exit breakdown, open positions with live Kraken prices, trade log). Page 2: Edge Analysis (weekly P&L trend, exit reason P&L trend, hard stop rate vs baseline, avg metrics, P&L distribution, peak capture scatter). FIFO round-trip matcher (`trades.py`) links buy metadata to sell outcomes. Trigger filter defaults to score-only (roc_momo excluded). `daily_report_v2/__init__.py` guarded for dashboard import compatibility. EC2 disk cleaned (Docker prune + backtest data removed from server). |
 | 2026-04-11 | Fee/sizing & hard stop analysis complete | Fee analysis: PF constant at 0.73 across all notionals (%-based fees). Hard stop analysis: entry filters (regime, ADX) don't discriminate — HS% stays ~21%. Price path: 83% of hard stops catch genuine bottoms. Trailing HS idea: +$0.15/trade EV (marginal). Decision: collect 60-90d live data, re-analyze July 2026. Branch `fee-sizing-analysis`. |
 | 2026-04-09 | Backtest config aligned + OOS validation | 30 parameters aligned to production. 3-set out-of-sample validation (27 symbols) confirmed strategy is not overfit — OOS sets outperformed training data. Fee drag identified as #1 P&L lever. Commit `db46af3`. |
 | 2026-04-09 | Order persistence, symbol logging, warmup | Orders now persisted to `v2_orders`. Pair discovery logs full symbol list at startup. `min_bars` increased 40→80 for reliable indicator warmup. Commit `b2e9e24`. |
