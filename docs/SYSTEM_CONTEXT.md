@@ -140,11 +140,12 @@ BotTrader/
 │   │   ├── kraken_auth.py           #   HMAC-SHA512 signature generation
 │   │   └── symbol_mapper.py         #   Kraken symbol normalization (BTC ↔ XBT)
 │   ├── dashboard/
-│   │   ├── app.py                   #   Streamlit entry point + page navigation
+│   │   ├── app.py                   #   Streamlit entry point + page navigation (6 pages)
 │   │   ├── db.py                    #   asyncpg pool + async-to-sync bridge
 │   │   ├── prices.py                #   Kraken public REST ticker (live unrealized P&L)
 │   │   ├── trades.py                #   FIFO round-trip matcher (links buy metadata → sell outcomes)
-│   │   └── pages/                   #   report, edge_analysis, health (stub), config_editor (stub)
+│   │   ├── ai_summary.py            #   Claude API executive summary generation
+│   │   └── pages/                   #   report, edge_analysis, entry_quality, executive_summary, health (stub), config_editor (stub)
 │   ├── tests/                       #   685+ passing tests
 │   ├── kraken_paper_trading.yaml    #   PRODUCTION config (paper trading on Kraken)
 │   ├── config.yaml                  #   Coinbase live config (dormant)
@@ -445,7 +446,7 @@ ssh bottrader-aws "cd /opt/bot && git log --oneline -3"
 
 **Critical:** `docker compose restart` does NOT pick up code changes. The Dockerfile uses `COPY . /app`, so `--build` is always required. This was a real bug (2026-02-15) where 4 days of changes were not deployed.
 
-**Disk space:** EC2 disk can fill up during Docker builds (build cache + `COPY . /app` context). Run `docker builder prune --all -f && docker image prune -f` if builds fail with "no space left on device." Backtest data CSVs have been removed from the server (available in git repo for local use).
+**Disk space:** `.dockerignore` excludes `.git/`, `logs/`, `backtest/data/`, `archive/`, `docs/` from build context (~2.4 GB → ~50 MB). Backtest CSVs and v1 logs have been removed from the server. If builds still fail with "no space left on device", run `docker builder prune --all -f && docker image prune -f`.
 
 ### Health Monitoring
 - **Heartbeat file:** `/app/logs/v2_kraken/heartbeat` (updated every 10s)
@@ -492,10 +493,27 @@ Web-based monitoring and diagnostics, replacing the 4-hour email reports for on-
 - Peak capture scatter for trailing stops (MFE vs realized P&L)
 - Trigger filter: defaults to `score`/`score_high` only (roc_momo excluded, available via opt-in)
 
+**Page 3 — Entry Quality:**
+- Win rate by symbol (sortable table)
+- Score vs outcome scatter (buy_score vs net P&L, colored by exit reason, sized by indicator count)
+- Indicator hit rate: winners vs losers (paired horizontal bars + delta table)
+- Indicator combination performance (combo string, WR, avg P&L, min 3 trades)
+- Entry condition scatters (ADX, RVOL, ATR percentile vs net P&L)
+- Time-of-day heatmap (hour x day of week, with low sample size warning)
+- Same trigger filter as Edge Analysis
+
+**Page 4 — Executive Summary (AI-generated):**
+- Feeds structured metrics + backtest baselines to Claude Sonnet via Anthropic API
+- Generates 6-10 sentence interpretive summary comparing live performance to backtest expectations
+- Highlights trends (improving/stable/degrading), anomalies, and actionable recommendations
+- Cached 5 minutes, manual regenerate button available
+- Requires `ANTHROPIC_API_KEY` in `.env`
+
 **Technical details:**
 - Reuses existing async collectors from `daily_report_v2/collectors/` (pnl, trade_log, positions, trade_stats)
 - `trades.py` provides FIFO round-trip matching with full buy/sell metadata extraction
 - `prices.py` fetches live prices from Kraken public Ticker API (AssetPairs mapping cached 1h)
+- `ai_summary.py` computes metrics, compares to backtest baselines, calls Claude API
 - `db.py` bridges async asyncpg to synchronous Streamlit via module-level event loop
 - `@st.cache_data(ttl=60)` on all queries — at most one DB round trip per minute
 - `daily_report_v2/__init__.py` has try/except guard so dashboard imports collectors without needing aiohttp/jinja2
@@ -653,21 +671,21 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 ## 17. What's Next
 
-### Currently Live (as of 2026-04-12)
+### Currently Live (as of 2026-04-13)
 - Paper trading on Kraken with dynamic pair discovery (16-30 pairs)
 - Composite scoring with trend confirmation gate, ADX gate, volume confirmation
 - ATR-based hard stops and trailing stops
 - 4-hour email reports via SES (running in parallel with dashboard)
-- Streamlit dashboard with Performance Report + Edge Analysis pages
+- Streamlit dashboard with 4 functional pages: Report, Edge Analysis, Entry Quality, Executive Summary
+- AI-generated executive summaries via Claude Sonnet (Anthropic API)
 - Momentum paths (roc_momo_20m, roc_momo_24h) disabled
 
 ### Active Work
-- **Paper trading data collection** (2026-04-12 → July 2026): Collecting 60-90 days of live Kraken paper trading data. No parameter changes during this period. Target: July 2026 live data analysis session.
-- **Dashboard Session 2b** (planned): Entry Quality page (indicator combos, score vs outcome, win rate by symbol). Spec at `docs/5-planning/dashboard-edge-analysis-spec.md`.
-- **EC2 maintenance**: Log rotation needed (`/opt/bot/logs/` at 2.1 GB). `.dockerignore` to reduce build context size.
-- **README.md rewrite**: Current README describes v1 (Coinbase, webhook/sighook). Needs update to reflect v2.
+- **Paper trading data collection** (2026-04-12 → July 2026): Collecting 60-90 days of live Kraken paper trading data. No parameter changes during this period. Target: July 2026 live data analysis session. Dashboard Edge Analysis and Entry Quality pages serve as the primary analysis tool for the July review.
+- **Public dashboard access** (planned): Caddy reverse proxy for HTTPS + basic auth on a public domain. Spec at `docs/5-planning/caddy-public-dashboard-spec.md`. Blocked on domain purchase + Elastic IP.
 
 ### Completed
+- **Dashboard Session 2b** (2026-04-13): Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry conditions, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API). `.dockerignore` reduces build context from ~2.4 GB to ~50 MB. EC2 log rotation freed 2.1 GB (v1 logs removed). README.md rewritten for v2.
 - **Streamlit dashboard Session 1 + 2a** (2026-04-12): Performance Report page (7 panels) and Edge Analysis page (6 panels) deployed. Reuses existing async collectors. FIFO round-trip matcher links buy metadata (score, indicators, ADX, RVOL) to sell outcomes (exit reason, P&L). Live prices from Kraken public REST API.
 - **Fee/sizing analysis** (2026-04-11): Definitive finding — notional scaling is irrelevant with percentage-based fees (PF locked at 0.73 at all notionals). Avg gross return (+0.187%/trade) is 3.5x below RT fee (0.650%). No Kraken fee tier reaches breakeven. The strategy is not a fee problem — it is a hard stop problem. See `analysis/fee_sizing/` on branch `fee-sizing-analysis`.
 - **Hard stop reduction backtests** (2026-04-11): Two runs tested regime filtering (ATR pctile 60→40) and ADX sweep (20/25/30). Neither filter discriminates between winners and losers — hard stop % stays ~21% regardless of filter strength. Improvements come from reducing total trade count (fewer fees), not selective filtering. Hard stop price path analysis confirmed stops are catching genuine bottoms (83% exit within 0.2% of MAE). Trailing hard stop idea has marginal +$0.15/trade EV ($10.56 total across 72 HS).
@@ -675,11 +693,11 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 - **Backtest config alignment** (2026-04-09): 30 parameters aligned, 6 infra params intentionally different.
 
 ### Future Roadmap (July 2026+)
-- **Live data analysis**: Analyze 60-90 days of paper trading data for P&L, hard stop patterns, and trade quality with real market conditions vs. backtest — dashboard Edge Analysis page will provide visual trend data for this review
-- Dashboard Pages 3-5: Entry Quality, Bot Health, Config Editor
+- **Live data analysis**: Analyze 60-90 days of paper trading data using dashboard Edge Analysis and Entry Quality pages. Compare live metrics to backtest baselines. Executive Summary page provides AI interpretation.
+- Public dashboard via Caddy + domain (spec ready, awaiting prerequisites)
+- Dashboard Bot Health page and Config Editor page
 - Retire email reports once dashboard is validated
 - Transition from paper to live trading on Kraken
-- Additional exchange integrations
 
 ---
 
@@ -697,6 +715,7 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 | Dashboard Overview | `docs/5-planning/streamlit-dashboard-overview.md` | Architecture, resource impact, migration plan |
 | Dashboard Dev Spec | `docs/5-planning/streamlit-dashboard-devspec.md` | File structure, Docker integration, page implementations |
 | Edge Analysis Spec | `docs/5-planning/dashboard-edge-analysis-spec.md` | Session 2 spec: Edge Analysis + Entry Quality pages |
+| Caddy Public Access Spec | `docs/5-planning/caddy-public-dashboard-spec.md` | HTTPS reverse proxy + basic auth for public domain access |
 | Planning | `docs/5-planning/` | Active plans and specs |
 | Archive | `docs/6-archive/` | v1-era docs, resolved bugs, historical sessions |
 | AI Memory | `.claude/projects/.../memory/MEMORY.md` | Detailed project state for AI assistants |
@@ -719,6 +738,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-13 | Dashboard Session 2b + maintenance | Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry condition scatters, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API generates interpretive performance summary with backtest comparison). `.dockerignore` added (build context 2.4 GB → 50 MB). EC2 log rotation: 2.1 GB v1 logs removed. README.md rewritten for v2. Caddy public access spec written. |
 | 2026-04-12 | Streamlit dashboard deployed (Session 1 + 2a) | 3rd Docker container (`dashboard`, 256MB, Streamlit 1.56). Page 1: Performance Report (hero P&L, portfolio, P&L by symbol, exit breakdown, open positions with live Kraken prices, trade log). Page 2: Edge Analysis (weekly P&L trend, exit reason P&L trend, hard stop rate vs baseline, avg metrics, P&L distribution, peak capture scatter). FIFO round-trip matcher (`trades.py`) links buy metadata to sell outcomes. Trigger filter defaults to score-only (roc_momo excluded). `daily_report_v2/__init__.py` guarded for dashboard import compatibility. EC2 disk cleaned (Docker prune + backtest data removed from server). |
 | 2026-04-11 | Fee/sizing & hard stop analysis complete | Fee analysis: PF constant at 0.73 across all notionals (%-based fees). Hard stop analysis: entry filters (regime, ADX) don't discriminate — HS% stays ~21%. Price path: 83% of hard stops catch genuine bottoms. Trailing HS idea: +$0.15/trade EV (marginal). Decision: collect 60-90d live data, re-analyze July 2026. Branch `fee-sizing-analysis`. |
 | 2026-04-09 | Backtest config aligned + OOS validation | 30 parameters aligned to production. 3-set out-of-sample validation (27 symbols) confirmed strategy is not overfit — OOS sets outperformed training data. Fee drag identified as #1 P&L lever. Commit `db46af3`. |
