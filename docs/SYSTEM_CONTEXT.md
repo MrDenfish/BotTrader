@@ -47,21 +47,29 @@
 │          │                                                    │
 │          │              ┌──────────────────────────────────┐  │
 │          └──────────────│        dashboard                 │  │
-│                         │  Streamlit (port 8501, SSH only) │  │
+│                         │  Streamlit (port 8501)           │  │
 │                         │  Report · Edge Analysis          │  │
 │                         │  Reads DB + Kraken public REST   │  │
+│                         └──────────────┬───────────────────┘  │
+│                                        │                      │
+│                         ┌──────────────▼───────────────────┐  │
+│                         │        caddy                     │  │
+│                         │  Reverse proxy :443 (HTTPS)      │  │
+│                         │  Let's Encrypt + Basic Auth      │  │
 │                         └──────────────────────────────────┘  │
 │                                                               │
-│  Access: ssh -L 8501:localhost:8501 bottrader-aws             │
+│  Public:  https://bottrader.trade (Basic Auth)                │
+│  Fallback: ssh -L 8501:localhost:8501 bottrader-aws           │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**Stack:** Python 3.11 | PostgreSQL 16 | asyncio | WebSocket (Kraken v2) | Docker Compose | AWS EC2 | Streamlit 1.56
+**Stack:** Python 3.11 | PostgreSQL 16 | asyncio | WebSocket (Kraken v2) | Docker Compose | AWS EC2 | Streamlit 1.56 | Caddy 2
 
-**Three Docker services** defined in `docker-compose.aws.yml`:
+**Four Docker services** defined in `docker-compose.aws.yml`:
 - **db** — PostgreSQL 16, persistent named volume (`bottrader-aws_pg_data`)
 - **v2-kraken** — Paper trading bot (code baked into image via `COPY . /app`, 512MB limit)
-- **dashboard** — Streamlit web UI (256MB limit, `127.0.0.1:8501`, SSH tunnel access only)
+- **dashboard** — Streamlit web UI (256MB limit, `127.0.0.1:8501`, SSH tunnel fallback)
+- **caddy** — Reverse proxy (64MB limit, ports 80+443, auto Let's Encrypt TLS, Basic Auth)
 
 **Current mode:** Paper trading on Kraken (simulated fills, live market data). The system is exchange-agnostic — Coinbase plugins also exist but are dormant (fees too high).
 
@@ -164,8 +172,10 @@ BotTrader/
 ├── docker/
 │   ├── Dockerfile.v2                #   v2 image (requirements cached, code COPYed)
 │   ├── Dockerfile.dashboard         #   Dashboard image (Streamlit + asyncpg + plotly)
+│   ├── Dockerfile.caddy             #   Caddy reverse proxy (2 lines — copies Caddyfile)
+│   ├── Caddyfile                    #   Caddy config (HTTPS + Basic Auth + reverse proxy)
 │   └── entrypoint/                  #   Container startup scripts
-├── docker-compose.aws.yml           #   Production Docker Compose (3 services: db, v2-kraken, dashboard)
+├── docker-compose.aws.yml           #   Production Docker Compose (4 services: db, v2-kraken, dashboard, caddy)
 └── CLAUDE.md                        #   AI assistant instructions (deployment, project structure)
 ```
 
@@ -738,6 +748,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-13 | Caddy public dashboard deployed | `bottrader.trade` — Caddy reverse proxy with auto Let's Encrypt TLS and HTTP Basic Auth. 4th Docker container (64MB, Alpine). Domain via Cloudflare Registrar, Elastic IP `44.238.14.228`. SSH tunnel preserved as fallback. New files: `docker/Caddyfile`, `docker/Dockerfile.caddy`. `.env` additions: `DASHBOARD_DOMAIN`, `DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH`. |
 | 2026-04-13 | Dashboard Session 2b + maintenance | Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry condition scatters, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API generates interpretive performance summary with backtest comparison). `.dockerignore` added (build context 2.4 GB → 50 MB). EC2 log rotation: 2.1 GB v1 logs removed. README.md rewritten for v2. Caddy public access spec written. |
 | 2026-04-12 | Streamlit dashboard deployed (Session 1 + 2a) | 3rd Docker container (`dashboard`, 256MB, Streamlit 1.56). Page 1: Performance Report (hero P&L, portfolio, P&L by symbol, exit breakdown, open positions with live Kraken prices, trade log). Page 2: Edge Analysis (weekly P&L trend, exit reason P&L trend, hard stop rate vs baseline, avg metrics, P&L distribution, peak capture scatter). FIFO round-trip matcher (`trades.py`) links buy metadata to sell outcomes. Trigger filter defaults to score-only (roc_momo excluded). `daily_report_v2/__init__.py` guarded for dashboard import compatibility. EC2 disk cleaned (Docker prune + backtest data removed from server). |
 | 2026-04-11 | Fee/sizing & hard stop analysis complete | Fee analysis: PF constant at 0.73 across all notionals (%-based fees). Hard stop analysis: entry filters (regime, ADX) don't discriminate — HS% stays ~21%. Price path: 83% of hard stops catch genuine bottoms. Trailing HS idea: +$0.15/trade EV (marginal). Decision: collect 60-90d live data, re-analyze July 2026. Branch `fee-sizing-analysis`. |
