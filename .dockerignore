@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# Logs (2+ GB on EC2 — never needed in images)
+logs/
+
+# Backtest data and output (only used locally)
+backtest/data/
+backtest/diagnostic_output*/
+backtest/*.log
+
+# Archive (v1 code, not used by v2 or dashboard)
+archive/
+
+# Claude sessions and memory
+.claude/
+
+# Email files
+*.eml
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+htmlcov/
+.coverage
+*.egg-info
+
+# Environment files (should never be baked in)
+.env
+.env.*
+
+# Optimizer output
+optimizer_*.csv
+optimizer_*.log
+
+# Docker files (prevent recursive context)
+docker-compose*.yml
+
+# Docs (not needed at runtime)
+docs/
