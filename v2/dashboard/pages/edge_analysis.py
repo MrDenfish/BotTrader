@@ -268,6 +268,7 @@ def _render_pnl_distribution(trades: list[RoundTrip]):
         subset = [rt.net_pnl for rt in trades if (rt.exit_reason or "unknown") == reason]
         fig.add_trace(go.Histogram(
             x=subset, name=reason,
+            xbins=dict(size=0.50),
             marker_color=_exit_color(reason), opacity=0.7,
         ))
 

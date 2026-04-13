@@ -215,7 +215,7 @@ def _match_round_trips(
                         gross_pnl_pct=round(gross_pct, 4),
                         net_pnl_pct=round(net_pct, 4),
                         hold_seconds=hold_secs,
-                        trigger=bq_meta.get("trigger"),
+                        trigger=bq_meta.get("trigger") or bq_meta.get("signal_reason"),
                         buy_score=bq_meta.get("buy_score"),
                         indicator_count=bq_meta.get("indicator_count"),
                         indicators_fired=_extract_indicators_fired(bq_meta),
