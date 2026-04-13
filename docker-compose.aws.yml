@@ -75,6 +75,8 @@ services:
       options:
         max-size: "20m"
         max-file: "2"
+    env_file:
+      - /opt/bot/.env
     environment:
       TZ: ${TZ}
       DATABASE_URL: "postgresql://${DB_USER:-bot_user}:${DB_PASSWORD}@db:${DB_PORT:-5432}/${DB_NAME}"
@@ -89,7 +91,6 @@ services:
     ports:
       - "127.0.0.1:8501:8501"
     volumes:
-      - /opt/bot/.env:/app/.env:ro
       - /opt/bot/logs:/app/logs:ro
     deploy:
       resources:
