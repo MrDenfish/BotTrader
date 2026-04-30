@@ -92,7 +92,7 @@ BotTrader v2 is built on an **event-driven plugin system**. Every component is a
 | **Observer** | `Observer` | Logging, metrics, reports, alerts | `structured_log`, `signal_comparison`, `heartbeat`, `daily_report_v2`, `backtest_results`, `backtest_diagnostics`, `daily_report`, `alerting` |
 | **Pair Discovery** | `PairDiscovery` | Dynamic symbol selection | `kraken`, `coinbase`, `csv` |
 
-**30 plugins total** across 8 categories (includes backtest and development plugins).
+**31 plugins total** across 8 categories (includes backtest and development plugins). `mean_reversion_v3` was added April 2026 as a clean-redesign alternative; backtest validation showed it inferior to `composite_scoring` and it remains available but not deployed.
 
 ### How Plugins Are Registered
 
@@ -242,10 +242,14 @@ The exit manager subscribes to `TickerEvent` independently and monitors all open
 | Exit Layer | Condition | Order Type | Priority |
 |-----------|-----------|------------|----------|
 | **Hard stop** | Loss exceeds 5.5% (ATR-based, floor 5.5%, ceiling 8%) | MARKET | 1 (highest) |
+| **Breakeven stop** *(opt-in)* | After unrealized P&L hits `breakeven_trigger_pct`, exit when P&L returns to ≤ 0 | MARKET | 1.5 |
 | **Trailing stop** | Activates at +2% profit, trails by ATR distance [1%-2%] | MARKET | 2 |
-| **Time limit** | Score-triggered positions held > 48 hours | LIMIT | 3 |
+| **Time limit** | Score-triggered positions held > 48 hours; if `stale_exit_regardless_of_pnl=true`, exits regardless of P&L | LIMIT/MARKET | 3 |
+| **Fixed take-profit** *(opt-in)* | Exit at MARKET when unrealized P&L ≥ `fixed_take_profit_pct` | MARKET | 3.5 |
 | **Signal exit** | Sell signal from strategy + P&L ≥ 0% | LIMIT | 4 |
 | **Peak tracking** | For momentum trades: +6% activation, -5% drawdown exit, 24h max | MARKET | 2 |
+
+The four "opt-in" rows above (breakeven_trigger_pct, fixed_take_profit_pct, trailing_enabled, stale_exit_regardless_of_pnl) were added April 2026 during the v3 experiment. All default to off — no behavior change in production. Available to any future strategy via YAML config.
 
 **Note:** All stop-type exits (hard, trailing, peak) use MARKET orders to ensure immediate fill. Only signal-based and time-limit exits use LIMIT.
 
@@ -691,10 +695,10 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 - Momentum paths (roc_momo_20m, roc_momo_24h) disabled
 
 ### Active Work
-- **Paper trading data collection** (2026-04-12 → July 2026): Collecting 60-90 days of live Kraken paper trading data. No parameter changes during this period. Target: July 2026 live data analysis session. Dashboard Edge Analysis and Entry Quality pages serve as the primary analysis tool for the July review.
-- **Public dashboard access** (planned): Caddy reverse proxy for HTTPS + basic auth on a public domain. Spec at `docs/5-planning/caddy-public-dashboard-spec.md`. Blocked on domain purchase + Elastic IP.
+- **Paper trading data collection** (2026-04-12 → July 2026): Collecting 75-90 days of live Kraken paper trading data. **No parameter changes during this period** — the analytical clean-regime is the experiment. Dashboard Edge Analysis and Entry Quality pages serve as the primary analysis tool for the July review. The April 2026 v3 experiment sharpened the questions for July (see "AI Memory" file `july_2026_evaluation_prep.md`).
 
 ### Completed
+- **mean_reversion_v3 experiment** (2026-04-28 → 2026-04-30): Two-day exercise to redesign the strategy as a clean mean-reversion plugin. **Negative result** — v3 underperformed composite_scoring on all 3 OOS sets (WR 22-26% vs 55-65%). Plugin retained at `v2/plugins/strategies/mean_reversion_v3/` as alternative; not deployed. Net gains: 4 new exit_manager features (config-flagged, default-off), `min_trend_indicators` config on composite_scoring, Supertrend indicator implementation, 19 new tests, and a documented negative result. Key lesson: theoretical alignment doesn't translate to empirical edge — composite_scoring's edge isn't decomposable into clean theoretical components. See AI memory `v3_experiment_2026-04-29.md`.
 - **Dashboard Session 2b** (2026-04-13): Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry conditions, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API). `.dockerignore` reduces build context from ~2.4 GB to ~50 MB. EC2 log rotation freed 2.1 GB (v1 logs removed). README.md rewritten for v2.
 - **Streamlit dashboard Session 1 + 2a** (2026-04-12): Performance Report page (7 panels) and Edge Analysis page (6 panels) deployed. Reuses existing async collectors. FIFO round-trip matcher links buy metadata (score, indicators, ADX, RVOL) to sell outcomes (exit reason, P&L). Live prices from Kraken public REST API.
 - **Fee/sizing analysis** (2026-04-11): Definitive finding — notional scaling is irrelevant with percentage-based fees (PF locked at 0.73 at all notionals). Avg gross return (+0.187%/trade) is 3.5x below RT fee (0.650%). No Kraken fee tier reaches breakeven. The strategy is not a fee problem — it is a hard stop problem. See `analysis/fee_sizing/` on branch `fee-sizing-analysis`.
@@ -748,6 +752,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-04-30 | mean_reversion_v3 experiment closed (negative result) | New `mean_reversion_v3` strategy plugin (~530 lines) built and validated against 3-set OOS framework. Inferior to composite_scoring (22-26% WR vs 55-65%; statistically indistinguishable winners/losers at entry). Plugin retained at `v2/plugins/strategies/mean_reversion_v3/` but not deployed. Permanent gains: 4 new exit_manager config flags (`breakeven_trigger_pct`, `fixed_take_profit_pct`, `trailing_enabled`, `stale_exit_regardless_of_pnl`, all default-off), `min_trend_indicators` on composite_scoring, Supertrend indicator implementation, 19 new tests (suite at 704). Key lesson: composite_scoring's edge doesn't decompose by indicator philosophy. |
 | 2026-04-13 | Caddy public dashboard deployed | `bottrader.trade` — Caddy reverse proxy with auto Let's Encrypt TLS and HTTP Basic Auth. 4th Docker container (64MB, Alpine). Domain via Cloudflare Registrar, Elastic IP `44.238.14.228`. SSH tunnel preserved as fallback. New files: `docker/Caddyfile`, `docker/Dockerfile.caddy`. `.env` additions: `DASHBOARD_DOMAIN`, `DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH`. |
 | 2026-04-13 | Dashboard Session 2b + maintenance | Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry condition scatters, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API generates interpretive performance summary with backtest comparison). `.dockerignore` added (build context 2.4 GB → 50 MB). EC2 log rotation: 2.1 GB v1 logs removed. README.md rewritten for v2. Caddy public access spec written. |
 | 2026-04-12 | Streamlit dashboard deployed (Session 1 + 2a) | 3rd Docker container (`dashboard`, 256MB, Streamlit 1.56). Page 1: Performance Report (hero P&L, portfolio, P&L by symbol, exit breakdown, open positions with live Kraken prices, trade log). Page 2: Edge Analysis (weekly P&L trend, exit reason P&L trend, hard stop rate vs baseline, avg metrics, P&L distribution, peak capture scatter). FIFO round-trip matcher (`trades.py`) links buy metadata to sell outcomes. Trigger filter defaults to score-only (roc_momo excluded). `daily_report_v2/__init__.py` guarded for dashboard import compatibility. EC2 disk cleaned (Docker prune + backtest data removed from server). |
