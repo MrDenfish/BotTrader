@@ -1,0 +1,2 @@
+symbol,entry_time,entry_price,exit_time,qty,gross_pnl,fees,net_pnl,win,stop_hit,tp1_filled,tp2_filled,runner_exit,mfe_pct,mae_pct,bars_held,setup_type,entry_mode,entry_type,entry_wait_minutes
+BTC-USD,2025-08-06 16:13:00,115247.67696,2025-08-11 18:04:00,0.0008676964485341242,1.4270406785160932,0.6885363254281287,0.7385043530879645,True,False,True,False,TRAIL_HIT,6.135883365748323,-0.8495416010335791,7311,donchian,breakout_retest,RETEST,13.0

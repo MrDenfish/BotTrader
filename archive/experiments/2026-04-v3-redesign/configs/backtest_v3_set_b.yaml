@@ -1,0 +1,125 @@
+# BotTrader v2 — mean_reversion_v3 Backtest, Set A (training)
+# Usage: python -m v2 --config v2/backtest_v3_set_a.yaml
+#
+# Round 1 baseline: HS -5.5% fixed, BE +0.7%, TP +1.75%, time 6h regardless.
+
+app:
+  name: "BotTrader"
+  mode: "backtest"
+  symbols:
+    - "BTC-USD"
+
+pair_discovery:
+  type: "csv"
+  config:
+    data_dir: "backtest/data/set_b"
+
+exchange:
+  type: "backtest_sim"
+  initial_balance_usd: 10000
+  maker_fee: 0.0025
+  taker_fee: 0.004
+  slippage_bps: 1.0
+
+data_providers:
+  - type: "csv_replay"
+    data_dir: "backtest/data/set_b"
+    days: 180
+    resolution: "1m"
+
+# ─── Strategy: mean_reversion_v3 ───
+strategies:
+  - type: "mean_reversion_v3"
+    config:
+      candle_interval_minutes: 5
+      bb_window: 10
+      bb_std: 2.0
+      macd_fast: 8
+      macd_slow: 21
+      macd_signal: 5
+      rsi_window: 14
+      rsi_buy: 25.0
+      roc_window: 4
+      roc_buy_threshold: 2.0
+      atr_window: 14
+      volume_div_window: 10
+      supertrend_period: 10
+      supertrend_multiplier: 3.0
+      adx_period: 14
+      adx_max_threshold: 25.0
+      volume_confirm_buy: true
+      volume_confirm_threshold: 0.7
+      score_buy_target: 3.0
+      min_indicators_required: 3
+      cooldown_bars: 2
+      loss_lockout_bars: 12
+
+# ─── Risk: v3-specific exit shape ───
+risk:
+  - type: "basic"
+    pass_through: false
+    hodl_symbols: []
+    maker_fee_pct: 0.0025
+    taker_fee_pct: 0.004
+    max_round_trip_fee_pct: 0.01
+  - type: "performance_filter"
+    window_days: 30
+    min_trades: 3
+    min_win_rate: 0.30
+    min_avg_pnl: -5.0
+    min_total_pnl: -50.0
+  - type: "exit_manager"
+    # Hard stop: fixed -5.5%
+    hard_stop_pct: 0.055
+    hard_stop_mode: "fixed"
+    # Soft stop disabled (consistent with prod)
+    soft_stop_enabled: false
+    # Trailing disabled — replaced by fixed TP
+    trailing_enabled: false
+    # Move-to-breakeven once unrealized P&L hits +0.7%
+    breakeven_trigger_pct: 0.007
+    # Fixed take-profit at +1.75%
+    fixed_take_profit_pct: 0.0175
+    # Time limit: 6h, exits regardless of P&L
+    max_hold_hours: 6
+    stale_exit_regardless_of_pnl: true
+    # Signal exit (sell signal) — kept on for compatibility but v3 emits no sells
+    signal_exit_enabled: true
+    signal_exit_min_pnl_pct: 0.0
+    check_interval_sec: 0
+    reentry_cooldown_minutes: 30
+    maker_fee_pct: 0.0025
+    taker_fee_pct: 0.004
+    # Peak tracking off (no momentum triggers in v3)
+    peak_tracking_enabled: false
+  - type: "circuit_breaker"
+    max_losses_in_window: 5
+    loss_window_minutes: 30
+    large_loss_threshold_usd: 50
+    max_consecutive_rejections: 10
+    cooldown_minutes: 30
+
+# ─── Execution ───
+execution:
+  type: "maker_only"
+  max_retries: 3
+  post_only: true
+  default_notional: 75
+  notional_by_trigger:
+    score: 75
+    score_high: 150
+  min_order_fiat: 10
+  stale_timeout_seconds: 0
+
+# ─── Backtest infrastructure ───
+storage:
+  type: ""
+
+observers:
+  - type: "backtest_results"
+    initial_balance_usd: 10000
+  - type: "backtest_diagnostics"
+    output_dir: "backtest/diag_v3_b"
+    post_exit_window_bars: 60
+  - type: "structured_log"
+    level: "WARNING"

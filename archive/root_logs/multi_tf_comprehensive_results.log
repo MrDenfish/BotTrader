@@ -1,0 +1,250 @@
+================================================================================
+COMPREHENSIVE MULTI-TIMEFRAME BACKTEST
+================================================================================
+
+Testing 4 configurations:
+  1. 5m + continuation
+  2. 5m + pullback
+  3. 15m + continuation
+  4. 15m + pullback
+
+================================================================================
+
+
+================================================================================
+TEST 1: 5m + CONTINUATION
+================================================================================
+Loading and resampling data for 3 symbols...
+Signal TF: 5m, Slow ATR TF: 1h
+Period: 2026-01-22 to 2026-01-29
+  BTC-USD: 2009 bars (5m), 168 bars (1h)
+  ETH-USD: 2009 bars (5m), 168 bars (1h)
+  SOL-USD: 2009 bars (5m), 168 bars (1h)
+✅ Data loaded for 3 symbols
+
+Calculating indicators...
+  BTC-USD: ROC(9), ATR_fast(14, 5m), ATR_slow(14, 1h)
+  ETH-USD: ROC(9), ATR_fast(14, 5m), ATR_slow(14, 1h)
+  SOL-USD: ROC(9), ATR_fast(14, 5m), ATR_slow(14, 1h)
+✅ Indicators calculated
+
+Running backtest: 5M_CONT
+Entry mode: continuation
+============================================================
+Total bars to process: 6027
+  Processed 3000/6027 bars...  Processed 6000/6027 bars...  Processed 6027/6027 bars...
+✅ Backtest complete
+
+============================================================
+BACKTEST RESULTS
+============================================================
+Configuration: 5M_CONT
+Signal Timeframe: 5m
+Entry Mode: continuation
+Period: 2026-01-22 to 2026-01-29
+Symbols: 3
+
+Total Signals: 9
+Total Entries: 8
+Signals Expired: 1
+Signal→Entry Rate: 88.9%
+
+Total Trades: 8
+Total P&L: $-12.43
+Win Rate: 0.0%
+Profit Factor: 0.00
+Avg Win: $0.00
+Avg Loss: $-1.55
+Avg Bars Held: 5.5
+
+Gross P&L: $-2.85
+Total Fees: $9.58
+Avg Gross P&L/Trade: $-0.36
+Avg Fees/Trade: $1.20
+============================================================
+
+
+================================================================================
+TEST 2: 5m + PULLBACK
+================================================================================
+Loading and resampling data for 3 symbols...
+Signal TF: 5m, Slow ATR TF: 1h
+Period: 2026-01-22 to 2026-01-29
+  BTC-USD: 2009 bars (5m), 168 bars (1h)
+  ETH-USD: 2009 bars (5m), 168 bars (1h)
+  SOL-USD: 2009 bars (5m), 168 bars (1h)
+✅ Data loaded for 3 symbols
+
+Calculating indicators...
+  BTC-USD: ROC(9), ATR_fast(14, 5m), ATR_slow(14, 1h)
+  ETH-USD: ROC(9), ATR_fast(14, 5m), ATR_slow(14, 1h)
+  SOL-USD: ROC(9), ATR_fast(14, 5m), ATR_slow(14, 1h)
+✅ Indicators calculated
+
+Running backtest: 5M_PULLBACK
+Entry mode: pullback
+============================================================
+Total bars to process: 6027
+  Processed 3000/6027 bars...  Processed 6000/6027 bars...  Processed 6027/6027 bars...
+✅ Backtest complete
+
+============================================================
+BACKTEST RESULTS
+============================================================
+Configuration: 5M_PULLBACK
+Signal Timeframe: 5m
+Entry Mode: pullback
+Period: 2026-01-22 to 2026-01-29
+Symbols: 3
+
+Total Signals: 9
+Total Entries: 8
+Signals Expired: 1
+Signal→Entry Rate: 88.9%
+
+Total Trades: 8
+Total P&L: $-10.51
+Win Rate: 0.0%
+Profit Factor: 0.00
+Avg Win: $0.00
+Avg Loss: $-1.31
+Avg Bars Held: 5.8
+
+Gross P&L: $-0.92
+Total Fees: $9.59
+Avg Gross P&L/Trade: $-0.11
+Avg Fees/Trade: $1.20
+============================================================
+
+
+================================================================================
+TEST 3: 15m + CONTINUATION
+================================================================================
+Loading and resampling data for 3 symbols...
+Signal TF: 15m, Slow ATR TF: 4h
+Period: 2026-01-22 to 2026-01-29
+  BTC-USD: 670 bars (15m), 42 bars (4h)
+  ETH-USD: 670 bars (15m), 42 bars (4h)
+  SOL-USD: 670 bars (15m), 42 bars (4h)
+✅ Data loaded for 3 symbols
+
+Calculating indicators...
+  BTC-USD: ROC(9), ATR_fast(14, 15m), ATR_slow(14, 4h)
+  ETH-USD: ROC(9), ATR_fast(14, 15m), ATR_slow(14, 4h)
+  SOL-USD: ROC(9), ATR_fast(14, 15m), ATR_slow(14, 4h)
+✅ Indicators calculated
+
+Running backtest: 15M_CONT
+Entry mode: continuation
+============================================================
+Total bars to process: 2010
+  Processed 2010/2010 bars...
+✅ Backtest complete
+
+============================================================
+BACKTEST RESULTS
+============================================================
+Configuration: 15M_CONT
+Signal Timeframe: 15m
+Entry Mode: continuation
+Period: 2026-01-22 to 2026-01-29
+Symbols: 3
+
+Total Signals: 7
+Total Entries: 5
+Signals Expired: 2
+Signal→Entry Rate: 71.4%
+
+Total Trades: 5
+Total P&L: $-8.08
+Win Rate: 20.0%
+Profit Factor: 0.05
+Avg Win: $0.40
+Avg Loss: $-2.12
+Avg Bars Held: 8.6
+
+Gross P&L: $-2.09
+Total Fees: $5.99
+Avg Gross P&L/Trade: $-0.42
+Avg Fees/Trade: $1.20
+============================================================
+
+
+================================================================================
+TEST 4: 15m + PULLBACK
+================================================================================
+Loading and resampling data for 3 symbols...
+Signal TF: 15m, Slow ATR TF: 4h
+Period: 2026-01-22 to 2026-01-29
+  BTC-USD: 670 bars (15m), 42 bars (4h)
+  ETH-USD: 670 bars (15m), 42 bars (4h)
+  SOL-USD: 670 bars (15m), 42 bars (4h)
+✅ Data loaded for 3 symbols
+
+Calculating indicators...
+  BTC-USD: ROC(9), ATR_fast(14, 15m), ATR_slow(14, 4h)
+  ETH-USD: ROC(9), ATR_fast(14, 15m), ATR_slow(14, 4h)
+  SOL-USD: ROC(9), ATR_fast(14, 15m), ATR_slow(14, 4h)
+✅ Indicators calculated
+
+Running backtest: 15M_PULLBACK
+Entry mode: pullback
+============================================================
+Total bars to process: 2010
+  Processed 2010/2010 bars...
+✅ Backtest complete
+
+============================================================
+BACKTEST RESULTS
+============================================================
+Configuration: 15M_PULLBACK
+Signal Timeframe: 15m
+Entry Mode: pullback
+Period: 2026-01-22 to 2026-01-29
+Symbols: 3
+
+Total Signals: 8
+Total Entries: 8
+Signals Expired: 0
+Signal→Entry Rate: 100.0%
+
+Total Trades: 8
+Total P&L: $-12.67
+Win Rate: 0.0%
+Profit Factor: 0.00
+Avg Win: $0.00
+Avg Loss: $-1.58
+Avg Bars Held: 4.4
+
+Gross P&L: $-3.09
+Total Fees: $9.58
+Avg Gross P&L/Trade: $-0.39
+Avg Fees/Trade: $1.20
+============================================================
+
+
+================================================================================
+RESULTS COMPARISON
+================================================================================
+
+Key Metrics:
+Configuration        Signals  Entries  Conv%   Trades  P&L        Win%    PF     Avg Hold  Gross PnL  Fees      
+------------------------------------------------------------------------------------------------------------------------
+5m + continuation    9        8        88.9    8       $-12.43    0.0     0.00   5.5       $-2.85     $9.58     
+5m + pullback        9        8        88.9    8       $-10.51    0.0     0.00   5.8       $-0.92     $9.59     
+15m + continuation   7        5        71.4    5       $-8.08     20.0    0.05   8.6       $-2.09     $5.99     
+15m + pullback       8        8        100.0   8       $-12.67    0.0     0.00   4.4       $-3.09     $9.58     
+
+================================================================================
+ANALYSIS
+================================================================================
+
+✅ Best Net P&L: 15m + continuation ($-8.08)
+✅ Best Gross P&L: 5m + pullback ($-0.92)
+✅ Best Profit Factor: 15m + continuation (0.05)
+✅ Best Win Rate: 15m + continuation (20.0%)
+
+⚠️  NO configurations show positive gross edge before fees
+   Strategy may need different parameters or this period is not favorable
+
+================================================================================

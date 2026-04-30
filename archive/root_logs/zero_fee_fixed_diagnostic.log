@@ -1,0 +1,65 @@
+================================================================================
+ZERO-FEE TEST WITH "ARM ONLY ON PROFIT" FIX
+================================================================================
+Period: 2026-01-22 to 2026-01-29
+Symbols: ['BTC-USD', 'ETH-USD', 'SOL-USD']
+Fee Rate: 0.0% (ZERO FEES)
+Fix: ATR_fast arms ONLY when in profit (removed momentum_arm)
+================================================================================
+
+Loading 1m data for 3 symbols...
+Period: 2026-01-22 to 2026-01-29
+  BTC-USD: 10041 bars
+  ETH-USD: 10041 bars
+  SOL-USD: 10041 bars
+✅ Data loaded for 3 symbols
+
+Calculating indicators...
+  BTC-USD: ROC(9), ATR_fast(14), ATR_slow(15min/14)
+  ETH-USD: ROC(9), ATR_fast(14), ATR_slow(15min/14)
+  SOL-USD: ROC(9), ATR_fast(14), ATR_slow(15min/14)
+✅ Indicators calculated
+
+Running backtest: A_FIXED_ZERO_FEE
+============================================================
+Total bars to process: 30123
+  Processed 10000/30123 bars...  Processed 20000/30123 bars...  Processed 30000/30123 bars...
+✅ Backtest complete
+
+============================================================
+BACKTEST RESULTS
+============================================================
+Configuration: A_FIXED_ZERO_FEE
+Period: 2026-01-22 to 2026-01-29
+Symbols: 3
+
+Total Trades: 28
+Total P&L: $-3.21
+Win Rate: 32.1%
+Profit Factor: 0.25
+Avg Win: $0.12
+Avg Loss: $-0.23
+Avg Bars Held: 6.2
+
+Exit Reason Distribution:
+  ROC_PEAK_DD: 24 (85.7%)
+  ATR_FAST_STOP: 4 (14.3%)
+============================================================
+
+================================================================================
+RESULTS (ZERO FEES + ARM-ON-PROFIT FIX)
+================================================================================
+Total P&L: $-3.21
+Total Trades: 28
+Win Rate: 3214.3%
+Profit Factor: 0.25
+Avg Win: $0.12
+Avg Loss: $-0.23
+Avg Bars Held: 6.2
+Exit Reasons: {'ROC_PEAK_DD': 24, 'ATR_FAST_STOP': 4}
+================================================================================
+
+COMPARISON TO BEFORE FIX:
+  Before: -$2.69, 32 trades, 25% win rate, 3.3 bars avg hold
+  After:  $-3.21, 28 trades, 3214.3% win rate, 6.2 bars avg hold
+================================================================================

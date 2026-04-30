@@ -1,0 +1,86 @@
+================================================================================
+60-DAY ENHANCED 15M STRATEGY TEST
+================================================================================
+
+Enhancements:
+  1. ATR-normalized ROC (roc_score = roc / atr_fast_pct)
+  2. 1h trend filter (1h close > 1h EMA(50))
+  3. Scale-out profit taking (50% at +1.0× ATR)
+  4. Fee-aware stop arming (only after profit > 2.5× fees)
+
+================================================================================
+
+Loading data for 10 symbols...
+Period: 2025-11-30 to 2026-01-29
+  BTC-USD: 5758 bars (15m)
+  ETH-USD: 5758 bars (15m)
+  SOL-USD: 5758 bars (15m)
+  XRP-USD: 5758 bars (15m)
+  ADA-USD: 5758 bars (15m)
+  DOGE-USD: 5758 bars (15m)
+  ⚠️  MATIC-USD: CSV not found
+  LINK-USD: 5758 bars (15m)
+  DOT-USD: 5758 bars (15m)
+  AVAX-USD: 5758 bars (15m)
+✅ Loaded 9 symbols
+
+Calculating indicators...
+✅ Indicators calculated
+
+Running backtest: 15M_ENH_60D
+================================================================================
+Total bars: 51822
+  Processed 9000/51822 bars...  Processed 18000/51822 bars...  Processed 27000/51822 bars...  Processed 36000/51822 bars...  Processed 45000/51822 bars...  Processed 51822/51822 bars...
+✅ Backtest complete
+
+================================================================================
+BACKTEST RESULTS
+================================================================================
+Config: 15M_ENH_60D
+Period: 2025-11-30 to 2026-01-29
+Symbols: 10
+
+Signals: 476
+Entries: 354
+Signal→Entry: 74.4%
+Expired: 122
+
+Trades: 354
+P&L: $-407.25
+Win Rate: 12.7%
+Profit Factor: 0.10
+Avg Win: $0.97
+Avg Loss: $-1.46
+Avg Hold: 8.9 bars
+
+Scale-outs: 175 (49.4%)
+Gross P&L: $17.65
+Fees: $424.91
+================================================================================
+
+================================================================================
+EVENT STUDY
+================================================================================
+
+Total Signals: 476
+
+Forward Returns:
+Window     Mean %     Median %   Win %     
+----------------------------------------
+15m            -0.00     -0.05      41.4
+30m            -0.02     -0.07      42.4
+1h              0.02     -0.11      43.3
+2h             -0.02     -0.07      46.8
+4h             -0.07     -0.12      45.0
+
+MFE (Max Favorable Excursion):
+Window     Mean MFE %   % > 0.6%   % > 1.8%  
+------------------------------------------
+15m               0.37      18.7       2.5
+30m               0.49      27.7       4.4
+1h                0.73      39.1      10.3
+2h                0.95      48.9      16.2
+4h                1.30      58.4      21.6
+================================================================================
+
+📊 Event study exported: event_study_15M_ENH_60D_2025-11-30_to_2026-01-29.csv

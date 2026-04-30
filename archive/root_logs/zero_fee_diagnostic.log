@@ -1,0 +1,59 @@
+================================================================================
+ZERO-FEE DIAGNOSTIC TEST
+================================================================================
+Period: 2026-01-22 to 2026-01-29
+Symbols: ['BTC-USD', 'ETH-USD', 'SOL-USD']
+Fee Rate: 0.0% (ZERO FEES)
+================================================================================
+
+Loading 1m data for 3 symbols...
+Period: 2026-01-22 to 2026-01-29
+  BTC-USD: 10041 bars
+  ETH-USD: 10041 bars
+  SOL-USD: 10041 bars
+✅ Data loaded for 3 symbols
+
+Calculating indicators...
+  BTC-USD: ROC(9), ATR_fast(14), ATR_slow(15min/14)
+  ETH-USD: ROC(9), ATR_fast(14), ATR_slow(15min/14)
+  SOL-USD: ROC(9), ATR_fast(14), ATR_slow(15min/14)
+✅ Indicators calculated
+
+Running backtest: A_ZERO_FEE_TEST
+============================================================
+Total bars to process: 30123
+  Processed 10000/30123 bars...  Processed 20000/30123 bars...  Processed 30000/30123 bars...
+✅ Backtest complete
+
+============================================================
+BACKTEST RESULTS
+============================================================
+Configuration: A_ZERO_FEE_TEST
+Period: 2026-01-22 to 2026-01-29
+Symbols: 3
+
+Total Trades: 32
+Total P&L: $-2.69
+Win Rate: 25.0%
+Profit Factor: 0.28
+Avg Win: $0.13
+Avg Loss: $-0.15
+Avg Bars Held: 3.3
+
+Exit Reason Distribution:
+  ATR_FAST_STOP: 24 (75.0%)
+  ROC_PEAK_DD: 8 (25.0%)
+============================================================
+
+================================================================================
+RESULTS (ZERO FEES)
+================================================================================
+Total P&L: $-2.69
+Total Trades: 32
+Win Rate: 2500.0%
+Profit Factor: 0.28
+Avg Win: $0.13
+Avg Loss: $-0.15
+Avg Bars Held: 3.3
+Exit Reasons: {'ATR_FAST_STOP': 24, 'ROC_PEAK_DD': 8}
+================================================================================
