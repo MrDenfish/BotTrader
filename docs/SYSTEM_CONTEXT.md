@@ -169,6 +169,7 @@ BotTrader/
 ├── scripts/                         #   Diagnostics, analysis, deployment helpers
 ├── docs/                            #   Organized documentation (see Section 14)
 ├── archive/v1/                      #   All v1 code (archived Feb 2026, history preserved)
+├── archive/experiments/             #   Completed experiment artifacts — each subdir has README, configs, outputs
 ├── docker/
 │   ├── Dockerfile.v2                #   v2 image (requirements cached, code COPYed)
 │   ├── Dockerfile.dashboard         #   Dashboard image (Streamlit + asyncpg + plotly)
