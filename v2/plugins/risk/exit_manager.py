@@ -99,6 +99,21 @@ class ExitManager(RiskManager):
 
         # Stale position time-limit (0 = disabled)
         self._max_hold_hours: float = float(kwargs.get("max_hold_hours", 0))
+        # When True, time-limit exits regardless of P&L (mean-reversion intent).
+        # When False (default), only exits when P&L < 0 (legacy behavior).
+        self._stale_exit_regardless_of_pnl: bool = bool(
+            kwargs.get("stale_exit_regardless_of_pnl", False)
+        )
+
+        # Move-to-breakeven (0 = disabled): once unrealized P&L hits this %,
+        # promote the hard stop to entry (fee-aware breakeven).
+        self._breakeven_trigger_pct: float = float(kwargs.get("breakeven_trigger_pct", 0.0))
+
+        # Fixed take-profit (0 = disabled): exit at MARKET when unrealized P&L hits this %.
+        self._fixed_take_profit_pct: float = float(kwargs.get("fixed_take_profit_pct", 0.0))
+
+        # Master flag for trailing stop logic (default True for backward compat).
+        self._trailing_enabled: bool = bool(kwargs.get("trailing_enabled", True))
 
         # Per-symbol re-entry cooldown after exit (0 = disabled)
         self._reentry_cooldown_minutes: float = float(kwargs.get("reentry_cooldown_minutes", 0))
@@ -115,6 +130,7 @@ class ExitManager(RiskManager):
         # Per-symbol tracking state
         self._peak_price: dict[str, float] = {}
         self._trailing_active: dict[str, bool] = {}
+        self._breakeven_active: dict[str, bool] = {}
         self._pending_exits: set[str] = set()
         self._last_check: dict[str, float] = {}
 
@@ -171,6 +187,14 @@ class ExitManager(RiskManager):
                 self._trailing_max_distance_pct = float(config["trailing_max_distance_pct"])
             if "max_hold_hours" in config:
                 self._max_hold_hours = float(config["max_hold_hours"])
+            if "stale_exit_regardless_of_pnl" in config:
+                self._stale_exit_regardless_of_pnl = bool(config["stale_exit_regardless_of_pnl"])
+            if "breakeven_trigger_pct" in config:
+                self._breakeven_trigger_pct = float(config["breakeven_trigger_pct"])
+            if "fixed_take_profit_pct" in config:
+                self._fixed_take_profit_pct = float(config["fixed_take_profit_pct"])
+            if "trailing_enabled" in config:
+                self._trailing_enabled = bool(config["trailing_enabled"])
             if "reentry_cooldown_minutes" in config:
                 self._reentry_cooldown_minutes = float(config["reentry_cooldown_minutes"])
             if "peak_tracking_enabled" in config:
@@ -609,6 +633,38 @@ class ExitManager(RiskManager):
             self._emit_exit(symbol, price, "hard_stop", hard_meta, order_type=OrderType.MARKET)
             return
 
+        # --- Layer 1.5: BREAKEVEN STOP ---
+        # Activate breakeven flag once unrealized P&L crosses the trigger.
+        # Once activated, exit at market the moment fee-aware P&L returns to <= 0.
+        if self._breakeven_trigger_pct > 0:
+            if (
+                not self._breakeven_active.get(symbol, False)
+                and pnl_pct >= self._breakeven_trigger_pct
+            ):
+                self._breakeven_active[symbol] = True
+                logger.info(
+                    "Breakeven activated: %s at +%.2f%% (trigger=%.2f%%)",
+                    symbol, pnl_pct * 100, self._breakeven_trigger_pct * 100,
+                )
+                if self._bus:
+                    self._bus.publish(RiskEvent(
+                        event_type="breakeven_activated",
+                        reason="breakeven_stop",
+                        metadata={
+                            "symbol": symbol,
+                            "price": price,
+                            "pnl_pct": round(pnl_pct * 100, 2),
+                        },
+                    ))
+            if self._breakeven_active.get(symbol, False) and pnl_pct <= 0:
+                self._emit_exit(symbol, price, "breakeven_stop", {
+                    "pnl_pct": round(pnl_pct * 100, 2),
+                    "pnl_raw_pct": round(pnl_raw * 100, 2),
+                    "breakeven_trigger_pct": round(self._breakeven_trigger_pct * 100, 2),
+                    "avg_entry": avg_entry,
+                }, order_type=OrderType.MARKET)
+                return
+
         # --- Layer 2: PEAK TRACKING (ROC momentum trades) ---
         if self._peak_tracking_enabled and self._check_peak_tracking(symbol, price, pnl_pct, pnl_raw):
             return
@@ -635,17 +691,32 @@ class ExitManager(RiskManager):
             and symbol not in self._peak_state
         ):
             held_seconds = (self._now() - position.entry_time).total_seconds()
-            if held_seconds >= self._max_hold_hours * 3600 and pnl_pct < 0:
+            time_up = held_seconds >= self._max_hold_hours * 3600
+            pnl_check = self._stale_exit_regardless_of_pnl or pnl_pct < 0
+            if time_up and pnl_check:
                 self._emit_exit(symbol, price, "stale_exit", {
                     "pnl_pct": round(pnl_pct * 100, 2),
                     "pnl_raw_pct": round(pnl_raw * 100, 2),
                     "held_hours": round(held_seconds / 3600, 1),
                     "max_hold_hours": self._max_hold_hours,
+                    "regardless_of_pnl": self._stale_exit_regardless_of_pnl,
                     "avg_entry": avg_entry,
                 }, order_type=OrderType.MARKET)
                 return
 
+        # --- Layer 3.7: FIXED TAKE-PROFIT (MARKET order) ---
+        if self._fixed_take_profit_pct > 0 and pnl_pct >= self._fixed_take_profit_pct:
+            self._emit_exit(symbol, price, "take_profit", {
+                "pnl_pct": round(pnl_pct * 100, 2),
+                "pnl_raw_pct": round(pnl_raw * 100, 2),
+                "tp_threshold_pct": round(self._fixed_take_profit_pct * 100, 2),
+                "avg_entry": avg_entry,
+            }, order_type=OrderType.MARKET)
+            return
+
         # --- Layer 4: TRAILING STOP ---
+        if not self._trailing_enabled:
+            return
         # Update peak price (only ratchets up)
         peak = self._peak_price.get(symbol, avg_entry)
         if price > peak:
@@ -712,6 +783,7 @@ class ExitManager(RiskManager):
             # New position — initialize tracking
             self._peak_price[symbol] = float(fill.price)
             self._trailing_active[symbol] = False
+            self._breakeven_active[symbol] = False
             self._pending_exits.discard(symbol)
             self._stop_price.pop(symbol, None)  # Reset ATR stop
 
@@ -741,6 +813,7 @@ class ExitManager(RiskManager):
             # Position closed — clean up all state
             self._peak_price.pop(symbol, None)
             self._trailing_active.pop(symbol, None)
+            self._breakeven_active.pop(symbol, None)
             self._pending_exits.discard(symbol)
             self._last_check.pop(symbol, None)
             self._stop_price.pop(symbol, None)

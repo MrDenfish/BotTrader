@@ -93,7 +93,8 @@ class CompositeScoreConfig:
     min_indicators_required: int = 2    # Multi-indicator confirmation gate
     min_sell_indicators_required: int = 0  # Sell-side override (0 = use min_indicators_required)
     high_conviction_threshold: int = 4   # Indicator count >= this uses "score_high" trigger for sizing
-    require_trend_for_buy: bool = True     # Require ≥1 trend indicator (MACD/ROC/Swing) for buys
+    require_trend_for_buy: bool = True     # Require trend indicators (MACD/ROC/Swing) for buys
+    min_trend_indicators: int = 1          # Minimum count of MACD/ROC/Swing that must fire
 
     # Post-loss buy lockout: block re-entry after exit manager sells at a loss.
     # Prevents death-spiral where oversold indicators trigger immediate re-buy.
