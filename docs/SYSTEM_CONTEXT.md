@@ -163,12 +163,11 @@ BotTrader/
 │   ├── data/                        #   Historical 1-min OHLCV CSVs per symbol
 │   └── diagnostic_output/           #   Trade-level analysis (MFE/MAE, regime, indicators)
 ├── strategies/                      #   Phase 1 plugin code (v2 imports — do NOT archive)
-├── Config/                          #   Exchange API keys (gitignored), pair filtering
-├── database_manager/                #   SQLAlchemy ORM utilities
-├── fifo_engine/                     #   Tax-compliant FIFO P&L accounting
+├── Config/                          #   Exchange API keys (gitignored). Legacy `.py` files (config_manager, validators, etc.) are v1-era orphans, candidates for Pass 4.
 ├── scripts/                         #   Diagnostics, analysis, deployment helpers
 ├── docs/                            #   Organized documentation (see Section 14)
 ├── archive/v1/                      #   All v1 code (archived Feb 2026, history preserved)
+├── archive/v1-libs/                 #   v1-era root libraries + their consumer scripts (archived May 2026, Pass 3)
 ├── archive/experiments/             #   Completed experiment artifacts — each subdir has README, configs, outputs
 ├── docker/
 │   ├── Dockerfile.v2                #   v2 image (requirements cached, code COPYed)
@@ -184,6 +183,7 @@ BotTrader/
 - **`strategies/`** is imported by v2 — do NOT archive it.
 - **`backtest/`** config is imported by v2 — the directories are coupled.
 - **`archive/v1/`** is frozen — all v1 code was moved here Feb 2026 via `git mv`.
+- **`archive/v1-libs/`** is frozen — v1-era root libraries (`Shared_Utils/`, `SharedDataManager/`, `TableModels/`, `database/`, `database_manager/`, `fifo_engine/`, `utils/`, `data/`) and their consumer scripts were moved here May 2026 via `git mv` (Pass 3 audit). See `archive/v1-libs/README.md`.
 
 ---
 
@@ -753,6 +753,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-05-12 | Pass 3 project audit — v1-era libs archived | 8 root dirs (`Shared_Utils/`, `SharedDataManager/`, `TableModels/`, `database/`, `database_manager/`, `fifo_engine/`, `utils/`, `data/`) and 5 v1-schema scripts moved to `archive/v1-libs/` via `git mv` (60 renames). All 704 v2 tests still pass. The leftover v1-era `Config/*.py` files are now orphans and flagged as Pass 4 candidates. See `archive/v1-libs/README.md`. |
 | 2026-04-30 | mean_reversion_v3 experiment closed (negative result) | New `mean_reversion_v3` strategy plugin (~530 lines) built and validated against 3-set OOS framework. Inferior to composite_scoring (22-26% WR vs 55-65%; statistically indistinguishable winners/losers at entry). Plugin retained at `v2/plugins/strategies/mean_reversion_v3/` but not deployed. Permanent gains: 4 new exit_manager config flags (`breakeven_trigger_pct`, `fixed_take_profit_pct`, `trailing_enabled`, `stale_exit_regardless_of_pnl`, all default-off), `min_trend_indicators` on composite_scoring, Supertrend indicator implementation, 19 new tests (suite at 704). Key lesson: composite_scoring's edge doesn't decompose by indicator philosophy. |
 | 2026-04-13 | Caddy public dashboard deployed | `bottrader.trade` — Caddy reverse proxy with auto Let's Encrypt TLS and HTTP Basic Auth. 4th Docker container (64MB, Alpine). Domain via Cloudflare Registrar, Elastic IP `44.238.14.228`. SSH tunnel preserved as fallback. New files: `docker/Caddyfile`, `docker/Dockerfile.caddy`. `.env` additions: `DASHBOARD_DOMAIN`, `DASHBOARD_USER`, `DASHBOARD_PASSWORD_HASH`. |
 | 2026-04-13 | Dashboard Session 2b + maintenance | Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry condition scatters, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API generates interpretive performance summary with backtest comparison). `.dockerignore` added (build context 2.4 GB → 50 MB). EC2 log rotation: 2.1 GB v1 logs removed. README.md rewritten for v2. Caddy public access spec written. |
