@@ -79,12 +79,12 @@ def _get_activity_summary() -> dict:
 
 
 @st.cache_data(ttl=60)
-def _get_daily_orders(days: int = 30):
+def _get_daily_orders(days: int = 30) -> list[dict]:
     """Per-day order counts by status for the last N days."""
     pool = get_pool()
 
     async def _query():
-        return await pool.fetch(
+        rows = await pool.fetch(
             """
             SELECT
               (timestamp AT TIME ZONE 'UTC')::date AS day,
@@ -98,53 +98,82 @@ def _get_daily_orders(days: int = 30):
             """,
             str(days),
         )
+        return [dict(r) for r in rows]
 
     return run_async(_query())
 
 
 @st.cache_data(ttl=60)
-def _get_active_symbols(days: int = 7):
-    """Symbols with order activity in the last N days."""
+def _get_active_symbols(days: int = 7) -> list[dict]:
+    """Symbols with fill activity in the last N days. Uses v2_fills (source of truth)."""
     pool = get_pool()
 
     async def _query():
-        return await pool.fetch(
+        rows = await pool.fetch(
             """
             SELECT
               symbol,
-              COUNT(*) AS orders,
-              SUM(CASE WHEN side = 'buy' THEN 1 ELSE 0 END) AS buys,
+              COUNT(*) AS fills,
+              SUM(CASE WHEN side = 'buy'  THEN 1 ELSE 0 END) AS buys,
               SUM(CASE WHEN side = 'sell' THEN 1 ELSE 0 END) AS sells,
-              SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancels,
               MAX(timestamp) AS last_seen
-            FROM v2_orders
+            FROM v2_fills
             WHERE timestamp > NOW() - ($1::text || ' days')::interval
+              AND exchange = $2
             GROUP BY symbol
             ORDER BY last_seen DESC
             """,
             str(days),
+            EXCHANGE,
         )
+        return [dict(r) for r in rows]
 
     return run_async(_query())
 
 
 @st.cache_data(ttl=60)
-def _get_recent_orders(limit: int = 20):
-    """Most recent N orders across all symbols."""
+def _get_recent_orders(limit: int = 20) -> list[dict]:
+    """Most recent N orders, with status derived from v2_fills.
+
+    The Kraken exchange code emits FillEvents when orders fill but never
+    re-emits an OrderEvent with status=FILLED, so v2_orders.status alone
+    is unreliable. We left-join v2_fills to derive the true state.
+    """
     pool = get_pool()
 
     async def _query():
-        return await pool.fetch(
+        rows = await pool.fetch(
             """
-            SELECT order_id, timestamp, symbol, side, order_type, price, qty, status
-            FROM v2_orders
-            ORDER BY timestamp DESC
+            SELECT
+              o.order_id, o.timestamp, o.symbol, o.side, o.order_type,
+              o.price, o.qty, o.status AS raw_status,
+              COALESCE(SUM(f.qty), 0) AS filled_qty
+            FROM v2_orders o
+            LEFT JOIN v2_fills f ON f.order_id = o.order_id
+            GROUP BY o.order_id, o.timestamp, o.symbol, o.side, o.order_type,
+                     o.price, o.qty, o.status
+            ORDER BY o.timestamp DESC
             LIMIT $1
             """,
             limit,
         )
+        return [dict(r) for r in rows]
 
     return run_async(_query())
+
+
+def _derive_status(raw_status: str, filled_qty: float, qty: float) -> str:
+    """Reconcile v2_orders.status with v2_fills for the true order state."""
+    if raw_status == "cancelled":
+        # An order can be partially filled then cancelled — show that distinctly.
+        if filled_qty > 1e-9:
+            return "partial+cancelled"
+        return "cancelled"
+    if filled_qty + 1e-9 >= qty:
+        return "filled"
+    if filled_qty > 1e-9:
+        return "partial"
+    return "open"
 
 
 @st.cache_data(ttl=60)
@@ -284,7 +313,11 @@ def _render_activity(summary: dict) -> None:
 
 
 def _render_daily_orders(rows) -> None:
-    st.subheader("Daily Order Activity (30d)")
+    st.subheader("Daily Order Submissions (30d)")
+    st.caption(
+        "Count of orders submitted per day, by side and cancellation. "
+        "Approximates the bot's daily signal-generation rate."
+    )
 
     if not rows:
         st.info("No orders in the last 30 days.")
@@ -324,7 +357,7 @@ def _render_active_symbols(rows) -> None:
     st.subheader("Active Symbols (7d)")
 
     if not rows:
-        st.info("No symbol activity in the last 7 days.")
+        st.info("No fill activity in the last 7 days.")
         return
 
     now = datetime.now(timezone.utc)
@@ -335,11 +368,10 @@ def _render_active_symbols(rows) -> None:
         table.append(
             {
                 "Symbol": r["symbol"],
-                "Orders": r["orders"],
+                "Fills": r["fills"],
                 "Buys": r["buys"],
                 "Sells": r["sells"],
-                "Cancels": r["cancels"],
-                "Last Seen (UTC)": last.strftime("%Y-%m-%d %H:%M") if last else "—",
+                "Last Fill (UTC)": last.strftime("%Y-%m-%d %H:%M") if last else "—",
                 "Age": _format_age(age_min),
             }
         )
@@ -391,6 +423,9 @@ def _render_recent_orders(rows) -> None:
     table = []
     for r in rows:
         ts = _ensure_utc(r["timestamp"])
+        qty = float(r["qty"])
+        filled = float(r["filled_qty"])
+        status = _derive_status(r["raw_status"], filled, qty)
         table.append(
             {
                 "Time (UTC)": ts.strftime("%Y-%m-%d %H:%M:%S") if ts else "—",
@@ -398,11 +433,18 @@ def _render_recent_orders(rows) -> None:
                 "Side": r["side"],
                 "Type": r["order_type"],
                 "Price ($)": round(float(r["price"]), 4),
-                "Qty": float(r["qty"]),
-                "Status": r["status"],
+                "Qty": qty,
+                "Filled": filled,
+                "Status": status,
             }
         )
     st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
+    st.caption(
+        "Status is derived from v2_fills (source of truth). "
+        "v2_orders.status alone shows most fills as 'open' because the "
+        "exchange code doesn't update order status on fill — known persistence "
+        "gap, fix deferred until after the July review."
+    )
 
 
 # ---------------------------------------------------------------------------
