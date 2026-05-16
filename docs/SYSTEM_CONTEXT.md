@@ -423,6 +423,8 @@ API keys are stored in `Config/kraken_api_info.json` (gitignored).
 
 **Caveat:** `v2_positions.avg_entry_price` and `cost_basis` may be stale after partial sells — the exit manager uses in-memory portfolio (correct), not DB values.
 
+**Caveat:** `v2_orders.status` only ever takes values `open` or `cancelled`. The Kraken exchange (`v2/plugins/exchanges/kraken.py:587`) emits a `FillEvent` when an order fills but never re-emits an `OrderEvent(status=FILLED)`, so fully-filled orders stay at `open` in the DB. `v2_fills` is the source of truth for executed trades. Dashboards and queries should derive true status by left-joining `v2_fills` on `order_id` and comparing `SUM(fills.qty)` against `orders.qty`. Persistence fix is on the backlog, deferred until after the July 2026 live-data review (P3 in `open_work_items.md`).
+
 ---
 
 ## 11. Deployment
@@ -518,11 +520,21 @@ Web-based monitoring and diagnostics, replacing the 4-hour email reports for on-
 - Same trigger filter as Edge Analysis
 
 **Page 4 — Executive Summary (AI-generated):**
-- Feeds structured metrics + backtest baselines to Claude Sonnet via Anthropic API
+- Feeds structured metrics + backtest baselines to Claude Sonnet 4.6 via Anthropic API
 - Generates 6-10 sentence interpretive summary comparing live performance to backtest expectations
 - Highlights trends (improving/stable/degrading), anomalies, and actionable recommendations
 - Cached 5 minutes, manual regenerate button available
 - Requires `ANTHROPIC_API_KEY` in `.env`
+- Model upgraded from `claude-sonnet-4-20250514` → `claude-sonnet-4-6` on 2026-05-16 (Sonnet 4 retired by Anthropic on 2026-06-15)
+
+**Page 5 — Bot Health (deployed 2026-05-16):**
+- Status: bot freshness pill (Active/Idle/Stale based on minutes since most recent DB write — ≤60m Active, ≤6h Idle, else Stale), open positions, orders today, lifetime order count
+- Recent Activity: last order / fill / cancel timestamps with ages, plus 24h / 7d order counts and avg orders/day
+- Daily Order Submissions (30d): stacked bar of buy / sell / cancelled submissions per day — measures signal-generation rate
+- Active Symbols (7d): per-symbol fill counts and last-fill timestamps, sourced from `v2_fills` (source of truth)
+- Equity Curve: cumulative realized net P&L over time from FIFO round-trips, plus realized P&L all-time, round-trip count, and drawdown-from-peak
+- Recent Orders: last 20 orders with derived status (`filled` / `open` / `cancelled` / `partial` / `partial+cancelled`) via LEFT JOIN to `v2_fills`
+- **Not yet surfaced**: container up/down (dashboard has no Docker socket), risk events (vetoes / circuit-breaker trips — `RiskEventAccumulator` is in-process only, needs a `v2_risk_events` table)
 
 **Technical details:**
 - Reuses existing async collectors from `daily_report_v2/collectors/` (pnl, trade_log, positions, trade_stats)
@@ -686,19 +698,21 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 ## 17. What's Next
 
-### Currently Live (as of 2026-04-13)
+### Currently Live (as of 2026-05-16)
 - Paper trading on Kraken with dynamic pair discovery (16-30 pairs)
 - Composite scoring with trend confirmation gate, ADX gate, volume confirmation
 - ATR-based hard stops and trailing stops
 - 4-hour email reports via SES (running in parallel with dashboard)
-- Streamlit dashboard with 4 functional pages: Report, Edge Analysis, Entry Quality, Executive Summary
-- AI-generated executive summaries via Claude Sonnet (Anthropic API)
+- Streamlit dashboard with 5 functional pages: Report, Edge Analysis, Entry Quality, Executive Summary, Bot Health
+- AI-generated executive summaries via Claude Sonnet 4.6 (Anthropic API)
 - Momentum paths (roc_momo_20m, roc_momo_24h) disabled
 
 ### Active Work
 - **Paper trading data collection** (2026-04-12 → July 2026): Collecting 75-90 days of live Kraken paper trading data. **No parameter changes during this period** — the analytical clean-regime is the experiment. Dashboard Edge Analysis and Entry Quality pages serve as the primary analysis tool for the July review. The April 2026 v3 experiment sharpened the questions for July (see "AI Memory" file `july_2026_evaluation_prep.md`).
 
 ### Completed
+- **Bot Health dashboard page** (2026-05-16): Page 5 deployed — runtime status, recent activity, daily order submissions (30d), active symbols (7d, from `v2_fills`), equity curve from FIFO round-trips, recent orders with derived status. While building, discovered that `v2_orders.status` never persists `FILLED` (Kraken emits FillEvent but no OrderEvent on fill) — worked around via LEFT JOIN to `v2_fills`. Container state and risk-event panels deferred until they have DB persistence. Commits `de6ab9f` + `0fc778d`.
+- **Executive Summary model upgrade** (2026-05-16): Swapped `claude-sonnet-4-20250514` → `claude-sonnet-4-6` ahead of Anthropic's 2026-06-15 retirement of Sonnet 4. Page footer label also updated. Commits `13d64bf` + `e339ae5`.
 - **mean_reversion_v3 experiment** (2026-04-28 → 2026-04-30): Two-day exercise to redesign the strategy as a clean mean-reversion plugin. **Negative result** — v3 underperformed composite_scoring on all 3 OOS sets (WR 22-26% vs 55-65%). Plugin retained at `v2/plugins/strategies/mean_reversion_v3/` as alternative; not deployed. Net gains: 4 new exit_manager features (config-flagged, default-off), `min_trend_indicators` config on composite_scoring, Supertrend indicator implementation, 19 new tests, and a documented negative result. Key lesson: theoretical alignment doesn't translate to empirical edge — composite_scoring's edge isn't decomposable into clean theoretical components. See AI memory `v3_experiment_2026-04-29.md`.
 - **Dashboard Session 2b** (2026-04-13): Entry Quality page (6 panels: win rate by symbol, score vs outcome, indicator hit rate, indicator combos, entry conditions, time-of-day heatmap). AI Executive Summary page (Claude Sonnet API). `.dockerignore` reduces build context from ~2.4 GB to ~50 MB. EC2 log rotation freed 2.1 GB (v1 logs removed). README.md rewritten for v2.
 - **Streamlit dashboard Session 1 + 2a** (2026-04-12): Performance Report page (7 panels) and Edge Analysis page (6 panels) deployed. Reuses existing async collectors. FIFO round-trip matcher links buy metadata (score, indicators, ADX, RVOL) to sell outcomes (exit reason, P&L). Live prices from Kraken public REST API.
@@ -709,8 +723,8 @@ docker exec -i v2-kraken python < scripts/diagnose_portfolio.py   # Run script i
 
 ### Future Roadmap (July 2026+)
 - **Live data analysis**: Analyze 60-90 days of paper trading data using dashboard Edge Analysis and Entry Quality pages. Compare live metrics to backtest baselines. Executive Summary page provides AI interpretation.
-- Public dashboard via Caddy + domain (spec ready, awaiting prerequisites)
-- Dashboard Bot Health page and Config Editor page
+- `v2_orders.status` persistence fix: emit `OrderEvent(status=FILLED)` from `kraken.py` on fill so `v2_orders.status` becomes accurate without dashboard-side LEFT JOIN workarounds. One-line behavior addition, no strategy impact; deferred until post-July to keep the v2-kraken container untouched during the collection window.
+- Dashboard Config Editor page
 - Retire email reports once dashboard is validated
 - Transition from paper to live trading on Kraken
 
@@ -753,6 +767,8 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-05-16 | Bot Health dashboard page deployed (Page 5) | New page surfaces runtime status (DB-activity freshness proxy), recent order/fill/cancel timestamps, daily order submissions (30d), active symbols (7d, from `v2_fills`), equity curve from FIFO round-trips, and recent orders with derived status (LEFT JOIN to `v2_fills`). Documented an existing persistence gap: `v2_orders.status` never transitions to `FILLED` because `kraken.py:587` emits `FillEvent` but no `OrderEvent(FILLED)`. Container state and risk-event panels deferred (no DB persistence yet). Persistence fix is P3 on the backlog, held back until post-July to preserve the live-data collection window. Commits `de6ab9f` + `0fc778d`. |
+| 2026-05-16 | Executive Summary model upgrade (Sonnet 4 retirement) | Anthropic announced Sonnet 4 (`claude-sonnet-4-20250514`) retirement on 2026-06-15. Updated `v2/dashboard/ai_summary.py:229` to `claude-sonnet-4-6` and synced the page footer caption. Commits `13d64bf` + `e339ae5`. |
 | 2026-05-12 | Pass 4 project audit — Config/*.py + stale scripts archived | 13 `Config/*.py` files (incl. `__init__.py`), 5 v1-era JSON configs (`config.json`, `sighook_config.json`, `webhook_*.json`), and 7 v1-schema scripts (3 in `scripts/`, 3 in `scripts/diagnostics/`, all 3 files of now-empty `scripts/migrations/`) moved to `archive/v1-libs/` via `git mv` (27 renames). Empty `scripts/migrations/` removed. `Config/` now holds only gitignored production API key JSONs. All 704 v2 tests still pass. |
 | 2026-05-12 | Pass 3 project audit — v1-era libs archived | 8 root dirs (`Shared_Utils/`, `SharedDataManager/`, `TableModels/`, `database/`, `database_manager/`, `fifo_engine/`, `utils/`, `data/`) and 5 v1-schema scripts moved to `archive/v1-libs/` via `git mv` (60 renames). All 704 v2 tests still pass. See `archive/v1-libs/README.md`. |
 | 2026-04-30 | mean_reversion_v3 experiment closed (negative result) | New `mean_reversion_v3` strategy plugin (~530 lines) built and validated against 3-set OOS framework. Inferior to composite_scoring (22-26% WR vs 55-65%; statistically indistinguishable winners/losers at entry). Plugin retained at `v2/plugins/strategies/mean_reversion_v3/` but not deployed. Permanent gains: 4 new exit_manager config flags (`breakeven_trigger_pct`, `fixed_take_profit_pct`, `trailing_enabled`, `stale_exit_regardless_of_pnl`, all default-off), `min_trend_indicators` on composite_scoring, Supertrend indicator implementation, 19 new tests (suite at 704). Key lesson: composite_scoring's edge doesn't decompose by indicator philosophy. |
