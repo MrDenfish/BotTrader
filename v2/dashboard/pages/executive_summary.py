@@ -80,7 +80,7 @@ st.divider()
 # Metadata
 col1, col2 = st.columns(2)
 with col1:
-    st.caption("Powered by Claude Sonnet 4 (Anthropic API)")
+    st.caption("Powered by Claude Sonnet 4.6 (Anthropic API)")
 with col2:
     st.caption("Refreshes every 5 minutes | Cached per time range")
 
