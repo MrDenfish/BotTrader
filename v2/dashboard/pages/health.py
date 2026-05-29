@@ -31,6 +31,18 @@ _FALLBACK_PROBE_SYMBOLS = (
     "DOGE-USD", "LTC-USD", "XMR-USD", "NEAR-USD", "SUI-USD",
 )
 
+# Friendly display labels for the per-gate metric cards. Keys must match the
+# ``by_gate`` keys returned by ``strategy_probe.summarize``. The right-hand
+# side is what an outside reader sees; the technical name lives in tooltips
+# and column headers.
+_GATE_LABELS: dict[str, str] = {
+    "score": "Indicator strength",
+    "indicators": "Indicator count",
+    "ADX": "Trend strength",
+    "RVOL": "Volume",
+    "regime": "Volatility regime",
+}
+
 # Freshness bands for the "minutes since last activity" proxy.
 # v2-kraken's polling/decision cadence is on the order of minutes, so an
 # hour without any order or fill is genuinely unusual.
@@ -312,15 +324,14 @@ def _render_why_idle(probe_results: list[dict], probe_summary: dict | None) -> N
     """Per-symbol guardrail snapshot — explains a quiet strategy."""
     st.subheader("Why is the bot idle?")
 
-    cfg = load_production_config()
     st.caption(
-        "Probes the strategy against fresh Kraken REST data (cached 5 min). "
-        "A symbol fires a buy only if it passes every gate: "
-        f"score ≥ {cfg.score_buy_target}, indicators ≥ {cfg.min_indicators_required}, "
-        f"ADX ≥ {cfg.adx_min_threshold}, RVOL ≥ {cfg.volume_confirm_threshold}, "
-        f"ATR percentile ≤ {cfg.regime_max_atr_percentile}. "
-        "Probe uses REST OHLC, not the bot's live in-memory buffer — these can diverge "
-        "in edge cases (intra-bar ticks, symbol churn)."
+        "The bot only places a buy when several conditions line up at the same time "
+        "across a single symbol: enough technical indicators agreeing on the direction, "
+        "healthy trading volume, a trend strong enough to follow, and a volatility "
+        "regime that's neither too quiet nor too elevated. The table below shows where "
+        "each watched symbol stands right now and which condition (if any) is blocking "
+        "a trade. Snapshot is refreshed every 5 minutes from live market data — close "
+        "to, but not exactly the same as, what the bot itself sees second-by-second."
     )
 
     if not probe_results:
@@ -335,9 +346,9 @@ def _render_why_idle(probe_results: list[dict], probe_summary: dict | None) -> N
         gates = probe_summary["by_gate"]
         total = probe_summary["total"]
         cols = st.columns(len(gates))
-        for col, (name, passing) in zip(cols, gates.items()):
+        for col, (key, passing) in zip(cols, gates.items()):
             col.metric(
-                f"{name} gate",
+                _GATE_LABELS.get(key, key),
                 f"{passing}/{total}",
                 delta=("blocking" if passing == 0 else None),
                 delta_color="inverse" if passing == 0 else "off",
@@ -362,7 +373,52 @@ def _render_why_idle(probe_results: list[dict], probe_summary: dict | None) -> N
     # Sort: anything that would fire goes to the top, then by buy_score descending.
     df["_sort"] = df["Blocked by"].apply(lambda s: 0 if s == "(would fire)" else 1)
     df = df.sort_values(["_sort", "buy_score"], ascending=[True, False]).drop(columns=["_sort"])
-    st.dataframe(df, hide_index=True, use_container_width=True)
+
+    # Friendly column display names + tooltips with the full technical definition.
+    # Underlying column keys stay as the technical names so the data structure is
+    # unchanged; only the visual labels are swapped.
+    column_config = {
+        "Symbol": st.column_config.TextColumn("Symbol"),
+        "buy_score": st.column_config.NumberColumn(
+            "Indicator strength",
+            help="Weighted sum of all technical indicators voting buy. Must reach 2.0 for the strategy to consider a trade.",
+            format="%.2f",
+        ),
+        "#ind": st.column_config.NumberColumn(
+            "Indicators agreeing",
+            help="How many of the technical indicators are voting buy right now. At least 3 must agree.",
+            format="%d",
+        ),
+        "ADX": st.column_config.NumberColumn(
+            "Trend strength",
+            help="ADX — measures how strong the current trend is, on a 0–100 scale. Must be at least 20 to trade (no trade in choppy markets).",
+            format="%.1f",
+        ),
+        "RVOL": st.column_config.NumberColumn(
+            "Volume",
+            help="Relative volume — current volume compared to the recent average (1.0 = average). Must be at least 0.7 of average.",
+            format="%.2f",
+        ),
+        "ATR%": st.column_config.NumberColumn(
+            "Volatility regime",
+            help="Where current volatility sits in the recent rolling window, as a percentile. Must be ≤ 60 — the bot avoids buying into already-elevated volatility.",
+            format="%.1f",
+        ),
+        "SMA slope %": st.column_config.NumberColumn(
+            "Trend direction",
+            help="Slope of the short-term moving average, in % per bar. Positive = uptrend.",
+            format="%+.3f",
+        ),
+        "Fired indicators": st.column_config.TextColumn(
+            "Indicators voting buy",
+            help="Which specific technical indicators are voting buy right now.",
+        ),
+        "Blocked by": st.column_config.TextColumn(
+            "Blocked by",
+            help="Which conditions are currently preventing a buy on this symbol. '(would fire)' means every condition is satisfied.",
+        ),
+    }
+    st.dataframe(df, hide_index=True, use_container_width=True, column_config=column_config)
 
 
 def _render_activity(summary: dict) -> None:
