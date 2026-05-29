@@ -235,47 +235,41 @@ def _format_age(minutes: float | None) -> str:
 def _classify_status(
     minutes: float | None, probe_summary: dict | None
 ) -> tuple[str, str, str]:
-    """Return (label, color, explanation) for the 3-state status pill.
+    """Return (label, color, caption) for the 3-state status pill.
 
-    The DB-freshness proxy alone can't tell "broken" from "correctly idle"
-    when guardrails are blocking the whole universe. We disambiguate by
-    asking the strategy code what it would do on fresh REST data:
+    Caption is only non-empty when it adds something the panel below doesn't
+    already explain. The "Why is the bot idle?" panel covers the Idle case,
+    so the Idle caption is intentionally empty.
 
-      - Active           : recent DB write — bot is trading
-      - Idle by design   : no recent writes BUT probe shows guardrails are
-                           vetoing every symbol — strategy is doing its job
-      - Stale            : no recent writes AND probe shows ≥1 symbol would
-                           pass all gates — bot should have fired but didn't
-      - Unknown          : probe unavailable; treat as Idle (don't false-alarm)
+      - 🟢 Active : recent DB write — bot is trading
+      - 🟡 Idle   : no recent writes; probe shows guardrails are vetoing
+                    every symbol (strategy is doing its job, see panel below)
+      - 🔴 Stale  : no recent writes AND probe shows ≥1 symbol would pass
+                    every gate — bot should have fired but didn't
     """
     if minutes is None:
-        return ("No data", "off", "Database returned no order or fill rows.")
+        return ("⚪ No data", "off", "Database returned no order or fill rows.")
     if minutes <= FRESH_MINUTES:
         return (
-            "Active",
+            "🟢 Active",
             "normal",
-            f"DB write within the last {int(minutes)} min — bot is trading.",
+            f"DB write within the last {int(minutes)} min.",
         )
     # Beyond FRESH_MINUTES we need the probe to disambiguate.
     if probe_summary is None or probe_summary["total"] == 0:
         # Probe failed or returned nothing — fall back to the old freshness
         # bands so we don't go silent on REST outages.
         if minutes <= STALE_MINUTES:
-            return ("Idle", "off", "No probe data — falling back to freshness bands.")
-        return ("Stale", "inverse", "No probe data — falling back to freshness bands.")
+            return ("🟡 Idle", "off", "Probe unavailable — falling back to freshness bands.")
+        return ("🔴 Stale", "inverse", "Probe unavailable — falling back to freshness bands.")
     if probe_summary["any_passing"]:
         return (
-            "Stale",
+            "🔴 Stale",
             "inverse",
             f"{probe_summary['passing']} of {probe_summary['total']} probed symbols "
             f"would have fired — bot should be trading but isn't.",
         )
-    return (
-        "Idle by design",
-        "off",
-        f"All {probe_summary['total']} probed symbols are blocked by guardrails "
-        "— see 'Why is the bot idle?' below.",
-    )
+    return ("🟡 Idle", "off", "")
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +304,8 @@ def _render_status(summary: dict, probe_summary: dict | None) -> None:
     with col4:
         st.metric("Orders (Lifetime)", f"{summary['orders_total']:,}")
 
-    st.caption(explanation)
+    if explanation:
+        st.caption(explanation)
 
 
 def _render_why_idle(probe_results: list[dict], probe_summary: dict | None) -> None:
