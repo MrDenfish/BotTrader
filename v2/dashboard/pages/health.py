@@ -13,9 +13,23 @@ import pandas as pd
 import streamlit as st
 
 from v2.dashboard.db import get_pool, run_async
+from v2.dashboard.strategy_probe import (
+    load_production_config,
+    probe_universe,
+    summarize,
+)
 from v2.dashboard.trades import collect_round_trips
 
 EXCHANGE = "paper-kraken"
+
+# Fallback probe universe — used when no recent fills are available to anchor
+# the probe to actually-traded symbols. Mirrors the seed/fallback symbols in
+# the production YAML, expanded with a few small-caps that the bot routinely
+# discovers, so the regime read isn't dominated by majors alone.
+_FALLBACK_PROBE_SYMBOLS = (
+    "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD",
+    "DOGE-USD", "LTC-USD", "XMR-USD", "NEAR-USD", "SUI-USD",
+)
 
 # Freshness bands for the "minutes since last activity" proxy.
 # v2-kraken's polling/decision cadence is on the order of minutes, so an
@@ -218,15 +232,50 @@ def _format_age(minutes: float | None) -> str:
     return f"{hours / 24:.1f}d ago"
 
 
-def _freshness_label(minutes: float | None) -> tuple[str, str]:
-    """Returns (label, color) for the status pill."""
+def _classify_status(
+    minutes: float | None, probe_summary: dict | None
+) -> tuple[str, str, str]:
+    """Return (label, color, explanation) for the 3-state status pill.
+
+    The DB-freshness proxy alone can't tell "broken" from "correctly idle"
+    when guardrails are blocking the whole universe. We disambiguate by
+    asking the strategy code what it would do on fresh REST data:
+
+      - Active           : recent DB write — bot is trading
+      - Idle by design   : no recent writes BUT probe shows guardrails are
+                           vetoing every symbol — strategy is doing its job
+      - Stale            : no recent writes AND probe shows ≥1 symbol would
+                           pass all gates — bot should have fired but didn't
+      - Unknown          : probe unavailable; treat as Idle (don't false-alarm)
+    """
     if minutes is None:
-        return ("No data", "off")
+        return ("No data", "off", "Database returned no order or fill rows.")
     if minutes <= FRESH_MINUTES:
-        return ("Active", "normal")
-    if minutes <= STALE_MINUTES:
-        return ("Idle", "off")
-    return ("Stale", "inverse")
+        return (
+            "Active",
+            "normal",
+            f"DB write within the last {int(minutes)} min — bot is trading.",
+        )
+    # Beyond FRESH_MINUTES we need the probe to disambiguate.
+    if probe_summary is None or probe_summary["total"] == 0:
+        # Probe failed or returned nothing — fall back to the old freshness
+        # bands so we don't go silent on REST outages.
+        if minutes <= STALE_MINUTES:
+            return ("Idle", "off", "No probe data — falling back to freshness bands.")
+        return ("Stale", "inverse", "No probe data — falling back to freshness bands.")
+    if probe_summary["any_passing"]:
+        return (
+            "Stale",
+            "inverse",
+            f"{probe_summary['passing']} of {probe_summary['total']} probed symbols "
+            f"would have fired — bot should be trading but isn't.",
+        )
+    return (
+        "Idle by design",
+        "off",
+        f"All {probe_summary['total']} probed symbols are blocked by guardrails "
+        "— see 'Why is the bot idle?' below.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +283,7 @@ def _freshness_label(minutes: float | None) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def _render_status(summary: dict) -> None:
+def _render_status(summary: dict, probe_summary: dict | None) -> None:
     st.subheader("Status")
 
     last_order = summary["last_order"]
@@ -244,7 +293,7 @@ def _render_status(summary: dict) -> None:
     candidates = [t for t in (last_order, last_fill) if t is not None]
     latest = max(candidates) if candidates else None
     age_min = _minutes_since(latest)
-    label, color = _freshness_label(age_min)
+    label, color, explanation = _classify_status(age_min, probe_summary)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -261,11 +310,64 @@ def _render_status(summary: dict) -> None:
     with col4:
         st.metric("Orders (Lifetime)", f"{summary['orders_total']:,}")
 
+    st.caption(explanation)
+
+
+def _render_why_idle(probe_results: list[dict], probe_summary: dict | None) -> None:
+    """Per-symbol guardrail snapshot — explains a quiet strategy."""
+    st.subheader("Why is the bot idle?")
+
+    cfg = load_production_config()
     st.caption(
-        f"Freshness is a proxy from DB activity (≤{FRESH_MINUTES}m = Active, "
-        f"≤{STALE_MINUTES // 60}h = Idle, otherwise Stale). "
-        "It does not check container state directly — SSH for that."
+        "Probes the strategy against fresh Kraken REST data (cached 5 min). "
+        "A symbol fires a buy only if it passes every gate: "
+        f"score ≥ {cfg.score_buy_target}, indicators ≥ {cfg.min_indicators_required}, "
+        f"ADX ≥ {cfg.adx_min_threshold}, RVOL ≥ {cfg.volume_confirm_threshold}, "
+        f"ATR percentile ≤ {cfg.regime_max_atr_percentile}. "
+        "Probe uses REST OHLC, not the bot's live in-memory buffer — these can diverge "
+        "in edge cases (intra-bar ticks, symbol churn)."
     )
+
+    if not probe_results:
+        st.info(
+            "Probe unavailable — Kraken REST returned no usable OHLC for any symbol. "
+            "Status pill falls back to the freshness-only proxy when this happens."
+        )
+        return
+
+    # Per-gate pass counts give a one-glance read of the regime.
+    if probe_summary is not None:
+        gates = probe_summary["by_gate"]
+        total = probe_summary["total"]
+        cols = st.columns(len(gates))
+        for col, (name, passing) in zip(cols, gates.items()):
+            col.metric(
+                f"{name} gate",
+                f"{passing}/{total}",
+                delta=("blocking" if passing == 0 else None),
+                delta_color="inverse" if passing == 0 else "off",
+            )
+
+    table_rows = []
+    for r in probe_results:
+        table_rows.append(
+            {
+                "Symbol": r["symbol"],
+                "buy_score": r["buy_score"],
+                "#ind": r["indicators_fired"],
+                "ADX": r["adx"],
+                "RVOL": r["rvol"],
+                "ATR%": r["atr_pctile"],
+                "SMA slope %": r["sma_slope_pct"],
+                "Fired indicators": ", ".join(r["fired_names"]) if r["fired_names"] else "—",
+                "Blocked by": ", ".join(r["blocked_by"]) if r["blocked_by"] else "(would fire)",
+            }
+        )
+    df = pd.DataFrame(table_rows)
+    # Sort: anything that would fire goes to the top, then by buy_score descending.
+    df["_sort"] = df["Blocked by"].apply(lambda s: 0 if s == "(would fire)" else 1)
+    df = df.sort_values(["_sort", "buy_score"], ascending=[True, False]).drop(columns=["_sort"])
+    st.dataframe(df, hide_index=True, use_container_width=True)
 
 
 def _render_activity(summary: dict) -> None:
@@ -455,12 +557,26 @@ def _render_recent_orders(rows) -> None:
 st.header("Bot Health")
 st.caption(
     "Live operational view of v2-kraken. Auto-refreshes per Streamlit cache TTL "
-    "(30s for status, 60s for charts). Risk events (vetoes, circuit breaker trips) "
-    "are tracked in process memory only and are not yet surfaced here."
+    "(30s for status, 60s for charts, 5min for the strategy probe). Risk events "
+    "(vetoes, circuit breaker trips) are tracked in process memory only and are "
+    "not yet surfaced here."
 )
 
 summary = _get_activity_summary()
-_render_status(summary)
+# Anchor the probe to symbols the bot has actually been trading recently
+# (and fall back to seed symbols if there's been no activity yet).
+_recent_symbols = tuple(r["symbol"] for r in _get_active_symbols(7)) or _FALLBACK_PROBE_SYMBOLS
+try:
+    probe_results = probe_universe(_recent_symbols)
+    probe_summary = summarize(probe_results) if probe_results else None
+except Exception:
+    # Never let the probe break the page — fall back to freshness-only.
+    probe_results = []
+    probe_summary = None
+
+_render_status(summary, probe_summary)
+st.divider()
+_render_why_idle(probe_results, probe_summary)
 st.divider()
 _render_activity(summary)
 st.divider()
