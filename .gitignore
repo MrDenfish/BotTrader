@@ -52,3 +52,10 @@ Trade records for review
 
 # API key files
 kraken_api_info.json
+Config/websocket_api_info.json
+Config/*_api_info.json
+Config/*.key
+Config/*.pem
+
+# One-off debug scripts with hardcoded credentials (do not re-track)
+.claude/testing/test_peak_tracking_edge.py
