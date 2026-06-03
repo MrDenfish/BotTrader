@@ -18,7 +18,7 @@ def main():
 
     # Build database URL from env vars (using SSH tunnel on port 5433)
     db_user = 'bot_user'
-    db_pass = '7317botTrade4ssm'
+    db_pass = os.environ['DB_PASSWORD']
     db_host = 'localhost'  # SSH tunnel
     db_port = '5433'  # SSH tunnel port
     db_name = 'bot_trader_db'

@@ -32,7 +32,7 @@ from backtest.reporter import BacktestReporter
 
 
 # Database connection (via SSH tunnel to AWS)
-DB_URL = "postgresql://bot_user:7317botTrade4ssm@localhost:5433/bot_trader_db"
+DB_URL = "postgresql://bot_user:***REDACTED***@localhost:5433/bot_trader_db"
 
 
 def run_single_backtest(

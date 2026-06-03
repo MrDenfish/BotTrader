@@ -12,6 +12,7 @@ Usage:
 Date: January 28, 2026
 """
 
+import os
 import sys
 sys.path.insert(0, '/Users/Manny/Python_Projects/BotTrader')
 
@@ -28,8 +29,8 @@ from sqlalchemy import text
 # Coinbase API (public, no auth needed for historical data)
 COINBASE_API_URL = "https://api.exchange.coinbase.com"
 
-# Database connection (via SSH tunnel)
-DB_URL = "postgresql://bot_user:7317botTrade4ssm@localhost:5433/bot_trader_db"
+# Database connection (via SSH tunnel). Requires DB_PASSWORD in env.
+DB_URL = f"postgresql://bot_user:{os.environ['DB_PASSWORD']}@localhost:5433/bot_trader_db"
 
 
 def get_symbols_from_database() -> List[str]:

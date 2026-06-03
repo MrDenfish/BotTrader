@@ -28,7 +28,7 @@ from backtest.reporter import BacktestReporter
 
 
 # Database connection (SSH tunnel on port 5433)
-DB_URL = "postgresql://bot_user:7317botTrade4ssm@localhost:5433/bot_trader_db"
+DB_URL = "postgresql://bot_user:***REDACTED***@localhost:5433/bot_trader_db"
 
 
 def parse_args():

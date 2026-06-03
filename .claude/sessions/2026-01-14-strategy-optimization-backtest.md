@@ -79,7 +79,7 @@ No existing backtesting infrastructure existed to validate strategy changes agai
 
 **Database Connection**:
 ```python
-DB_URL = "postgresql://bot_user:7317botTrade4ssm@localhost:5433/bot_trader_db"
+DB_URL = "postgresql://bot_user:***REDACTED***@localhost:5433/bot_trader_db"
 # SSH tunnel: ssh -L 5433:localhost:5432 bottrader-aws -N
 ```
 
@@ -543,7 +543,7 @@ ssh bottrader-aws "docker compose --env-file /opt/bot/.env -f docker-compose.aws
 ssh bottrader-aws "docker compose --env-file /opt/bot/.env -f docker-compose.aws.yml ps"
 
 # Check trade database
-ssh bottrader-aws "psql postgresql://bot_user:7317botTrade4ssm@localhost:5432/bot_trader_db -c \"
+ssh bottrader-aws "psql postgresql://bot_user:***REDACTED***@localhost:5432/bot_trader_db -c \"
 SELECT 
     COUNT(*) as trades,
     SUM(CASE WHEN realized_profit > 0 THEN 1 ELSE 0 END)::float / COUNT(*) * 100 as win_rate,

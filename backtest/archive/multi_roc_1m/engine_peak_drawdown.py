@@ -319,7 +319,7 @@ def get_default_symbols() -> List[str]:
 def run_sample_backtest(
     config: PeakDrawdownConfig,
     days: int = 7,
-    db_url: str = "postgresql://bot_user:7317botTrade4ssm@localhost:5433/bot_trader_db"
+    db_url: str = "postgresql://bot_user:***REDACTED***@localhost:5433/bot_trader_db"
 ):
     """
     Run a quick sample backtest for testing.
