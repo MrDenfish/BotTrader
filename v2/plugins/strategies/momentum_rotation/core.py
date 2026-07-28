@@ -99,3 +99,14 @@ def inverse_vol_weights(
 
         # Otherwise, mark new caps and loop.
         capped.update(newly_capped)
+
+
+def market_filter(btc_closes: pd.Series, ma_len: int = 200) -> bool | None:
+    """BTC close vs its long SMA. True = risk-on. None = not enough history.
+
+    Callers MUST treat None as risk-off (spec section 5).
+    """
+    if len(btc_closes) < ma_len:
+        return None
+    ma = float(btc_closes.iloc[-ma_len:].mean())
+    return bool(float(btc_closes.iloc[-1]) > ma)

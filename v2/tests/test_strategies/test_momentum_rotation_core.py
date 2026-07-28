@@ -135,3 +135,24 @@ class TestInverseVolWeights:
         assert w["B"] == pytest.approx(0.30)
         assert w["C"] == pytest.approx(0.30)
         assert sum(w.values()) == pytest.approx(0.90)
+
+
+from v2.plugins.strategies.momentum_rotation.core import market_filter
+
+
+class TestMarketFilter:
+    def test_above_ma_is_risk_on(self):
+        closes = _series([100.0] * 200 + [150.0])
+        assert market_filter(closes, ma_len=200) is True
+
+    def test_below_ma_is_risk_off(self):
+        closes = _series([100.0] * 200 + [50.0])
+        assert market_filter(closes, ma_len=200) is False
+
+    def test_insufficient_history_returns_none(self):
+        closes = _series([100.0] * 150)
+        assert market_filter(closes, ma_len=200) is None
+
+    def test_exactly_at_ma_is_risk_off(self):
+        closes = _series([100.0] * 250)
+        assert market_filter(closes, ma_len=200) is False
