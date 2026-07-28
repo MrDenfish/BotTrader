@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 from pathlib import Path
 
@@ -118,8 +119,9 @@ def main() -> None:
     # -- Phase 1: fit-era sweep, floor-rule winner, pin the choice -----------
     fit_rows = []
     for cfg in PARAM_MENU:
-        res = run_walkforward(bars, BTC, cfg, {"fit": eras["fit"]})["fit"]
-        fit_rows.append({"cfg": vars(cfg), "net": res.net_return,
+        cfg_run = dataclasses.replace(cfg, exposure=args.exposure)
+        res = run_walkforward(bars, BTC, cfg_run, {"fit": eras["fit"]})["fit"]
+        fit_rows.append({"cfg": vars(cfg_run), "net": res.net_return,
                          "dd": res.max_drawdown, "trades": res.n_trades})
     fit_rows.sort(key=lambda r: r["net"], reverse=True)
     (OUT / "gauntlet_fit.json").write_text(json.dumps(fit_rows, indent=2, default=str))
@@ -131,7 +133,6 @@ def main() -> None:
     print(f"fit-era winner: {best['cfg']}  (details in {OUT}/gauntlet_fit.json)")
 
     chosen = RotationConfig(**best["cfg"])
-    chosen.exposure = args.exposure  # F5: exposure applies to the chosen config
 
     # Pin config + eras + fingerprint so Phase 2 evaluates identical conditions.
     LOCK.write_text(json.dumps({

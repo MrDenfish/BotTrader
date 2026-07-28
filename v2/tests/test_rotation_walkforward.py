@@ -1,3 +1,5 @@
+import dataclasses
+
 import pandas as pd
 import pytest
 
@@ -56,6 +58,32 @@ class TestParamMenu:
         # nothing else varies
         assert {c.k for c in PARAM_MENU} == {4}
         assert {c.cap for c in PARAM_MENU} == {0.30}
+
+    def test_exposure_replace_preserves_closed_menu(self):
+        # run_gauntlet.py's Phase 1 sweep builds cfg_run = dataclasses.replace(
+        # cfg, exposure=args.exposure) for every menu entry so the DD-eligibility
+        # check runs at the CLI exposure, not the RotationConfig default (1.0).
+        # This must not perturb the pre-registered 24-config menu in any other way.
+        exposure = 0.75
+        swept = [dataclasses.replace(cfg, exposure=exposure) for cfg in PARAM_MENU]
+
+        assert len(swept) == 24
+        assert {c.lookback for c in swept} == {30, 60, 90}
+        assert {c.skip for c in swept} == {2, 3}
+        assert {c.band for c in swept} == {6, 8}
+        assert {c.volume_floor for c in swept} == {5e6, 10e6}
+        # k/cap untouched by the replace
+        assert {c.k for c in swept} == {4}
+        assert {c.cap for c in swept} == {0.30}
+        # every swept config carries the injected exposure
+        assert {c.exposure for c in swept} == {exposure}
+        # menu identity unchanged (dataclasses.replace does not mutate cfg)
+        assert {c.exposure for c in PARAM_MENU} == {1.0}
+        # the (lookback, skip, band, volume_floor) combinations are identical
+        # to the original menu — replace only touches exposure
+        orig_keys = {(c.lookback, c.skip, c.band, c.volume_floor) for c in PARAM_MENU}
+        swept_keys = {(c.lookback, c.skip, c.band, c.volume_floor) for c in swept}
+        assert orig_keys == swept_keys
 
 
 class TestPassesBar:
