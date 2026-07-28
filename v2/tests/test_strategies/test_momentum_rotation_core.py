@@ -123,3 +123,15 @@ class TestInverseVolWeights:
 
     def test_empty_input(self):
         assert inverse_vol_weights({}, cap=0.30) == {}
+
+    def test_cap_cascades_through_multiple_names(self):
+        # Regression: 3+ asymmetric vols should iterate to convergence.
+        # A: 0.001 (1000), B: 0.01 (100), C: 0.1 (10) -> raw inverse vols
+        # Iter 1: A capped at 0.30 (budget was 1.0, A*1000/1110 >> 0.30)
+        # Iter 2: B capped at 0.30 (budget 0.70, B*100/110 >> 0.30)
+        # Iter 3: C capped at 0.30 (budget 0.40, C*10/10 == 0.40 >= 0.30)
+        w = inverse_vol_weights({"A": 0.001, "B": 0.01, "C": 0.1}, cap=0.30)
+        assert w["A"] == pytest.approx(0.30)
+        assert w["B"] == pytest.approx(0.30)
+        assert w["C"] == pytest.approx(0.30)
+        assert sum(w.values()) == pytest.approx(0.90)

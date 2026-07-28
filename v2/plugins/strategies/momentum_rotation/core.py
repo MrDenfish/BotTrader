@@ -68,23 +68,34 @@ def inverse_vol_weights(
     if not clean:
         return {}
     raw = {s: 1.0 / v for s, v in clean.items()}
-    total = sum(raw.values())
-    weights = {s: r / total for s, r in raw.items()}
 
     # Iteratively cap and redistribute among uncapped names.
     capped: set[str] = set()
     while True:
-        over = [s for s in weights if s not in capped and weights[s] > cap]
-        if not over:
-            break
-        for s in over:
-            weights[s] = cap
-            capped.add(s)
-        free = [s for s in weights if s not in capped]
+        free = [s for s in raw if s not in capped]
         if not free:
-            break  # everything capped; remainder is cash
+            # everything capped; remainder is cash
+            return {s: cap for s in capped}
+
         budget = 1.0 - cap * len(capped)
         free_raw = sum(raw[s] for s in free)
+
+        # Compute proportional weights; mark any that hit/exceed cap.
+        weights = {}
+        newly_capped = set()
         for s in free:
-            weights[s] = min(cap, budget * raw[s] / free_raw) if free_raw else 0.0
-    return weights
+            w = budget * raw[s] / free_raw
+            if w >= cap:
+                weights[s] = cap
+                newly_capped.add(s)
+            else:
+                weights[s] = w
+
+        # If no new caps, we've converged; finalize and return.
+        if not newly_capped:
+            result = {s: cap for s in capped}
+            result.update(weights)
+            return result
+
+        # Otherwise, mark new caps and loop.
+        capped.update(newly_capped)
