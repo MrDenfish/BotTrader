@@ -19,8 +19,13 @@ PARAM_MENU: list[RotationConfig] = [
 
 
 def era_bounds(index: pd.DatetimeIndex) -> dict[str, tuple[pd.Timestamp, pd.Timestamp]]:
+    # RotationBacktest.run() slices `.loc[start:end]` inclusive on both ends,
+    # so a start built as `end - Timedelta(days=N)` realizes N+1 bars. The
+    # holdout era's start therefore needs the same -1-day compensation the
+    # fit/validate boundary already applies via `validate_start - one`, so
+    # that holdout also realizes exactly HOLDOUT_DAYS (547) bars, not 548.
     end = index[-1]
-    holdout_start = end - pd.Timedelta(days=HOLDOUT_DAYS)
+    holdout_start = end - pd.Timedelta(days=HOLDOUT_DAYS - 1)
     validate_start = holdout_start - pd.Timedelta(days=VALIDATE_DAYS)
     fit_days = (validate_start - index[0]).days
     if fit_days < MIN_FIT_DAYS:

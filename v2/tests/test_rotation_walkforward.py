@@ -11,16 +11,27 @@ def _result(net, dd):
                           n_trades=1, days_in_market=1, days_total=2, trades=[])
 
 
+def _realized_bars(idx, start, end):
+    # RotationBacktest.run() slices `.loc[start:end]` inclusive on both
+    # ends, so "547 days" in the spec means 547 REALIZED BARS under that
+    # inclusive semantics, not a 547-day Timedelta between the bounds.
+    return len(idx[(idx >= start) & (idx <= end)])
+
+
 class TestEraBounds:
     def test_three_eras_cover_index(self):
         idx = pd.date_range("2020-01-01", "2026-07-01", freq="D", tz="UTC")
         eras = era_bounds(idx)
         assert set(eras) == {"fit", "validate", "holdout"}
         assert eras["holdout"][1] == idx[-1]
-        assert (eras["holdout"][1] - eras["holdout"][0]).days == 547
-        assert (eras["validate"][1] - eras["validate"][0]).days == pytest.approx(547, abs=1)
+        assert _realized_bars(idx, *eras["holdout"]) == 547
+        assert _realized_bars(idx, *eras["validate"]) == 547
         assert eras["fit"][0] == idx[0]
         assert eras["fit"][1] < eras["validate"][0]
+        assert eras["validate"][1] < eras["holdout"][0]
+        # the three eras partition the index exactly, no gap/overlap in bars
+        fit_bars = _realized_bars(idx, *eras["fit"])
+        assert fit_bars + 547 + 547 == len(idx)
 
     def test_insufficient_history_raises(self):
         idx = pd.date_range("2024-01-01", "2026-07-01", freq="D", tz="UTC")

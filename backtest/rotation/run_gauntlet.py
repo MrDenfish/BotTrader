@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 from backtest.rotation.data_store import DailyBarStore
+from backtest.rotation.engine import RotationConfig
 from backtest.rotation.walkforward import (
     MAX_DD,
     PARAM_MENU,
@@ -62,8 +63,7 @@ def main() -> None:
     print(f"fit-era winner: {best['cfg']}  (details in {OUT}/gauntlet_fit.json)")
     (OUT / "gauntlet_fit.json").write_text(json.dumps(fit_rows, indent=2, default=str))
 
-    from backtest.rotation.engine import RotationConfig
-    chosen = RotationConfig(**{k: v for k, v in best["cfg"].items()})
+    chosen = RotationConfig(**best["cfg"])
 
     phases = {"fit": eras["fit"], "validate": eras["validate"]}
     if args.unlock_holdout:
