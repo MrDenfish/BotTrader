@@ -29,11 +29,13 @@ Regime-gated, long-only, cross-sectional momentum rotation on daily bars.
 | Screen | Value |
 |---|---|
 | Quote currency | USD |
-| 24h volume floor | ≥ $10M |
+| 24h volume floor | fixed absolute floor, from pre-declared menu {$5M, $10M} (§12) |
 | Max spread | ≤ 20 bps |
 | Minimum listing age on Kraken | ≥ 180 days |
 | Stablecoins | excluded |
-| Target universe size | 15–25 pairs |
+| Universe size | up to 25 pairs — best-ranked by volume among those passing all screens |
+
+**The floor is fixed, never dynamic, and never lowered to hit a universe-size target.** A shrinking universe in quiet markets is intended behavior: fewer eligible names → smaller portfolio → more cash. The screen doubles as a passive regime filter, pushing in the same direction as the regime gate (§5). The strategy remains fully functional down to ~8 eligible names; below that, unfilled slots stay in cash per §6. In backtests over multi-year history, the fixed dollar floor yields a smaller eligible universe in early low-volume eras — accepted as a conservative bias.
 
 Universe membership changes take effect only at rebalance. A held coin leaving the universe is not force-sold intra-week; it becomes ineligible for purchase at the next rebalance.
 
@@ -120,4 +122,4 @@ Kept in-repo, dormant: `composite_scoring` (+ guardrails), `exit_manager`, `perf
 
 ## 12. Open parameters (to be fixed by backtest, then frozen)
 
-`L` ∈ {30, 60, 90} · recent-skip ∈ {2, 3} days · band `B` ∈ {6, 8} · vol target (drawdown-matched) · chase count `N`. No parameters outside this menu may be introduced without restarting the validation from scratch.
+`L` ∈ {30, 60, 90} · recent-skip ∈ {2, 3} days · band `B` ∈ {6, 8} · volume floor ∈ {$5M, $10M} (one pre-registered sensitivity check; if results are robust at both, the stricter wins) · vol target (drawdown-matched) · chase count `N`. No parameters outside this menu may be introduced without restarting the validation from scratch.
