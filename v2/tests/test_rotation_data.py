@@ -45,6 +45,26 @@ class TestDailyBarStore:
     def test_load_missing_returns_none(self, store):
         assert store.load("NOPE-USD") is None
 
+    def test_load_header_only_csv_returns_none(self, store, tmp_path):
+        # Real-cache regression (CGN-USD.csv): a header-only CSV parses to an
+        # empty, non-datetime Index, which used to blow up on `.tz` access.
+        p = store._path("EMPTY-USD")
+        p.write_text("date,open,high,low,close,volume\n")
+        assert store.load("EMPTY-USD") is None
+
+    def test_load_drops_garbage_date_rows(self, store, tmp_path):
+        p = store._path("MIXED-USD")
+        p.write_text(
+            "date,open,high,low,close,volume\n"
+            "2020-01-01,100,110,90,105,12.5\n"
+            "not-a-date,1,1,1,1,1\n"
+        )
+        df = store.load("MIXED-USD")
+        assert len(df) == 1
+        assert df.index[0] == pd.Timestamp("2020-01-01", tz="UTC")
+        assert isinstance(df.index, pd.DatetimeIndex)
+        assert df.index.tz is not None
+
     def test_top_up_merges_only_newer(self, store, tmp_path, monkeypatch):
         p = tmp_path / "a.csv"
         _write_ohlcvt(p, [(T0, 100, 110, 90, 105, 12.5, 300)])

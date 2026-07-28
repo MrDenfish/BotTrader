@@ -33,7 +33,12 @@ class DailyBarStore:
         if not p.exists():
             return None
         df = pd.read_csv(p, parse_dates=["date"], index_col="date")
-        df.index = pd.DatetimeIndex(df.index, tz="UTC") if df.index.tz is None else df.index
+        if df.empty:
+            return None
+        df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
+        df = df[df.index.notna()]
+        if df.empty:
+            return None
         return df[_COLS].sort_index()
 
     def symbols(self) -> list[str]:
