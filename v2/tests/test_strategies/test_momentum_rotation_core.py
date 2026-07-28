@@ -61,3 +61,65 @@ class TestMomentumScore:
     def test_too_short_returns_none(self):
         closes = _series([100.0, 101.0, 102.0])
         assert momentum_score(closes, lookback=30, skip=2) is None
+
+
+from v2.plugins.strategies.momentum_rotation.core import (
+    inverse_vol_weights,
+    select_holdings,
+)
+
+
+class TestSelectHoldings:
+    RANKED = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+
+    def test_cold_start_takes_top_k(self):
+        assert select_holdings(self.RANKED, current=[], k=4, band=8) == ["A", "B", "C", "D"]
+
+    def test_holding_inside_band_is_kept(self):
+        # E is rank 5 (< band 8): kept, so only 3 fresh slots -> A, B, C
+        got = select_holdings(self.RANKED, current=["E"], k=4, band=8)
+        assert got == ["A", "B", "C", "E"]
+
+    def test_holding_outside_band_is_replaced(self):
+        # I is rank 9 (> band 8): dropped
+        got = select_holdings(self.RANKED, current=["I"], k=4, band=8)
+        assert got == ["A", "B", "C", "D"]
+
+    def test_holding_missing_from_ranked_is_dropped(self):
+        got = select_holdings(self.RANKED, current=["ZZZ"], k=4, band=8)
+        assert got == ["A", "B", "C", "D"]
+
+    def test_no_churn_when_holdings_still_in_band(self):
+        current = ["A", "C", "E", "G"]
+        got = select_holdings(self.RANKED, current=current, k=4, band=8)
+        assert got == ["A", "C", "E", "G"]
+
+    def test_fewer_eligible_than_k(self):
+        assert select_holdings(["A", "B"], current=[], k=4, band=8) == ["A", "B"]
+
+
+class TestInverseVolWeights:
+    def test_two_assets_inverse_proportion_capped(self):
+        # 1/0.02 : 1/0.04 = 2 : 1 -> 0.667/0.333 uncapped; cap 0.30 binds both
+        w = inverse_vol_weights({"A": 0.02, "B": 0.04}, cap=0.30)
+        assert w["A"] == pytest.approx(0.30)
+        assert w["B"] == pytest.approx(0.30)
+
+    def test_equal_vols_equal_weights_under_cap(self):
+        w = inverse_vol_weights({s: 0.03 for s in "ABCD"}, cap=0.30)
+        for s in "ABCD":
+            assert w[s] == pytest.approx(0.25)
+
+    def test_cap_redistributes_then_leaves_cash(self):
+        # A very low vol grabs the cap; B and C split the rest by inverse vol
+        w = inverse_vol_weights({"A": 0.001, "B": 0.03, "C": 0.03}, cap=0.30)
+        assert w["A"] == pytest.approx(0.30)
+        assert w["B"] == pytest.approx(w["C"])
+        assert sum(w.values()) <= 1.0 + 1e-9
+
+    def test_bad_vols_excluded(self):
+        w = inverse_vol_weights({"A": 0.02, "B": 0.0, "C": None}, cap=0.30)
+        assert set(w) == {"A"}
+
+    def test_empty_input(self):
+        assert inverse_vol_weights({}, cap=0.30) == {}

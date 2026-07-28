@@ -47,3 +47,44 @@ def momentum_score(closes: pd.Series, lookback: int, skip: int) -> float | None:
     if r is None or v is None or v == 0.0:
         return None
     return r / v
+
+
+def select_holdings(
+    ranked: list[str], current: list[str], k: int = 4, band: int = 8
+) -> list[str]:
+    """Top-k selection with a hold band to bound churn (spec section 4)."""
+    rank_of = {s: i + 1 for i, s in enumerate(ranked)}
+    kept = [s for s in ranked if s in current and rank_of[s] <= band][:k]
+    slots = k - len(kept)
+    fresh = [s for s in ranked if s not in kept][:slots]
+    return sorted(kept + fresh, key=lambda s: rank_of[s])
+
+
+def inverse_vol_weights(
+    vols: dict[str, float | None], cap: float = 0.30
+) -> dict[str, float]:
+    """Inverse-volatility weights, per-position cap, excess left as cash."""
+    clean = {s: v for s, v in vols.items() if v is not None and v > 0}
+    if not clean:
+        return {}
+    raw = {s: 1.0 / v for s, v in clean.items()}
+    total = sum(raw.values())
+    weights = {s: r / total for s, r in raw.items()}
+
+    # Iteratively cap and redistribute among uncapped names.
+    capped: set[str] = set()
+    while True:
+        over = [s for s in weights if s not in capped and weights[s] > cap]
+        if not over:
+            break
+        for s in over:
+            weights[s] = cap
+            capped.add(s)
+        free = [s for s in weights if s not in capped]
+        if not free:
+            break  # everything capped; remainder is cash
+        budget = 1.0 - cap * len(capped)
+        free_raw = sum(raw[s] for s in free)
+        for s in free:
+            weights[s] = min(cap, budget * raw[s] / free_raw) if free_raw else 0.0
+    return weights
