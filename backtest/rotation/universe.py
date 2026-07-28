@@ -16,6 +16,7 @@ def eligible_symbols(
     min_age_days: int = 180,
     top_n: int = 25,
     vol_window: int = 30,
+    max_stale_days: int = 7,
 ) -> list[str]:
     scored: list[tuple[float, str]] = []
     for sym, df in bars.items():
@@ -24,6 +25,9 @@ def eligible_symbols(
             continue
         age = (asof - hist.index[0]).days
         if age < min_age_days:
+            continue
+        staleness = (asof - hist.index[-1]).days
+        if staleness > max_stale_days:
             continue
         window = hist.tail(vol_window)
         dollar_vol = float((window["volume"] * window["close"]).median())

@@ -50,6 +50,16 @@ class BacktestResult:
 
 
 class RotationBacktest:
+    """Daily-loop simulator: fast-out gate, weekly rebalance, per-trade costs.
+
+    Note: a held position whose bars stop updating (delisting/halt) is
+    valued at its last-known close until the next rebalance drops it from
+    the target set, so its eventual exit fill is an approximation at that
+    stale price. The `max_stale_days` guard in `eligible_symbols` bounds
+    how long a symbol can be newly selected or re-entered while stale,
+    but does not retroactively re-price an already-held stale position.
+    """
+
     def __init__(
         self, bars: dict[str, pd.DataFrame], btc_symbol: str, cfg: RotationConfig
     ) -> None:

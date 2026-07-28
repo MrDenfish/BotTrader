@@ -96,3 +96,19 @@ class TestEligibleSymbols:
         got = eligible_symbols(bars, pd.Timestamp("2024-06-30", tz="UTC"),
                                volume_floor=5_000_000, top_n=3)
         assert got == ["S29-USD", "S28-USD", "S27-USD"]
+
+    def test_stale_symbol_excluded_beyond_max_stale_days(self):
+        # Bars end 30 days before asof (delisted/halted) — excluded even with huge volume.
+        asof = pd.Timestamp("2024-06-30", tz="UTC")
+        stale_end = (asof - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+        bars = {"STALE-USD": self._bars(400, close=10.0, volume=2_000_000, end=stale_end)}
+        got = eligible_symbols(bars, asof, volume_floor=10_000_000)
+        assert got == []
+
+    def test_symbol_within_stale_window_included(self):
+        # Bars end 3 days before asof (weekend-style gap, within max_stale_days) — included.
+        asof = pd.Timestamp("2024-06-30", tz="UTC")
+        recent_end = (asof - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
+        bars = {"GAP-USD": self._bars(400, close=10.0, volume=2_000_000, end=recent_end)}
+        got = eligible_symbols(bars, asof, volume_floor=10_000_000)
+        assert got == ["GAP-USD"]
