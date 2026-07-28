@@ -59,3 +59,8 @@ Config/*.pem
 
 # One-off debug scripts with hardcoded credentials (do not re-track)
 .claude/testing/test_peak_tracking_edge.py
+
+# rotation backtest cache/output (local data, not checked in)
+backtest/rotation/cache/
+backtest/rotation/output/*
+!backtest/rotation/output/.gitkeep
