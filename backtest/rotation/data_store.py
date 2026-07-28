@@ -69,7 +69,15 @@ class DailyBarStore:
             raise RuntimeError(f"Kraken OHLC error for {kraken_pair}: {payload['error']}")
         result = payload["result"]
         key = next(k for k in result if k != "last")
-        return result[key]
+        rows = result[key]
+        # Kraken's `last` marks the id (timestamp) of the current, still-open
+        # frame; committed rows have ts < last. Dropping ts >= last prevents
+        # storing the in-progress final candle as if it were final. If `last`
+        # is absent/0, conservatively drop the final row.
+        last = int(result.get("last", 0))
+        if last:
+            return [r for r in rows if int(r[0]) < last]
+        return rows[:-1] if rows else rows
 
     def top_up_from_rest(self, symbol: str, kraken_pair: str) -> int:
         rows = self._fetch_rest_ohlc(kraken_pair)

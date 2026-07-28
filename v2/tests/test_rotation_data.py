@@ -64,6 +64,63 @@ class TestDailyBarStore:
         assert len(df) == 2
         assert df["close"].iloc[0] == 105  # bulk row NOT overwritten
 
+    def test_fetch_rest_drops_in_progress_final_candle(self, store, monkeypatch):
+        # Real _fetch_rest_ohlc must exclude the row whose ts == `last`
+        # (Kraken's marker for the current, uncommitted frame).
+        payload = {
+            "error": [],
+            "result": {
+                "XXBTZUSD": [
+                    [T0, "100", "110", "90", "105", "0", "12.5", 300],
+                    [T0 + DAY, "105", "115", "100", "112", "0", "9.1", 250],
+                    [T0 + 2 * DAY, "112", "120", "110", "118", "0", "3.0", 90],  # open frame
+                ],
+                "last": T0 + 2 * DAY,
+            },
+        }
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return payload
+
+        monkeypatch.setattr(
+            "backtest.rotation.data_store.requests.get", lambda *a, **k: FakeResp()
+        )
+        rows = store._fetch_rest_ohlc("XBTUSD")
+        assert len(rows) == 2
+        assert all(int(r[0]) < T0 + 2 * DAY for r in rows)
+        assert int(rows[-1][0]) == T0 + DAY  # last committed frame retained
+
+    def test_fetch_rest_last_absent_drops_final_row(self, store, monkeypatch):
+        # Conservative fallback: no/zero `last` → drop the final (newest) row.
+        payload = {
+            "error": [],
+            "result": {
+                "XXBTZUSD": [
+                    [T0, "100", "110", "90", "105", "0", "12.5", 300],
+                    [T0 + DAY, "105", "115", "100", "112", "0", "9.1", 250],
+                ],
+                "last": 0,
+            },
+        }
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return payload
+
+        monkeypatch.setattr(
+            "backtest.rotation.data_store.requests.get", lambda *a, **k: FakeResp()
+        )
+        rows = store._fetch_rest_ohlc("XBTUSD")
+        assert len(rows) == 1
+        assert int(rows[0][0]) == T0
+
 
 class TestEligibleSymbols:
     def _bars(self, n_days, close, volume, end="2024-06-30"):
@@ -104,6 +161,18 @@ class TestEligibleSymbols:
         bars = {"STALE-USD": self._bars(400, close=10.0, volume=2_000_000, end=stale_end)}
         got = eligible_symbols(bars, asof, volume_floor=10_000_000)
         assert got == []
+
+    def test_stablecoin_base_excluded(self):
+        # A huge-volume stablecoin pair must be screened out (spec section 3),
+        # while a normal crypto pair with identical stats survives.
+        asof = pd.Timestamp("2024-06-30", tz="UTC")
+        bars = {
+            "USDT-USD": self._bars(400, close=1.0, volume=1_000_000_000),  # $1B/day
+            "BTC-USD": self._bars(400, close=10.0, volume=2_000_000),      # $20M/day
+        }
+        got = eligible_symbols(bars, asof, volume_floor=10_000_000)
+        assert "USDT-USD" not in got
+        assert got == ["BTC-USD"]
 
     def test_symbol_within_stale_window_included(self):
         # Bars end 3 days before asof (weekend-style gap, within max_stale_days) — included.

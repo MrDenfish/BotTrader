@@ -2,7 +2,13 @@ import pandas as pd
 import pytest
 
 from backtest.rotation.engine import BacktestResult
-from backtest.rotation.walkforward import PARAM_MENU, era_bounds, passes_bar
+from backtest.rotation.walkforward import (
+    MAX_DD,
+    PARAM_MENU,
+    choose_fit_winner,
+    era_bounds,
+    passes_bar,
+)
 
 
 def _result(net, dd):
@@ -71,3 +77,57 @@ class TestPassesBar:
                         "validate": _result(0.12, 0.19),
                         "holdout": _result(0.05, 0.09)})
         assert v["pass"] is False
+
+
+class TestChooseFitWinner:
+    def _row(self, floor, net, dd, lookback=60, skip=2, band=8):
+        return {
+            "cfg": {"lookback": lookback, "skip": skip, "band": band,
+                    "volume_floor": floor},
+            "net": net, "dd": dd,
+        }
+
+    def test_no_eligible_returns_none(self):
+        rows = [self._row(5e6, 0.30, MAX_DD + 0.01)]
+        assert choose_fit_winner(rows) is None
+
+    def test_sibling_eligible_positive_stricter_floor_wins(self):
+        # Best net is the loose floor (5e6), but its 10e6 sibling is also
+        # eligible + positive → stricter (higher) floor wins despite lower net.
+        rows = [
+            self._row(5e6, 0.30, 0.10),   # best net, loose floor
+            self._row(10e6, 0.20, 0.10),  # sibling: eligible, positive, lower net
+        ]
+        chosen = choose_fit_winner(rows)
+        assert chosen["cfg"]["volume_floor"] == 10e6
+        assert chosen["net"] == 0.20
+
+    def test_sibling_ineligible_best_net_wins(self):
+        # Sibling breaches the DD cap → not eligible → best net wins.
+        rows = [
+            self._row(5e6, 0.30, 0.10),
+            self._row(10e6, 0.25, MAX_DD + 0.05),
+        ]
+        chosen = choose_fit_winner(rows)
+        assert chosen["cfg"]["volume_floor"] == 5e6
+        assert chosen["net"] == 0.30
+
+    def test_sibling_eligible_negative_best_net_wins(self):
+        # Sibling is eligible (DD ok) but net <= 0 → floor rule not robust,
+        # best net wins.
+        rows = [
+            self._row(5e6, 0.30, 0.10),
+            self._row(10e6, -0.02, 0.10),
+        ]
+        chosen = choose_fit_winner(rows)
+        assert chosen["cfg"]["volume_floor"] == 5e6
+        assert chosen["net"] == 0.30
+
+    def test_no_sibling_present_best_net_wins(self):
+        # Different lookback → not a sibling; best net simply wins.
+        rows = [
+            self._row(5e6, 0.30, 0.10, lookback=60),
+            self._row(10e6, 0.25, 0.10, lookback=30),
+        ]
+        chosen = choose_fit_winner(rows)
+        assert chosen["cfg"]["volume_floor"] == 5e6

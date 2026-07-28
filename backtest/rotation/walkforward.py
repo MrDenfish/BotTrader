@@ -1,11 +1,14 @@
 """Era-based walk-forward protocol and pre-declared pass bar (spec section 7)."""
 from __future__ import annotations
 
+import logging
 from itertools import product
 
 import pandas as pd
 
 from backtest.rotation.engine import BacktestResult, RotationBacktest, RotationConfig
+
+logger = logging.getLogger(__name__)
 
 HOLDOUT_DAYS = 547     # ~18 months
 VALIDATE_DAYS = 547
@@ -38,6 +41,61 @@ def era_bounds(index: pd.DatetimeIndex) -> dict[str, tuple[pd.Timestamp, pd.Time
         "validate": (validate_start, holdout_start - one),
         "holdout": (holdout_start, end),
     }
+
+
+def choose_fit_winner(fit_rows: list[dict]) -> dict | None:
+    """Select the fit-era winner, applying the spec section 12 floor rule.
+
+    fit_rows: [{"cfg": {...}, "net": float, "dd": float}, ...].
+
+    Base rule: best net return among DD-eligible configs.
+
+    Floor rule (spec section 12 pre-registered sensitivity check): the two
+    volume_floor values (5e6 / 10e6) are a sensitivity pair. If the best
+    config's sibling (identical lookback/skip/band, the *other* floor) is
+    ALSO DD-eligible AND has a positive net return, then the result is
+    robust at both floors, so the STRICTER (higher) floor wins — even if
+    its net is lower. Otherwise the best-net config wins.
+
+    Returns the chosen fit row, or None if no config is DD-eligible.
+    """
+    eligible = sorted(
+        (r for r in fit_rows if r["dd"] <= MAX_DD),
+        key=lambda r: r["net"], reverse=True,
+    )
+    if not eligible:
+        return None
+    best = eligible[0]
+    bc = best["cfg"]
+
+    # A sibling shares lookback/skip/band but has the other volume_floor.
+    def is_sibling(r: dict) -> bool:
+        c = r["cfg"]
+        return (
+            c["lookback"] == bc["lookback"]
+            and c["skip"] == bc["skip"]
+            and c["band"] == bc["band"]
+            and c["volume_floor"] != bc["volume_floor"]
+        )
+
+    sibling = next((r for r in eligible if is_sibling(r)), None)
+    if sibling is not None and sibling["net"] > 0:
+        pair = [best, sibling]
+        chosen = max(pair, key=lambda r: r["cfg"]["volume_floor"])
+        logger.info(
+            "floor rule FIRED: sibling eligible+positive (nets %.4f / %.4f); "
+            "stricter floor %.0f wins over best-net floor %.0f",
+            best["net"], sibling["net"],
+            chosen["cfg"]["volume_floor"], bc["volume_floor"],
+        )
+        return chosen
+
+    logger.info(
+        "floor rule not applicable (no eligible positive sibling); "
+        "best-net config wins (floor %.0f, net %.4f)",
+        bc["volume_floor"], best["net"],
+    )
+    return best
 
 
 def run_walkforward(

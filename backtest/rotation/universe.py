@@ -8,6 +8,15 @@ from __future__ import annotations
 
 import pandas as pd
 
+# Stablecoins and fiat-proxy bases have no momentum edge and pollute the
+# ranking (spec section 3). Any symbol whose base (portion before "-") is
+# in this set is skipped, regardless of volume.
+STABLE_BASES = frozenset({
+    "USDT", "USDC", "DAI", "TUSD", "USDP", "PYUSD", "EURT", "EUR",
+    "GBP", "AUD", "CHF", "JPY", "CAD", "USDS", "FDUSD", "EURC",
+    "USDG", "RLUSD",
+})
+
 
 def eligible_symbols(
     bars: dict[str, pd.DataFrame],
@@ -20,6 +29,8 @@ def eligible_symbols(
 ) -> list[str]:
     scored: list[tuple[float, str]] = []
     for sym, df in bars.items():
+        if sym.split("-")[0] in STABLE_BASES:
+            continue
         hist = df[df.index <= asof]
         if hist.empty:
             continue
