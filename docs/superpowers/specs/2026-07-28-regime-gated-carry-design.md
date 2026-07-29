@@ -103,6 +103,32 @@ Everything else — event bus, registry, Kraken exchange/auth, persistence, Dock
 
 Kraken Earn API automation; the majors dip-buying overlay (separate future experiment with its own gauntlet); any change to the running `composite_scoring` paper service; short exposure; assets beyond the fixed three.
 
+## 12a. Amendment (2026-07-29): Yield-bearing stable cash sleeve ("paid to wait")
+
+**Status:** Drafted after the §7 gauntlet returned FAIL for the trading legs. The sleeve is an **independent component**: it contains no price prediction, so the §7 pass bar does not apply to it. It can deploy as the system's baseline state while all risk-asset strategies remain shelved, and it composes with the carry legs unchanged if a future re-run passes.
+
+**Structure:**
+- The account's idle cash (everything not deployed in risk sleeves) may be held in a **single yield-bearing stablecoin — USDC** — via Kraken's rewards products, up to `stable_sleeve_cap` (fraction of account equity; set at deployment, never fitted). Remainder stays in USD.
+- Two venue tiers, selected at deployment after checking live in-app rates: **Tier A** — Flexible Opt-In Rewards (instant access, lowest mechanism risk); **Tier B** — DeFi Earn (higher advertised rate, adds smart-contract vault risk and a withdrawal-liquidity caveat: redemptions can be partial under stress). Tier B, if used at all, gets its own sub-cap.
+- **Depeg gate (close-based, venue data):** if USDC-USD's daily close on Kraken is below **0.9975**, exit the entire sleeve to USD at the next daily evaluation (same 1-day lag convention as §4; under Tier B, assume stressed redemption may take longer — the sleeve sub-cap is the control for that residual). Re-enter only after **5 consecutive daily closes ≥ 0.9990** (hysteresis). Historical record (Kraken daily closes, 2020→2026): this gate fires exactly once — March 2023 (SVB) — and USDC has zero closes outside ±0.25% in the last three years.
+- **Why USDC only:** cleanest venue record of any stable (2 sub-0.995 closes in 6.5 years); DeFi Earn converts all deposits to USDC anyway, so a "diversified" sleeve via Tier B is illusory; single-issuer keeps the gate simple. USDT's record also supports a gate at daily granularity but adds a second issuer for marginal rate difference. USDS/PYUSD are excluded on venue price behavior.
+
+**Honesty and risk rules:**
+- Yield is **live-contractual only — never backtested** (§7 rule extends to the sleeve; historical reward rates are unreconstructable). Sleeve yield reports as its own P&L line, never mixed with price P&L.
+- The residual tail — issuer failure gapping through the gate, or venue/vault failure — is **credit/custody risk that no gate removes**. `stable_sleeve_cap` is the control and is a risk-appetite decision made by the operator, not by backtest.
+- Regulatory drift note: US exchange rewards programs are under active policy pressure (post-GENIUS-Act environment); rates and availability can change or vanish. The system must degrade gracefully to plain USD with no other behavior change.
+
+**Rollout for the sleeve alone:** verify live in-app rate/eligibility (operator) → paper phase logs simulated accrual at the logged live rate alongside the depeg-gate evaluation → live at a starter cap, alerts on gate trigger → cap raised only by explicit operator decision.
+
+## 12b. Amendment parameters (operator-set at deployment, not fitted)
+
+| Parameter | Meaning | Notes |
+|---|---|---|
+| `stable_sleeve_cap` | max fraction of equity in USDC | reference points: 0.50 conservative / 0.75 standard / 0.95 aggressive |
+| `tier_b_subcap` | max fraction via DeFi Earn (0 = Tier A only) | Tier B adds vault + stressed-redemption risk |
+| depeg exit level | 0.9975 daily close (fixed) | fires ~once per 6 years historically |
+| re-entry hysteresis | 5 closes ≥ 0.9990 (fixed) | prevents flap during recovery |
+
 ## 12. Testing
 
 - Unit tests: per-asset gate logic (both layers, insufficient-history default-closed), sleeve allocation with cap + no-redistribution rule, drift-band trade suppression, exit-lag application.
