@@ -7,10 +7,15 @@ momentum-rotation testing) is disclosed in the spec.
 """
 from __future__ import annotations
 
+import dataclasses
+import logging
+
 import pandas as pd
 
 from backtest.rotation.carry_engine import CarryBacktest, CarryConfig
 from backtest.rotation.engine import BacktestResult
+
+logger = logging.getLogger(__name__)
 
 FIT_START = pd.Timestamp("2017-01-01", tz="UTC")
 FIT_END = pd.Timestamp("2025-01-25", tz="UTC")
@@ -42,7 +47,6 @@ def calibrate_exposure(
     max_iter: int = 10,
 ) -> tuple[float, BacktestResult]:
     """Bisect exposure so fit-era max DD lands in `target`. Never levers up."""
-    import dataclasses
 
     def run_at(expo: float) -> BacktestResult:
         return CarryBacktest(bars, dataclasses.replace(cfg, exposure=expo)).run(*fit)
@@ -67,5 +71,12 @@ def calibrate_exposure(
     if best is None:
         # nothing under the cap found: return the lowest probe, conservative
         res_lo = run_at(lo)
+        if res_lo.max_drawdown > target[1]:
+            logger.warning(
+                "calibrate_exposure: no exposure within DD target %s for "
+                "scheme=%s — returning lowest probe exposure=%s with DD "
+                "%.2f%%; config will fail downstream DD eligibility",
+                target, cfg.scheme, lo, res_lo.max_drawdown * 100,
+            )
         return lo, res_lo
     return best

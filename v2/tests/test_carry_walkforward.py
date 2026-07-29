@@ -1,8 +1,10 @@
+import logging
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.rotation.carry_engine import CarryConfig
+from backtest.rotation.carry_engine import CarryBacktest, CarryConfig
 from backtest.rotation.carry_walkforward import (
     CARRY_MENU,
     FIT_END,
@@ -11,6 +13,7 @@ from backtest.rotation.carry_walkforward import (
     calibrate_exposure,
     carry_eras,
 )
+from backtest.rotation.engine import BacktestResult
 
 
 class TestCarryEras:
@@ -69,3 +72,33 @@ class TestCalibrateExposure:
         bars, idx = self._world(amplitude=0.004)  # tame: no scaling needed
         expo, res = calibrate_exposure(bars, self._cfg(), (idx[200], idx[-1]))
         assert expo == 1.0
+
+    def test_exhaustion_warns_and_returns_lowest_probe(self, monkeypatch, caplog):
+        """No exposure — not even `lo` — reaches the DD target: every probe
+        (stubbed) reports DD=0.50. calibrate_exposure must still honor its
+        contract of returning *some* (exposure, result) pair — the lowest
+        probe, conservative side — rather than raising, but it must warn
+        loudly so downstream DD-eligibility filtering (which sees the
+        returned result) is the thing that excludes this config."""
+
+        def fake_run(self, start, end):
+            return BacktestResult(
+                equity=pd.Series([1.0, 0.5]),
+                net_return=-0.5,
+                max_drawdown=0.50,
+                n_trades=0,
+                days_in_market=0,
+                days_total=2,
+                trades=[],
+            )
+
+        monkeypatch.setattr(CarryBacktest, "run", fake_run)
+        bars, idx = self._world(amplitude=0.06)
+        with caplog.at_level(logging.WARNING, logger="backtest.rotation.carry_walkforward"):
+            expo, res = calibrate_exposure(bars, self._cfg(), (idx[200], idx[-1]))
+
+        assert expo == 0.02          # lo, unchanged (default)
+        assert res.max_drawdown == 0.50   # what downstream DD-eligibility sees
+        assert any(
+            "no exposure within DD target" in rec.message for rec in caplog.records
+        )
