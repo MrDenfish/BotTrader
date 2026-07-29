@@ -57,6 +57,21 @@ Phase 2 — the one-time holdout verdict:
 - BTC-USD passes the universe screens and may legitimately be selected as
   a holding; it also anchors the regime gate and the trading calendar.
 
+## Carry gauntlet
+
+Single-phase runner for the regime-gated carry strategy
+(spec `docs/superpowers/specs/2026-07-28-regime-gated-carry-design.md`):
+
+    conda run -n tradebot python -m backtest.rotation.run_carry_gauntlet \
+        --cache backtest/rotation/cache
+
+Eras are fixed dates (fit 2017-01-01 → 2025-01-25; validate 2025-01-26 →
+last cached bar). Exposure is bisection-calibrated per config on the fit
+era to a 12–14% max-DD window. There is NO holdout phase — forward paper
+trading is the holdout. Bear-leg avoidance (2018, 2022) is a manual check
+against `output/carry_equity_fit_*.csv`. Outputs are gitignored; never
+commit numeric results.
+
 ## Public-repo rule
 
 This repository is public. `output/` and `cache/` are gitignored; never
