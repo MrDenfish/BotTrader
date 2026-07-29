@@ -39,11 +39,48 @@ class TestCarryTargets:
             assert w[s] == pytest.approx(0.4 / 3)
 
     def test_none_vol_is_ineligible_even_if_gated_in(self):
+        # ETH has no vol data (reduced book): effective universe is
+        # {BTC, SOL}. Both schemes must agree on the survivor weights.
         vols = {"BTC-USD": 0.02, "ETH-USD": None, "SOL-USD": 0.05}
         w = carry_targets(vols, set(UNIVERSE), UNIVERSE, "inverse_vol")
         assert w["ETH-USD"] == 0.0
+        # inverse-vol over {BTC: .02, SOL: .05} -> 1/.02:1/.05 = 50:20 ->
+        # 0.71429/0.28571 uncapped, but cap=0.50 binds on BTC and its
+        # excess isn't redistributed (single free name left) -> 0.50/0.50.
+        assert w["BTC-USD"] == pytest.approx(0.5)
+        assert w["SOL-USD"] == pytest.approx(0.5)
+
         w2 = carry_targets(vols, set(UNIVERSE), UNIVERSE, "equal")
         assert w2["ETH-USD"] == 0.0
+        assert w2["BTC-USD"] == pytest.approx(0.5)
+        assert w2["SOL-USD"] == pytest.approx(0.5)
+        assert sum(w2.values()) == pytest.approx(1.0)
+
+    def test_reduced_book_consistency_between_schemes(self):
+        # Case A: SOL has NO vol data at all (nonexistent asset) ->
+        # reduced 2-asset book, both schemes fully deploy at the cap.
+        vols_missing = {"BTC-USD": 0.02, "ETH-USD": 0.03, "SOL-USD": None}
+        for scheme in ("equal", "inverse_vol"):
+            w = carry_targets(vols_missing, set(UNIVERSE), UNIVERSE, scheme, cap=0.50)
+            assert w["SOL-USD"] == 0.0
+            assert sum(w.values()) == pytest.approx(1.0)
+
+        # Case B (contrast): SOL HAS vol data but is gated OUT
+        # (existing asset, ineligible) -> no redistribution: survivors
+        # keep their FULL-universe base weights, SOL's share sits idle
+        # in cash rather than shrinking the book.
+        eligible_no_sol = {"BTC-USD", "ETH-USD"}
+        w_equal = carry_targets(VOLS, eligible_no_sol, UNIVERSE, "equal")
+        assert w_equal["SOL-USD"] == 0.0
+        assert w_equal["BTC-USD"] == pytest.approx(1 / 3)
+        assert w_equal["ETH-USD"] == pytest.approx(1 / 3)
+        assert sum(w_equal.values()) == pytest.approx(2 / 3)
+
+        w_inv = carry_targets(VOLS, eligible_no_sol, UNIVERSE, "inverse_vol")
+        assert w_inv["SOL-USD"] == 0.0
+        assert w_inv["BTC-USD"] == pytest.approx(0.48387, abs=1e-4)
+        assert w_inv["ETH-USD"] == pytest.approx(0.32258, abs=1e-4)
+        assert sum(w_inv.values()) == pytest.approx(0.80645, abs=1e-4)
 
     def test_empty_eligible_all_cash(self):
         w = carry_targets(VOLS, set(), UNIVERSE, "equal")

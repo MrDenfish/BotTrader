@@ -17,7 +17,7 @@ import dataclasses
 import json
 from pathlib import Path
 
-from backtest.rotation.carry_engine import CarryBacktest, CarryConfig
+from backtest.rotation.carry_engine import CarryBacktest
 from backtest.rotation.carry_walkforward import (
     CARRY_MENU,
     calibrate_exposure,

@@ -25,6 +25,7 @@ Long-only, daily-gated, weekly-rebalanced holding of a fixed three-asset univers
 - **Vacant sleeves stay in cash.** Weight freed by a gated-out asset is never redistributed to survivors (redistribution concentrates exactly when diversification is thinnest).
 - **Drift band:** at the weekly rebalance, a sleeve trades only if its weight deviates from target by more than 20% of target. Expected turnover: a handful of gate transitions per year plus rare drift trades; most weeks are no-ops.
 - Long fully-in-cash stretches are intended behavior. "In cash, gate closed" is a first-class healthy state on the dashboard.
+- An asset with no computable volatility (insufficient history — e.g., SOL before its data begins) is not part of the book: base weights are computed over the assets that exist ("reduced book", §7). The no-redistribution rule applies to gate-closures of existing assets only.
 
 ## 4. Gates — evaluation details
 
