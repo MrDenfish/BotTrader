@@ -32,6 +32,7 @@ pair_discovery:
     refresh_interval_minutes: 30
     min_quote_volume: 2000000
     max_spread_bps: 100             # reject pairs with bid-ask spread > 1.0%
+    min_listing_age_days: 365       # reject pairs listed on Kraken < 1 year ago
     shill_coins: ["TRUMP"]
     seed_symbols: ["BTC-USD", "ETH-USD"]
     max_pairs: 30

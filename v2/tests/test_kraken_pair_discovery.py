@@ -331,6 +331,135 @@ class TestSpreadFilter:
         assert "ADA-USD" not in symbols
 
 
+# ------------------------------------------------------------------
+# Listing-age filter tests
+# ------------------------------------------------------------------
+
+DAY = 86_400.0
+
+
+class TestListingAgeFilter:
+    def setup_method(self):
+        self.discovery = KrakenPairDiscovery(event_bus=None)
+        self.discovery.configure({
+            "min_quote_volume": 500_000,
+            "min_listing_age_days": 365,
+            "shill_coins": [],
+            "seed_symbols": ["BTC-USD"],
+            "max_pairs": 50,
+        })
+        self.discovery.mapper.load_from_asset_pairs(SAMPLE_ASSET_PAIRS)
+        self.now = 1_785_500_000.0  # fixed "now" for deterministic ages
+
+    def test_configure_min_listing_age(self):
+        assert self.discovery._min_listing_age_days == 365
+
+    def test_configure_min_listing_age_default_disabled(self):
+        d = KrakenPairDiscovery()
+        d.configure({})
+        assert d._min_listing_age_days == 0
+
+    @pytest.mark.asyncio
+    async def test_young_listing_rejected(self):
+        """Symbol first traded 100 days ago is dropped by a 365d gate."""
+        self.discovery._fetch_first_bar_ts = AsyncMock(
+            side_effect=lambda rest: {
+                "SOLUSD": self.now - 100 * DAY,       # young
+                "XETHZUSD": self.now - 2_000 * DAY,   # old
+            }.get(rest)
+        )
+        symbols = await self.discovery._filter_by_listing_age(
+            ["SOL-USD", "ETH-USD"], now=self.now,
+        )
+        assert "SOL-USD" not in symbols
+        assert "ETH-USD" in symbols
+
+    @pytest.mark.asyncio
+    async def test_seed_symbols_bypass_age_gate(self):
+        """Seeds are kept without any listing-date lookup."""
+        fetch = AsyncMock(return_value=self.now - 1 * DAY)
+        self.discovery._fetch_first_bar_ts = fetch
+
+        symbols = await self.discovery._filter_by_listing_age(
+            ["BTC-USD"], now=self.now,
+        )
+        assert "BTC-USD" in symbols
+        fetch.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unknown_listing_age_kept(self):
+        """If the listing date cannot be fetched, keep the pair (graceful degradation)."""
+        self.discovery._fetch_first_bar_ts = AsyncMock(return_value=None)
+        symbols = await self.discovery._filter_by_listing_age(
+            ["ETH-USD"], now=self.now,
+        )
+        assert "ETH-USD" in symbols
+
+    @pytest.mark.asyncio
+    async def test_listing_ts_cached_across_calls(self):
+        """Listing dates are fetched at most once per pair."""
+        fetch = AsyncMock(return_value=self.now - 2_000 * DAY)
+        self.discovery._fetch_first_bar_ts = fetch
+
+        await self.discovery._filter_by_listing_age(["ETH-USD"], now=self.now)
+        await self.discovery._filter_by_listing_age(["ETH-USD"], now=self.now)
+
+        assert fetch.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_age_gate_boundary(self):
+        """Exactly min age passes; one day younger is rejected."""
+        self.discovery._fetch_first_bar_ts = AsyncMock(
+            side_effect=lambda rest: {
+                "XETHZUSD": self.now - 365 * DAY,   # exactly at threshold
+                "SOLUSD": self.now - 364 * DAY,     # one day short
+            }.get(rest)
+        )
+        symbols = await self.discovery._filter_by_listing_age(
+            ["ETH-USD", "SOL-USD"], now=self.now,
+        )
+        assert "ETH-USD" in symbols
+        assert "SOL-USD" not in symbols
+
+    @pytest.mark.asyncio
+    async def test_discover_applies_age_gate(self):
+        """Full discover() flow drops young listings."""
+        self.discovery._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
+        volumes = {"XXBTZUSD": 5_000_000, "XETHZUSD": 5_000_000, "SOLUSD": 5_000_000}
+        spreads = {"XXBTZUSD": 2.0, "XETHZUSD": 3.0, "SOLUSD": 5.0}
+        self.discovery._fetch_volumes = AsyncMock(return_value=(volumes, spreads))
+        self.discovery._fetch_first_bar_ts = AsyncMock(
+            side_effect=lambda rest: {
+                "XXBTZUSD": self.now - 4_000 * DAY,
+                "XETHZUSD": self.now - 4_000 * DAY,
+                "SOLUSD": self.now - 30 * DAY,      # fresh listing
+            }.get(rest)
+        )
+        with patch("v2.plugins.pair_discovery.kraken.time.time", return_value=self.now):
+            symbols = await self.discovery.discover()
+
+        assert "BTC-USD" in symbols
+        assert "ETH-USD" in symbols
+        assert "SOL-USD" not in symbols
+
+    @pytest.mark.asyncio
+    async def test_discover_age_gate_disabled_by_default(self):
+        """min_listing_age_days=0 → no listing-date lookups at all."""
+        d = KrakenPairDiscovery(event_bus=None)
+        d.configure({"min_quote_volume": 500_000, "seed_symbols": []})
+        fetch = AsyncMock()
+        d._fetch_first_bar_ts = fetch
+        d._fetch_asset_pairs = AsyncMock(return_value=SAMPLE_ASSET_PAIRS)
+        d._fetch_volumes = AsyncMock(
+            return_value=(SAMPLE_VOLUMES, SAMPLE_SPREADS)
+        )
+
+        symbols = await d.discover()
+
+        assert "SOL-USD" in symbols
+        fetch.assert_not_awaited()
+
+
 class TestKrakenPairDiscoveryLifecycle:
     @pytest.mark.asyncio
     async def test_start_stop(self):

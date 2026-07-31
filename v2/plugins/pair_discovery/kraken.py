@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 _API_URL = "https://api.kraken.com"
 _ASSET_PAIRS_PATH = "/0/public/AssetPairs"
 _TICKER_PATH = "/0/public/Ticker"
+_OHLC_PATH = "/0/public/OHLC"
 
 
 @registry.plugin("pair_discovery", "kraken")
@@ -68,6 +70,9 @@ class KrakenPairDiscovery(PairDiscovery):
         self._max_pairs: int = 100
         self._min_quote_volume: float = 0.0
         self._max_spread_bps: float = 0.0  # 0 = disabled
+        self._min_listing_age_days: int = 0  # 0 = disabled
+        # Listing dates never change — cache for the process lifetime
+        self._listing_ts_cache: dict[str, float] = {}
         self._configured = False
 
     # ------------------------------------------------------------------
@@ -85,6 +90,7 @@ class KrakenPairDiscovery(PairDiscovery):
         self._max_pairs = config.get("max_pairs", 100)
         self._min_quote_volume = float(config.get("min_quote_volume", 0))
         self._max_spread_bps = float(config.get("max_spread_bps", 0))
+        self._min_listing_age_days = int(config.get("min_listing_age_days", 0))
         self._configured = True
 
     async def discover(self) -> list[str]:
@@ -111,6 +117,11 @@ class KrakenPairDiscovery(PairDiscovery):
 
         # Apply two-pass filter (volume + spread)
         symbols = self._filter_by_volume(usd_pairs, volumes, spreads)
+
+        # Listing-age gate — drop recently listed pairs
+        if self._min_listing_age_days > 0:
+            symbols = await self._filter_by_listing_age(symbols)
+
         self._current_symbols = symbols
         return symbols
 
@@ -236,6 +247,94 @@ class KrakenPairDiscovery(PairDiscovery):
                 symbols.append(seed)
 
         return symbols
+
+    # ------------------------------------------------------------------
+    # Listing-age gate
+    # ------------------------------------------------------------------
+
+    async def _filter_by_listing_age(
+        self, symbols: list[str], now: float | None = None,
+    ) -> list[str]:
+        """Drop pairs listed on Kraken less than ``min_listing_age_days`` ago.
+
+        Newly listed pairs trade on thin, market-maker-driven books that
+        gap through stop levels; the gate keeps the universe to seasoned
+        pairs. Seed symbols bypass the gate. Pairs whose listing date
+        cannot be determined are kept (graceful degradation).
+        """
+        if now is None:
+            now = time.time()
+        min_age_secs = self._min_listing_age_days * 86_400
+        seeds = set(self._seed_symbols)
+
+        kept: list[str] = []
+        rejected: list[str] = []
+        for symbol in symbols:
+            if symbol in seeds:
+                kept.append(symbol)
+                continue
+
+            ts = self._listing_ts_cache.get(symbol)
+            if ts is None:
+                rest_name = self.mapper.to_kraken_rest(symbol)
+                ts = await self._fetch_first_bar_ts(rest_name)
+                if ts is not None:
+                    self._listing_ts_cache[symbol] = ts
+
+            if ts is None:
+                logger.warning(
+                    "Listing-age gate: no listing date for %s — keeping", symbol,
+                )
+                kept.append(symbol)
+            elif now - ts >= min_age_secs:
+                kept.append(symbol)
+            else:
+                rejected.append(symbol)
+
+        if rejected:
+            logger.info(
+                "Listing-age gate: %d pairs rejected (< %d days): %s",
+                len(rejected), self._min_listing_age_days, rejected,
+            )
+        return kept
+
+    async def _fetch_first_bar_ts(self, rest_name: str) -> float | None:
+        """First weekly OHLC bar timestamp — approximates the listing date.
+
+        The OHLC endpoint caps at 720 bars, so pairs older than ~13.8
+        years report a later date; irrelevant for any sane age gate.
+        """
+        session = await self._ensure_session()
+        try:
+            async with session.get(
+                f"{_API_URL}{_OHLC_PATH}",
+                params={"pair": rest_name, "interval": 10080},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        "Kraken OHLC HTTP %d for %s", resp.status, rest_name,
+                    )
+                    return None
+                data = await resp.json()
+                if data.get("error"):
+                    logger.warning(
+                        "Kraken OHLC error for %s: %s", rest_name, data["error"],
+                    )
+                    return None
+                for key, bars in data.get("result", {}).items():
+                    if key != "last" and bars:
+                        return float(bars[0][0])
+                return None
+        except asyncio.TimeoutError:
+            logger.warning("Kraken OHLC timeout for %s", rest_name)
+            return None
+        except aiohttp.ClientError as e:
+            logger.warning("Kraken OHLC network error for %s: %s", rest_name, e)
+            return None
+        finally:
+            # Public-endpoint rate limiting between per-pair lookups
+            await asyncio.sleep(0.25)
 
     # ------------------------------------------------------------------
     # Periodic refresh
