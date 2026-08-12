@@ -24,7 +24,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                   EC2 (t3.medium, Ubuntu)                     │
+│                   EC2 (t3.small, Ubuntu)                      │
 │                                                               │
 │  ┌───────────────┐     ┌──────────────────────────────────┐  │
 │  │  PostgreSQL 16 │     │          v2-kraken               │  │
@@ -431,7 +431,7 @@ API keys are stored in `Config/kraken_api_info.json` (gitignored). The `.gitigno
 ## 11. Deployment
 
 ### Production Location
-- **Server:** AWS EC2 t3.medium (20GB disk, 4GB RAM)
+- **Server:** AWS EC2 t3.small (20GB disk, 2GB RAM; downsized from t3.medium 2026-08-12)
 - **Path:** `/opt/bot` (git repository)
 - **SSH alias:** `bottrader-aws`
 
@@ -773,6 +773,7 @@ All significant changes to the system should be logged here. Format: `YYYY-MM-DD
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-08-12 | Infra right-sizing + DNS/proxy consolidation | EC2 downsized t3.medium → t3.small (workload used <25% of the smaller size's RAM; Elastic IP retained so DNS was untouched); the restart doubled as the deploy for the score-target alignment below, paying the warmup blackout once. bottrader.trade moved behind the Cloudflare proxy (origin IP no longer in public DNS; SSL Full-strict; Caddy's Let's Encrypt cert validates at the edge) — watch item: first cert renewal through the proxy. Account-wide: the platform's four production domains now share one Cloudflare account; an idle Elastic IP was put to use instead of billed for nothing; a sibling project's box reclaimed 21GB of dead Docker build cache. Fleet cost ~$99 → ~$80/mo. |
 | 2026-08-12 | Market-regime watcher + score-target config alignment | Added `scripts/market_regime_watch.py` (stdlib-only, host cron on the EC2 at 00:15 UTC): compares BTC's latest completed daily close to its 200-day SMA and emails on a cross in either direction, with a state file for once-per-cross alerting. Motivation: a retroactive analysis of the live record found BTC closed below its 200-day SMA on every day of the collection window — meaning the regime condition the shelved carry strategy waits for has never yet occurred during live collection; the watcher makes that regime turn an event rather than a quarterly calendar check. Also aligned `v2/kraken_paper_trading.yaml` score targets to the floors implied by the indicator-count gates (buy 2.0→4.5, sell 2.0→7.5, hysteresis pinned non-binding) — the old targets were never binding, so this is documentation-as-config with no live behavior change; deploy rides with the next container rebuild. Commits `67b453c` + `1af84d8`. |
 | 2026-07-31 | Listing-age gate added to Kraken pair discovery | A replay of the live round-trip record against Kraken listing dates (first daily bar in the bulk dataset, verified against listing announcements) showed that the excess hard-stop incidence versus backtest calibration was concentrated entirely in recently listed pairs — the backtest datasets never contained fresh listings, while live pair discovery admits them as soon as their volume clears the threshold. Several such pairs exhibited stop-level overshoots consistent with thin, market-maker-driven books (one was delisted by Kraken within six months of listing). Added `min_listing_age_days` config to `KrakenPairDiscovery` (0 = disabled; paper config: 365): listing date approximated by the pair's first weekly OHLC bar via public REST, cached per process; seed symbols bypass; unknown listing dates are kept. Framed strictly as a universe-hygiene / tail-risk screen, not an edge claim — the pre-registered forward-paper prediction is that hard-stop incidence reverts toward backtest calibration. TDD (8 new tests, suite at 799), verified live on first production discovery pass (2 pairs rejected). Commit `a29d561`. |
 | 2026-07-29 | Stable cash sleeve amendment ("paid to wait") | After the carry verdict, analyzed stablecoin depeg history from the bulk daily dataset (USDT's two-era record: chronic pre-2019 instability, then three recent years without a single daily close outside ±0.25%; USDC the cleanest on venue — the March 2023 SVB weekend is its only sub-0.995 close episode). Amended the carry spec (§12a/§12b) with an independent component deployable without the trading legs: USDC-only yield-bearing cash sleeve under a close-based depeg gate (exit below 0.9975 with the standard 1-day lag; re-entry after 5 consecutive closes ≥ 0.9990 — the gate fires exactly once in the 2020-2026 record), operator-set cap (set: 0.75), yield treated as live-contractual only and never backtested. Kraken Earn terms verified against the operator's account: flexible Opt-In Rewards selected; the DeFi Earn vault evaluated and declined (self-described leverage, 87% single-protocol concentration, ~13% liquidity buffer — a thin premium for a tall risk stack). Sleeve build scheduled as the next session. Commit `f9ff579`. |
