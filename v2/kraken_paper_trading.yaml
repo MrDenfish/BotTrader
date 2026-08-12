@@ -56,8 +56,17 @@ strategies:
   - type: "composite_scoring"
     config:
       candle_interval_minutes: 5
-      score_buy_target: 2.0
-      score_sell_target: 2.0
+      # Score targets aligned to the floors implied by the indicator-count gates
+      # (2026-08-10). With min_indicators_required=3 incl. >=1 trend indicator, the
+      # cheapest qualifying combo is Ratio 1.2 + Touch/RSI 1.5 + MACD 1.8 = 4.5;
+      # with min_sell_indicators_required=5 the cheapest sell combo sums to 7.5.
+      # The old 2.0 targets were never binding — indicator counts are the real gate.
+      # flip_hysteresis_pct is pinned to 0 because the default 0.10 never bound at
+      # target 2.0 (2.2 < 4.5 floor); keeping it non-binding preserves identical
+      # live behavior at the new targets.
+      score_buy_target: 4.5
+      score_sell_target: 7.5
+      flip_hysteresis_pct: 0.0
       allow_buys_on_red_day: true
       bb_window: 10
       buy_ratio: 1.05
