@@ -56,6 +56,11 @@ Config/websocket_api_info.json
 Config/*_api_info.json
 Config/*.key
 Config/*.pem
+# Any Coinbase/exchange key file, anywhere in the tree (2026-09-17)
+**/*api_key*.json
+**/*_key.json
+**/cdp_api_key*.json
+**/*.pem
 
 # One-off debug scripts with hardcoded credentials (do not re-track)
 .claude/testing/test_peak_tracking_edge.py
