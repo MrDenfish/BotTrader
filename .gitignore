@@ -69,3 +69,10 @@ Config/*.pem
 backtest/rotation/cache/
 backtest/rotation/output/*
 !backtest/rotation/output/.gitkeep
+# Claude Code: .claude/settings.json IS committed (shared project permission rules).
+# settings.local.json is per-machine and must stay out of git.
+.claude/settings.local.json
+
+# Stray virtualenv copies — .venv/ above matches that exact name only, so a
+# renamed copy like .venv.old/ would otherwise be committable.
+.venv*/
