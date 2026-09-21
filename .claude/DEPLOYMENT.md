@@ -10,6 +10,17 @@
 
 ## Standard Deployment Process
 
+**Use `./scripts/deploy_aws.sh`** (added 2026-09-21). It pushes main, pulls on the host, runs
+`docker compose up -d --build`, waits for the v2-kraken healthcheck, and logs every run to
+`logs/deploys.log`. Guards: must be on main, interactive confirmation with SHA and dirty-tree
+warning, open-position check. `--dry-run` exercises the guards without touching anything.
+
+> The manual steps below predate the script and still name the retired v1 containers
+> (`webhook`, `sighook`). Current services are `db`, `v2-kraken`, `dashboard`, `caddy`, and the
+> v2 images bake code in, so `docker compose restart` does NOT pick up new code — always
+> `up -d --build`.
+
+
 ### 1. Commit and Push Changes Locally
 
 ```bash

@@ -12,27 +12,30 @@ This file contains project-specific instructions for Claude Code.
 
 ### Standard Deployment Steps
 
-When asked to deploy to AWS or after committing changes:
+When asked to deploy to AWS or after committing changes, use the deploy script (it runs
+locally and does the push, pull, and rebuild for you):
 
-1. **Push to GitHub:**
-   ```bash
-   git push origin main
-   ```
+```bash
+./scripts/deploy_aws.sh              # v2-kraken (default) — the usual case
+./scripts/deploy_aws.sh dashboard    # one other service
+./scripts/deploy_aws.sh all          # rebuild + restart everything
+./scripts/deploy_aws.sh --dry-run    # run the guards only, touch nothing
+```
 
-2. **Deploy to AWS:**
-   ```bash
-   ssh bottrader-aws "cd /opt/bot && git pull origin main"
-   ```
+Guards built into the script (they block or ask before anything is touched):
+- must be on `main` (production pulls `origin/main`)
+- interactive confirmation showing host, service, commit SHA, dirty-tree warning, and the
+  ~6.7h warmup-blackout cost of restarting v2-kraken; `--yes` skips it (cron/CI never hang)
+- open-position check on the paper book; `--force` overrides
+- every run is appended to `logs/deploys.log` (gitignored): timestamp, SHA, service, outcome
 
-3. **Rebuild and restart v2 containers (code baked into image, restart alone won't pick up changes):**
-   ```bash
-   ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-kraken"
-   ```
-
-4. **Verify deployment:**
-   ```bash
-   ssh bottrader-aws "cd /opt/bot && git log --oneline -3"
-   ```
+Manual equivalent (only if the script cannot run):
+```bash
+git push origin main
+ssh bottrader-aws "cd /opt/bot && git pull --ff-only origin main"
+ssh bottrader-aws "cd /opt/bot && docker compose -f docker-compose.aws.yml up -d --build v2-kraken"
+ssh bottrader-aws "cd /opt/bot && git log --oneline -3"
+```
 
 ### What NOT to Do
 
