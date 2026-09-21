@@ -28,7 +28,7 @@
 2. **DNS configured:** A record pointing to Elastic IP `44.238.14.228` (Cloudflare DNS, proxy OFF)
 3. **Security group updated:** Ports 80+443 opened on `bottrader-ec2-sg` in us-west-2
 4. **Caddy container deployed:** 4th Docker service with auto Let's Encrypt TLS + HTTP Basic Auth
-5. **Dashboard live at:** https://bottrader.trade (credentials: denfish / [password in .env as bcrypt hash])
+5. **Dashboard live at:** https://bottrader.trade (credentials: [username + bcrypt hash in .env, not recorded here])
 6. **SSH tunnel preserved:** `127.0.0.1:8501` still works as fallback
 7. **Documentation updated:** SYSTEM_CONTEXT.md, MEMORY.md, open_work_items.md, ec2_maintenance.md
 
@@ -37,8 +37,8 @@
 ## Problems Encountered & Solutions
 
 ### 1. Bcrypt hash `$` signs eaten by Docker Compose
-- **Problem:** The bcrypt password hash (`$2a$14$v8sMj9n...`) in `.env` had its `$` signs interpreted as variable references by Docker Compose. The hash arrived corrupted inside the container.
-- **Solution:** Escaped all `$` as `$$` in the `.env` file: `$$2a$$14$$v8sMj9n...`
+- **Problem:** The bcrypt password hash (`***REDACTED-BCRYPT-HASH***`) in `.env` had its `$` signs interpreted as variable references by Docker Compose. The hash arrived corrupted inside the container.
+- **Solution:** Escaped all `$` as `$$` in the `.env` file: `***REDACTED-BCRYPT-HASH***`
 - **Lesson:** Always escape `$` in `.env` values that contain literal dollar signs when using Docker Compose.
 
 ### 2. Let's Encrypt ACME challenge timeout
@@ -59,7 +59,7 @@
 ```
 DASHBOARD_DOMAIN=bottrader.trade
 DASHBOARD_USER=denfish
-DASHBOARD_PASSWORD_HASH=$$2a$$14$$v8sMj9nVvzJ5uJY.vxQR8.YKcDIa.i8txvoZDNvItGIuZuMdKg40.
+DASHBOARD_PASSWORD_HASH=***REDACTED-BCRYPT-HASH***
 ```
 
 ### docker-compose.aws.yml changes

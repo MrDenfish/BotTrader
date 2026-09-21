@@ -108,7 +108,7 @@ Worth carrying into June review and the July evaluation:
 
 **Findings (initial scan):**
 - `Config/websocket_api_info.json` — Real Coinbase Advanced Trade API EC private key (key ID `d827d99f-8f4c-4862-938f-3da26d875dce`, org `75baf820-7e82-444a-ba30-b4ffd3859a95`). Coinbase trading was dormant but the key was presumably still active until rotated.
-- `.claude/testing/test_peak_tracking_edge.py:187` — Hardcoded `7317botTrade4ssm` (production DB password).
+- `.claude/testing/test_peak_tracking_edge.py:187` — Hardcoded `***REDACTED***` (production DB password).
 - `scripts/utils/investigate_sl_issue.py:22` — Looked like a leak but verified as the literal placeholder `"your_secure_password_here"`. Safe.
 - `v2/tests/test_kraken_exchange.py:24` — Test fixture `dGVzdF9zZWNyZXQ=` (base64 of `test_secret`). Safe.
 
