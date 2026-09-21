@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git mv:*)",
+      "Bash(git merge:*)",
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(ps:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.kraken.com)"
+    ]
+  }
+}
