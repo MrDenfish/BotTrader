@@ -7,14 +7,14 @@ Shows date ranges and data availability for backtesting the trading strategy.
 
 import sys
 import os
-sys.path.insert(0, '/Users/Manny/Python_Projects/BotTrader')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 def main():
     # Load environment and get database connection
-    load_dotenv('/Users/Manny/Python_Projects/BotTrader/.env')
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
     # Build database URL from env vars (using SSH tunnel on port 5433)
     db_user = 'bot_user'

@@ -14,7 +14,7 @@ Date: January 28, 2026
 
 import os
 import sys
-sys.path.insert(0, '/Users/Manny/Python_Projects/BotTrader')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import argparse
 import time
