@@ -4,8 +4,9 @@ Backtest Engine
 Core backtesting engine that simulates strategy execution on historical data.
 """
 
+import os
 import sys
-sys.path.insert(0, '/Users/Manny/Python_Projects/BotTrader')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from decimal import Decimal
 from datetime import datetime, timedelta

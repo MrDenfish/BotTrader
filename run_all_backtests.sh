@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run all 3 dataset backtests sequentially (hourly ATR + 5.5% floor)
-cd /Users/Manny/Python_Projects/BotTrader
+cd "$(dirname "$0")"
 
 echo "=== Set A: Starting at $(date) ==="
 python -m v2 --config v2/backtest_diagnostic.yaml > backtest/set_a_hourly_atr.log 2>&1
